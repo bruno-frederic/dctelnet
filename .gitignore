@@ -1,0 +1,15 @@
+_UAEFSDB.___
+.info
+/assets.info
+/build.info
+/docs.info
+/src.info
+build/installed.info
+build/installed/**
+build/package.info
+build/sasc-*/**
+build/sasc-*.info
+build/vbcc-*/**
+build/vbcc-*.info
+build/Build-output*.txt
+build/DCTelnet*.lha

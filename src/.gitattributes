@@ -1,0 +1,23 @@
+# Default: text files use LF (required for Amiga)
+*               text eol=lf
+
+# Object file
+*.o             binary
+
+# GadToolsBox files
+*.gui           binary
+
+# Amiga-specific binary formats
+*.info          binary
+*.lha           binary
+*.library       binary
+*.lib           binary
+*.device        binary
+*.catalog       binary
+
+# Third-party binaries (AmiTCP)
+**/bin/**       binary
+httpget.bin.*   binary
+
+# XPR
+**/Libs/Libs    binary

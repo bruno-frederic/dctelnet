@@ -1,0 +1,19 @@
+*.arexx          text eol=lf
+*.script         text eol=lf
+*.sh             text eol=lf
+Install_DCTelnet text eol=lf
+
+# Object file
+*.o             binary
+
+# GadToolsBox files
+*.gui           binary
+
+# Amiga-specific binary formats
+*.info          binary
+*.lha           binary
+*.library       binary
+*.lib           binary
+*.device        binary
+
+package/DCTelnet/Fonts/**  binary
