@@ -1,0 +1,75 @@
+/*
+This script builds DCTelnet with SAS/C under Amiga Shell 3.2
+dual-target support for 68000 and 68020 CPU
+
+Must be run from build dir
+
+Build on RAM: volume to speedup
+It captures the output to Build-output.txt
+
+Make this script executable :
+    PROTECT #?.arexx +SRE
+
+*/
+
+/* Instruct ARexx to send commands to the Amiga shell */
+ADDRESS COMMAND
+
+initialDir = PRAGMA(DIRECTORY, "/")
+repoRootDir = PRAGMA(DIRECTORY)
+
+
+/* || concatenate strings without spaces */
+outFile  = initialDir  || "/Build-output.txt"
+srcDir   = repoRootDir || "/src"
+
+
+'ECHO "Building starts at: " NOLINE >' outFile
+'DATE >>' outFile
+
+'ASSIGN Include: "'srcDir'/third_party/AmiTCP/netinclude"'
+'ASSIGN Include: "'srcDir'/third_party/ReqTools/include"    ADD'
+'ASSIGN Include: "'srcDir'/third_party/Xem/INCLUDE"         ADD'
+'ASSIGN Include: "'srcDir'/third_party/XPRotocol/library"   ADD'
+'ASSIGN Include: SC:include                                 ADD'
+
+
+/* Specifies a new stack value for your current ARexx program */
+dummy=PRAGMA( "STACK", 150000 )
+
+cpu=000
+buildDir="RAM:build-" || cpu
+'echo -------------- Building in 'buildDir' -------------- >>' outFile
+'COPY FROM' srcDir 'TO' buildDir 'CLONE QUIET'
+dummy=PRAGMA(DIRECTORY, buildDir)
+'smake CPU='cpu' >>' outFile
+
+cpu=020
+buildDir="RAM:build-" || cpu
+'echo -------------- Building in 'buildDir' -------------- >>' outFile
+'COPY FROM' srcDir 'TO' buildDir 'CLONE QUIET'
+dummy=PRAGMA(DIRECTORY, buildDir)
+'smake CPU='cpu' >>' outFile
+
+
+'ECHO "Build complete at: " NOLINE >>' outFile
+'DATE >>' outFile
+
+dummy=PRAGMA(DIRECTORY, initialDir)
+
+IF EXISTS('RAM:build-000/DCTelnet') | EXISTS('RAM:build-020/DCTelnet')
+THEN DO
+    /* EXISTS() does not support wildcard in directory name*/
+
+    'md5sum RAM:build-0??/DCTelnet'
+
+    'COPY  FROM RAM:build-000/DCTelnet  TO DCTelnet      CLONE'
+    'COPY  FROM RAM:build-020/DCTelnet  TO DCTelnet.020  CLONE'
+
+    archiveName = 'DCTelnet-' || DATE(SORTED) || '-' || TIME(SECONDS)
+    'lha -a -Qa a "'archiveName'.lha"  DCTelnet DCTelnet.0?0'
+    /* lhA parentheses wildcard explained in LhA.man v2.8  §2.1.6 Recursive file collection */
+END
+
+/* Normal end */
+Exit

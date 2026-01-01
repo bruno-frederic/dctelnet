@@ -1,0 +1,18 @@
+*.arexx         text eol=lf
+
+# Object file
+*.o             binary
+
+# GadToolsBox files
+*.gui           binary
+
+# Amiga-specific binary formats
+*.info          binary
+*.lha           binary
+*.library       binary
+*.lib           binary
+*.device        binary
+
+# Third-party binaries (AmiTCP)
+**/bin/**       binary
+httpget.bin.*   binary

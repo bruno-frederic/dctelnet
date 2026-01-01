@@ -1,0 +1,2 @@
+# Default: text files use LF (required for Amiga)
+*               text eol=lf

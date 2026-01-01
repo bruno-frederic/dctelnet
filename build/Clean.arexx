@@ -1,0 +1,12 @@
+/*
+This script cleans intermediate files
+
+Must be run from build dir
+
+Make this script executable :
+  PROTECT #?.arexx +SRE
+*/
+
+ADDRESS COMMAND
+
+'DELETE Build-output.txt RAM:build-0?0 ALL'
