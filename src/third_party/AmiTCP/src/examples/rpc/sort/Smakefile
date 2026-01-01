@@ -1,0 +1,57 @@
+#
+#       $Id: Smakefile,v 4.1 1994/09/30 00:20:56 jraja Exp $
+#
+#       Smakefile for sort
+#
+#       Copyright © 1994 AmiTCP/IP Group, 
+#                        Network Solutions Development Inc.
+#                        All rights reserved.
+#
+
+MAKE = smake
+RM= delete
+CC= sc
+RPCCOM= rpcgen
+LD= slink
+
+#
+# Note that we have selected the register argument version of the rpc
+# library and the SCOPTIONS file has PARAMETERS option set to REGISTER.
+# Use the USE_DOSIO versions of the libraries.
+#
+LIBS= LIB NETLIB:rpcdr.lib NETLIB:netd.lib
+
+CFLAGS= DEF=USE_DOSIO
+
+BIN = rsort sort_svc
+GEN = sort_clnt.c sort_svc.c sort_xdr.c sort.h
+
+all: $(BIN)
+
+rsort: rsort.o sort_clnt.o sort_xdr.o
+	$(CC) LINK TO $@ OBJ rsort.o sort_clnt.o sort_xdr.o $(LIBS)
+
+rsort.o: rsort.c sort.h
+
+sort_clnt.o: sort_clnt.c
+sort_clnt.c:
+	$(RPCCOM) -l sort.x >$@
+
+sort_svc: sort_proc.o sort_svc.o sort_xdr.o
+	$(CC) LINK TO $@ OBJ sort_proc.o sort_svc.o sort_xdr.o $(LIBS)
+
+sort_proc.o: sort_proc.c sort.h
+
+sort_svc.o: sort_svc.c
+sort_svc.c:
+	$(RPCCOM) -s udp sort.x >$@
+
+sort_xdr.o: sort_xdr.c
+sort_xdr.c:
+	$(RPCCOM) -c sort.x >$@
+
+sort.h:
+	$(RPCCOM) -h sort.x >$@
+
+clean cleanup:
+	$(RM) $(GEN) \#?.(o|lnk|map) $(BIN) \#?!

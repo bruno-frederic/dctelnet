@@ -1,0 +1,46 @@
+#
+#       $Id: Smakefile,v 4.1 1994/09/30 00:20:56 jraja Exp $
+#
+#       Smakefile for dir
+#
+#       Copyright © 1994 AmiTCP/IP Group, 
+#                        Network Solutions Development Inc.
+#                        All rights reserved.
+#
+
+MAKE = smake
+RM= delete
+CC= sc
+RPCCOM= rpcgen
+LD= slink
+
+#
+# Note that we have selected the register argument version of the rpc
+# library and the SCOPTIONS file has PARAMETERS option set to REGISTER.
+# Use the USE_DOSIO versions of the libraries.
+#
+LIBS= LIB NETLIB:rpcdr.lib NETLIB:netd.lib
+
+CFLAGS= DEF=USE_DOSIO
+
+BIN = dir_svc rls
+GEN = dir_clnt.c dir_svc.c dir_xdr.c dir.h
+
+all: $(BIN)
+
+$(GEN): dir.x
+	$(RPCCOM) dir.x
+
+dir_svc: dir_proc.o dir_svc.o dir_xdr.o
+	$(CC) LINK TO $@ OBJ dir_proc.o dir_svc.o dir_xdr.o $(LIBS)
+
+rls: rls.o dir_clnt.o dir_xdr.o
+	$(CC) LINK TO $@ OBJ rls.o dir_clnt.o dir_xdr.o $(LIBS)
+
+rls.o: rls.c dir.h
+
+dir_proc.o: dir_proc.c dir.h
+
+clean cleanup:
+	$(RM) $(GEN) \#?.(o|map|lnk) $(BIN) \#?!
+

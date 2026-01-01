@@ -1,0 +1,7 @@
+httpget                 16-Feb-96 19:56:51  Hunk Section                Page 1-1
+
+ num hunk         size filename         punit    type         base  alv     size
+   0 text          418 httpget.o        httpget. code            0    0      414
+                       LIB:sc.lib       dummy.c  code          414    0        4
+   1 __MERGED      144 httpget.o        httpget. data            0    0      138
+                       httpget.o        httpget. bss           138    0        c
