@@ -1,0 +1,43 @@
+DCTelnet - Amiga Telnet/BBS Client
+==================================
+
+Copyright (C) 1998-2008 Zed
+Copyright (C) 2026      Bruno FREDERIC <https://github.com/bruno-frederic/>
+
+
+License status
+--------------
+
+The original DCTelnet software by Zed was distributed without any explicit
+license. As a result, the legal status of the original code remains "all
+rights reserved" by its original author.
+
+This repository makes the source code available for:
+- historical preservation,
+- study and maintenance,
+- community discussion.
+
+No license is granted for redistribution or modification of the original
+DCTelnet code beyond what is permitted by applicable copyright law.
+
+
+Contributions and modifications
+--------------------------------
+
+Changes, fixes, and additions made by Bruno FREDERIC (2026) are
+provided without an explicit license and do not override the copyright of
+the original author.
+
+If the original author (Zed) or a legitimate rights holder wishes to:
+- clarify the licensing terms,
+- request changes,
+- or request removal of the content,
+
+please get in touch via the GitHub repository.
+
+
+Disclaimer
+----------
+
+This software is provided "as is", without warranty of any kind, express or
+implied. Use at your own risk.
