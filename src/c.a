@@ -1,0 +1,298 @@
+*
+* DCTelnet initial startup procedure
+*
+
+	INCLUDE	"exec/types.i"
+	INCLUDE	"exec/tasks.i"
+	INCLUDE	"exec/memory.i"
+	INCLUDE	"exec/execbase.i"
+	INCLUDE	"dos/dos.i"
+	INCLUDE	"dos/dosextens.i"
+	INCLUDE	"workbench/startup.i"
+	INCLUDE	"exec/exec_lib.i"
+	INCLUDE	"libraries/dos_lib.i"
+
+MEMFLAGS	EQU	MEMF_CLEAR+MEMF_PUBLIC
+AbsExecBase     EQU	4
+
+	xdef	_XCEXIT		* exit(code) is standard way to leave C.
+	xdef	@_XCEXIT
+	xdef	__startup
+
+	xref	LinkerDB	* linker defined base value
+	xref	_BSSBAS		* linker defined base of BSS
+	xref	_BSSLEN		* linker defined length of BSS
+	xref	__stack
+	xref    __main		* Name of C program to start with.
+
+
+	section text,code
+ 
+__startup:
+start:
+	;movem.l d1-d6/a0-a6,-(sp)	* save registers
+
+	move.l	a0,a2			* save command pointer
+	move.l	d0,d2			* and command length
+	lea	LinkerDB,a4		* load base register
+	move.l	AbsExecBase.W,a6
+
+	cmpi.w	#36,$14(a6)
+	blt	return			* jump out if lower than 2.0
+
+	;lea	_BSSBAS,a3	      * get base of BSS
+	;moveq	#0,d1
+	move.l	#_BSSLEN,d0	     * get length of BSS in longwords
+	;bra.s	clr_lp		  * and clear for length given
+;clr_bss move.l	d1,(a3)+
+;clr_lp  dbf	d0,clr_bss
+	move.l	sp,_StackPtr(A4)	* Save stack ptr
+	move.l	a6,SysBase(A4)
+
+*------ get the size of the stack, if CLI use cli_DefaultStack
+*------				 if WB use sp - TC_SPLOWER
+	move.l	ThisTask(a6),A3
+	move.l	pr_CLI(A3),d0
+	beq.s	fromwb
+	lsl.l	#2,d0
+	move.l	d0,a0
+	move.l	cli_DefaultStack(a0),d0
+	lsl.l	#2,d0			* # longwords -> # bytes
+	bra.s	dostack
+
+fromwb:
+	move.l	sp,d0
+	sub.l	TC_SPLOWER(a3),d0
+dostack:
+
+*------ Set __base for stack checking
+	;move.l	sp,d1
+	;sub.l	d0,d1			* get top of stack
+	;add.l	#128,D1			* allow for parms overflow
+	;move.l	D1,__base(A4)		* save for stack checking
+
+	cmp.l	__stack(a4),d0
+	bcc.s	nochange
+
+*-- current stack is not as big as __stack says it needs
+*-- to be. Allocate a new one.
+	move.l	__stack(a4),d0
+	add.l	#128,d0			* extra room
+	move.l	d0,newstacksize(a4)
+
+	move.l	#MEMFLAGS,d1
+	jsr	_LVOAllocMem(a6)
+
+	move.l	d0,newstack(a4)
+	beq	return
+	add.l	#128,d0		* extra room
+	;move.l	d0,__base(a4)
+
+	add.l	__stack(a4),d0
+	;move.l	d0,d1
+	move.l	d0,sp
+
+nochange:
+	moveq	#0,d0
+	move.l	d0,_WBenchMsg(a4)
+
+*-----  clear any pending signals
+
+	;move.l	#$00003000,d1		; * BREAK D
+	;jsr	_LVOSetSignal(a6)
+
+
+*------ attempt to open DOS library:
+	lea	DOSName(PC),A1
+	;moveq	#0,D0
+	jsr	_LVOOpenLibrary(a6)
+	move.l	D0,DOSBase(A4)
+	;bne.s	ok2			* dos.lib version 0 never fails
+	;moveq	#100,d0
+	;bra.w	exit2
+
+ok2:
+
+*------ are we running as a son of Workbench?
+	;move.l	ThisTask(a6),A3
+	;move.l	pr_CurrentDir(A3),__curdir(A4)
+	tst.l	pr_CLI(A3)
+	beq.s	fromWorkbench
+
+*=======================================================================
+*====== CLI Startup Code ===============================================
+*=======================================================================
+*
+* Entry: D2 = command length
+*	 A2 = Command pointer
+fromCLI:
+*------ find command name:
+	move.l	pr_CLI(a3),a0
+	add.l	a0,a0			* bcpl pointer conversion
+	add.l	a0,a0
+
+	move.l	cli_CommandName(a0),a1
+
+	add.l	a1,a1			* bcpl pointer conversion
+	add.l	a1,a1
+
+*------ collect parameters:
+	move.l	d2,d0			* get command line length
+	moveq	#0,d1
+	move.b	(a1)+,d1
+	;move.l	a1,_ProgramName(A4)
+	add.l	d1,d0			* add length of command name
+	addq.l	#7,d0			* allow for space after command, quotes
+					* and null terminator, as well as 
+	andi.w	#$fffc,D0		* force to long word boundary
+	move.l	d0,Commandlen(a4)
+
+	movem.l	d1/a1,-(sp)
+	move.l	#MEMFLAGS,d1
+	jsr	_LVOAllocMem(a6)
+	movem.l	(sp)+,d1/a1
+
+	tst.l	d0
+	beq	nodofree
+
+ok_copy:
+	move.l	d0,a0
+	move.l	d0,Commandbuf(a4)
+	 
+*------ copy command line into memory
+	move.l	d2,d0			* get command line length
+	subq.l	#1,d0
+	add.l	d1,d2
+
+copy_line:
+	move.b     0(A2,D0.W),2(A0,D2.W)    * copy command line to stack
+	subq.l     #1,d2
+	dbf	d0,copy_line
+	move.b     #' ',2(a0,d2.w)	  * add space between command and parms
+	subq.l     #1,d2
+	move.b     #'"',2(a0,d2.w)	  * add end quote
+
+copy_cmd:
+	move.b     0(a1,d2.w),1(a0,d2.w)    * copy command name to stack
+	dbf	d2,copy_cmd
+	move.b     #'"',(a0)
+	move.l     A0,-(sp)		 * push command line address
+	bra.s      main		     * call C entrypoint
+
+*=======================================================================
+*====== Workbench Startup Code =========================================
+*=======================================================================
+
+fromWorkbench:
+
+*------ we are now set up.  wait for a message from our starter
+	lea	pr_MsgPort(A3),a0	 * our process base
+	jsr		_LVOWaitPort(a6)
+	lea	pr_MsgPort(A3),a0	 * our process base
+	jsr		_LVOGetMsg(a6)
+	move.l     d0,_WBenchMsg(a4)
+	;move.l     d0,-(SP)
+
+	;move.l     d0,a2		     * get first argument
+	;move.l     sm_ArgList(a2),d0
+	;beq.s      do_main
+	;move.l     DOSBase(a4),a6
+	;move.l     d0,a0
+	;move.l     wa_Lock(a0),d1
+	;jsr		_LVODupLock(a6)
+	;move.l     d0,__curdir(A4)
+	;move.l     d0,d1
+	;jsr		_LVOCurrentDir(a6)
+
+do_main:
+	;move.l     _WBenchMsg(A4),a0	 * get address of workbench message
+	;move.l     a0,-(sp)		  * push argv
+	pea	NULL(a4)		  * push argc
+	;move.l     sm_ArgList(a0),a0	 * get address of arguments
+	;move.l     wa_Name(a0),_ProgramName(A4) * get name of program
+
+*=============================================
+*------ common code --------
+*=============================================
+
+main	jsr	__main(PC)		* call C entrypoint
+	;moveq.l    #0,d0		     * set successful status
+	;bra.s      exit2
+
+
+XCEXIT:
+_XCEXIT:
+	;move.l     4(SP),d0		  * extract return code
+@XCEXIT:
+@_XCEXIT:
+exit2:
+
+*-- Save Return Code on the original stack
+	move.l	_StackPtr(a4),sp
+	;move.l	d0,-(sp)
+
+*------ free the stack if we allocated one
+	move.l	newstacksize(a4),d0
+	beq.s	exit4
+	move.l	newstack(a4),a1
+	move.l	AbsExecBase.W,A6
+	jsr	_LVOFreeMem(a6)
+
+exit4:
+*------ if we ran from CLI, skip workbench cleanup:
+	tst.l      _WBenchMsg(A4)
+	beq.s      exitToDOS
+	;move.l     DOSBase(A4),a6
+	;move.l     __curdir(a4),d1
+	;beq.s      done_5
+	;jsr		_LVOUnLock(a6)
+done_5:
+*------ return the startup message to our parent
+*       we forbid so workbench can't UnLoadSeg() us
+*       before we are done:
+	;move.l     AbsExecBase.W,A6
+	jsr		_LVOForbid(a6)
+	move.l     _WBenchMsg(a4),a1
+	jsr		_LVOReplyMsg(a6)
+	bra.s      nodofree
+
+exitToDOS:
+	;move.l     AbsExecBase.W,a6
+
+*------ free the command line buffer
+	move.l	Commandlen(a4),d0
+	beq.s	nodofree
+	move.l	Commandbuf(a4),a1
+	jsr	_LVOFreeMem(a6)
+
+*------ this rts sends us back to DOS:
+nodofree:
+	move.l	DOSBase(A4),a1
+	jsr	_LVOCloseLibrary(a6)	      * close Dos library
+	;move.l	(sp)+,d0
+	moveq	#0,d0
+
+return:	
+	;movem.l    (sp)+,d1-d6/a0-a6
+	rts
+
+DOSName dc.b    'dos.library',0
+
+	section __MERGED,BSS
+
+	xdef    NULL,SysBase,DOSBase	
+
+	xref    _WBenchMsg
+	xref    __curdir
+	xref    _OSERR,_SIGFPE,_ONERR,_ONEXIT,_ONBREAK
+	xref    _SIGINT
+	xref    _ProgramName,_StackPtr,__base
+
+NULL		ds.l	1
+DOSBase		ds.l	1
+SysBase		ds.l	1
+Commandbuf	ds.l	1
+Commandlen	ds.l	1
+newstack	ds.l	1		   * pointer to new stack (if needed)
+newstacksize	ds.l	1		   * size of new stack
+		END
