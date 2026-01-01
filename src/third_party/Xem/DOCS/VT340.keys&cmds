@@ -1,0 +1,317 @@
+
+    External DEC VT-340 emulator used by LR-Comm and clones..(-:
+
+
+
+    VT340 Keys          Amiga Keys
+    ----------          ----------
+
+      Arrow keys          Arrow keys
+    
+      PF1                 Numpad [ on Amiga 500/2000
+      PF2                 Numpad ] on Amiga 500/2000
+      PF3                 Numpad / on Amiga 500/2000
+      PF4                 Numpad * on Amiga 500/2000
+
+      F1 (Hold Screen)             F1
+      F2 (Print Screen)            F2
+ CTRL F2 (Auto Print)         CTRL F2
+  ALT F2 (Print Controlled)    ALT F2
+      F3 (Set Up)                  F3
+      F4 (Data/Talk)               F4
+      F5 (Send Break)              F5
+ CTRL F5 (Send Answer)        CTRL F5
+SHIFT F5 (Disconnect)        SHIFT F5
+
+      F6 - F20            F6 - F20 on all Amigas
+    
+      HELP                Help on all Amigas
+      DO                  Shifted-Help on all Amigas
+
+      FIND                Shifted-Numpad 7 on all Amigas
+      INSERT              Shifted-Numpad 8 on all Amigas
+      REMOVE              Shifted-Numpad 9 on all Amigas
+      SELECT              Shifted-Numpad 4 on all Amigas
+      PREV SCREEN         Shifted-Numpad 5 on all Amigas
+      NEXT SCREEN         Shifted-Numpad 6 on all Amigas
+ => Shifted-Numpad 1 - 3 are trapped (on all Amigas..:-) <=
+
+
+
+
+Control codes in C0 (no high bit) area
+--------------------------------------
+unsupported features are marked by an asterisk (*):
+ignored features are marked by an exclamation-mark (!):
+
+   name     hex   key   operation
+   ENQ      05    ^E    Send answerback message
+   BEL      07    ^G    Audial or visual beep
+   BS       08    ^H    Backspace, move cursor left one character
+   HT       09    ^I    Horizontal tab, move cursor to next tabstop
+   LF       0a    ^J    Linefeed, move cursor down one line
+   VT       0b    ^K    Vertical Tab, treated as a line feed
+   FF	      0c    ^L    Formfeed, treated as a line feed
+   CR       0d    ^M    Carriage return, move cursor to col 1
+   SO/LS1   0e    ^N    Map character set in G1 to GL, locking shift
+   SI/LS0   0f    ^O    Map character set in G0 to GL, locking shift
+!  DC1      11    ^Q    XON flow control, resume communication
+!  DC3      13    ^S    XOFF flow control, suspend communication
+   CAN      18    ^X    Cancel escape & control sequence in progress
+   SUB      1a    ^Z    Treated as a CAN
+   ESC      1b    ^[    Escape, start escape seq, cancel any others
+ All others are ignored
+
+
+Control codes in C1 (high bit set) area.
+----------------------------------------
+ These are replaced by ESC <code - 40h> in a 7-bit environment, or when
+ Controls is set to 7-bit output.
+unsupported features are marked by an asterisk (*):
+ignored features are marked by an exclamation-mark (!):
+
+   name  8-bit 7-bit    operation
+   IND   84    ESC D    Index, move cursor down one line, scrolls
+   NEL   85    ESC E    Next line, like CR/LF, scrolls
+   HTS   88    ESC H    Set Horizontal Tab at cursor's column
+   RI    8d    ESC M    Reverse index, move cursor up one line,scrolls
+   SS2   8e    ESC N    Map G2 to GL for next char only, single shift
+   SS3   8f    ESC O    Map G3 to GL for next char only, single shift
+   DCS   90    ESC P    Device Control String introducer
+                        consume through ST CAN SUB ESC
+   CSI   9b    ESC [    Control Sequence Introducer
+   ST    9c    ESC \    String Terminator
+   OSC	9d    ESC ]    Operating System Command, consume through ST
+   PM    9e    ESC ^    Privacy Message, consume through ST
+   APC   9f    ESC _    Applications Prog Command, consume through ST
+All others are ignored
+
+
+7-Bit escape sequences:
+-----------------------
+unsupported features are marked by an asterisk (*):
+
+   ESC-Seq  Mnemonic    Description of Action
+ 
+*  ESC ^L                     Enter Tektronix sub-mode, clear Tek screen.
+   ESC 7          DECSC       Save cursor position, attributes, contents of
+            	   		   	char sets used as GL and GR, wrap flag,
+            		      		origin mode (DECOM), SS2/SS2 shifts.
+   ESC 8          DECRC       Restore cursor from previously saved position
+                              and information listed for DECSC
+   ESC # 3        DECDHL      Double height and width line, top half
+   ESC # 4        DECDHL      Double height and width line, bottom half
+   ESC # 5        DECSWL      Single height and width line
+   ESC # 6        DECDWL      Double width single height line
+   ESC # 8        DECALN      Screen alignment test, fill screen with E's
+   ESC ( <ident>	SCS         Designates 94 byte character set <ident> to G0
+   ESC ) <ident>	SCS         Designates 94 byte character set <ident> to G1
+   ESC * <ident>  SCS         Designates 94 byte character set <ident> to G2
+   ESC + <ident>  SCS         Designates 94 byte character set <ident> to G3
+*  ESC - <ident>	SCS         Designates 96 byte character set <ident> to G1
+*  ESC . <ident>	SCS         Designates 96 byte character set <ident> to G2
+*  ESC / <ident>  SCS         Designates 96 byte character set <ident> to G3
+         <ident>    size	character set
+            A        96    ISO Latin-1 (default in G2, G3)
+            B        94    ASCII (default in G0, G1)
+            0        94    DEC Special Graphics (line drawing)
+*           1        94/96 Kermit, ALT-ROM
+            2        94    DEC Special Graphics (line drawing)
+            %5       94    DEC Supplemental Graphics
+            <        94/96 User Preferred Supplemental Set
+            >        94    DEC Technical set (from VT340's)
+
+   ESC <                      Exit VT52 mode (to previous ANSI kind/VT320)
+   ESC =          DECKPAM		Enter numeric keypad application mode
+   ESC >          DECKNPNM    Enter numeric keypad numeric mode
+   ESC D          IND         Index, moves cursor down one line, can scroll
+   ESC E          NEL         Move cursor to start of line below, can scroll
+   ESC sp F       S7C1T       Disable output of 8-bit controls, use 7-bit
+   ESC sp G       S8C1T       Enable output of 8-bit control codes
+   ESC H          HTS         Set one horizontal tab at current position
+   ESC M          RI          Reverse Index, cursor up one line, can scroll
+   ESC N          SS2         Single Shift 2, map G2 to GL for next char only
+   ESC O          SS3         Single Shift 3, map G3 to GL for next char only
+   ESC P          DCS         Start Device Control String command (see below)
+   ESC Z          DECID       Identify terminal.
+                              Response: CSI ? 63; 1; 2; 8; 9 c
+   ESC \          ST          String Terminator of Device Control Strings
+   ESC ]          OSC         Operating System Command, ignored through ST
+   ESC ^          PM          Privacy Message, ignored through ST
+   ESC _          APC         Applications Program Command, ignored thru ST
+   ESC c          RIS         Reset terminal to initial state, hard reset
+   ESC n          LS2         Map character set in G2 to GL, locking shift
+   ESC o          LS3         Map character set in G3 to GL, locking shift
+   ESC |          LS3R        Map character set in G3 to GR, locking shift
+   ESC }          LS2R        Map character set in G2 to GR, locking shift
+   ESC ~          LS1R        Map character set in G1 to GR, locking shift
+   ESC [          CSI         Control Sequence Introducer, see list below
+
+
+Control Sequences:
+------------------
+unsupported features are marked by an asterisk (*):
+ignored features are marked by an exclamation-mark (!):
+ 
+   CSI-Seq        Mnemonic    Description of Action
+
+   CSI Pn @       ICH         Insert Pn spaces at and after cursor
+   CSI Pn A       CUU         Cursor up Pn lines, does not scroll
+   CSI Pn B       CUD         Cursor down Pn lines, does not scroll
+   CSI Pn C       CUF         Cursor forward, stays on same line
+   CSI Pn D       CUB         Cursor backward, stays on same line
+   CSI Pn E       CNL         Next-line (same as cr/lf), do Pn times
+   CSI Pn F       CPL         Previous-line (reverse index), do Pn times
+   CSI Pr; Pc H   CUP         Set cursor to row, column
+   CSI Ps J       ED          Erase in display:
+                              0 = cursor to end of screen, inclusive
+                              1 = start of screen to cursor, inclusive
+                              2 = entire screen, reset lines to single
+                                  width, cursor does not move.
+   CSI ? Ps J     DECSED      Selective erase in display:
+                              0 = cursor to end of screen, inclusive
+                              1 = start of screen to cursor, inclusive
+                              2 = entire screen, cursor does not move.
+   CSI Ps K       EL          Erase in line:
+                              0 = cursor to end of line, inclusive
+                              1 = start of line to cursor, inclusive
+                              2 = entire line, cursor does not move
+   CSI ? Ps K     DECSEL      Selective erase in line:
+                              0 = cursor to end of line, inclusive
+                              1 = start of line to cursor, inclusive
+                              2 = entire line, cursor does not move
+   CSI Pn L       IL          Insert Pn lines preceding current line.
+   CSI Pn M       DL          Delete Pn lines from current downward, incl.
+   CSI Pn P       DCH         Delete Pn chars from cursor to left, incl.
+   CSI Pn; Pn R   CPR         Cursor report (row, column), sent by terminal
+                              Example: home position yields CSI 1; 1 R
+   CSI Pn X       ECH         Erase Pn chars at and to right of cursor
+   CSI Pn c       DA          Device Attributes request, see reports
+   CSI > Pn c     DA          Secondary Device Attributes req, see reports
+   CSI Pr; Pc f   HVP         Set cursor to row, column
+   CSI Ps g       TBC         Tabs clear, Ps: 0 = at this position, 3 = all
+   CSI Pa;...Pa h SM          Set ANSI mode, see table below
+   CSI Pa;...Pa l RM          Reset ANSI mode, see table below
+      Pa    Mnemonic    Mode           Set (h)		Reset (l)
+*     2     KAM	      Keyboard       locked      unlocked
+*     3     CRM         Control rep 	act upon    debug display
+      4     IRM         Insert         insert      replace
+*     10    HEM         Horz editing   n/a         always reset
+*     12    SRM         Local echo     off         on
+      20	LNM            New Line       lf=>cr/lf   cr=>cr
+ 
+   CSI ? Ps;Ps h  SM          Set DEC mode, see table below
+   CSI ? Ps;Ps l  RM          Reset DEC mode, see table below
+      Ps    Mnemonic    Mode           Set (h)     Reset (l)
+      0                 ignored
+      1     DECCKM      cursor keys    application    cursor/numeric
+      2     DECANM      ANSI           VT320/VT102    VT52
+*     3     DECCOLM     Columns        132 col        80 col
+      4     DECSCLM     Scrolling      smooth         jump
+*     5     DECSCNM     Screen         reverse video  normal
+      6     DECOM       Origin         use margins    ignore margins
+      7     DECAWM      Autowrap       on             off
+*     8     DECARM      Autorepeat     on             off
+*     9     DECINLM     Interlace      on             off
+*     18    DECPFF      Printer term   Form Feed      none
+*     19    DECPEX      Printer extent screen         scrolling region
+      25    DECTCEM     Cursor         visible        invisible
+*     34    n/a         Invoke macro:  TERMINALS      TERMINALR
+*     38    n/a         Graphics (Tek) graphics       text
+*     42    DECNRCM     Nat Repl Char  enable         disable
+      66    DECNKM      Numeric keypad application    numeric
+*     68    DECKBUM     Typewriter     data process   typewriter
+ 
+   CSI Ps;Ps m    SGR         Select graphic rendition
+         Ps
+         0  all attributes off (#'s 1, 4, 5, 7)
+         1  bold, intensify foreground
+         4  underscore
+*        5  blink
+         7  reverse video, per character
+         22	bold off
+         24	underline off
+*        25	blinking off
+         27	reverse video off
+when in color-mode:
+         30-37 = foreground color = 30 + colors
+         40-47 = background color = 40 + colors
+ 
+   CSI Ps n       DSR         Device Status request, see reports
+   CSI ! p        DECSTR      Reset of terminal
+   CSI Pa $ p     DECRQM      Report ANSI mode settings, see reports
+   CSI ? Pd $ p   DECRQM      Report DEC mode settings, see reports
+   CSI Pl; Pc " p DECSCL		Set conformance level (set terminal type)
+   	Pl	Pc	level selected
+      62	0 or 2	VT320, 8-bit controls (62 is otherwise VT200 level)
+      62	1        VT320, 7-bit controls
+      63	0 or 2 	VT320, 8-bit controls (63 is otherwise VT300 level)
+      63	1        VT320, 7-bit controls
+	
+   CSI Ps;Ps q    DECLL       Load LEDs, Ps = 0 means clear LED #1-4. VT102
+   CSI Ps " q     DECSCA      Select Character Protection Attribute
+                              Ps = 0 erasable by DECSED or DECSEL
+                              Ps = 1 not erasable by these cmds.
+   CSI Pt; Pb r   DECSTBM     Set top and bottom scrolling margins, resp.
+                              CSI r resets margin to full screen.
+   CSI Ps $ u     DECRQTSR    Terminal State request, see reports
+   CSI & u        DECRQUPSS   User Preferred char set request, see reports
+   CSI Ps $ w     DECRQPSR    Presentation State request, see reports
+*  CSI sol x      DECREQTPARM Request terminal parameters, see reports
+*  CSI 4; Ps;Ps y DECTST      VT320 Confidence tests, exits status line
+   CSI Ps $ }     DECSASD		Select active status display
+   CSI Ps $ ~     DECSSDT     Select Status Line Type
+
+
+
+VT320 Report requests and responses
+-----------------------------------
+unsupported features are marked by an asterisk (*):
+ignored features are marked by an exclamation-mark (!):
+
+   Request    CSI c           primary device attributes (terminal ident)
+   Response   CSI ? 62; 1; 2; 6; 7; 8; 9 c
+ 
+   Request    CSI > c         secondary device attributes
+   Response   CSI > 24; 1; 10; 0 c
+ 
+   Request    CSI 5 n		   operating status
+   Response   CSI 0 n         no malfunction
+ 
+   Request    CSI 6 n         cursor position report
+   Response   CSI Pr; Pc R    Pr = row, Pc = column.
+ 
+   Request    CSI ? 15 n      printer status
+   Response   CSI ? 11 n      printer is not ready
+ 
+   Request    CSI ? 25 n      User Definable Key status
+   Response   CSI ? 21 n      UDKs are locked
+ 
+   Request    CSI ? 26 n      keyboard dialect
+   Response   CSI ? 27; 0 n
+ 
+   Request    CSI 1 $ u       terminal state
+ 
+*  Request  DCS Ps $ p str ST terminal restore state
+ 
+   Request  CSI & u           what is the User Preferred Supplemental Set
+   Response DCS 1 ! u A ST    ISO Latin-1
+   Response DCS 0 ! u %5 ST   DEC Supplemental Graphics
+ 
+*  Request  CSI 1 $ w         cursor information report
+
+*  Request  CSI 2 $ w         tab stop report
+ 
+*  Request DSC Ps $ t str ST  restore presentation state
+ 
+   Request  CSI Pa $ p           ask state of ANSI mode controls
+   Response CSI Pa; Ps $ y       pa = mode  ps 0; 1; 2  (ukn; set; reset)
+
+   Request  CSI ? Pd $ p         state of DEC modes
+   Response CSI ? Pd; Ps $ y     pd = mode  ps 0; 1; 2  (ukn; set; reset)
+ 
+*  Request  DCS $ q str ST       control function setting
+ 
+*  Request  DCS Ps ! u str ST    assign User Preferred Supplemnental Set
+ 
+*  Request  DCS Ps; Ps { str ST  download or clear soft characters

@@ -1,0 +1,116 @@
+
+PO> Letzter Hinweis:
+PO> Alle Begriffe in dem Handbuch und dieser Datei sind geschlechtsneutral.
+PO> Druckfehler im Handbuch oder Schreibfehler in dieser Datei sind beab-
+PO> sichtigt, um der Minderheit der danach Suchenden die Gelegenheit zu geben,
+PO> fündig zu werden.
+
+
+
+                 Notizen zum VT-340 Emulator von LR-Comm:
+                 ----------------------------------------
+
+Dinge, die erwähnenswert sind:
+------------------------------
+
+Anzahl Farben werden automatisch erkannt und nötigenfalls getrappt.
+-  2 Farben (1 BPl): Farb-Kommandos werden getrappt, BOLD ist disabled.
+-  4 Farben (2 BPl): Farb-Kommandos werden getrappt, BOLD ist enabled.
+-  8 Farben (3 BPl): Farb-Kommandos werden supported, BOLD ist disabled.
+- 16 Farben (4 BPl): Farb-Kommandos werden supported, BOLD ist enabled.
+Note:
+mit 32 Farben könnte man auch das Blinken enablen, aber dann ist der Amiga
+nur noch am Bildschirm-supporten und das Modem liegt 
+zeitlich gesehen am Boden..
+
+
+auf Wunsch werden die 8-Bit Kommandos in ihre entsprechenden
+7-Bit ESC-Sequenzen ummodelliert. So werden auch veraltete Systeme
+wie die KomETH sauber bedient.
+auch wird das JR-Comm 1.02 im 7-Bit besser mit den Cursor-Tasten fertig,
+dh. sie werden nicht bildlich (im wahrsten Sinne des Wortes..:-) gescreent.
+
+
+Privacy Messages, eingeleitet von OSC ; PM ; APC werden NUR
+durch ein ST beendet.
+
+
+Geräte-Anweisungen, eingeleitet von DCS, werden korrekterweise von
+CAN ; SUB ; ESC abgebrochen und von ST beendet.
+
+
+SUB generiert das für VT300 typische verkehrte Fragezeichen. Ist
+zwar nicht weltbewegend, aber doch ein nettes Detail.
+
+
+Line-Feeds oder ähnliches Gesocks während einer ESC- oder CSI Sequenz
+werden ausgefüehrt und nicht etwa als Sequenz-Parameter missbraucht..
+Dies ist ein echtes VT100 'Feature', das von längst nicht allen Terminals
+kapiert wird..  wer's nicht glaubt, soll mir ne Message schreiben,
+er kommt dann 'ne VT100-ANSI-Animation, die dieses 'Feature' voll ausnutzt.
+
+
+die Font-Register G0 - G3  und die Fonts ASCII, GRAPHICS, TECHNICAL
+DEC_SUPPLEMENTAL, ISO_LATIN-1 sowie User-Preferred-Supplemental-Set
+(auch liebevoll UPSS genannt..:-) werden voll unterstützt.
+Sowohl die Locking-Shift als auch Single-Shift Funktion wurde übernommen.
+
+
+Selektives Löschen wird unterstützt. Leider gehen dabei die Styles
+wie UNDERLINED etc. flöten, aber mir kommt es eher darauf an, dass
+der protektierte Text nach dem selektiven Löschen noch da steht.
+Die Styles sind da ehrlich gesagt eher nebensächlich..
+
+
+Font-scaling wird unterstützt. Und zwar so, wie es auch gedacht ist,
+nämlich als Zeilen-Attribut und nicht User-Selectable wie MXM-Term.
+
+
+Answer-Back message wird unterstützt. Ich weiss zwar nicht, für was das
+gebraucht wird, aber es wird unterstützt..
+
+
+folgende Befehls-Folge: >ESC c<  >CSI 10; 16 r<  >CSI [ 18 H<  >CSI [ M<
+führt nicht zum System-Absturz (wie bei Handshake v2.20c oder VLT v5.034)
+oder zur Screen-Verschandelung (wie Atalk3 oder JR-Comm v1.02)
+für Outsider:
+1: Terminal reset                              ESC c
+2: Setze Grafik-Region von Zeile 10 bis 16     CSI 10; 16 r
+3: Setze den Cursor auf Zeile 18               CSI 18 H
+4: Lösche aktuelle Zeile                       CSI M
+5: => BOOOOM <=
+richtigerweise müsste das Terminal 4: ignorieren..
+
+
+
+
+Dinge, die fehlen, oder als Fehler ausgelegt werden können:
+-----------------------------------------------------------
+
+- Blinken wird nicht unterstützt.
+  1: es ist auf dem Amiga aufwendig zu realisieren.   (siehe MXM-Term)
+  2: die Menus etc. werden beeinflusst.               (siehe Handshake)
+  3: es wird in der Praxis so gut wie nie gebraucht.  (siehe KomETH)
+
+- Kombizeichen werden definitiv nicht unterstuetzt.
+  Für etwas hat der Amiga ja so nette Alt-Tasten, mit denen alle diese
+  speziellen Zeichen machbar sind!
+
+- Programmierte Zeichensätze werden (noch) nicht unterstützt.
+
+- Host-definierbare F-Tasten werden (noch) nicht unterstützt.
+
+- 132 Zeichen werden nicht unterstützt, da die einzige auf dem Amiga
+  vertretbare Methode mittels Font-Scaling einfach nur von Masochisten
+  oder Assembler-Programmierern (was das selbe ist..;-) genutzt
+  werden kann.  (siehe MXM-Term)
+
+- Nationale Zeichensätze werden nicht unterstützt. Es wird aber die
+  Standard-Amiga-Tastatur supported und somit auch die National-spezifischen
+  Zeichen. Ich nehme nicht an, dass ein Isländer plötzlich portugisisch
+  schreiben will, und wenn doch, dann soll er doch bitte das SetMap benutzen.
+  Dafür werden alle Multi-Nationalen Zeichensätze (ASCII, DEC_Supplemental,
+  ISO-Latin1, Graphics, Technical) bestens unterstützt.
+
+
+- Ueli Kaufmann
