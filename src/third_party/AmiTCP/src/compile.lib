@@ -1,0 +1,38 @@
+.key DEST,INCLUDE/K,INSTALL/S,TARGET/F/K
+;;
+;;      $Id: compile.lib,v 4.2 1996/02/12 18:28:46 jraja Exp $
+;;
+;;      Compile netlib and rpclib for SAS/C
+;;
+;;      Copyright © 1994 AmiTCP/IP Group, 
+;;                       Network Solutions Development Inc.
+;;                       All rights reserved.
+;;
+.bra {
+.ket }
+.def DEST "netlib:/"
+
+If NOT {INCLUDE$IsNotGiven} EQ IsNotGiven
+    If Exists "{INCLUDE}" 
+	assign netinclude: {INCLUDE}
+    ENDIF
+Else
+    Assign Netinclude: exists > nil:
+    If WARN 
+	echo "The assign NETINCLUDE: does not exist!"
+	echo "Can't continue."
+	quit
+    Endif
+Endif
+
+cd netlib
+If NOT {INSTALL$Z} EQ Z
+    smake -k DEST={DEST} INSTALL-ALL {TARGET$ALL}  
+Else
+    smake -k DEST={DEST} {TARGET$ALL}  
+Endif
+cd /
+
+cd rpclib
+smake -k DEST={DEST} {INSTALL} {TARGET} 
+cd /

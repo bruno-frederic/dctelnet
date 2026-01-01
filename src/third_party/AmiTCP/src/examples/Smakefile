@@ -1,0 +1,52 @@
+#
+#       $Id: Smakefile,v 4.1 1994/09/30 00:09:44 jraja Exp $
+#
+#       Smakefile for AmiTCP/IP examples
+#
+#       Copyright © 1994 AmiTCP/IP Group, 
+#                        Network Solutions Development Inc.
+#                        All rights reserved.
+#
+
+DEST = AmiTCP:
+
+#
+# These will be made
+#
+CPROGS= serv/in.example
+	
+PROGS= $(CPROGS)
+
+SRC_SERV=     serv/Smake.def serv/in.example.c
+
+SRCS= $(SRC_SERV)
+
+MAKELINK = makelink
+MKDIR = makedir
+MAKE = smake
+RM   = delete
+CP = copy dates
+AUTODOC= autodoc -C -I -c -t8
+
+all: Smake-in-dir $(PROGS)
+
+Smake-in-dir: Smakefile
+	copy to $@ <from < 
+.key WHAT/A,DEST/K,INSTALL/S,TARGET/K/F
+.bra {
+.ket }
+echo SMaking {WHAT}
+cd {WHAT}
+smake -k -f netinclude:Smake.template DEST={DEST} {TARGET}  {INSTALL}
+cd /
+<
+	protect $@ +es
+
+serv/in.example: $(SRC_SERV) 
+	Smake-in-dir serv
+
+clean:
+	Smake-in-dir serv TARGET CLEAN
+
+cleaner: clean
+	-$(RM) $(CPROGS) Smake-in-dir

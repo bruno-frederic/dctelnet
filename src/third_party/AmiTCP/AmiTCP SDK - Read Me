@@ -1,0 +1,311 @@
+Short: SDK for the AmiTCP/IP protocol stack
+Type: comm/tcp
+Uploader: AmiTCP-Group@nsdi.fi
+Author: AmiTCP-Group@ndsi.fi (Network Solutions Development Inc.)
+Version: 4.3
+
+  This archive contains include files, some development tools, link
+  libraries (with source) and programming examples for AmiTCP/IP 4.3.
+
+  AmiTCP/IP is propiertary, copyrighted product of the NSDi - Network
+  Solutions Development Inc, Finland.  See the file 'LICENCE.SDK'
+  included in the archive for the licence conditions.
+
+  See AmiTCP-demo-4x.readme for further information about AmiTCP/IP.
+
+* Bug reports 
+
+  Send any bug reports to <AmiTCP-Bug@nsdi.fi>.
+
+* New Features, enchancements and bug fixes on each release of the SDK:
+
+  NOTE: AmiTCP itself is not included in the SDK archive, but the
+  relevant (from the programmers point of view) new features and bug
+  fixes are mentioned here for completeness. 3.0 beta releases are not
+  mentioned in this list for clarity and to avoid unnecessary confusion.
+
+  New on 4.3 SDK:
+
+    * examples/httpget:
+	- An example code how to develop AmiTCP/IP programs without
+	  any link libraries (and no startup code in this case).
+	  Compiles with SAS C and GNU CC
+
+    * netinclude:
+	- Refinements made to better cope GCC. This package will not fully
+	  support GCC. There are other packages for that purpose. There are
+	  libnix and ixemul support for AmiTCP networking. Ixemul support
+	  is currently most complete.
+	- Added prototypes, pragmas, inlines and fd:s to 2 new libraries,
+	  ifconfig.library and serscript.library. These are currently
+	  NSDi private libraries for db/interfaces parsing and ARexx based 
+	  serial scripting and the interface may change. These ade added to
+	  the SDK for completeness.
+	- BSD Socket function names has reverted back to original standard
+	  lowercase format. <amitcp/bignames.h> is added to bring uppercase
+	  names available (as macros) for those who has used those.
+	- Added new/missing protypes, header files, definitions.
+
+    * netlib:
+	- All libraries compiled w/ SAS/C 6.56
+	- Added checking of NIL: filehandle to _fstat.c
+
+    * AmiTCP:
+	- Added optional argument for ARexx RESET command:
+	  ALL (the default), HOSTS, NETWORKS, SERVICES, PROCOTOLS, 
+	  NAMESERVERS, DOMAINS, ACXCESS, CACHES.
+	- Fixed bug in getprotobynumber(). Now it works.
+
+  Fixes Bugs on 4.1:
+
+    * AmiTCP:
+	- Made IOC_VOID ioctl's to be accepted, too.
+	- Fixed inconsistency in link level sockaddr.
+
+    * usergroup.library:
+	- Made root to be the default user (again).
+
+    * net.lib, netnb.lib, src/netlib/popen.c:
+	- Changed popen() to use SystemTags() redirection, since the
+	  standard "more" did not work otherwise.
+
+
+  New Features on 4.0:
+
+    * AmiTCP:
+	- Added new function: GetSocketEvents().
+	- Added the link level address handling, changed if_type to use
+	  hardware types.
+	- Added new sana-II errors to the error lists.
+	- Configured domain names are now used on internal host
+	  searches, too.
+	- Added error messages to startup failures.
+	- Early error messages are now printed to the console.
+	- db/resolv.conf is now read for DOMAIN and NAMESERVER entries.
+	- db/netdb is not read any more, the individual files (hosts,
+	  protocols, networks, sercives, resolv.conf and inet.access)
+	  are read explicitly.
+	- WITH keyword is removed from netdb parsing
+	- Removed ARexx variables TASKNAME and NTHBASE (they were
+	  obsolete).
+	- Added new API function GetSocketEvents().
+	- Added new SocketBaseTagList() tag SBTC_SIGEVENTMASK.
+	- Added new socket option SO_EVENTMASK. Setting this option
+	  will set the ASYNC mode on the socket also.
+	- Socket owner is now set by default, _except_ after
+	  ObtainSocket().
+	- FIOSETOWN ioctl now demands the caller to set itself as the
+	  owner.
+	- Added new callback functionality to coordinate fd tables
+	  with the link library. (SocketBaseTags() tag
+	  SBTC_FDCALLBACK).
+	- Made name server resolving multithreaded. Now each
+	  application has it's own set of resolver state variables.
+	  Before any name resolvation would block if another
+	  resolvation was in progress.
+	- Added h_errno setting via a pointer (SocketBaseTags() tag
+	  SBTC_HERRNOLONGPTR).
+	- Changed the AmiTCP ARexx port (AMITCP) to show only after the API
+	  is up and running (no need to "wait" on the bin/startnet).
+	- Added functions sendmsg() and recvmsg() for scatter/gather I/O.
+	- First parameter to Dup2Socket() can now be -1 to mark the fd
+          (the second parameter) as not to be used by AmiTCP.
+	- Added function SocketBaseTagList(). Tag definitions for it are
+          on netinclude:amitcp/socketbasetags.h.
+	- Added function gethostid(), which returns the primary IP
+          address of the host as the unique host id.
+	- Implemented gethostname() API function and HOSTNAME ARexx variable
+	  (QUERY/SET). The host name is queried from the netdb and/or name
+	  server, if it is not explicitly given in db/AmiTCP.config _or_ set
+	  with the ARexx SET command.
+	- Added support for the BSD %m feature to the syslog() (%m is
+          replaced by the error description of current errno value), Also
+          changed the formatting code to not use the Exec's RawDoFmt()
+          allowing 32 bit values to be printed without the 'l' size
+          modifier. 
+	- Only the sizes 1, 2 and 4 are now allowed for the errno
+          variable.
+	- SetErrnoPtr() has now return value. 0 on success and -1
+          otherwise. The _old_ errno indicates the error causing the
+          failure.
+	- "new" interface naming style (eg. slip.device/0 -> sl0).
+
+    * netinclude:
+	- Removed KERNEL specific definitions.
+	- Added files stdio.h and fcntl.h supporing DOS stdio if
+	  USE_DOSIO is defined. Otherwise they include the original
+	  files from the INCLUDE:.
+	  NOTE: socket stdio does not work with the USE_DOSIO. SAS/C
+	  stdio must be used, if the sockets are to be used via the
+	  stdio functions.
+	- Added files: sys/file.h, net/if_types.h, net/if_dl.h
+	- updated: device/sana2.h, devices/sana2.i,
+	  devices/sana2specialstaats.h, devices/sana2specialstats.i
+	- Added prototype, pragma, fd entry and inline function for the new
+	  GetSocketEvents() function.
+	- (sys/socket.c):
+	  Added asynchronous socket event codes and a new socket option to
+	  set per socket event mask.
+	- (amitcp/socketbasetags.h):
+	  Added tag code for event notification signal mask
+	  (SBTC_SIGEVENTMASK).
+	- (sys/syslog.h):
+	  Removed AmiTCP's internal log path names.
+	- Added arpa protocol headers (arpa/ftp.h, arpa/nameser.h,
+	  arpa/tftp.h and arpa/telnet.h) to the distribution.
+	- Added/deleted some files.
+	- Added SocketBaseTagList() definitions to
+	  amitcp/socketbasetags.h.
+	- GCC: Added inline functions from clib/socket_inlines.h to
+	  inline/socket.h, since those had to be modified for gcc.
+	  Generated big list of defines to make possible to use local
+	  `SocketBase' variable in calls to bsdsocket.library calls.
+	  This feature is invoked defining SOCKETBASE_IN_CONTEXT.
+	- Added syslog.h (includes sys/syslog.h) for source
+	  compatibility.
+	- SAS/C: inline functions are defined only if OPTINLINE is
+	  used, netlib stubs are used otherwise.
+	- Added new prototypes and declarations for the
+	  usergroup.library and its link library (grp.h, pwd.h,
+	  unistd.h, utmp.h, clib/netlib_protos.h).
+	- Changes for the short interface names, removed interface
+	  tags.
+	- Added include files for the netinfo.device.
+	- Added RPC include directories rpc and rpcsvc.
+
+    * net.lib:
+	- Added tzset() to the timerinit.c to override the one from
+	  the SAS/C sc.lib. ENV:TZ is just once, or not at all if
+	  locale.library is present.
+	- Added dosio_init.c, dosio_sprintf.c.
+	- Added compiling the USE_DOSIO versions of the libraries (the
+	  names of the USE_DOSIO versions contain 'd' after the base
+	  name of the library, for example: net.lib -> netd.lib).
+	- Added functions: link_addr(), link_ntoa().
+	- Updated to open version 4 of the bsdsocket.library.
+	- Moved usr.lib functionality to here.
+	- Added implementation of SAS/C level 1 I/O functions, which
+	  allows stdio on sockets (printf(), and a like).
+	- Integrated inetd daemon startup code to here. Includes
+	  functions init_inet_daemon() and set_socket_stdio(). See
+	  src/examples/serv for an example.
+	- Added some unix style functions (utime(), popen(), sleep()
+	  etc.). See doc/netlib.doc for a full list and a reference.
+	- Added real h_errno variable.
+	- Added rcmd() and resvport(), removed getpwuid() and getgrgid().
+	- Added syslog() support functions: openlog(), closelog() and
+          setlogmask().
+	- Removed errlst.c (error tables are now inside the AmiTCP to
+	  decrease overall memory usage).
+	- Removed gethostname(), now implemented in the AmiTCP.
+	- Added strerror().
+	- Added perror() and stubs for the inline functions (if the
+	  inlining is not done).
+	- Program name is passed to the AmiTCP at startup. It is used
+	  in the syslog() messages.
+	- New function herror() will print the host error code set
+	  after host resolving failure (uses SocketBaseTags()).
+	- New function GetHErrno() will return the host error code
+	  using the SocketBaseTags().
+
+    * libs/usergroup.library:
+	- Added a new function call getcredentials() which returns all
+	  credential for a process, updated library version to 4.
+	- New library managing the user/group information.
+	- The default user is now "nobody" (before it was "root").
+
+    * devs/netinfo.device:
+        - New device, which handles the actual user/group database
+	  files.
+
+    * src/examples/serv:
+	- New example of stdio and inetd usage.
+
+    * rpc.lib:
+	- AmiTCP implementation of the Sun RPC 4.0.
+	- Added support for the USE_DOSIO. Now a
+	  special version of the rpclib using the dosio is compiled by
+	  default (rpcdr.lib). The dosio version of the rpclib uses BPTR
+	  file descriptors (dos.library files) instead of FILE * (link
+	  library stdio files) with the xdrstdio_create().
+	  Using rpcdr.lib and netd.lib with a typical RPC program makes it
+	  5k smaller wrt. link library stdio.
+
+    * help/RPC.guide:
+	- Full documentation for the RPC in the AmigaGuide format.
+
+    * rcsrev:
+	- New development utility, which creates standard _rev.h files
+	  from some files RCS id.
+
+    * src/devtools, src/examples:
+	- New directories to clean up the directory structure.
+
+    * portmap:
+	- RPC program,version to port mapper, needed to be run before
+	  any RPC based servers.
+
+    * rpcinfo:
+	- Utility to show RPC bindings on a portmap on some host.
+
+  Fixed Bugs on 4.0:
+
+    * AmiTCP:
+	- Fixed bug with configuration string setting. Too small buffer
+	  restricted the configuration string sizes to less than 24 bytes.
+	- Fixed syslog message level handling. It was broken if the facility
+	  code was present.
+	- Changed gethostbyname() not to treate the name as dot notation IP
+	  address based on the first digit only. Full check for the dot
+	  notation is now made.
+	- Fixed bug in getservbyname() which now checks the protocol
+	  string.
+	- Fixed the route dumping bug.
+	- Logging information is now appended to the end of the old
+          log file.
+
+    * net.lib:
+	- Added priority to usergroup autodestructor function.
+
+    * inetd:
+	- Fixed bugs in server argument parsing. Before any more than
+	  one argument would not have worked. (Thanks to Magnus Lilja
+	  for pointing this out).
+
+
+  New Features on 2.3:
+
+    * AmiTCP:
+	- New ARexx command "KILL" and a new script, bin/stopnet,
+          which sends this command to AmiTCP, causing it to try to
+          stop all networking applications, and if successfull,
+          itself, too.
+
+  Fixed Bugs on 2.3:
+
+    * AmiTCP:
+	- Removed the incorrect use of M_EOR, which caused fragmented
+          packets to be	truncated.
+
+  New Features on 2.2:
+
+    * AmiTCP:
+ 	- The interactive sessions have now a higher priority when
+	  using rh(c)slip.device
+
+  New Features on 2.1:
+
+    * Inet-handler:
+        - With Inet-Handler you can use AmigaDOS IO to access TCP protocol
+
+    * AmiTCP:
+	- A timestamp is added to the log messages
+	- Faster checksum calculation implemented in assembler
+
+    * net.lib: 
+	- User and group database handling routines are added to the
+	  net.lib. Release includes example databases for `ls' and `finger'
+	  utilities, which use these databases
+	- A real gettimeofday() using locale is also added
+
+EOF

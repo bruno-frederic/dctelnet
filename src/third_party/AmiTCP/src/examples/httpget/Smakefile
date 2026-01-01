@@ -1,0 +1,43 @@
+#
+# $Id: Smakefile $
+#
+# Created: Fri Jan  7 18:26:54 1994 too
+# Last modified: Fri Feb 16 19:59:11 1996 too
+#
+# HISTORY
+# $Log: Smakefile,v $
+#
+
+TRG=	httpget.bin.sc
+
+CC=	sc ResOpt NoStackCheck NoChkAbort IDIR=netinclude:
+
+RM= delete
+
+#CFLAGS=  Opt OptSize OptInl OptInLocal PARMS=REGISTER ShortIntegers DeBug=Full
+#CFLAGS=  DeBug=Full Opt OptSize OptInl OptInLocal PARMS=REGISTER
+#CFLAGS= DeBug=Full Opt OptSize OptInl
+#CFLAGS= DeBug=FullFlush PARMS=REGISTER
+CFLAGS=  Opt OptSize OptInl OptInLocal PARMS=REGISTER
+
+#LDLAGS=	Link NoStdIO Batch ShortIntegers
+#LDLAGS=	Link NoStdIO Batch
+LDLAGS=	Link NoStdIO NoStartUp Batch MAP
+
+
+
+OBJS=	httpget.o
+
+
+all: $(TRG)
+
+.c.o:
+	$(CC) $(CFLAGS) $<
+
+$(TRG):	$(OBJS)
+	$(CC) $(LDLAGS) TO=$@ $(OBJS)
+
+clean:
+	-$(RM) $(OBJS)
+
+# DO NOT DELETE THIS LINE -- make depend depends on it.

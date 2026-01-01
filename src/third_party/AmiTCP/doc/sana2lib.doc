@@ -1,0 +1,90 @@
+TABLE OF CONTENTS
+
+sana2.lib/sana2perror
+sana2.lib/sana2PrintFault
+sana2.lib/sana2wire_errlist
+sana2.lib/sana2perror                                   sana2.lib/sana2perror
+
+   NAME
+       sana2perror - print SANA-II device error messages
+
+   SYNOPSIS
+       #include <devices/sana2.h>
+
+       sana2perror(banner, ios2request)
+
+       void sana2perror(const char *, struct IOSana2Req *)
+
+   FUNCTION
+       The sana2perror() function finds the error message corresponding to
+       the error in the given SANA-II IO request and writes it, followed by a
+       newline, to the stderr.  If the argument string is non-NULL it is
+       preappended to the message string and separated from it by a colon and
+       space (`: ').  If string is NULL only the error message string is
+       printed.
+
+   NOTES
+       The sana2perror() function requires the stdio functions to be linked.
+
+   SEE ALSO
+       Sana2PrintFault()
+
+sana2.lib/sana2PrintFault                           sana2.lib/sana2PrintFault
+
+   NAME
+       Sana2PrintFault - print SANA-II device error messages
+
+   SYNOPSIS
+       #include <devices/sana2.h>
+
+       Sana2PrintFault(banner, ios2request)
+
+       void Sana2PrintFault(const char *, struct IOSana2Req *)
+
+   FUNCTION
+       The Sana2PrintFault() function finds the error message corresponding
+       to the error in the given SANA-II IO request and writes it, followed
+       by a newline, to the Output().  If the argument string is non-NULL it
+       is preappended to the message string and separated from it by a colon
+       and space (`: ').  If string is NULL only the error message string is
+       printed.
+
+   SEE ALSO
+       Sana2PrintFault()
+
+sana2.lib/sana2wire_errlist                       sana2.lib/sana2wire_errlist
+
+   NAME
+       sana2wire_errlist - SANA-II device error messages
+
+   SYNOPSIS
+       #include <devices/sana2.h>
+
+       const char * const sana2wire_errlist[];
+       const short sana2wire_nerr;
+
+       const char * const io_errlist[];
+       const short io_nerr;
+
+       const char * const sana2io_errlist[];
+       const short sana2io_nerr;
+
+   FUNCTION
+       These arrays contain error messages corresponding to the error codes
+       returned by SANA-II devices.  The list sana2wire_errlist contains
+       error messages for error codes in the structure IOSana2Req field
+       ios2_WireError.  The sana2wire_nerr contains number of error messages
+       in the array sana2wire_errlist.
+
+       The list io_errlist contains error messages for normal IO errors
+       common for all IO devices.  The io_nerr contains number of error
+       messages in the array io_errlist.
+
+       The list sana2io_errlist contains error messages for SANA-II-specific
+       IO errors.  The sana2io_nerr contains number of error messages in the
+       array sana2io_errlist.
+
+   SEE ALSO
+       Sana2PrintFault(), sana2perror()
+
+
