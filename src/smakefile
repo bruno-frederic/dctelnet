@@ -1,8 +1,42 @@
 .c.o:
 		SC $(CFLAGS) CPU=$(CPU) $*.c
 
-CFLAGS		= NMINC MCCONS STREQ STRMER NOSTKCHK DEF=__PROTO__ PARM=R GST=DCTelnet.gst NOSTARTUP OPT
+# Debug:
+CFLAGS   =  NoMultipleIncludes                                          Define=__PROTO__ Parameters=register                  NoStartup
+# Release:
+#CFLAGS   =   NoMultipleIncludes               StringMerge NoStackCheck Define=__PROTO__ Parameters=register                  NoStartup Optimize
+#v1.6 CFLAGS =    NMINC          MCCONS  STREQ   STRMER      NOSTKCHK    DEF=__PROTO__         PARM=R        GST=DCTelnet.gst NOSTARTUP   OPT
+#
+# NMINC         : tells the compiler NOT to include header files that are included more than once.
+#                 can save compilation time.
+# DEF=__PROTO__ : defines the specified preprocessor symbol to be used by the compiler.
+# PARM=R =      : indicates parameters should be passed in registers.
+# NOSTARTUP     : do not compile with a startup module.
+#                 (I tried to remove it to use standard SAS/C startup code but crashes)
+#
+# For a release (much longer to build):
+#
+# STRMER        : merges all identical string constants in the C source file
+# NOSTKCHK      : DO NOT generates stack overflow checking code at each function entry.
+#                 Maybe needed with NoStartup cf. sasc\Manuals\SASC6V1.txt, page 145
+#                 § Writing Applications without a Startup Module
+# OPT           : enables the global optimizer and peephole optimizer.
+#
+# Useless options:
+# (executable build with SAS-C 6.58 is strictly the same with or without them)
+#
+# MCCONS        : allows up to 4 bytes to appear within single quotes as a character constant.
+#                 This option is included only for compatibility with previous releases of the
+#                 compiler, and its use is not recommended.
+# STREQ         : tells the compiler not to issue messages if a pointer to one structure type is
+#                 passed to a function when the function expects a pointer to a different type
+# GST=xxx.gst   : tells the compiler to use the specified GST (Global Symbol Table). (faster builds)
+
 LFLAGS		= SC SD NOICONS STRIPDEBUG
+# SC = SmallCode : tells the linker to merge all code hunks.
+# SD = SmallData : tells the linker to merge all data and bss sections.
+# NOICONS        : prevents the linker from creating icons for the files that it creates.
+# STRIPDEBUG     : suppresses debug information in the final executable file
 
 OBJS		= DCTelnet.o Xfer.o Guis.o Connect.o
 LIBS		= LIB:sc.lib
