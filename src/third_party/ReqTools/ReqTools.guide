@@ -1,0 +1,1631 @@
+@DataBase ReqTools.guide
+@$VER:    ReqTools.guide 2.9 (22.2.97)
+@Author   Magnus Holmgren
+
+
+@Node Main ReqTools.guide
+
+	@{fg highlight}@{u}@{b}reqtools.library@{ub}@{uu}@{fg text}
+
+	@{b}The requester toolkit@{ub}.
+
+	Release 2.9
+
+	© 1991-1994 by Nico François
+	  1995-1997 by Magnus Holmgren
+
+
+Welcome to @{b}ReqTools@{ub}, a shared requester toolkit library for the AmigaOS.
+
+
+	@{" Introduction           " Link Introduction}
+	@{" Features               " Link Features}
+	@{" Installation           " Link Installation}
+
+	@{" Distribution           " Link Distribution}
+	@{" Using reqtools.library " Link Using}
+
+	@{" Preferences            " Link Preferences}
+	@{" RTPatch                " Link RTPatch}
+
+	@{" Version history        " Link History}
+	@{" The future             " Link Future}
+	@{" Contacting the author  " Link Author}
+
+	@{" Acknowledgements       " Link Acknowledgements}
+
+
+@EndNode
+
+
+@Node Introduction ReqTools.guide/Introduction
+
+	@{u}@{b}Introduction@{ub}@{uu}
+
+reqtools.library is a standard Amiga shared, runtime library. The purpose
+of ReqTools is to make it a lot quicker and easier to build standard
+requesters into your programs. ReqTools is designed with Commodore's style
+guidelines in mind, all requesters have the look-and-feel of AmigaDOS
+Release 2.
+
+If you use ReqTools in your programs you do not have to worry about
+requesters too much. You'll have a lot more time to concentrate on the
+really important stuff your program does.
+
+The library has been inspired by req.library (by Colin Fox & Bruce Dawson)
+and Commodore's own asl.library. You will find it shares a lot of the
+features with these two libraries, while it has some additional ones as
+well. While asl.library was great in look-and-feel I [Nico François] felt
+it lacked quite a bit in the power department. This power @{i}is @{ui}mostly
+available in req.library, but this doesn't fit in too well with AmigaDOS
+Release 2. So the idea for a new requester library was born.
+
+I tried to make all requesters in ReqTools very powerful, easy to use and
+with a very nice new-look 3D interface. Efficiency was also considered very
+important. The library is about 45K large. I'm sure you will agree this is
+not too much considering what ReqTools offers.
+
+ReqTools features the following requesters: a query requester, a string
+requester, a number requester, a file requester, a font requester, a
+palette requester and new in release 2.0 of ReqTools a volume requester and
+a screen mode requester.
+
+@EndNode
+
+
+@Node Features ReqTools.guide/Features
+
+	@{u}@{b}Features@{ub}@{uu}
+
+The requesters have following features:
+
+@{b}All requesters@{ub}:
+	Have a pixel-perfect Workbench 2.0 3D look.
+
+	Are completely localized! If you are using Workbench 2.1 or higher
+	the text in ReqTools requesters will appear in the language of your
+        Workbench (if the catalog for this language is available).
+
+	Adjust to interlaced screens and to the screen's font. Requesters
+	can also use any suitable font you specify.
+
+	Can appear under the mouse pointer, centered on the screen/in a
+	window or at the top left of the screen/a window.
+
+	Can be used asynchronously.
+
+	Check pr_WindowPtr of your process is to find the screen they
+	should appear on (can be overridden).
+
+	Uses tags for maximum future extendibility. All standard 2.0 tags
+	are supported (like TAG_SKIP, TAG_MORE, etc.).
+
+	Bring the screen they appear on to the front. The screen that was
+	in front previously will be put in front again when the requester
+	finishes (if it is still open). This behaviour can be switched off.
+
+	Will always appear in the visible portion of the screen (support of
+        virtual screens).
+
+	Are extensively tested using enforcer and mungwall debugging tools.
+
+	Have the ability to lock the parent window from all user input and
+	give it a standard wait pointer automatically.
+
+	Can share the IDCMP port of the parent window.
+
+	Supports a callback hook for handling IDCMP messages from a shared
+	IDCMP port.
+
+	Have keyboard shortcuts for gadgets (key underlined in gadget
+	label). Use Right Amiga key with shortcut if a string gadget is
+	active.
+
+@{b}rtEZRequest, the query requester@{ub}:
+	Easy keyboard shortcuts:
+		Left Amiga V and Left Amiga B (like the standard
+		requesters).
+
+		Y for positive response.
+
+		N, R, Esc for negative response.
+
+		Return can also be used as a shortcut and can be associated
+		with any response. The gadget in question will have its
+		text printed in bold. Default response for Return is the
+		positive response.
+
+		Buttons give visual feedback when keyboard shortcuts are
+		used.
+
+		Keyboard shortcuts can be canceled by pressing Shift before
+		releasing the key.
+
+		Keyboard shortcuts can be defined to be any character in
+		the button's label.The character in question will be underlined.
+
+		Function keys can be used to select the "first" ten gadgets.
+
+	Number of responses only limited by screen width.
+
+	Allows for multiple lines of text.
+
+	Text can be centered in requester (great for about requesters).
+
+	Supports the use of 'printf' formatting codes in text and in
+	responses.
+
+	Can be terminated by IDCMP events.
+
+@{b}rtFileRequest, the file requester@{ub}:
+	Similar in use and look-and-feel as Asl file requester.
+
+	Buffers directories in memory.
+
+	Files and directories can be added or removed from the buffer by
+	the calling program.
+
+	Can be put in save mode, disabling double-clicks and asking you if
+	directories that can't be found (entered manually) should be
+	created.
+
+	Optional callback hook for verification of files before they are
+	added to the buffer.
+
+	Supports multiple selection of files and optionally of directories.
+
+	When multi-select is on, @{b}All@{ub}, @{b}Clear@{ub} and @{b}Match...@{ub} buttons are
+	available. @{b}All@{ub} selects, and @{b}Clear@{ub} unselects all files. @{b}Match...@{ub}
+	brings up a requester where the user can enter a pattern to select
+	files.
+
+	Can be used as a directory requester (showing ghosted files).
+
+	Optional pattern gadget to match files on.
+
+	Shows all volumes (with device names) and all assigns made.
+
+	Can be used as a volume requester to get a device or an assign from
+	the user.
+
+	Can be resized in height to show more files.
+
+	Shows disk percentage used next to volume names.
+
+	Allows you to enter paths in the filename string gadget. If the
+	requester finds a path in the filename it will change the directory
+	to that path. So if you e.g. enter 'Devs:mountlist' in the filename
+        gadget the requester will read the 'Devs:' directory and set the
+	filename gadget to 'mountlist'. If you enter 'printers/' it will go
+	into the printers directory. Enter '/' to go to the parent
+	directory.
+
+	Completely keyboard controlable: use up and down cursor keys to
+	select files or directories. Use Shift-Up and Shift-Down to jump by
+	one window-full. Use Ctrl-Up and Ctrl-Down to jump to the start or
+	end of the directory.
+
+@{b}rtFontRequest, the font requester@{ub}:
+	Buffers all fonts in memory.
+
+	Shows sample of font you click on.
+
+	Can be also be used to select the font's style.
+
+	Supports color fonts, can change the screen's palette.
+
+	Supports scaled fonts.
+
+	Optional callback hook for verification of fonts before they are
+	added to the buffer.
+
+	Supports TABCYCLE under 2.0
+
+	Can be resized in height to show more fonts.
+
+	Makes sure selected font is visible in listview when it comes up.
+
+@{b}rtScreenModeRequest, the display mode requester@{ub}:
+	All modes in the DisplayInfo database can be displayed.
+
+	Allows you to pick a standard overscan setting.
+
+	User may enter prefered size or choose to get the defaults.
+
+	Number of colors selectable.
+
+	Can be put up with the attributes from a given screen.
+
+	Optional callback hook for examining a display mode before it is
+	added to the requester.
+
+	Can be resized in height to show more modes.
+
+	Makes sure selected mode is visible in listview when it comes up.
+
+@{b}rtPaletteRequest, the palette requester@{ub}:
+	Features Copy, Swap and Spread functions. The currently active mode
+	(if any) is shown in the requester title.
+
+	Current values of red, green and blue are displayed.
+
+	Returns the selected color.
+
+	Optionally displays a colorwheel.
+
+@{b}rtGetLong, the long integer requester@{ub}:
+	Width of requester can be set by caller.
+
+	A minimum and maximum can be supplied and will be displayed in the
+	requester.
+
+	A value to show up when the requester appears can be supplied.
+
+	Can display buttons with several possible responses.
+
+	Invisible entry is possible (useful for getting a code number).
+
+	Patterned backfill of requester can be switched on or off.
+
+	Some line(s) of (centered) text may be displayed above the entry
+	gadget to give the user some extra information.
+
+@{b}rtGetString, the string requester@{ub}:
+	Width of requester can be set by caller.
+
+	A string to show up when the requester appears can be supplied.
+
+	Can display buttons with several possible responses.
+
+	Invisible entry is possible (useful for getting a password).
+
+	Patterned backfill of requester can be switched on or off.
+
+	Some line(s) of (centered) text may be displayed above the entry
+	gadget to give the user some extra information.
+
+@EndNode
+
+
+@Node Installation ReqTools.guide/Installation
+
+	@{u}@{b}Installation@{ub}@{uu}
+
+To install reqtools.library copy it to your Libs: directory by hand, or run
+the Installer script. The script will also install the needed language
+files, if needed.
+
+The installer script also lets you install @{"RTPatch" Link RTPatch}. In case you want to
+install RexxReqTools as well, simply use the Installer found in the
+RexxReqTools drawer.
+
+@EndNode
+
+
+@Node Distribution ReqTools.guide/Distribution
+
+	@{u}@{b}Distribution@{ub}@{uu}
+
+The programs and files in this distribution are freely distributable, but
+are also Copyright © Nico François and Magnus Holmgren. They may be freely
+distributed as long as no more than a nominal fee is charged to cover time
+and copying costs. ReqTools is distributed as non-crippled (optional)
+shareware, it is fully functional.
+
+	@{" Registration     " Link Registration}
+	@{" Support          " Link Support}
+	@{" Freeware usage   " Link Freeware}
+	@{" Shareware usage  " Link Shareware}
+	@{" Commercial usage " Link Commercial}
+
+The complete ReqTools package consits of two archives; One user archive,
+containing everything the normal user needs; One developer archive,
+containing all developer files needed, in order to use ReqTools in other
+programs. Note that the catalog translations are located in the developer
+archive.
+
+Check out the README files and documents in the Glue directory (from the
+developer archive) for copyrights of all the glue code.
+
+RexxReqTools is Copyright © Rafael D'Halleweyn and is included with his
+kind permission.
+
+All of the files copyrighted by the author must remain unmodified.  None
+of these files may be distributed on its own, the entire package must be
+distributed as one whole. 'demo.c' is full public domain and can be used in
+any way you like.
+
+There is one exception to the above. If you plan to release a freely
+distributable program (either public domain, freeware or shareware), you
+may include 'libs/reqtools.library', the installation scripts (with icon),
+the catalogs and the preference editor (with documentation and icons) with
+your distribution.
+
+Whether your program is freely distributable or commercial, you must state
+in your documentation that your program uses reqtools.library and that
+ReqTools is Copyright (c) Nico François and Magnus Holmgren.
+
+@EndNode
+
+
+@Node Registration ReqTools.guide/Registration
+@Toc Distribution
+
+	@{u}@{b}Registration@{ub}@{uu}
+
+People wishing to register ReqTools can do so by sending US$25 to:
+
+	Magnus Holmgren
+	Kvarnbergsvägen 5
+	S-444 47  Stenungsund
+	SWEDEN
+
+Send money by postal(!) money order (international, not e.g. limited to
+North America or similar), or cash (SKR or US$)!
+
+Please state the version of reqtools.library you have (use the C:Version
+command to display the version).
+
+By registering you support the further development of ReqTools. If you use
+it and like it, please consider registering.
+
+Important note: If you already have registered ReqTools with Nico François,
+you don't need to do that again. It should be noted that I don't have the
+list over who have registered ReqTools with Nico François.
+
+@EndNode
+
+
+@Node Support ReqTools.guide/Support
+@Toc Distribution
+
+	@{u}@{b}Support@{ub}@{uu}
+
+If you need some support, you can always send me a message (preferably
+via e-mail). See @{"Contacting the author" Link Author} for how to reach me.
+
+I am not familiar with the current status of the REQTOOLS FidoNet echomail
+area (where support previously was available). If there is interest for
+this, I can try to reactivate it (in one way or another).
+
+As the old support BBS (Great Balls Of Fire BBS) is located in another
+country, I will not myself upload the latest version to it. However, I will
+try to upload the latest version on Aminet, from where many BBSes can get
+it.
+
+@EndNode
+
+
+@Node Freeware "ReqTools.guide/Freeware usage"
+@Toc Distribution
+
+	@{u}@{b}Freeware usage@{ub}@{uu}
+
+Freeware usage of ReqTools is allowed if the following conditions are met:
+
+	You state in your documentation that your program uses
+	reqtools.library and that ReqTools is Copyright © Nico François and
+	Magnus Holmgren.
+
+A @{"registration" Link Registration} would be appriciated, but is not required.
+
+@EndNode
+
+
+@Node Shareware "ReqTools.guide/Shareware usage"
+@Toc Distribution
+
+	@{u}@{b}Shareware usage@{ub}@{uu}
+
+Shareware usage of ReqTools is allowed if the following conditions are met:
+
+	You state in your documentation that your program uses
+	reqtools.library and that ReqTools is Copyright © Nico François and
+	Magnus Holmgren.
+
+	You send me a fully functional copy of your finished product(s)
+	using reqtools.library.
+
+A @{"registration" Link Registration} would be appriciated, but is not required.
+
+@EndNode
+
+
+@Node Commercial "ReqTools.guide/Commercial usage"
+@Toc Distribution
+
+	@{u}@{b}Commercial usage@{ub}@{uu}
+
+Commercial usage of ReqTools is allowed if the following conditions are met:
+
+	You register ReqTools (see @{"Registration" Link Registration}).
+
+	You state in your documentation that your program uses
+	reqtools.library and that ReqTools is Copyright © Nico François and
+	Magnus Holmgren.
+
+	You send me a copy of your finished product(s) using
+	reqtools.library.
+
+If these conditions are met you are allowed to include the Kickstart 1.3
+and/or the Kickstart 2.0 version of reqtools.library and the installation
+script(s) with your commercial product.
+
+@EndNode
+
+
+@Node Using "ReqTools.guide/Using reqtools.library"
+
+	@{u}@{b}Using reqtools.library@{ub}@{uu}
+
+If you are a C programmer all you need to do is include the correct header
+('libraries/reqtool.h') and open reqtools.library. After that you can use
+the functions in the library as if they were C functions. If your program
+quits it must of course close the library again. See 'demo.c' for an
+example.
+
+Glue code for several compilers/languages is included with ReqTools. Look
+in the Glue directory of the ReqTools distribution to see if glue code
+exists for your compiler and/or programming language. If it doesn't and
+you write your own please send it to me and I'll include it in the next
+release of ReqTools.
+
+Note that the source for the Manx C libraries is the same as for the SAS/C
+libraries. See the README.Manx file in the archive
+'Glue/Sas-C/LibSource.lha'.
+
+Manx C users may have to edit 'libraries/reqtools.h' and change the library
+(GfxBase, IntuitionBase, etc.) fields to rt_GfxBase, rt_IntuitionBase etc.
+Seems there is a bug in some versions of the Manx C compiler that has
+problems otherwise. Let's hope this gets fixed soon :-)
+
+If your compiler doesn't allow using pragmas (in-line library calls, no
+glue code required) for functions with a variable number of arguments, then
+you must always link with the reqtools.lib for your compiler.
+
+Assembly programmers should also include the correct files and open
+reqtools.library. To call a function they must load A6 with the library
+base, put the arguments in the appropriate registers and jump to the
+library vector offset of the function they want to call.
+
+Remember to open the library with a specific version number if you wish to
+use features only found in that version (for example: screen mode
+requester).
+
+All library functions are explained in the autodoc file 'reqtools.doc'.
+
+                                                       Enjoy.
+
+@EndNode
+
+
+@Node Preferences ReqTools.guide/Preferences
+
+	@{fg highlight}@{u}@{b}Preferences@{ub}@{uu}@{fg text}
+
+	@{b}ReqTools Preference Editor@{ub}
+
+	Release 2.8
+
+	© 1991-1994 Nico François
+	  1995-1997 Magnus Holmgren
+
+
+	@{" Options         " Link PR_Options}
+	@{" The Editor      " Link PR_Editor}
+	@{" Program history " Link PR_History}
+
+
+@EndNode
+
+
+@Node PR_Options ReqTools.guide/Preferences/Options
+
+	@{u}@{b}Options@{ub}@{uu}
+
+The ReqTools preference editor recognizes the following command line
+options when started from the CLI:
+
+	@{b}FROM@{ub} <ReqTools preference file>
+	Edit specified preference file.
+
+	@{b}SCREENFONT@{ub}=<YES|NO>
+	Use screen font for editor or use the standard Topaz 8 font
+	(default YES). This option is ignored by the ClassAct version of
+	the preferences editor.
+
+	@{b}PUBSCREEN@{ub} <public screen name>
+	Open on specified public screen.
+
+The following tool types are recognized when started from Workbench:
+
+	@{b}CREATEICONS@{ub}=<YES|NO>
+	Create icons for preference files (default YES). Note that if the
+	editor is started from the Shell the menu item will not be checked
+	so no icons will be created.
+
+	@{b}SCREENFONT@{ub}=<YES|NO>
+	Use screen font for editor or use the standard Topaz 8 font
+	(default YES). This option is ignored by the ClassAct version of
+	the preferences editor.
+
+	@{b}PUBSCREEN@{ub}=<public screen name>
+	Open on specified public screen.
+
+@EndNode
+
+
+@Node PR_Editor "ReqTools.guide/Preferences/The Editor"
+
+	@{u}@{b}The Editor@{ub}@{uu}
+
+This documentation is still very basic, it very shortly describes the
+checkboxes and default requester settings available.
+
+@{b}General settings@{ub}:
+
+	@{b}Pop Screen To Front@{ub}
+	Allows you to switch off the default behaviour of all ReqTools
+	requesters popping the screen they appear on to the front.
+
+	@{b}Use system default font@{ub}
+	Force the use of the system default font in the file, font,
+	directory, screenmode, volume and palette requesters (instead of
+	the screen font). Note that if a program uses the RT_DefaultFont
+	tag to select a specific default font this font will be used.
+
+	@{b}Use function keys@{ub}
+	Allow function keys to be used as shortcuts for gadgets in the text
+	requester (rtEZRequestA). F1 means leftmost gadget, F2 the next,
+	etc. This means that up to 11 gadgets can have shortcuts (10
+	function keys, and ESC), even if no underscores or similar are used.
+
+	@{b}Wheel type@{ub}
+	Specifies if the palette requester should display a color wheel (if
+	possible), and if so, how it should look. The following
+	alternatives are available:
+
+		@{i}No color wheel@{ui}
+		Don't display any color wheel
+
+		@{i}Simple color wheel@{ui}
+		Display a monocrome color wheel and brightness slider, if
+		possible.
+
+		@{i}Fancy color wheel@{ui}
+		Display a colorful color wheel and brightness slider, if
+		possible. For this to be shown, several free pens on the
+		screen must be available, or it will revert to a simple
+		color wheel.
+
+		Please note that this fancy color wheel can cause some
+		"problems", since if you try to edit one of the colors used
+		by the wheel and the brightness slider, then it either
+		won't be possible, or the wheel will not look good any
+		more. Thus, certain colors should not be changed. Keep this
+		in mind if you use the fancy color wheel.
+
+	The color wheel will only be displayed if the screen is large
+	enough to accomodate the extra size needed for the wheel, and the
+	colorwheel and gradientslider gadgets are properly installed (part
+	of OS 3.0 and higher).
+
+@{b}File Requester settings@{ub}:
+
+	@{b}Immediate sort@{ub}
+	If checked makes the file requester sort the directory contents
+	automatically.
+
+	@{b}Display drawers first@{ub}
+	Display drawers before the files in the file requester.
+
+	@{b}Mix files and drawers@{ub}
+	Mix files and drawers in the file requester. If none of the
+	'Display Drawers First' or 'Mix Files And Drawers' is checked files
+	will be displayed before drawers.
+
+	@{b}Disk activity LED@{ub}
+	Switch the disk activity LED in the file requester on or off.
+
+	@{b}MMB gives parent@{ub}
+	Specifies if a click with the middle mouse button should make the file
+	requester go to the parent directory or not.
+
+@{b}Default settings@{ub}:
+
+For each requester type you can set the following defaults:
+
+	@{b}Size (% of visible height)@{ub}
+	Default height of the requester (relative to the visible height of
+	the screen it will appear on).
+
+	@{b}Number of visible entries@{ub}
+	Minimum and maximum number of entries that are initially displayed.
+	With this you can assure you won't see less or more entries than
+	the minimum or maxmimum you set when the requester first appears.
+	You can for example set the font requester to use 75% of the
+	visible screen height. If you set the maximum number of visible
+	entries to 10 the font requester will not display more than 10
+	entries no matter how high the screen is it appears on.
+
+	@{b}Position@{ub}
+	Default position of requester.
+
+	@{b}Offset@{ub}
+	Offset (in pixels) from the default position.
+
+Note that you are setting defaults; not all requesters will appear as you
+have selected. If a program explicitely sets a requester's position
+ReqTools will make the requester appear as asked. The defaults will be used
+when the calling program doesn't set specific settings itself.
+
+@EndNode
+
+
+@Node PR_History "ReqTools.guide/Preferences/Program history"
+
+	@{u}@{b}Program history@{ub}@{uu}
+
+	History before 2.3 deleted...
+
+	@{" Release 2.3  " Link PR_2_3}
+	@{" Release 2.4  " Link PR_2_4}
+	@{" Release 2.5  " Link PR_2_5}
+	@{" Release 2.6  " Link PR_2_6}
+	@{" Release 2.7  " Link PR_2_7}
+	@{" Release 2.8  " Link PR_2_8}
+
+@EndNode
+
+
+@Node PR_2_3 "ReqTools.guide/Preferences/Program history/Release 2.3"
+
+	@{u}@{b}Release 2.3@{ub}@{uu}
+
+Added a 'Use function keys' checkbox for ReqTools 2.3 or higher.
+
+A few gadgets weren't properly updated when changing the prefs (using a
+menu item).
+
+@EndNode
+
+
+@Node PR_2_4 "ReqTools.guide/Preferences/Program history/Release 2.4"
+
+	@{u}@{b}Release 2.4@{ub}@{uu}
+
+Fixed the bug that cause crashes on startup for 68000 users.
+
+@EndNode
+
+
+@Node PR_2_5 "ReqTools.guide/Preferences/Program history/Release 2.5"
+
+	@{u}@{b}Release 2.5@{ub}@{uu}
+
+Added the 'Color wheel' option.
+
+@EndNode
+
+
+@Node PR_2_6 "ReqTools.guide/Preferences/Program history/Release 2.6"
+
+	@{u}@{b}Release 2.6@{ub}@{uu}
+
+The localized strings were not always correct.
+
+The 'Color wheel', 'Disk activity LED' and 'Use system default font'
+gadgets were not always correctly updated.
+
+@EndNode
+
+
+@Node PR_2_7 "ReqTools.guide/Preferences/Program history/Release 2.7"
+
+	@{u}@{b}Release 2.7@{ub}@{uu}
+
+Changed the color wheel option to a cycle gadget, to accomodate the 'Fancy
+color wheel' option.
+
+Wrote a ClassAct version of the preferences editor.
+
+@EndNode
+
+
+@Node PR_2_8 "ReqTools.guide/Preferences/Program history/Release 2.8"
+
+	@{u}@{b}Release 2.8@{ub}@{uu}
+
+The wheel type cycle gadget wouldn't allow you to go back to simpler wheel
+types. It wasn't updated when loading prefs either.
+
+In the GadTools version, the placement of some gadgets were wrong, from the
+"Use function keys" gadgets, and downwards in that column.
+
+Added the "MMB gives parent" option.
+
+Note that the problem with the ClassAct version, that the requester height
+numeric display was (re)displayed incorrectly, was caused by a bug in
+ClassAct. Try getting the latest version of ClassAct if the problem remains
+(it works fine here).
+
+@EndNode
+
+
+@Node RTPatch ReqTools.guide/RTPatch
+
+	@{fg highlight}@{u}@{b}RTPatch@{ub}@{uu}@{fg text}
+
+	@{b}The ReqTools patcher@{ub}.
+
+	Release 1.7
+
+	© 1992-1994 Nico François
+	  1995-1996 Magnus Holmgren
+	  1996-1997 Dave Jones
+
+
+Welcome to RTPatch, the ReqTools requester patcher.
+
+	@{" Introduction          " Link RT_Introduction}
+	@{" Usage                 " Link RT_Usage}
+
+	@{" Compatibility         " Link RT_Compatibility}
+	@{" Controlling RTPatch   " Link RT_Controlling}
+
+	@{" Version history       " Link RT_History}
+
+	@{" Contacting the author " Link RT_Author}
+
+@EndNode
+
+
+@Node RT_Introduction "ReqTools.guide/RTPatch/Introduction"
+
+	@{u}@{b}Introduction@{ub}@{uu}
+
+RTPatch is a small program that will re-route functions from most popular
+requester libraries to ReqTools. Libraries currently supported are Arp, Req
+and Asl. RTPatch will also patch some functions in Intuition to give you
+improved system requesters.
+
+The patches RTPatch makes are these:
+
+@{b}Intuition@{ub}:
+	AutoRequest and EasyRequest (on 2.0) are patched so normal system
+	requesters, like 'Insert Disk...' requesters, will be replaced by
+	ReqTools EZRequesters. They will appear near the mouse pointer and
+	respond to many keyboard shortcuts.
+
+	On 2.0 OpenScreenTagList() is also patched to always open a
+	new-look 3D screen. This will make for example CygnusEd 2.12 open
+	a nice new-look screen. You may also ask RTPatch to patch
+	OpenScreen() to open _all_ screens with a 3D look. Beware however
+	that this makes a lot of old programs look ugly!
+
+@{b}req.library@{ub}:
+	File requester, font requester, palette requester, string requester
+	and integer requester are replaced by ReqTools requesters.
+
+@{b}arp.library@{ub}:
+	File requester is replaced by ReqTools file requester.
+
+@{b}asl.library@{ub}:
+	Currently only file requester is replaced by ReqTools file
+	requester. Font and screen mode requesters are not patched yet.
+
+RTPatch uses an intelligent patch mechanism. It will only patch a library
+when it is actually opened. This means that if you never use the
+arp.library (for example) it will not be patched and, more importantly, it
+will not unnecessaryly be loaded into memory! If you do run a program that
+uses Arp and you quit it, it will close Arp. RTPatch will then allow the
+patched Arp to be expunged from memory. If Arp is reloaded again later it
+will be re-patched. Note that RTPatch patches exec.library/OpenLibrary()
+and exec.library/OldOpenLibrary() to accomplish all this.
+
+RTPatch is a 100% assembly program, for maximum efficiency. It only takes
+about 5K of memory once installed (excluding memory occupied by
+reqtools.library). It uses @{b}no@{ub} processor time while installed.
+
+@EndNode
+
+
+@Node RT_Usage "ReqTools.guide/RTPatch/Usage"
+
+	@{u}@{b}Usage@{ub}@{uu}
+
+RTPatch can be used from Workbench and from the Shell (CLI).
+
+@{b}Shell usage@{ub}:
+
+	RTPatch [NOREQ] [NOASL] [NOARP] [NOINTUITION] [OPENSCRPATCH]
+	        [NOOPENSCRTAGPATCH] [NOFILEREQPATCH] [IGNOREHEIGHT]
+
+Explanation of options:
+
+	@{b}NOREQ@{ub}
+	Do not patch req.library.
+
+	@{b}NOASL@{ub}
+	Do not patch asl.library.
+
+	@{b}NOARP@{ub}
+	Do not patch arp.library.
+
+	@{b}NOINTUITION@{ub}
+	Do not patch intuition.library.
+
+	@{b}OPENSCRPATCH@{ub}
+	Patch OpenScreen() in intuition.library so @{i}all @{ui}screens will open
+	with a 3D look.
+
+	@{b}NOOPENSCRTAGPATCH@{ub}
+	Do not patch OpenScreenTagList() in intuition.library.
+
+	@{b}NOFILEREQPATCH@{ub}
+	Do not patch any file requester functions.
+
+	@{b}IGNOREHEIGHT@{ub}
+	Ignore height setting of Asl file requester.
+
+@{b}Workbench usage@{ub}:
+
+RTPatch recognizes following tooltypes:
+
+	@{b}NOREQ@{ub}
+	Do not patch req.library.
+
+	@{b}NOASL@{ub}
+	Do not patch asl.library.
+
+	@{b}NOARP@{ub}
+	Do not patch arp.library.
+
+	@{b}NOINTUITION@{ub}
+	Do not patch intuition.library.
+
+	@{b}OPENSCRPATCH@{ub}
+	Patch OpenScreen() in intuition.library so @{i}all @{ui}screens will open
+	with a 3D look.
+
+	@{b}NOOPENSCRTAGPATCH@{ub}
+	Do not patch OpenScreenTagList() in intuition.library.
+
+	@{b}NOFILEREQPATCH@{ub}
+	Do not patch any file requester functions.
+
+	@{b}IGNOREHEIGHT@{ub}
+	Ignore height setting of Asl file requester.
+
+	@{b}QUIET@{ub}
+	Don't open requester informing patches have been installed. Set
+	this tooltype if you intend to drag RTPatch to your WbStartup
+	drawer.
+
+@{i}Note: @{ui}	Run RTPatch when @{b}no@{ub} program has req.library, asl.library or
+	arp.library open! RTPatch will complain if one of these libraries
+	is in use and will refuse to install or remove patches. Running
+	RTPatch in your user-startup or from your WBStartup should be ok.
+
+@{i}Warning: @{ui} Asl V38 (distributed with Workbench 2.1) always keeps its library
+	open count at 0. It does this so that the system (rather, ramlib)
+	will always call its Expunge() function when memory is low. This
+	does however mean RTPatch cannot see if this library is in use or
+	not. So you must be very careful not to install or remove RTPatch
+	when you have a program running that uses Asl. If you are still
+	using Workbench 2.0 there is no problem.
+
+@EndNode
+
+
+@Node RT_Compatibility "ReqTools.guide/RTPatch/Compatibility"
+
+	@{u}@{b}Compatibility@{ub}@{uu}
+
+RTPatch supports all basic requester functions and options. Other supported
+things that are worth mentioning:
+
+@{b}arp.library (V39)@{ub}:
+	File callback function (FRF_DoWildFunc). The A4 global data
+	register is valid when this callback function is called (documented
+	feature).
+
+	Message callback function (FRF_DoMsgFunc) for requesters which share
+	their IDCMP port with the parent window.
+
+	Save mode (FRF_DoColor flag).
+
+	Shared IDCMP with parent window or new IDCMP (FRF_NewIDCMP flag).
+
+	'Empty filename is ok' behaviour is supported.
+
+@{b}asl.library (V36/V38-V40)@{ub}:
+	File callback function/hook (FRF_DOWILDFUNC and ASLFR_FilterFunc
+	tag). The A4 global data register is valid when this callback
+	function is called for maximum compatibility (undocumented feature
+	of Asl V36).
+
+	Intuition message callback function/hook (FRF_DOMSGFUNC and
+	ASLFR_IntuiMsgFunc tag) for requesters with shared IDCMP.
+
+	Multi-selection (FRB_DOMULTISELECT flag or ASLFR_DoMultiSelect tag).
+
+	Directory requester, no files (FRF_DRAWERSONLY flag or
+	ASLFR_DrawersOnly tag).
+
+	Save mode (FRF_DOSAVEMODE flag or ASLFR_DoSaveMode tag).
+
+	Shared IDCMP with parent window or new IDCMP (FRF_PRIVATEIDCMP flag
+	or ALSFR_PrivateIDCMP tag).
+
+	Putting to sleep of parent window (ASLFR_SleepWindow tag).
+
+	Font for requester (ASLFR_TextAttr tag).
+
+	Pattern gadget (FRF_DOPATTERNS flag or ASLFR_DoPatterns tag).
+
+	'Empty filename is ok' behaviour is supported to ensures
+	compatibility with e.g. AssignX, PageStream 2.2 and no doubt many
+	other programs.
+
+	Undocumented fields in file requester structure are filled in, so
+	even "dirty" programs will work.
+
+	Accept and reject patterns (ASLFR_AcceptPattern/ASLFR_RejectPattern).
+
+@{b}req.library (V2)@{ub}:
+	Multi-selection.
+
+	Buffers for file and font requester.
+
+	Directory requester (no files).
+
+	Save mode (FRQSAVINGM flag).
+
+	Minimum and maximum value of GetLong() requester.
+
+Additional enhancements:
+	Buffered directories for Asl file requester.
+
+Following things are @{i}not @{ui}supported (yet?):
+
+@{b}arp.library@{ub}:
+	FRF_NewWindFunc and FRF_AddGadFunc/FRF_GEventFunc callback
+	functions are not called. As far as I can tell nobody ever used
+	the latter two and the former function is certainly not used a lot.
+	In short: this should not pose any problems.
+
+@{b}asl.library@{ub}:
+	ASLFR_InitialWidth and ASLFR_NegativeText tags are ignored.
+
+	FRB_REJECTICONS flag and ASLFR_RejectIcons tag are ignored.
+
+	FRB_FILTERDRAWERS flag and ASLFR_FilterDrawers tag are ignored.
+
+@{b}req.library@{ub}:
+	Timeout and abort mask (req.library requester will be used).
+
+	freq->frq_Hide is ignored (freq->frq_Show is however supported).
+
+	TR_KeyMask is not completely supported. If it is not 0xffff (no
+	qualifers) the requester will only respond to Left Amiga V/B. This
+	should suffice in most cases however.
+
+If you find any compatibility problems let me know. Please give a detailed
+description of the problem. Not 'RTPatch doesn't work with NeatProg', but
+more like: 'when I do this and this in NeatProg ... doesn't work".
+
+@EndNode
+
+
+@Node RT_Controlling "ReqTools.guide/RTPatch/Controlling RTPatch"
+
+	@{u}@{b}Controlling RTPatch@{ub}@{uu}
+
+From version 1.1 on RTPatch's message port can be used to control certain
+patches from an external program.
+
+The message port is called 'RTPatch.rendezvous' and looks like this:
+
+	struct RTPatchPort
+	{
+		/* PRIVATE FIELDS */
+		struct MsgPort	rtport_port;
+		ULONG		rtport_version;
+
+		/* PUBLIC */
+		UWORD		rtport_easyreqautocancel;
+		UWORD		rtport_skipeasyreqpatch;
+		UWORD		rtport_skipopenscrpatch;
+	};
+
+Set the rtport_autocancel field to non-zero to make easy requesters cancel
+themselves automatically. The rtport_skipeasyreqpatch field can be used to
+temporarily disable the patch for EasyRequestArgs(). Note that the
+rtport_easyreqautocancel field will be ignored if the rtport_skipeasyreqpatch
+field is non-zero (TRUE). RTPatch must have been installed @{i}without @{ui}the
+NOINTUITION argument (default).
+
+Set the rtport_skipopenscrpatch field to non-zero to temporarily disable
+the OpenScreen() patch. This will of course only work if the OPENSCRPATCH
+argument was used (not the default!).
+
+To change these fields simply do a FindPort() for 'RTPatch.rendezvous' and
+change the fields like this:
+
+	Forbid();
+
+	if( rtport = ( struct RTPatchPort * ) FindPort( "RTPatch.rendezvous" ) )
+	{
+		rtport->rtport_easyreqautocancel = TRUE;
+	}
+
+	Permit();
+
+	if( !rtport )
+	{
+		Message( "RTPatch not found!" );
+	}
+	else
+	{
+		Message( "Easy requesters will now be canceled!" );
+	}
+
+Note that you absolutely @{i}must @{ui}use the Forbid()/Permit() pair since RTPatch
+can quit at any time.
+
+                                                       Enjoy.
+
+@EndNode
+
+
+@Node RT_History "ReqTools.guide/RTPatch/Version history"
+
+	@{u}@{b}Version history@{ub}@{uu}
+
+	History before 1.4 deleted...
+
+	@{" Release 1.4   " Link RT_1_4}
+	@{" Release 1.5   " Link RT_1_5}
+	@{" Release 1.6   " Link RT_1_6}
+	@{" Release 1.7   " Link RT_1_7}
+
+@EndNode
+
+
+@Node RT_1_4 "ReqTools.guide/RTPatch/Version history/Release 1.4"
+
+	@{u}@{b}Release 1.4@{ub}@{uu}
+
+Forgot to bump version number in the ReqTools 2.3 release. :)
+
+Increased compatibility for the ASL patch, so that e.g. Visage should work
+better (i.e. not throw up an odd requester when requester is cancelled).
+
+Fixed a bug in the 2.3 release that made RTPatch print way too much text
+most of the time.
+
+@EndNode
+
+
+@Node RT_1_5 "ReqTools.guide/RTPatch/Version history/Release 1.5"
+
+	@{u}@{b}Release 1.5@{ub}@{uu}
+
+RTPatch now needs a minimum of KickStart 2
+
+Huge CLI Arguments routine replaced by Dos.library/ReadArgs() call
+
+Quite a few optimisations made.
+	Simple processor optimisations (Quick form e.t.c.)
+
+	Lots of compares changed to use jumptables.
+
+	All zero data moved to end of hunks.
+
+Made all code PC relative (Removed reloc entries)
+
+Removed a small bug in the ASL filerequestor patch. No longer returns wrong
+IoErr() return codes.
+
+The [old]openlibrary patch[es] now search PROGDIR:, PROGDIR:LIBS/ and
+PROGDIR:CLASSES/ for libraries, as the `OpenLibEnhancer' on Aminet does,
+It's therefore no longer necessary to run it.
+
+@EndNode
+
+
+@Node RT_1_6 "ReqTools.guide/RTPatch/Version history/Release 1.6"
+
+	@{u}@{b}Release 1.6@{ub}@{uu}
+
+No longer prints the ANSI codes (anywhere).
+
+Now if started from Workbench it will print sensible stuff in the
+requester. Before it was skipping the first two chars off each line of text.
+
+Rewrote the tooltype/command line arguments handling code. Now recognises
+the QUIET Workbench tooltype again. @{i}Note: @{ui}When removing the patches, the
+"All Patches Removed" string will override the QUIET setting.
+
+Forgot to mention that the idea for the OpenLibEnhancer was by Thomas
+Kessler (fw117@fen.baynet.de). Thanks for that, and also for the reminder
+that you'd not been credited.
+
+The OpenLibEnhancer feature has now been removed from RTPatch, as quite a
+few people said they didn't want such a feature, so if you miss it, you'll
+have to download Thomas's version from Aminet:Util/Boot/OpenLibEnhancer.lha
+
+Fixed a bug in the req.library filerequest() patch. Wasn't adding a `:'
+mark where it should have. Deksid should now work correctly.
+
+@EndNode
+
+
+@Node RT_1_7 "ReqTools.guide/RTPatch/Version history/Release 1.7"
+
+	@{u}@{b}Release 1.7@{ub}@{uu}
+
+39.3: Removed Enforcer hits from Openlibrary patch. Thanks to Felix Hepfeld
+and Troels Walsted Hansen for the reports.
+
+39.4: Optimised all bit setting & clearing instructions.
+
+39.5: Reassembled using v40.16 includes
+
+@EndNode
+
+
+@Node RT_Author "ReqTools.guide/RTPatch/Contacting the author"
+
+	@{u}@{b}Contacting the author@{ub}@{uu}
+
+Mail:     Dave Jones
+          40,Heol Edward Lewis
+          Gelligaer
+          Hengoed
+          Mid Glamorgan
+          CF82 8EJ
+          South Wales
+          United Kingdom
+
+Internet: djones@cardiffcybercafe.co.uk
+
+IRC:      Termy on #Amiga [most saturday afternoons]
+
+If you can please use e-mail. That way you'll stand a much better chance of
+getting a reply quickly.
+
+Please contact me, for suggestions, remarks, bug reports e.t.c.
+
+
+Dave Jones took over the development of RTPatch, since Magnus Holmgren
+wasn't very motivated to work on RTPatch and ReqChange, both programs doing
+basically the same thing.
+
+@EndNode
+
+
+@Node History "ReqTools.guide/Version history"
+
+	@{u}@{b}Version history@{ub}@{uu}
+
+	History before 2.3 deleted...
+
+	@{" Version 2.3 " Link V2_3}
+	@{" Version 2.4 " Link V2_4}
+	@{" Version 2.5 " Link V2_5}
+	@{" Version 2.6 " Link V2_6}
+	@{" Version 2.7 " Link V2_7}
+	@{" Version 2.8 " Link V2_8}
+	@{" Version 2.9 " Link V2_9}
+
+@EndNode
+
+
+@Node V2_3 "ReqTools.guide/Version history/2.3"
+@Toc History
+
+	@{u}@{b}Version 2.3@{ub}@{uu}
+
+	Library version 38.1292
+
+[Magnus Holmgren took over ReqTools]
+
+Release 1.3 of RexxReqTools included.
+
+Recompiled using DICE 3.01. This was forced by the fact that I don't have
+SAS/C (yet, at lest). As a result, the library now is a couple of KBs
+larger.
+
+Bug fix: screenmode requester now works better when showing a depth gadget
+for HAM screens. Most notably, the requester will not crash under certain
+circumstances, and will also handle HAM modes with a depth of 8 (earlier,
+only depth 6 was supported). The HAM support was a kind of hack, which was
+incomplete. Its still a hack, but it is better now. ;)
+
+In the file requester, when displaying the volumes list, RMB acts like
+pressing the Get gadget. I.e., you can go back to the original list by a
+simple RMB click. The "Volumes" gadget also acts like Get, if pressed while
+the volume list is displayed.
+
+The resizable requesters now uses "OS 3 zooming". I.e., the requester
+doesn't move (unless needed) when zoomed.
+
+Added zoom gadget for the palette requester. When zoomed, the requester
+resizes to "titlebar" size; again, using OS 3 zooming if possible.
+
+Updated the Swedish translation a little.
+
+In rtEZRequest, function keys can now be used to select the first ten
+gadgets, if enabled in the prefs editor.
+
+Added the 'Use function keys' option to the prefs program. Currently this
+is the only way to enable this function. In the future there will probably
+be a new tag/flag for this as well.
+
+Increased the stack some requester functions allocates, if needed. Should
+solve the crashing requesters with some programs when e.g. CyberGraphX is
+installed.
+
+Added missing tags to ReqTools.h (RTGL_CenterText and RTGS_CenterText).
+
+Fixed the prefs editor so that all gadgets are updated when new settings
+are loaded.
+
+Rewrote the DICE-C glue. Now includes autoopen code.
+
+New distribution layout. There are still two different archives, but the
+contents are different little: reqtools<ver>.lha is replaced with
+reqtools<ver>dev.lha, and contains only the developer files (glue,
+examples, includes and autodocs). The user archive (reqtools<ver>usr.lha)
+haven't changed.
+
+The filerequester (and the font- and screenmode requester as well) will now
+look better when the screen they open on have "strange" dri-pens.
+
+Support for OS 1.3 completely dropped. The 1.3 version of reqtools.library
+is no longer included.
+
+Made a minor change in the ASL patch in RTPatch, so that it returns errors
+more correctly (avoids annoying error requesters after having cancelled
+certain file requesters). I hope the reassemble didn't break anything. I
+haven't tested it much. ;)
+
+@EndNode
+
+
+@Node V2_4 "ReqTools.guide/Version history/2.4"
+@Toc History
+
+	@{u}@{b}Version 2.4@{ub}@{uu}
+
+	Library version 38.1296
+
+As you may have noticed, a slightly different version numbering scheme have
+been adopted. I simply removed the letter extensions. ;)
+
+Fixed a problem in RTPatch, introduced in the re-assembly in 2.3. It would
+(often, but not always) print way too much text.
+
+Made some fixes to the installation script. I had forgot to change it. ;)
+
+Hopefully fixed the startup crash in the preferences editor.
+
+Included glue for Maxon Pascal, written by Falk Zuehlsdorff.
+
+rtEZRequestTags() was missing in new DICE glue.
+
+Fixed bug in password requester (used by powerpacker.library). DICE bug if
+you ask me. ;)
+
+French, Italian and Polish catalogs updated.
+
+@EndNode
+
+
+@Node V2_5 "ReqTools.guide/Version history/2.5"
+@Toc History
+
+	@{u}@{b}Version 2.5@{ub}@{uu}
+
+	Library version 38.1387
+
+Now really includes RexxReqTools 1.3. Sorry about that.
+
+RTPatch now reports itself as 1.4 (forgot to assemble that minor change ;).
+
+Improved pragmas for SAS/C, to make better use of the tagcall. Note that
+this may cause problems (I got a CXERR in one case). Also changed the name
+to "reqtools_pragmas.h".
+
+Changed the LED rendering a little. It is now done earlier, to work nicer
+with custom handlers that can be slow in certain operations (like
+ArcHandler).
+
+Recompiled with SAS/C again. ;) I don't think any problem have been
+introduced due to this.
+
+Increased the pattern text buffer in the file requester.
+
+The volume list in the file requester should now show all real volumes,
+including e.g. network volumes. In fact, it should display the same volumes
+as ASL, since the same algorithm is used. Thanks to Martin Taillefer for
+showing me how to do it properly.
+
+Added a little "hack" to make ReqTools work better with BetterEdit. It was
+so simple, so why not? ;)
+
+Added color wheel to the palette requester! There is a switch in the
+preferences editor, in case you don't like it. Some notes: You need
+properly installed colorwheel and gradientslider gadgets (part of OS 3.0 or
+higher) for it to be displayed. The colorwheel will only show up if the
+screen and window are large enough. The gradient slider doesn't have any
+fancy background currently, as it requires a rather large number of colors
+to be displayed nicely, IMHO. And most importantly; the top value of the
+slider is to the @{b}left@{ub} for some reason. Not my fault! ;)
+
+Selecting parent in the file requester, when the parent does not exist does
+now work. Sort of. The drawer gadget is now updated, so that you can
+"parent back" to a drawer that do exist.
+
+In the palette requester, when you are in copy, swap and spread modes, the
+title of the window will show the current mode.
+
+The palette requester should now work better on deep screens (more than 8
+bits). It will then limit itself to display only 256 colors.
+
+@EndNode
+
+
+@Node V2_6 "ReqTools.guide/Version history/2.6"
+@Toc History
+
+	@{u}@{b}Version 2.6@{ub}@{uu}
+
+	Library version 38.1413
+
+Forgot to update the proto include file in 2.5.
+
+The ReqTools preferences program got wrong (localized) strings sometimes.
+
+The file requester still did not show all volumes (but the volume requester
+sometimes did). I also realized that this change in the volume listing code
+means that the VREQF_ALLDISKS flags doesn't work. A workaround would be
+possible (for most disks at least), but is it really worth it?
+
+Fixed a bug in the volume listing code, that could cause an incorrect
+device name to be added to the volume name (if the dol_Task was NULL).
+
+E-version of the demo included.
+
+The color wheel didn't have its initial color right. Seems like WHEEL_HSB
+doesn't work on ON_NEW...
+
+Added soft link support to the file requester. Note that hooks need to read
+the link themselves.
+
+Russian translation added.
+
+Updated Installer script to make use of some new features.
+
+The palette requester would try to load the color wheel, and cause Enforcer
+hits (or worse), when the wheel shouldn't be displayed.
+
+The screen depth gadget in the screen mode requester didn't always behave
+properly. Also added some safety checks.
+
+The copy and spread gadgets in the palette requesters didn't work properly.
+Made a silly mistake when adding the mode indicator in the window title. ;)
+
+The color wheel gadget will now always render in monochrome state, to
+minimize the impact on the screen in question.
+
+@EndNode
+
+
+@Node V2_7 "ReqTools.guide/Version history/2.7"
+@Toc History
+
+	@{u}@{b}Version 2.7@{ub}@{uu}
+
+	Library version 38.1434
+
+German translation updated.
+
+The file requester produced enforcer hits when the user had selected some
+drawers in a no files requester with multiselect.
+
+Certain volumes in the file requester (e.g. network volumes) showed no
+information about size and amount used.
+
+Re-enabled the VREQF_ALLDISKS flag. Found a relatively nice way of doing
+it.
+
+My original intention for the 2.x ReqTools releases was to keep it pretty
+much the same way Nico did it. However, a guy named Brad Avery convinced me
+that the distribution archive needed some work. ;) So, as a result you have
+this new and nice AmigaGuide file, a better installer script that allows
+you to install most user files, NewIcons etc.
+
+Reformatted the autodoc file, to a more "standard" look. It will now
+convert much better to AmigaGuide format by ADtoHT or similar. It is also
+18 KB smaller. ;)
+
+Added a "Fancy color wheel" option. Also changed the configuration for the
+color wheel a bit due to this. If enabled, the brightness slider will also
+be a bit fancier (if possible).
+
+A ClassAct version of the ReqTools preferences editor is now included (in
+addition to the normal version). The ClassAct classes are not included, so
+you'll need to get them from somewhere else
+(ftp://ftp.warped.com/pub/classact is a good place). Note that the current
+solution for the requester height option isn't the best. I've been told a
+new ClassAct class is in the works, that will be better for the job. Thus,
+I haven't put any large effort in it for now. ;)
+
+Recompiled with SAS/C 6.57.
+
+@EndNode
+
+
+@Node V2_8 "ReqTools.guide/Version history/2.8"
+@Toc History
+
+	@{u}@{b}Version 2.8@{ub}@{uu}
+
+	Library version 38.1435
+
+A program was missing (C/FixAG) in the user archive, causing problems for
+the installer.
+
+Added an option for the middle button parent function, as some users didn't
+like it. ;)
+
+Fixed some minor bugs in the prefs editor.
+
+RTPatch 1.6 included.
+
+Included Finnish catalogs that I had received, but forgot to include. :/ I
+did not receive the catalog sources though.
+
+Czech translation included.
+
+Serbian catalogs and Installer script included (but no catalog sources).
+
+Dutch translation updated (yet another old catalog update not previously
+included ;).
+
+@EndNode
+
+
+@Node V2_9 "ReqTools.guide/Version history/2.9"
+@Toc History
+
+	@{u}@{b}Version 2.9@{ub}@{uu}
+
+	Library version 38.1436
+
+Hopefully fixed the problem that rtEZRequestA() could make the requester
+too wide when no gadgets were displayed. As I never noticed the problem
+here, it is a bit hard to know for sure if it really is fixed.
+
+RTPatch 1.7 included.
+
+Updated Deutsch, Finnish, Norwegian and Russian translations, and added
+Serbian catalog sources (don't know if they're update though ;).
+
+@EndNode
+
+
+@Node Future "ReqTools.guide/The future"
+
+	@{u}@{b}The future@{ub}@{uu}
+
+This release is only a minor update. I don't intend to make any major work
+to the current sources (maybe some minor updates and bug fixes), as my
+intention is to make a (more or less) complete rewrite of ReqTools.
+
+I have the famous TODO file Nico maintained, and I'll try to add any useful
+suggestions found therein. There are also some other nice features planned,
+like e.g. an API (so that the application - or external "modules" - can
+extend ReqTools). Exact details have not yet been worked out.
+
+If you have a suggestion you don't think is in the TODO file, feel free to
+tell me about it.
+
+@EndNode
+
+
+@Node Author "Contacting the author"
+
+	@{u}@{b}Contacting the author@{ub}@{uu}
+
+If you have suggestions or remarks about ReqTools, or if you find any bugs,
+please let me know. Here is how to reach me:
+
+     Mail:     Magnus Holmgren
+               Kvarnbergsvägen 5
+               S-444 47  Stenungsund
+               SWEDEN
+
+     FidoNet:  2:203/512.10 (Magnus Holmgren)
+
+     Internet: cmh@lls.se
+
+If you can please use e-mail. That way you'll stand a much better chance of
+getting a reply quickly.
+
+If the suggestions or remarks are about RTPatch, please contact @{"Dave Jones" Link RT_Author}
+instead. Any messages regarding RTPatch I receive are forwarded to him
+anyway.
+
+The original ReqTools was written by the (famous) Nico François. I [Magnus
+Holmgren] took over as of release 2.3, since Nico didn't have the time to work on
+ReqTools.
+
+@EndNode
+
+
+@Node Acknowledgements ReqTools.guide/Acknowledgements
+
+	@{u}@{b}Acknowledgements@{ub}@{uu}
+
+Thanks to:
+
+	Kai Bolay for writing the Oberon interface.
+
+	Frank Lömker and Michael Griebling for writing the Modula-2
+	interfaces.
+
+	Jan van den Baard for the first Dice C libraries.
+
+	Martin Steppler for writing the Manx C libraries.
+
+	Richard Waspe and Gunter Indenhoek for writing the HighSpeed Pascal
+	interfaces.
+
+	Chris Pressey for writing the PCQ Pascal interface.
+
+	Federico Giannici for the useful suggestions.
+
+	Michele Giorato for the Italian catalog translations.
+
+	Patrik Nordvall for the Swedish catalog translation.
+
+	Per Jacobsen/Jesper Juul for the Danish catalog translations.
+
+	Mario Gonzalez for the Norwegian catalog translations.
+
+	Juan Carlos Sanchez Garcia for the Spanish translations.
+
+	Pedro Aguiar for the Portugese translations.
+
+	Benoit Mortier/Georges Goncalves for the French catalog translation.
+
+	Dirk Vangestel for the assembly demo source.
+
+	Marc Duponcheel and Gunther Nikl for the GCC glue code.
+
+	Falk Zuehlsdorff for the Maxon Pascal glue code.
+
+	Marcin Orlowski for the Polish translation.
+
+	Kertai Gábor for the Hungarian translation.
+
+	Dmitry Mikhilov for the Russian translation.
+
+	Rafael D'Halleweyn for writing RexxReqTools.
+
+	Vit Sindlar for the Czech translation.
+
+	The remaining translators not mentioned above. ;)
+
+	Roger McWay and Phil Vedovatti for most of the NewIcons in the user
+	archive.
+
+	Dave Jones for updating RTPatch.
+
+	All registered ReqTools users/developers.
+
+@EndNode

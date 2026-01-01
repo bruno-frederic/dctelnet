@@ -1,0 +1,62 @@
+
+Translations of catalogs done by the following people:
+
+reqtools.library
+~~~~~~~~~~~~~~~~
+      dansk       ->  Per Jacobsen / Jesper Juul
+      deutsch     ->  Kai Bolay
+      español     ->  Juan Carlos Sanchez Garcia
+      français    ->  Nico François / David Lebel / Georges Goncalves
+      italiano    ->  Michele Giorato
+      hungarian   ->  Kertai Gábor
+      nederlands  ->  Nico François
+      norsk       ->  Mario Gonzalez
+      polski      ->  Marcin Orlowski
+      português   ->  Pedro Aguiar
+      russian     ->  Dmitry Mikhilov
+      svenska     ->  Patrik Nordvall / Magnus Holmgren
+
+ReqTools preference editor
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+      dansk       ->  Per Jacobsen / Jesper Juul
+      deutsch     ->  Steffen Salzmann
+      español     ->  Juan Carlos Sanchez Garcia
+      français    ->  Benoit Mortier / Georges Goncalves
+      italiano    ->  Michele Giorato
+      hungarian   ->  Kertai Gábor
+      nederlands  ->  Nico François
+      norsk       ->  Mario Gonzales
+      polski      ->  Marcin Orlowski
+      português   ->  Pedro Aguiar
+      russion     ->  Dmitry Mikhilov
+      svenska     ->  Mathias Korsbäck / Roger Nordin /
+                      Christoffer Zettermark / Magnus Holmgren
+
+The sources to these catalogs are available in the developer archive
+(ReqToolsDev.lha).
+
+                                     ----
+
+A partially translated .ct file is included for each of the unsupported
+languages. This file may contain (many) errors! Check it carefully! It was
+constructed with help from the Workbench 2.1 system catalog files. If you'd
+like to translate the rest of the catalog for these languages please note
+that a simple translation will not do.
+
+All ReqTools requesters and the ReqTools preference editor adjust
+themselves to the width of translated strings. So after you've translated
+these catalogs please try all requesters and the preference editor and see
+if they look ok. You must also be careful when you pick the keyboard
+shortcuts, so you don't use the same key twice.
+
+Also read the comments in the catalog file carefully. They sometimes give
+directions to follow (like the following two strings *must* be of the same
+width).
+
+Take a look at the install script as well. This is not essential, but it is
+always nice if a user can install something in his/her own language.
+
+Please send me your translated catalog file (.ct file) so I can compile it
+and include it with the next release of ReqTools. Improved catalogs are
+also welcome, as are translated or improved install scripts.
+

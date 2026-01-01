@@ -1,0 +1,27 @@
+This is an revised reqtools support for gcc. The libraries are based on the
+original glue source for SAS/C supplied with reqtools. These source files
+had been converted to gcc to achive the same functionality. The archive
+contains the normal and baserelative library. The former distribution lacked
+the baserelative library because of an misbehavior of gcc using the option
+'-fbaserel'. GCC prunes a4 from the list of registers to save because this
+register should always contain the base pointer. So if we call rtEZRequestA()
+a4 gets trashed and the result is known. This problem is solved with this
+distribution because of the use of assembler stubs. The libraries were
+created using gcc2.3.3. I also tried gcc2.5.7 and it worked. The demo program
+included can be compiled with both versions (all nessecary files supplied).
+
+TECHNICAL NOTE: Hook support is done with an external stub in libsup.a called
+'main_filter_func()'. This stub fetches all registers on the stack and calls
+the highlevel function stored in hook.h_SubEntry. a4 will be loaded if this is
+nessecary.
+
+NOTE: Don't change the suffix of the assmbler files. GCC relys on the case
+of the suffix. So .s and .S are NOT the same. The lowercase .s is a normal
+assembler source and the uppercase .S indicates an assembler file to be
+preprocessed (needed!!!).
+
+LEGAL DISCLAIMER
+
+   I tested the stubs and the demo program worked well with them either with
+   or without hook support (but the demo doesn't use all functions) so use
+   the libaries at your own risk.
