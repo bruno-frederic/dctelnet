@@ -1,0 +1,51 @@
+*
+*   reqtools_lib.fd   © 1991-1994 Nico François
+*                            1995 Magnus Holmgren
+*
+##base _ReqToolsBase
+##bias 30
+##public
+rtAllocRequestA(type,taglist)(D0,A0)
+rtFreeRequest(req)(A1)
+rtFreeReqBuffer(req)(A1)
+rtChangeReqAttrA(req,taglist)(A1,A0)
+rtFileRequestA(filereq,file,title,taglist)(A1/A2/A3,A0)
+rtFreeFileList(filelist)(A0)
+rtEZRequestA(bodyfmt,gadfmt,reqinfo,argarray,taglist)(A1/A2/A3/A4,A0)
+rtGetStringA(buffer,maxchars,title,reqinfo,taglist)(A1,D0,A2/A3,A0)
+rtGetLongA(longptr,title,reqinfo,taglist)(A1/A2/A3,A0)
+##private
+rtInternalGetPasswordA(buffer,checksum,callback,reqinfo,taglist)(A1,D1/D2,A3,A0)
+rtInternalEnterPasswordA(buffer,callback,reqinfo,taglist)(A1,D2,A3,A0)
+##public
+rtFontRequestA(fontreq,title,taglist)(A1,A3,A0)
+rtPaletteRequestA(title,reqinfo,taglist)(A2/A3,A0)
+rtReqHandlerA(handlerinfo,sigs,taglist)(A1,D0,A0)
+rtSetWaitPointer(window)(A0)
+*
+* the following 4 functions are for the advanced reqtools user
+* who whishes to write his own (complementary) requesters
+*
+rtGetVScreenSize(screen,widthptr,heightptr)(A0/A1/A2)
+rtSetReqPosition(reqpos,newwindow,screen,window)(D0,A0/A1/A2)
+rtSpread(posarray,sizearray,length,min,max,num)(A0/A1,D0/D1/D2/D3)
+rtScreenToFrontSafely(screen)(A0)
+*
+* --- functions in V38 or higher (distributed as Release 2.0) ---
+*
+rtScreenModeRequestA(screenmodereq,title,taglist)(A1,A3,A0)
+*
+* 3 more functions for the advanced reqtools user
+*
+rtCloseWindowSafely(win)(A0)
+rtLockWindow(win)(A0)
+rtUnlockWindow(win,winlock)(A0/A1)
+*
+* Private function only to be used by the ReqTools Preference editor.
+* Only present in library versions _above_ 38.362 [1.3] and 38.810 [2.0]!
+*
+##private
+rtLockPrefs()()
+rtUnlockPrefs()()
+##public
+##end

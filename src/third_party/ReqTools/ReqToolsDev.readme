@@ -1,0 +1,38 @@
+Short:    ReqTools 2.9 - the requester toolkit (dev)
+Type:     util/libs
+Author:   nico@augfl.be (Nico Francois), cmh@lls.se (Magnus Holmgren)
+Uploader: cmh@lls.se (Magnus Holmgren)
+
+---------------------------------------------------------------------
+NOTE: This is the developer archive. Only includes, autodocs, glue
+      code, catalog sources, example files and similar included.
+---------------------------------------------------------------------
+
+reqtools.library is a standard Amiga shared, runtime library.  The purpose
+of ReqTools is to make it a lot quicker and easier to build standard
+requesters into your programs.  ReqTools is designed with Commodore's style
+guidelines in mind, all requesters have the look-and-feel of AmigaDOS
+Release 2.
+
+ReqTools features the following requesters: a query requester, a string
+requester, a number requester, a file requester, a font requester, a
+palette requester, a volume requester and a screenmode requester.
+
+
+Release 2.9 (Library version 38.1436):
+
+	Hopefully fixed the problem that rtEZRequestA() could make the
+	requester too wide when no gadgets were displayed. As I never
+	noticed the problem here, it is a bit hard to know for sure if it
+	really is fixed.
+
+	RTPatch 1.7 included.
+
+	Updated Deutsch, Finnish, Norwegian and Russian translations, and
+	added Serbian catalog sources (don't quite know if they're update
+	though ;).
+
+
+ReqTools 2.9 - reqtools.library
+Copyright © 1991-1994 Nico François
+            1995-1997 Magnus Holmgren

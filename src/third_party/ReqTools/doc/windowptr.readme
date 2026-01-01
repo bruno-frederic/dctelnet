@@ -1,0 +1,47 @@
+
+All requesters in the Requester Toolkit check the pr_WindowPtr of your
+process to find the screen they should open on.
+
+These code fragments show you how to set/restore the pr_WindowPtr of your
+process.
+
+-----------------------------------------------------------------------------
+
+...
+struct Window *win;
+struct Process *myproc;
+APTR oldwinptr;
+
+main()
+{
+   myproc = (struct Process *)FindTask (NULL);
+   /* get old window pointer */
+   oldwinptr = myproc->pr_WindowPtr;
+   ...
+   /* Open your screen */
+   ...
+   /* Open window on your screen */
+   win = OpenWindow (&newwindow);
+   if (!win) FreeExit();
+   /* change the window pointer */
+   myproc->pr_WindowPtr = win;
+   ...
+   /* now all requesters from the Requester Toolkit will appear
+      on the screen your window is on. */
+   ...
+}
+
+-----------------------------------------------------------------------------
+In 'FreeExit()' you MUST restore the old windowptr before closing your
+window and exiting!
+-----------------------------------------------------------------------------
+
+FreeExit()
+{
+   ...
+   /* restore old window pointer before closing window */
+   myproc->pr_WindowPtr = oldwinptr;
+   if (win) CloseWindow (win);
+   ...
+   exit (0);
+}

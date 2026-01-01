@@ -1,0 +1,17 @@
+
+DICE C
+~~~~~~
+Extract DLibSource.lha for the source of the Dice C libraries.
+
+Type DMake in the shell to create the following libraries:
+
+    reqtoolss.lib     -> stack args
+    reqtoolssr.lib    -> registerized args
+    reqtoolsl.lib     -> stack args (large data)
+    reqtoolslr.lib    -> registerized args (large data)
+
+To generate other flavors (such as a profiled library), simply use the
+DICE lbmake utility.
+
+The file reqtools_protos.h should be copied to dinclude:clib (if you have
+DICE 3.0).
