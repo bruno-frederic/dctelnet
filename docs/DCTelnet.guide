@@ -3,7 +3,7 @@
 @author "zED"
 @TOC "MAIN"
 
-                             @{b}DC-TelNet © v1.5@{ub}
+                             @{b}DC-TelNet © v1.7@{ub}
      ______  ______ ____________________    _________    ____________________
     /\_____\/\_____\\_________\______\__\  /\______\_\  /\__\______\_________\
    / /  ___ \/  ___//___   ___/  ____/  / / /  ____/  \/ /  /  ____/___   ___/
@@ -11,7 +11,7 @@
  / /  // / /  /_    / /  // /  ___//  /_/ /  ___//   /\   /  ___/  / /  /
 / /  /_\/ /  /__\  / /  // /  /__\/  /__\/  /__\/   / /  /  /__\  / /  /
 \/_______/______/  \/__/ \/______/______/______/___/\/__/______/  \/__/
-                                Version 1.5
+                                Version 1.7
 
  @{"   Introduction  " LINK INTRODUCTION} What is DC-Telnet?
  @{"   Requirements  " LINK REQUIREMENTS} What you need to run it
@@ -124,7 +124,7 @@ archive or...
 use them...
 
 Pressing the right mouse button you will see.
-        
+
  @{"   DC-Telnet  " LINK MM} DC-Telnet menu options.
  @{"   Transfer   " LINK TRANSFER} Transfer menu options.
  @{"  Connection  " LINK CONNECTION} Connection menu options.
@@ -223,7 +223,7 @@ name and port number in manually (SEE: CONNECT)
 Opens a window with a list of the address that you have saved.
 
      @{b}@{u} Connect @{ub}@{uu} - Connects you to the selected site.
- 
+
      @{b}@{u} Edit @{ub}@{uu}    - Allows you to edit, Site name, Site address, port number
                 Username & Password on a selected site.
 
@@ -423,13 +423,28 @@ address book, to the site you are connected to.
                               @{b}@{u} SEND PASSWORD @{ub}@{uu}
                                ~~~~~~~~~~~~~
    Will send the password you have defined in the password field of the
-address book, to the site you are connected to. 
+address book, to the site you are connected to.
 
 @EndNode
 @node HISTORY "DC-Telnet, History"
 
                                  @{b}@{u} History @{ub}@{uu}
                                   ~~~~~~~~~
+
+---[ DCTelnet 1.7 ]-------------------------------------------------------
+
+	- TODO
+
+	- TODO
+
+
+
+---[ DCTelnet 1.6 ]-------------------------------------------------------
+
+	- Original DCTelnet 1.6 source code released by Zed (October 2000)
+	  https://aminet.net/package/comm/tcp/dct16_src
+
+
 
 ---[ DCTelnet 1.5 ]-------------------------------------------------------
 

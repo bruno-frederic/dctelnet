@@ -2,7 +2,12 @@
 /* ============================= DC TELNET ============================== */
 /* ====================================================================== */
 
-static const char __version[]="\0$VER: DCTelnet 1.5 ("__DATE__")";
+
+#define DCTELNET_VERSION "1.7"
+static const char __ver[] = "$VER: DCTelnet " DCTELNET_VERSION " " __AMIGADATE__;
+
+static char MainWindowTitle[] =
+  "DCTelnet " DCTELNET_VERSION " " __AMIGADATE__ " - A classic Amiga Telnet/BBS client with Zmodem";
 
 #define __USE_SYSBASE
 
@@ -1484,19 +1489,20 @@ void GetWindowMsg(struct Window *wwin)
 					switch(itemNum)
 					{
 					case 0:
-						rtEZRequestTags("        DCTelnet 1.5 By ZED^DC"		"\n"
-														"\n"
-								"   First Compiled ... : May 17 1997"		"\n"
-								"   Last Compiled .... : "__DATE__""		"\n"
-								"   Compilers Used ... : SAS/C Compiler v6.58"	"\n"
-								"                        SAS/C 680x0 Assembler"	"\n"
-								"    Author Email .... : zed@mentasm.com"	"\n"
-														"\n"
-								"        www.digital-corruption.net"		"\n"
-														"\n"
-								"      Thanks to Ray Akey for his help."	"\n"
-														"\n"
-								"  Stop by at #EliteCafe (irc.denet.co.jp)",
+						rtEZRequestTags(
+								"DCTelnet - A classic Amiga Telnet/BBS client with Zmodem"     "\n"
+								"                          v"DCTELNET_VERSION                  "\n"
+								"         Last Compiled .... : "__DATE__""                     "\n"
+								"         First Compiled ... : May 17 1997"                    "\n"
+								"         Compilers Used ... : SAS/C Compiler v6.58"           "\n"
+								"                              SAS/C 680x0 Assembler"          "\n"
+								                                                               "\n"
+								"            Original author : ZED^DC"                         "\n"
+								                                                               "\n"
+								"            Recompiled by   : Bruno FREDERIC"                 "\n"
+								                                                               "\n"
+								"                   More info/sources:"                        "\n"
+								"           github.com/bruno-frederic/dctelnet"                "\n",
 								"OK", NULL, NULL,
 								RT_Window,	win,
 								RT_ReqPos,	REQPOS_CENTERSCR,
@@ -2034,7 +2040,8 @@ char OpenDisplay(char doscreen)
 		nscr.BlockPen = 1;
 		nscr.Type = CUSTOMSCREEN;
 		nscr.Font = &fontattr;
-		nscr.DefaultTitle = "DCTelnet 1.5 © "__DATE__" By ZED^DC";
+		// Main window title in full screen mode:
+		nscr.DefaultTitle = MainWindowTitle;
 
 		scr = OpenScreenTags(&nscr,
 			SA_DisplayID,	prefs.DisplayID,
@@ -2084,7 +2091,8 @@ jump1:
 			nwin.IDCMPFlags = IDCMP_RAWKEY | IDCMP_CLOSEWINDOW | IDCMP_MENUPICK;
 			//nwin.Flags = WFLG_GIMMEZEROZERO|WFLG_NEWLOOKMENUS|WFLG_SIMPLE_REFRESH|WFLG_ACTIVATE|WFLG_CLOSEGADGET|WFLG_DRAGBAR|WFLG_DEPTHGADGET|WFLG_SIZEGADGET;
 			nwin.Flags = WFLG_GIMMEZEROZERO|WFLG_NEWLOOKMENUS|WFLG_SMART_REFRESH|WFLG_ACTIVATE|WFLG_CLOSEGADGET|WFLG_DRAGBAR|WFLG_DEPTHGADGET|WFLG_SIZEGADGET;
-			nwin.Title = "DCTelnet 1.5 © "__DATE__" By ZED^DC";
+			// Main window title in windowed workbench mode:
+			nwin.Title = MainWindowTitle;
 			nwin.FirstGadget = 0;
 
 			CheckDimensions(&nwin);
