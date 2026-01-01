@@ -1,11 +1,11 @@
-     ________| ____  __|_________|___
-dC! |  _ \_  |/    |/  |_  _/ ._ |   | zS!sE
-  _ |  /  /  /  |_ /   |/  |  |/ |   |_  _
- \\ |____/   \___/ \___|   |__/  |_____| //
-|¯      \____| \___|  \____| \_____|      ¯|
-|   · C Ø R R U P T ¡ Ø N    2 0 0 8 ! ·   |
-|                                          |
-|    DCTelnet 1.6 - The number 1 choice    |
-|           of the Amiga scene.            |
-|_                                        _|
- //.01.02.08._______________________.zEd.\\
+ ____   ____ _____     _             _
+|  _ \ / ___|_   _|___| | _ __   ___| |_
+| | | | |     | | / _ \ || '_ \ / _ \ __|
+| |_| | |___  | ||  __/ || | | |  __/ |_
+|____/ \____| |_| \___|_||_| |_|\___|___|
+DCTelnet v1.7 (Jan 2026)
+A classic Amiga Telnet/BBS client with Zmodem
+* 68000 & 68020 compatible
+* optional GlowIcons
+* No MUI, ClassAct or ReAction required
+* No telser.device required
