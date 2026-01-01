@@ -1,0 +1,20 @@
+
+	External Protocol (XPR) Specification
+	=====================================
+
+		    Version 2.001
+
+	Version 2.001 of the XPR spec is fully backwards compatible with
+the previous version, with a few minor exceptions, some due to actual
+documentation mistakes and others due to the fact that some definitions
+were not explicit enough.
+	This version also specifies some extensions to the spec, see the
+file xprotocol.doc.
+	It should be pointed out that the xprascii library is provided as
+an example mainly to keep the zoo archive small. Meanwhile, a nicer and
+more extensive example can be found in Rick Huebner's xprzmodem
+implementation, available on BIX in Amiga/listings. Also, the file
+xprfuncs.c is no longer the same as the one used in VLT, though
+vltface.asm is current.
+
+		Willy Langeveld.

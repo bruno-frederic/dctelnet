@@ -1,0 +1,2365 @@
++----------------------------------------------------------------------+
+|                                                                      |
+|                  D I S C L A I M E R   N O T I C E                   |
+|                                                                      |
+|  This document and/or  portions of the material and  data furnished  |
+|  herewith,  was developed under sponsorship of the U.S. Government.  |
+|  Neither the U.S.  nor  the U.S.D.O.E.,  nor  the  Leland  Stanford  |
+|  Junior University, nor their employees,  nor their respective con-  |
+|  tractors, subcontractors, or their employees, makes  any warranty,  |
+|  express or implied, or assumes any liability or responsibility for  |
+|  accuracy,  completeness or  usefulness of any information, appara-  |
+|  tus, product or process disclosed, or represents that its use will  |
+|  not infringe privately-owned rights.  Mention of any product,  its  |
+|  manufacturer, or suppliers shall not, nor is it intended to, imply  |
+|  approval, disapproval, or fitness for any particular use. The U.S.  |
+|  and  the University at all times  retain the right to use and dis-  |
+|  seminate same for any purpose whatsoever.                           |
+|                                                                      |
++----------------------------------------------------------------------+
+
+Trademarks:
+Amiga is a trademark of Commodore Business Machines.
+A-Talk III is a trademark of Felsina Software.
+Manx is a trademark of Manx Software Systems.
+Lattice is a trademark of Lattice, Inc.
+
+
+
+
+        XPR: External File Transfer Protocols as Amiga Libraries.
+        =========================================================
+
+                   Version 2.0   - 11 September 1989
+                   Version 2.001 - 17 August    1993 / Unauthorized adds by
+                                                       Pasi Ristioja.
+
+                       (C) Copyright 1989 by
+
+                         W.G.J. Langeveld
+
+                 Stanford Linear Accelerator Center
+
+
+                              ABSTRACT
+                              ========
+
+             This  document  describes a  standard method
+             of using  Amiga  shared  libraries  for  the
+             implementation  of  external  file  transfer
+             protocols  (XPR's), as  implemented  in  the
+             Amiga  terminal  emulators  A-Talk  III  and
+             VLT.  The  method  can  also be  used to im-
+             plement external terminal emulations (XEM's).
+
+[>* .. *<] - XPR 2.001 feature / additions provide easier and faster
+             implemention of birectional protocol without need to use
+             XProtocolHostMon() or XProtocolUserMon(). They are real
+             pain to use and IMHO only usable to write external emulation.
+
+1. Introduction.
+================
+
+        One of the most frequently asked questions of the author of a
+communications program is "Why don't you implement this wonderful file transfer
+protocol in addition to the 25 you already have?". Clearly, implementing more
+FTP's leads to larger code size and to increased product development time and
+customer support requirements, unless there is a way to have the additional
+protocols available as separate entities. One obvious way is to put the
+additional FTP's in overlays, but that only mitigates the code size problem and
+does not allow protocols to be used with communications programs of different
+vendors. Better is to open the serial device as a shared port and to have a
+completely separate program access it at the same time. However, this method has
+the disadvantage that shared use of a single serial port can lead to
+unpredictable results unless there is a well-established priority system
+enforcing which program is allowed to write to the device at which time. The
+advantage is that the FTP can now be developed separately and even by someone
+other than the author of the communications program. There are variations
+involving inter-process communication to add access control to the latter
+system, but I will not go into further detail.
+        The system described here is based on Amiga shared libraries. The
+library implements a small number of primary functions, such as "Send File(s)"
+and "Receive File(s)". These functions are called with a single argument, a
+pointer to an XPR_IO structure. This structure contains a number of things, the
+more obvious one being a pointer to a null terminated string indicating which
+files are to be sent or received and addresses of "call-back" functions inside
+the code of the communications program to access the serial device, which is
+opened typically in exclusive access. The scheme described here opens the
+possibility for the Amiga community to write a multitude of file transfer
+protocols, all rather small in size because they don't contain any overhead,
+that work with any communications program following the rules outlined in this
+document.
+        Possible problems with shared libraries are that they should be
+reentrant and that they should, if possible, not open dos.library [1]. On the
+other hand, these problems can easily be turned into advantages: for one,
+reentrancy is not hard to accomplish and in addition when there are multiple
+serial ports in use all of them can use the FTP with a single copy of the code.
+Not having to open dos.library can be accomplished by having call-back functions
+that provide all the DOS access needed in the original communications program.
+Typically these DOS functions are already linked into the original code anyway,
+and call-backs have to be provided for serial port access in any case.
+        For the sake of reentrancy across calls to the external protocol library
+(XPR), a field for storing a pointer to a data area is added for use by the XPR
+internally.
+
+        Section 2 explains the library structure itself. Section 3 covers the
+XPR_IO structure and defines all the call-back functions. Section 4 describes an
+example library for a simple ASCII transfer without bells or whistles and will
+show how to code the library part of the call-backs. Section 5 shows how to set
+up a partial interface on the communications program side, sufficient to work
+with the ASCII example. Note: Sections 2 through 5 only describe the
+functionality of the specification that was present in the first public release.
+Section 6, finally, describes a number of extensions that were added later.
+
+        Note: the examples are all for Manx C and assembler but should be easily
+modifyable for Lattice or any other language. Not all source files are given in
+this document. This archive, however, contains the example library plus all
+files needed to link it and interface to it, for Manx. Specifically, the
+routines that interface to XPR from VLT are in the "comm-program" subdirectory,
+and the sources to the library are in the "library" subdirectory. Also note,
+that both communications program and XPR implementers can only count on the
+the arguments passed in the registers as indicated. While it may appear from
+some of the code that the arguments are also available on the stack, this can
+not be relied on.
+
+        I would like to thank Marco Papa of Felsina Software for his help in
+working out some of the details of the XPR standard, and Rick Huebner for his
+comments and debugging in the later stages.
+
+        Neither this document, nor the XPR standard, nor the other files in this
+archive are in the public domain, but they may be freely distributed and used
+for any purpose bearing in mind the stipulations given in the disclaimer above,
+and with the proviso that in case of further distribution all files of this
+archive must remain together and unchanged.
+
+
+Reference:
+[1] Jim Mackraz says that opening dos.library inside a library is not a good
+    idea.
+
+
+2. XPR libraries.
+=================
+
+        Each external FTP is implemented as a separate library which lives in
+the libs: directory. It is mandatory that the names of XPR libraries start with
+the three letters "xpr" so that they are easily identified. The template for the
+name is xpr<protocol-name>.library, where <protocol-name> is a descriptive name
+of the protocol that is implemented. Obvious examples would be xprkermit.library
+and xprxmodem.library, but xprmykermit.library would be fine for a
+user-customized kermit implementation. When thinking of a name, the  implementer
+of an XPR library should keep in mind that communication programs will likely
+use the <protocol-name> part in their XPR requester.
+        Each XPR library in turn has four mandatory public functions. The
+functions are:
+
+        XProtocolCleanup()
+        XProtocolSetup()
+        XProtocolSend()    and
+        XProtocolReceive()
+
+in addition to the usual open, close expunge and reserved vectors. The library
+skeleton is given in Appendix A.
+        Two more library functions, XProtocolHostMon() and XProtocolUserMon(),
+are optional, see chapter 6.
+        Typically, a session with a terminal emulator using external protocols
+would consist of
+
+        1. Selecting an external protocol (Using e.g. a file requester
+           showing only those files in libs: starting with "xpr").
+        2. Retrieving the library base XProtocolBase of the selected protocol
+           using OpenLibrary().
+        3. (Allocating and) initializing an XPR_IO structure.
+        4. Optionally calling XProtocolSetup() with the initialized structure.
+        5. Optionally Calling XProtocolSend() and/or XprotocolReceive() once or
+           multiple times to transfer files.
+        6. Optionally calling XProtocolSetup() to change parameters or to send
+           special commands. Perhaps repeat 5.
+        7. Calling XprotocolCleanup() to deallocate any resources allocated by
+           XProtocolSetup(). (Deallocate the XPR_IO structure if needed).
+        8. Closing the library using CloseLibrary().
+        9. Repeat the process, or
+       10. Exit.
+
+        All four XPR functions take a single argument, a pointer to an XPR_IO
+structure, properly initialized as described in section 5, and passed in
+register A0. After XProtocolSetup() has been called, the same XPR_IO structure
+should be used for calls to any of the other functions. Only the xpr_filename
+field is allowed to be changed between  calls. In particular, the xpr_data field
+is for internal use by the XPR library only! It should be initialized to NULL
+before calling XProtocolSetup() and should not be changed by the communications
+program. XProtocolSetup() should be called once right after opening the library
+and subsequently only at the request of the user. XProtocolCleanup() should
+always be called before the library is closed.
+        In the form of a sample program, the rules above look like this:
+
+/** MyWonderFullCommProgram.c
+*
+*   Just an example. An actual implementation would likely look different.
+*
+**/
+#include <stdio.h>
+#include <functions.h>
+#include "xproto.h"
+
+struct Library *XProtocolBase = NULL;
+
+#define SEND 1
+#define RECEIVE 2
+#define INITIALIZE 3
+
+main()
+{
+   struct XPR_IO io;
+   int user_said, Waiting_for_user_input();
+
+   XProtocolBase = OpenLibrary("xprascii.library", 0L);
+   if (XProtocolBase == NULL) {
+      printf("protocol not found\n");
+      exit(10);
+   }
+
+/*
+*   Initialize structure (see later).
+*/
+   xpr_setup(io);
+/*
+*   Retrieve the initalization string
+*/
+   Get_init_string_from_user_or_wherever(buffer);
+   io->xpr_filename = buffer;
+   XProtocolSetup(io);
+
+   while (user_said = Waiting_for_user_input(filename)) {
+      if (user_said == SEND) {
+         io->xpr_filename = filename;
+         XProtocolSend(io);
+      }
+      else if (user_said == RECEIVE) {
+         io->xpr_filename = filename;
+         XProtocolReceive(io);
+      }
+      else if (user_said == INITIALIZE) {
+         io->xpr_filename = NULL;
+         XProtocolSetup(io);
+      }
+   }
+
+   XProtocolCleanup(io);
+
+   CloseLibrary(XProtocolBase);
+
+   exit(0);
+}
+
+        Clearly, only one FTP can be active at any particular instant in the
+life of the session of the communications program. However, this is not really a
+limitation in practice, and can be worked around at the cost of some amount of
+programming effort.
+        XProtocolSetup(), XProtocolSend(), XProtocolReceive() and
+XProtocolCleanup() return 0L on failure, non-zero on success. Note to XPR
+implementers: the vanilla success return code should be 1L. Other bits in the
+return code may have special meaning, see section 6.
+
+
+
+
+3. The XPR_IO structure.
+========================
+
+        The XPR_IO structure definition is given in Appendix B. The reader
+should keep in mind that the callback functions are to be implemented by the
+author of the communications program, not by the author of the external
+protocol. However, most communications programs already have functions that
+perform the operations listed here, so the implementation should not be too
+difficult. Also, the communications program author is not required, strictly
+speaking, to implement any of the functions: functions that are not implemented
+should be indicated by initializing the corresponding XPR_IO field to NULL.
+Obviously, a minimum set of functions must be implemented in order to be useful.
+On the other hand, it is up to the implementer of the external protocol to
+determine if the given set of functions is sufficient to perform the protocol
+transfer. In case of missing functions (indicated by NULL fields in the XPR_IO
+structure) suitable default actions should be taken.
+
+        We will now examine all the fields of XPR_IO in detail. 
+
+
+3.1     char  *xpr_filename;
+----------------------------
+
+        The xpr_filename field is used primarily to pass null-terminated strings
+containing a file name (or file names specified by wild cards) to the functions
+XProtocolSend() or XProtocolReceive(). The XPR implementer may elect to support
+wild cards in the file name. Call-backs for finding the first and next filename
+matching the pattern are provided in the XPR_IO structure, but on the other hand
+XPR implementers should take care to check that these call-backs are implemented
+by the communications program by testing the corresponding XPR_IO fields for
+NULL. Never assume that all call-backs are implemented! If a particular
+call-back without which the XPR cannot function is not implemented, the XPR
+should fail gracefully.
+
+        The xpr_filename field can also be used to pass an initialization string
+to XProtocolSetup(). Typically, if this field is left NULL in a call to
+XProtocolSetup(), it would be the duty of XProtocolSetup() to query the user for
+initialization information, using e.g. the xpr_gets function (see later). If an
+initialization string is present, XProtocolSetup() should NOT query the user,
+but this is left to the discretion of the implementer of the protocol, as is the
+precise form of the initialization string. It is the duty of the communications
+program to determine any default initialization strings for the protocol in
+question. Suggested is the use of environment variables named for the protocols
+they refer to, containing the initialization string. For the simple Ascii
+protocol shown later, the user might have a statement like
+
+        set xprascii=50
+
+in his startup sequence, or with AmigaDOS 1.3, a file called xprascii in his
+env: directory containing the letters "50" (50 referring here to the number of
+ticks delay between 80-character packets - obviously more extensive
+initialization might be needed).
+        Given the presence of such default information, XProtocolSetup() should
+always be called using the default initialization string right after opening the
+library. Conversely, a mechanism (menu option) should be present in the
+communications program to change the settings by calling XProtocolSetup() with a
+NULL value for this field. On the other hand, if no default initialization
+string is present, the legal situation can arise that XProtocolSetup() is never
+called.
+        It should be noted that XProtocolSetup() can be used to implement any
+commands not directly related to sending or receiving files. Examples that come
+to mind are Kermit Bye and Finish. One should keep in mind, that typically the
+communications program does not know what protocol it is running, much less what
+commands that protocol might support. When the user asks to "setup" the external
+protocol, XProtocolSetup() should be called with a NULL xpr_filename field,
+and the external protocol should request a command, as stated before. In the
+case of an external Kermit protocol, the user might type a Bye or Finish, and
+the external protocol could act accordingly. See section 6 for additional
+information.
+
+        The xpr_filename field is ignored by the XProtocolCleanup() function.
+
+
+3.2    long (*xpr_fopen)();
+---------------------------
+
+        The xpr_fopen() call-back function works in most respects identically to
+the stdio function fopen(). Calling sequence:
+
+        long fp = (*xpr_fopen)(char *filename, char *accessmode)
+        D0                     A0              A1
+
+The result is a FILE structure, but one should not count on it being a
+particular one, since it may be compiler dependent. The return value should only
+be used in calls to other stdio functions. The only accesmodes available are
+"r"  (read-only)
+"w"  (write-only, create new file if none exists, truncate existing file)
+"a"  (write-only, create new file if none exists, append to existing file)
+"r+" (same as "r", but may also write)
+"w+" (same as "w", but may also read)
+"a+" (same as "a", but may also read).
+        An error return is indicated when the function returns NULL.
+        Note that the arguments must be passed in registers A0 and A1
+respectively. See also section 4.
+
+[>*
+
+Use mode "r" to open upload file and nothing else, if you use other mode
+comm-prog cannot know when to add upload and when download path... Of course
+you MUST NOT open dnload files with mode "r".
+
+*<]
+
+
+3.3     long (*xpr_fclose)();
+-----------------------------
+
+        The xpr_fclose() call-back function works in most respects identically
+to the stdio function fclose(). Calling sequence:
+
+        (*xpr_fclose)(long filepointer)
+                      A0
+
+Note that the argument must be passed in register A0.
+
+
+3.4     long (*xpr_fread)();
+----------------------------
+
+        The xpr_fread() call-back function works in most respects identically to
+the stdio function fread(). Calling sequence:
+
+        long count = (*xpr_fread)(char *buffer, long size, long count,
+        D0                        A0            D0         D1
+
+                                  long fileptr)
+                                  A1
+
+The function returns the actual number items read. The size argument is in bytes.
+The function returns 0 on error or end of file.
+
+
+3.5     long (*xpr_fwrite)();
+-----------------------------
+
+        The xpr_fwrite() call-back function works in most respects identically
+to the stdio function fwrite(). Calling sequence:
+
+        long count = (*xpr_fwrite)(char *buffer, long size, long count,
+        D0                         A0            D0         D1
+
+                                  long fileptr)
+                                  A1
+
+The function returns the actual number items written. The size argument is in
+bytes. The function returns 0 on failure.
+
+
+3.6     long (*xpr_sread)();
+----------------------------
+
+        The xpr_sread() call-back function has the following calling sequence:
+
+        long count = (*xpr_sread)(char *buffer, long size, long timeout)
+        D0                        A0            D0         D1
+
+The first argument is a pointer to a buffer to receive the characters from the
+serial port, with a size specified in the second argument. The third item is a
+timeout in microseconds. The function returns the actual number of characters
+put into the buffer, or -1L on error. When the timeout argument is non-zero, the
+function will return when one of three events occurs: (1) the timeout period
+has expired, or (2) the buffer has been filled with  exactly "size" characters,
+or (3) an error occurs.
+        Specifically, when the routine is called, a timer is started and set to
+the value contained in timeout. The routine now starts collecting data from the 
+serial port and stores them in buffer. If the timer times out before size
+characters are received, the routine returns immediately with count set to the
+actual number of characters received. In case no characters at all are received,
+it will return count = 0L. If the buffer is full before the timer has expired,
+the routine returns immediately with count = size. It is up to the XPR to set
+the  timeout long enough to ensure that at the current baud rate the buffer can
+actually be filled to the specified size within the timeout period. The routine
+can also return with count set to -1L. This might happen, for example, when the
+carrier is lost. The XPR should then fairly quickly get around to checking
+the abort status using the xpr_chkabort() function: BBS programs will want to
+regain control quickly after the carrier is dropped.
+        The timeout may be set to 0L if the objective is to just read any
+characters that may currently be available. In this case, the function will not
+start up a timer, but will instead check the serial device for currently
+available characters and return them in the usual fashion, and return as quickly
+as possible. Note: the value 0L for the timeout argument is a special case.
+Remember that AmigaDOS 1.3 may have problems with small non-zero values for
+timeouts.
+	Further notes on the implementation of xpr_sread() can be found in the
+discussion about XProtocolHostMon in section 6.3.1.
+
+
+3.7     long (*xpr_swrite)();
+-----------------------------
+
+        The xpr_swrite() call-back function has the following calling sequence:
+
+        long status = (*xpr_swrite)(char *buffer, long size)
+        D0                          A0            D0
+
+This function writes a buffer with the given size to the serial port. It returns
+0L on success, non-zero on failure.
+
+3.8     long (*xpr_sflush)();
+----------------------------
+
+        The xpr_sflush call-back function has the following calling sequence:
+
+        long status = (*xpr_sflush)()
+        D0
+
+This function flushes all the data in the serial port input buffer.  It is
+typically used to recover after a protocol error. The function returns 0L on
+success, non-zero on failure.
+
+3.9     long (*xpr_update)();
+-----------------------------
+
+        The xpr_update() call-back function has the following calling sequence:
+
+        (*xpr_update)(struct XPR_UPDATE *updatestruct)
+                      A0
+where:
+
+struct XPR_UPDATE {     long  xpru_updatemask;
+                        char *xpru_protocol;
+                        char *xpru_filename;
+                        long  xpru_filesize;
+                        char *xpru_msg;
+                        char *xpru_errormsg;
+                        long  xpru_blocks;
+                        long  xpru_blocksize;
+                        long  xpru_bytes;
+                        long  xpru_errors;
+                        long  xpru_timeouts;
+                        long  xpru_packettype;
+                        long  xpru_packetdelay;
+                        long  xpru_chardelay;
+                        char *xpru_blockcheck;
+                        char *xpru_expecttime;
+                        char *xpru_elapsedtime;
+                        long  xpru_datarate;
+                        long  xpru_reserved1;
+                        long  xpru_reserved2;
+                        long  xpru_reserved3;
+                        long  xpru_reserved4;
+                        long  xpru_reserved5;
+                   }
+
+This function is intended to communicate a variety of values and strings from
+the external protocol to the communications program for display. Hence, the
+display format itself (requester, text-I/O) is left to the implementer of the
+communications program.
+        The mask xpru_updatemask indicates which of the other fields are valid,
+i.e. have had their value updated. It is possible to update a single or multiple
+values. Values that the external protocol does not use can be indicated by a
+NULL for pointers and -1L for longs.
+        The possible bit values for the xpru_updatemask are:
+
+[>* OR one at time / call twice if your proto is doing bi-xfer  *<]
+[>*             #define XPRU_UPLOAD		0x80000000L	*<]
+[>*             #define XPRU_DNLOAD		0x40000000L	*<]
+
+                #define XPRU_PROTOCOL           0x00000001L
+                #define XPRU_FILENAME           0x00000002L
+                #define XPRU_FILESIZE           0x00000004L
+                #define XPRU_MSG                0x00000008L
+                #define XPRU_ERRORMSG           0x00000010L
+                #define XPRU_BLOCKS             0x00000020L
+                #define XPRU_BLOCKSIZE          0x00000040L
+                #define XPRU_BYTES              0x00000080L
+                #define XPRU_ERRORS             0x00000100L
+                #define XPRU_TIMEOUTS           0x00000200L
+                #define XPRU_PACKETTYPE         0x00000400L
+                #define XPRU_PACKETDELAY        0x00000800L
+                #define XPRU_CHARDELAY          0x00001000L
+                #define XPRU_BLOCKCHECK         0x00002000L
+                #define XPRU_EXPECTTIME         0x00004000L
+                #define XPRU_ELAPSEDTIME        0x00008000L
+                #define XPRU_DATARATE           0x00010000L
+
+        The other fields of the XPR_UPDATE structure have the following
+meaning:
+
+xpru_protocol    -- a string that indicates the name of the protocol used
+xpru_filename    -- the name of the file currently sent or received
+xpru_filesize    -- the size of the file
+xpru_msg         -- a "generic" message (50 characters or less)
+xpru_errormsg    -- an "error" message  (50 characters or less)
+xpru_blocks      -- number of transferred blocks
+xpru_blocksize   -- size of most recently transferred block (bytes)
+xpru_bytes       -- number of transferred bytes
+xpru_errors      -- number of errors
+xpru_timeouts    -- number of timeouts
+xpru_packettype  -- type of packet (e.g. Kermit 'D'-packet)
+xpru_packetdelay -- delay between packets in msec
+xpru_chardelay   -- delay between characters in msec
+xpru_blockcheck  -- block check type (e.g. "Checksum", "CRC-16", "CRC-32")
+xpru_expecttime  -- expected transfer time (e.g. "5 min 20 sec", "00:05:30")
+xpru_elapsedtime -- elapsed time from start of transfer (see xpru_expecttime)
+xpru_datarate    -- rate of data transfer expressed in characters per second.
+xpru_reserved1   -- for further expansion
+ ...         .   --  ...
+xpru_reserved5   -- for further expansion
+
+        The communications program is free to ignore any field and to only update
+the ones it can handle.
+        If xpru_updatemask is equal to -1L, then ALL fields are either valid or 
+are unambiguously valued to indicate they are unused: NULL for pointers and -1L
+for longs.
+        When writing an external protocol, it is advisable to keep any strings
+as short as possible, and not longer than about 50 characters. Remember, if your
+strings are too long, they may overflow whatever display mechanism the
+communications program has chosen. It is also advisable to fill in as many
+fields as you can, since the communications program may not choose to display
+the ones you favor. When writing a communications program interface to XPR, on
+the other hand, remember that strings can be as much as 50 characters long. If
+you don't receive your favorite variables, it may be possible to compute them
+from those that are given. It is good practice for the external protocol to call
+xpr_update before starting the transfer with a message in the xpru_msg field
+indicating whether the protocol is sending or receiving a file.
+        The XPR_UPDATE structure must be provided by the external protocol, and
+must, of course be allocated either on the stack (as a local variable) or using
+AllocMem or malloc(). This is needed to ensure reentrancy. In general, it is a
+good idea to keep the entire library reentrant, since more than one
+communications program may be using the same code simultaneously. (If you use
+malloc(), make sure your implementation of malloc() is reentrant!).
+
+3.10     long (*xpr_chkabort)();
+-------------------------------
+
+        The xpr_chkabort() call-back function has no arguments:
+
+        long status = (*xpr_chkabort)()
+        D0
+
+When it returns non-zero, it means that the user has requested an abort. It is
+possible to implement levels of abort by returning 1L, 2L, 3L, etc, depending on
+the user's actions. The highest level of abort is -1L, which should be
+interpreted to mean stop all actions and return. The chkabort function should be
+called reasonably frequently.
+
+
+3.11    long (*xpr_chkmisc)();
+------------------------------
+
+        The xpr_chkmisc() call-back function has no arguments and returns
+nothing.
+
+        (*xpr_chkmisc)()
+
+It is intended to give the communications program that is currently executing
+the external protocol transfer a chance to service its various message ports and
+to respond to user actions. It should be called on a regular basis.
+
+
+3.12    long (*xpr_gets)();
+---------------------------
+
+        The xpr_gets() call-back function works somewhat like the stdio function
+gets(). Calling sequence:
+
+        long status = (*xpr_gets)(char *prompt, char *buffer)
+        D0                        A0            A1
+
+The first argument is a pointer to a string containing a prompt, to be displayed
+by the communications program in any manner it sees fit. The second argument
+should be a pointer to a buffer to receive the user's response. It should have a
+size of at least 256 bytes. The function returns 0L on failure or user
+cancellation, non-zero on success. The buffer has to be supplied by the XPR.
+
+
+3.13    long (*xpr_setserial)();
+--------------------------------
+
+        The xpr_setserial() call-back function has the following calling
+sequence:
+
+        long oldstatus = (*xpr_setserial)(long newstatus)
+        D0                                D0
+
+This function returns the current serial device status in encoded form. If the
+newstatus argument is -1L, the serial device status will not be changed.
+Otherwise the serial device status will be changed to newstatus. If oldstatus
+is returned as -1L, the call failed and the serial status was not changed.
+        Note: if the serial device status is changed with this function, the 
+external protocol must change the status back to oldstatus before returning.
+
+        serial status longword:
+        .......................
+
+        byte 0:         as the SerFlags field in IOExtSer structure.
+                bit 0:  - parity on if set
+                bit 1:  - parity odd if set
+                bit 2:  - 7-wire protocol enabled if set
+                bit 3:  - queued break if set
+                bit 4:  - rad-boogie if set
+                bit 5:  - shared if set
+                bit 6:  - EOF mode if set
+                bit 7:  - Xon/Xoff disabled if set
+        byte 1:         summary of other settings
+                bit 0:  - enable mark/space parity if set
+                bit 1:  - parity mark if set, space otherwise
+                bit 2:  - 2 stop bits if set, 1 otherwise
+                bit 3:  - read wordlength is 7 if set, 8 otherwise
+                bit 4:  - write wordlength is 7 if set, 8 otherwise
+                bit 5:  - not used
+                bit 6:  - not used
+                bit 7:  - not used
+        byte 2:         specifies one of a limited set of baud rates, as in
+                        preferences.h.
+                        -    110 baud =  0
+                        -    300 baud =  1
+                        -   1200 baud =  2
+                        -   2400 baud =  3
+                        -   4800 baud =  4
+                        -   9600 baud =  5
+                        -  19200 baud =  6
+                        -   midi      =  7
+                        -  38400 baud =  8
+                        -  57600 baud =  9
+                        -  76800 baud = 10
+                        - 115200 baud = 11
+        byte 3:         not used
+
+
+3.14    long (*xpr_ffirst)();
+-----------------------------
+
+        The xpr_ffirst() call-back function has the calling sequence:
+
+        long stateinfo = (*xpr_ffirst)(char *buffer, char *pattern)
+        D0                             A0            A1
+
+The first argument is a buffer to receive the first filename that matches the
+pattern in the second argument. The function returns 0L if no file matching the
+pattern was found, non-zero otherwise. The buffer should have a size of at least
+256 bytes and is provided by the XPR. See also 3.14.
+
+
+3.15    long (*xpr_fnext)();
+----------------------------
+
+        The xpr_fnext() call-back function has the calling sequence:
+
+        long stateinfo = (*xpr_fnext)(long oldstate, char *buffer, char *pattern)
+        D0                            D0             A0            A1
+
+The first argument is a buffer to receive the next filename that matches the
+pattern in the second argument. The function returns 0L if no further file
+matching the pattern was found, non-zero otherwise. The buffer should have a
+size of at least 256 bytes and is provided by the XPR.
+        Note: the value returned by xpr_ffirst and xpr_fnext may be used by the
+implementing communications program to maintain state information, but the
+mechanism is up to the implementer. If reentrancy is not required, state
+information may be kept in global variables by the implementer, and the oldstate
+argument can be ignored. However, the external protocol implementation must pass
+the stateinfo variable returned by ffirst or fnext to the next invocation of
+fnext.
+
+
+3.16    long (*xpr_finfo)();
+----------------------------
+
+        The xpr_finfo() call-back function has the calling sequence:
+
+        long info = (*xpr_finfo)(char *filename, long typeofinfo)
+        D0                       A0              D0
+
+This function returns information about a file given its name and the type of
+information requested. Notice that some information may not be accessible if
+the file is already write locked. Therefore, you should call this function
+(where appropriate) before opening the file.
+
+        typeofinfo value:       resulting info:              on failure:
+        ..................................................................
+
+        1L                      file size (bytes)            0L
+
+        2L                      file type: 1L is binary,     0L
+                                           2L is text.
+
+        (other values)          (to be determined)
+
+[>*
+
+OR either 0x80000000 (uploadname) or 0x40000000 (dnloadname) to typeinfo.
+This is needed that comm-prog can add right path for name. (read fopen also)
+
+*<]
+
+3.17    long  *xpr_fseek();
+---------------------------
+
+        The xpr_fseek() call-back function works in most respects identically to
+the stdio function fseek(). Calling sequence:
+
+        long status = (*xpr_fseek)(long fileptr, long offset, long origin)
+        D0                         A0            D0           D1
+
+This function sets the current position of a file to "offset" from the 
+beginning (origin = 0), current position (origin = 1) or end (origin = 2) of
+the file.
+The function returns 0 on success.
+
+
+3.18    long  *xpr_extension;
+-----------------------------
+
+        This field indicates how many extension fields follow this structure.
+Before using any of those functions or fields (as defined in section 6), the
+XPR must check that the desired function is indeed present by ensuring that
+xpr_extension is larger than the position of the function beyond the xpr_data
+field.
+
+
+3.19    long  *xpr_data;
+------------------------
+
+        This field is for internal use by the external protocol. Typically the
+field is initialized to point to a structure containing information extracted
+from the initialization string handed to or retrieved by the XProtocolSetup()
+function, see section 2. The structure should be deallocated and the field
+restored to NULL by the XProtocolCleanup() function. The communications program
+should never access this field, except when initializing the XPR_IO structure:
+the field should be initialized to NULL.
+
+
+4. An example protocol.
+=======================
+
+        The following is an annotated listing of an ascii upload protocol.
+Notice that the files supplied in this archive are likely more up to date and
+more extensive than the example given here.
+
+/** xprascii.c
+*
+*   These are the protocol transfer routines for a simple ASCII upload.
+*
+**/
+#include <exec/exec.h>
+#include <functions.h>
+#include <stdio.h>
+/*
+*   xproto.h is the include file given in Appendix B.
+*/
+#include "xproto.h"
+/*
+*   The following two strings must exist.
+*/
+char  XPRname[]   = "xprascii.library";
+char  XPRid[]     = "xprascii 0.9 (May 89)\r\n";
+UWORD XPRrevision = 9;
+
+long atol();
+/*
+*   The callxx...() routines are described later. They provide the 
+*   assembler interface from the XPR library to the call-back routines.
+*/
+long calla(), callaa(), callad(), calladd(), calladda();
+
+char *malloc();
+
+
+/**
+*
+*   Send a file
+*
+**/
+long XProtocolSend(IO)
+struct XPR_IO *IO;
+{
+   long fp, r, i;
+   long brkflag = 0, fl = 0L, sd = 0L;
+   long (*xupdate)(), (*xswrite)(), (*xfopen)(), (*xfclose)(), (*xfread)(),
+        (*xsread)(),  (*xchkabort)();
+   unsigned char *buff = NULL, *serbuff = NULL;
+   struct XPR_UPDATE xpru;
+
+/*
+*   These are the call-backs we need. If any of them isn't provided, quit.
+*   Could do some error reporting if at least xupdate is there.
+*/
+   if ((xupdate    = IO->xpr_update)   == NULL) return(0L);
+   if ((xswrite    = IO->xpr_swrite)   == NULL) return(0L);
+   if ((xfopen     = IO->xpr_fopen)    == NULL) return(0L);
+   if ((xfclose    = IO->xpr_fclose)   == NULL) return(0L);
+   if ((xfread     = IO->xpr_fread)    == NULL) return(0L);
+   if ((xsread     = IO->xpr_sread)    == NULL) return(0L);
+   if ((xchkabort  = IO->xpr_chkabort) == NULL) return(0L);
+/*
+*   Allocate a few buffers.
+*/
+   buff    = (unsigned char *) malloc(80);
+   serbuff = (unsigned char *) malloc(80);
+/*
+*   If we ran out of memory, print a message.
+*   The argument needs to go in A0: calla does this for us. 
+*/
+   if (buff == NULL || serbuff == NULL) {
+      xpru.xpru_updatemask = XPRU_ERRORMSG;
+      xpru.xpru_errormsg   = "Ran out of memory!";
+      calla(xupdate, &xpru);
+      return(0L);
+   }
+/*
+*   Read the send delay, if a XProtocolSetup() was done before.
+*   If send delay is too large, cut it off at 10 seconds.
+*   In this example, the xpr_data field contains a null terminated string
+*   containing the number of ticks to delay each 80 characters.
+*/
+   if (IO->xpr_data) {
+      sd = atol(IO->xpr_data);
+      if (sd > 500L) sd = 500L;
+   }
+/*
+*   Open the file. One could do wild card detection here.
+*   xfopen requires two arguments, in a0 and a1 respectively.
+*   Again, this must be done in assembler, and callaa does it.
+*/
+   fp = callaa(xfopen, IO->xpr_filename, "r");
+   if (fp == NULL) {
+      free(buff);
+      free(serbuff);
+      xpru.xpru_updatemask = XPRU_ERRORMSG | XPRU_FILENAME;
+      xpru.xpru_errormsg   = "Failed to open input file";
+      xpru.xpru_filename   = IO->xpr_filename;
+      calla(xupdate, &xpru);
+      return(0L);
+   }
+/*
+*   Start the transfer. See 3.8 for a discussion on how to implement
+*   xupdate. 
+*/
+   xpru.xpru_updatemask = XPRU_MSG | XPRU_FILENAME;
+   xpru.xpru_msg        = "Starting ASCII Send";
+   xpru.xpru_filename   = IO->xpr_filename;
+   calla(xupdate, &xpru);
+/*
+*   Now read 80 byte chunks from the file using xfread.
+*   xfread requires four arguments, a0, d0, d1 and a1.
+*/
+   xpru.xpru_blocks = 0L;
+   while (r = calladda(xfread, buff, 1L, 80L, fp)) {
+/*
+*   Convert line feeds to carriage returns before sending to host.
+*   fl counts the characters. Display how many characters are sent.
+*/
+      for (i = 0L; i < r; i++) if (buff[i] == '\n') buff[i] = '\r';
+      fl += r;
+      xpru.xpru_updatemask = XPRU_BYTES | XPRU_BLOCKS | XPRU_BLOCKSIZE;
+      xpru.xpru_bytes      = fl;
+      xpru.xpru_blocks++;
+      xpru.xpru_blocksize  = r;
+      calla(xupdate, &xpru);
+      callad(xswrite, buff, r);
+/*
+*   Every 80 bytes, put out a message and delay if requested.
+*/
+      xpru.xpru_updatemask  = XPRU_PACKETDELAY;
+      xpru.xpru_packetdelay = sd * 20L;  /* msec! */
+      calla(xupdate, &xpru);
+/*
+*   Can't use Delay() here, because Delay() is in dos.library!
+*   However writing an equivalent function using the timer.device is
+*   trivial.
+*/
+      TimeOut(sd);
+/*
+*   Eat any characters that might arrive from the serial port.
+*   calladd stores arg1 in a0, arg2 in d0, arg3 in d1.
+*   We're not really waiting for any characters: use a timeout of 0L.
+*/
+      while (calladd(xsread, serbuff, 80L, 0L) > 0L) ;
+/*
+*   Check for "abort" here. Perhaps should call chkmisc() as well.
+*/
+      if (brkflag = xchkabort()) break;
+   }
+/*
+*   Close the file
+*/
+   calla(xfclose, fp);
+   free(buff);
+   free(serbuff);
+/*
+*   If we got here through chkabort() say Aborted.
+*/
+   xpru.xpru_updatemask       = XPRU_MSG;
+   if (brkflag) xpru.xpru_msg = "Aborted";
+   else         xpru.xpru_msg = "Done"; 
+   calla(xupdate, &xpru);
+   if (brkflag) return(0L);
+   else         return(1L);
+}
+
+
+/**
+*
+*   Receive a file.
+*
+**/
+long XProtocolReceive(IO)
+struct XPR_IO *IO;
+{
+   long fp, r, i;
+   long brkflag = 0, fl = 0L, sd = 0L;
+   long (*xupdate)(), (*xswrite)(), (*xfopen)(), (*xfclose)(), (*xfwrite)(),
+        (*xsread)(),  (*xchkabort)();
+   unsigned char *serbuff = NULL;
+   struct XPR_UPDATE xpru;
+
+/*
+*   These are the call-backs we need. If any of them isn't provided, quit.
+*   Could do some error reporting if at least xupdate is there.
+*/
+   if ((xupdate    = IO->xpr_update)   == NULL) return(0L);
+   if ((xswrite    = IO->xpr_swrite)   == NULL) return(0L);
+   if ((xfopen     = IO->xpr_fopen)    == NULL) return(0L);
+   if ((xfclose    = IO->xpr_fclose)   == NULL) return(0L);
+   if ((xfwrite    = IO->xpr_fwrite)   == NULL) return(0L);
+   if ((xsread     = IO->xpr_sread)    == NULL) return(0L);
+   if ((xchkabort  = IO->xpr_chkabort) == NULL) return(0L);
+/*
+*   Allocate a buffer.
+*/
+   serbuff = (unsigned char *) malloc(80);
+/*
+*   If we ran out of memory, print a message.
+*   The argument needs to go in A0: calla does this for us. 
+*/
+   if (serbuff == NULL) {
+      xpru.xpru_updatemask = XPRU_ERRORMSG;
+      xpru.xpru_errormsg   = "Ran out of memory!";
+      calla(xupdate, &xpru);
+      return(0L);
+   }
+/*
+*   Open the file.
+*   xfopen requires two arguments, in a0 and a1 respectively.
+*   Again, this must be done in assembler, and callaa does it.
+*/
+   fp = callaa(xfopen, IO->xpr_filename, "w");
+   if (fp == NULL) {
+      free(serbuff);
+      xpru.xpru_updatemask = XPRU_ERRORMSG | XPRU_FILENAME;
+      xpru.xpru_errormsg   = "Failed to open output file";
+      xpru.xpru_filename   = IO->xpr_filename;
+      calla(xupdate, &xpru);
+      return(0L);
+   }
+/*
+*   Start the transfer. See 3.8 for a discussion on how to implement
+*   xupdate. 
+*/
+   xpru.xpru_updatemask = XPRU_MSG | XPRU_FILENAME;
+   xpru.xpru_msg        = "Starting ASCII Receive";
+   xpru.xpru_filename   = IO->xpr_filename;
+   calla(xupdate, &xpru);
+/*
+*   Now read 80 byte chunks from the serial port using xsread. Stop
+*   when no characters arrive for 5 sec.
+*/
+   xpru.xpru_blocks = 0L;
+   while ((r = calladd(xsread, serbuff, 80L, 5000000L)) > 0L)  {
+/*
+*   Strip high-bit before storing in file.
+*   fl counts the characters. Display how many characters are received.
+*/
+      for (i = 0L; i < r; i++) serbuff[i] &= 0177;
+      fl += r;
+      xpru.xpru_updatemask = XPRU_BYTES | XPRU_BLOCKS | XPRU_BLOCKSIZE;
+      xpru.xpru_bytes      = fl;
+      xpru.xpru_blocks++;
+      xpru.xpru_blocksize  = r;
+      calla(xupdate, &xpru);
+/* 
+*   Write 80 byte chunks to the file using xwrite
+*/
+      calladda(xfwrite, serbuff, 1L, r, fp);
+
+/*
+*   Check for "abort" here. Perhaps should call chkmisc() as well.
+*/
+      if (brkflag = xchkabort()) break;
+   }
+/*
+*   Close the file
+*/
+   calla(xfclose, fp);
+   free(serbuff);
+/*
+*   If we got here through chkabort() say Aborted.
+*/
+   xpru.xpru_updatemask       = XPRU_MSG;
+   if (brkflag) xpru.xpru_msg = "Aborted";
+   else         xpru.xpru_msg = "Done"; 
+   calla(xupdate, &xpru);
+   if (brkflag) return(0L);
+   else         return(1L);
+}
+
+
+/**
+*
+*   Setup
+*
+**/
+long XProtocolSetup(IO)
+struct XPR_IO *IO;
+{
+   long (*xupdate)(), (*xgets)();
+   struct XPR_UPDATE xpru;
+
+   if ((xupdate = IO->xpr_update) == NULL) return(0L);
+   if ((xgets   = IO->xpr_gets)   == NULL) return(0L);
+/*
+*   Allocate a bit of memory for a data buffer
+*/
+   if (IO->xpr_data == NULL) {
+      if ((IO->xpr_data = (long *) malloc(256)) == NULL) {
+         xpru.xpru_updatemask = XPRU_ERRORMSG;
+         xpru.xpru_errormsg   = "ASCII - Out of memory!";
+         calla(xupdate, &xpru);
+         return(0L);
+      }
+   }
+/*
+*   If setup string isn't handed to us, ask questions
+*/
+   if (IO->xpr_filename == NULL) {
+/*
+*   Get the value for the send delay
+*/
+      callaa(xgets, "Enter ASCII send delay (ticks, 1 tick = 20 msec)",
+                  IO->xpr_data);
+   }
+   else {
+      strcpy(IO->xpr_data, IO->xpr_filename);
+   }
+   
+   return(1L);
+}
+
+/**
+*
+*   Cleanup
+*
+**/
+long XProtocolCleanup(IO)
+struct XPR_IO *IO;
+{
+   if (IO->xpr_data) free(IO->xpr_data);
+   IO->xpr_data = NULL;
+
+   return(1L);
+}
+
+/**
+*
+*   The following functions setup the proper registers for the call-back 
+*   functions.
+*
+**/
+#asm
+        public _callad
+_callad:
+        movea.l 8(sp),a0                ; Second argument goes in a0
+        move.l  12(sp),d0               ; Third  argument goes in d0
+/*
+*   Now this is a trick to avoid using another register.
+*   Charlie taught me this...
+*/
+        move.l  4(sp),-(sp)             ; First  argument is function
+        rts
+
+        public  _calladda
+_calladda:
+        movea.l 8(sp),a0                ; Second argument goes in a0
+        move.l  12(sp),d0               ; Third  argument goes in d0
+        move.l  16(sp),d1               ; Fourth argument goes in d1
+        movea.l 20(sp),a1               ; Fifth  argument goes in a1
+        move.l  4(sp),-(sp)             ; First  argument is function
+        rts
+
+        public  _calla
+_calla:
+        movea.l 8(sp),a0                ; Second argument goes in a0
+        move.l  4(sp),-(sp)             ; First  argument is function
+        rts
+
+        public  _callaa
+_callaa:
+        movea.l 8(sp),a0                ; Second argument goes in a0
+        movea.l 12(sp),a1               ; Third  argument goes in a1
+        move.l  4(sp),-(sp)             ; First  argument is function
+        rts
+
+        public  _calladd
+_calladd:
+        move.l  8(sp),a0                ; Second argument goes in a0
+        move.l  12(sp),d0               ; Third  argument goes in d0
+        move.l  16(sp),d1               ; Fourth argument goes in d1
+        move.l  4(sp),-(sp)             ; First  argument is function
+        rts
+
+#endasm
+/*
+*   Could have added any other functions needed for other call-backs.
+*   Could have written a fancier single one... Could've...
+*/
+                              __                
+                             /  \ o    /        
+                       -----/----\----/-----
+                           /    o \__/          
+                                                
+        Clearly it isn't very hard to implement a simple protocol. More
+elaborate protocols are straightforward extensions to the above example. Of
+course, there are a few more standard files needed to make the above example
+into a complete library (like Open, Close and Expunge functions and a ROM-Tag
+structure) but those parts are the same for any library and aren't given here.
+
+
+
+5. The interface to the communications program.
+===============================================
+
+        The following is an annotated listing of a few call-back functions as
+they are implemented in VLT. Also, it is shown how to initialize the XPR_IO
+structure. Notice that the files supplied in this archive are likely more up to
+date and more extensive than the minimal example given here.
+
+/** xprfuncs.c
+*
+*   Call-back functions for eXternal PRotocol support
+*
+**/
+#include <functions.h>
+#include <exec/exec.h>
+#include <stdio.h>
+/*
+*   xproto.h is given in Appendix B
+*/
+#include "xproto.h"
+/*
+*   xfer.h is a VLT private header file containing some information for
+*   file transfer protocols
+*/
+#include "xfer.h"
+
+/*
+*   These are the C versions of the interface
+*/
+long        vlt_update(),  vlt_swrite(),  vlt_fread(),  vlt_fopen(),
+            vlt_fclose(),  vlt_gets(),    vlt_sread(),  vlt_chkabort();
+/*
+*   These are the assembly level glue functions, see vltface.asm
+*/
+extern long avlt_update(), avlt_swrite(), avlt_fread(), avlt_fopen(),
+            avlt_fclose(), avlt_gets(),   avlt_sread(), avlt_chkabort();
+
+/**
+*
+*   This function initializes an XPR_IO structure.
+*
+**/
+xpr_setup(IO)
+struct XPR_IO *IO;
+{
+/*
+*   NULL out all the functions we don't do yet.
+*   Fill the other ones with the addresses to the assembler glue version
+*   of the interface routines. See vltface.asm
+*/
+   IO->xpr_filename  = NULL;
+   IO->xpr_fopen     = avlt_fopen;
+   IO->xpr_fclose    = avlt_fclose;
+   IO->xpr_fread     = avlt_fread;
+   IO->xpr_fwrite    = NULL;
+   IO->xpr_sread     = avlt_sread;
+   IO->xpr_swrite    = avlt_swrite;
+   IO->xpr_sflush    = NULL;
+   IO->xpr_update    = avlt_update;
+   IO->xpr_chkabort  = avlt_chkabort;
+   IO->xpr_chkmisc   = NULL;
+   IO->xpr_gets      = avlt_gets;
+   IO->xpr_setserial = NULL;
+   IO->xpr_ffirst    = NULL;
+   IO->xpr_fnext     = NULL;
+   IO->xpr_finfo     = NULL;
+   IO->xpr_fseek     = NULL;
+/*
+*   Support the 1 defined extension
+*/
+   IO->xpr_extension = 1L;
+/*
+*   But don't actually implement it yet.
+*/
+   IO->xpr_options   = NULL
+/*
+*   Especially, NULL out the XPR private data field.
+*/
+   IO->xpr_data      = NULL;
+
+   return;
+}
+
+/**
+*
+*   Interface to VLT's MsgDisplay() function.
+*
+**/
+/*
+*   These are formats for VLT's requester
+*/
+static char *xprnamfmt = "%s\n%s\n\n\n\n";
+static char *filnamfmt = "\n\n%s\n\n\n";
+static char *blksizfmt = "\n\n\n\nBlock:  %6ld  --  Block Size:  %6ld\n";
+static char *errtimfmt = "\n\n\n\n\nErrors: %6ld  --  Timeouts:    %6ld";
+static char *delayfmt  = "\n\n\n\n\nPacket delay %ld";
+/*
+*   Below are some VLT globals to orchestrate the display
+*/
+long xpr_blocks = 0L, xpr_blocksize = 0L, xpr_errors = 0L, xpr_timeouts = 0L;
+/*
+*   The function
+*/
+long vlt_update(x)
+struct XPR_UPDATE *x;
+{
+   extern struct Window *mywindow;
+   extern char *XPR_Name;
+/*
+*   First time, determine the window size (50 chars wide, 5 lines tall).
+*/
+   SetMsgWindow(mywindow, 50, 6);
+/*
+*   Use VLT's PostMsg function to display all the information.
+*/
+   if (x->xpru_updatemask & XPRU_PROTOCOL) {
+      PostMsg(mywindow, xprnamfmt, XPR_Name, x->xpru_protocol);
+   }
+   if (x->xpru_updatemask & XPRU_MSG) {
+      PostMsg(mywindow, xprnamfmt, XPR_Name, x->xpru_msg);
+   }
+   if (x->xpru_updatemask & XPRU_ERRORMSG) {
+      PostMsg(mywindow, xprnamfmt, XPR_Name, x->xpru_errormsg);
+   }
+   if (x->xpru_updatemask & XPRU_FILENAME) {
+      PostMsg(mywindow, filnamfmt, x->xpru_filename);
+   }
+   if (x->xpru_updatemask & XPRU_PACKETDELAY) {
+      PostMsg(mywindow, delayfmt, x->xpru_packetdelay);
+   }
+   if (x->xpru_updatemask & (XPRU_BLOCKS | XPRU_BLOCKSIZE)) {
+      if (x->xpru_updatemask & XPRU_BLOCKS)    xpr_blocks    = x->xpru_blocks;
+      if (x->xpru_updatemask & XPRU_BLOCKSIZE) xpr_blocksize = x->xpru_blocksize;
+      PostMsg(mywindow, blksizfmt, xpr_blocks, xpr_blocksize);
+   }
+   if (x->xpru_updatemask & (XPRU_ERRORS | XPRU_TIMEOUTS)) {
+      if (x->xpru_updatemask & XPRU_ERRORS)   xpr_errors   = x->xpru_errors;
+      if (x->xpru_updatemask & XPRU_TIMEOUTS) xpr_timeouts = x->xpru_timeouts;
+      PostMsg(mywindow, errtimfmt, xpr_errors, xpr_timeouts);
+   }
+   return(0L);
+}
+
+/**
+*
+*   Prompt the user for input
+*
+**/
+long vlt_gets(s, t)
+char *s, *t;
+{
+/*
+*   Use VLT's DoRequest() function
+*/
+   return((long) DoRequest(mywindow, t, s, NULL, " Cancel "));
+}
+
+/**
+*
+*   Write a string to the serial port
+*
+**/
+long vlt_swrite(s, n)
+char *s;
+long n;
+{
+/*
+*   Use VLT's SendString() function
+*/
+   SendString(s, (int) n);
+   return(0L);
+}
+
+/**
+*
+*   Read characters from the serial port
+*
+**/
+long vlt_sread(buff, length, micros)
+unsigned char *buff;
+long length, micros;
+{
+   extern int timeout;
+   long secs = 0L;
+
+   if (buff == NULL) return(-1L);
+/*
+*   Convert timeout to seconds and micros if necessary
+*/
+   if (micros) {
+      if (micros > 1000000L) {
+         secs   = micros / 1000000L;
+         micros = micros % 1000000L;
+      }
+   }
+/*
+*   What follows is pseudo code. VLT's implementation is at this point
+*   different.
+*/
+   StartTimer(secs, micros);
+/*
+*   VLT has a global called timeout. This comes in xfer.h.
+*   If the read was successful, add character to buffer.
+*/
+   for (i = 0; (timeout == GOODREAD) && (i < size); i++)
+      buff[i] = (unsigned char) readchar();
+/*
+*   Either timed out or buffer is full.
+*/
+   if (timeout != TIMEOUT) AbortTimer();
+/*
+*   If carrier dropped, return error condition
+*/
+   if (timeout == CARRIER_DROPPED) return(-1L);
+/*
+*   Else return the number of characters read.
+*/
+   return(i);
+}
+
+/**
+*
+*   Interfaces to stdio
+*
+**/
+long vlt_fopen(s, t)
+char *s, *t;
+{
+   return((long) fopen(s, t));
+}
+
+long vlt_fclose(fp)
+FILE *fp;
+{
+   return((long) fclose(fp));
+}
+
+long vlt_fread(buff, size, count, fp)
+char *buff;
+long size, count;
+FILE *fp;
+{
+   int res;
+   res = fread(buff, (int) size, (int) count, fp);
+   return((long) res);
+}
+
+/**
+*
+*   Check for Abort
+*
+**/
+long vlt_chkabort()
+{
+/*
+*   VLT aborts its protocols when the escape key is pressed.
+*   CheckForKey loops over the UserPort messages looking for an escape.
+*/
+   return((long) CheckForKey(69));
+}
+                              __                
+                             /  \ o    /        
+                       -----/----\----/-----
+                           /    o \__/          
+                                                
+        Clearly, this part of the implementation isn't hard either. The only
+thing left is the assembly level glue on the communications program side. You
+may wonder at this point why all this assembly level stuff is necessary. It is
+necessary because many programs and libraries are written in small code/small
+data. This means that both the communications program and the library address
+their code/data off of some register, in the case of Manx usually A4. The
+problem is that the communications program and the library are loaded in
+different parts of memory, while startup code takes care of setting up the
+proper value for A4. And the values of A4 are different for the the
+communications program and the library! Now, if you just call a library
+function, the assembly level glue does a few things, among which are: (1) saving
+the caller's A4 somewhere safe and (2) retrieving the A4 it stored somewhere
+when the library was loaded. Then the library function is executed, and the
+function returns to the glue. The glue then restores A4 to the state it was in
+before the library call.
+        In the case of these call-back functions, we have to do the reverse.
+After all, when a function like xpr_update is called, the current value of A4 is
+the one that goes with the library's code. If the call-back function tries to
+access any data back in the communications program, we're in big trouble.
+        So what the assembly part of the call-backs has to do is (1) save the
+library's A4 (on the stack) and (2) get the value of A4 appropriate for the
+communications program. Then we can push the various registers onto the stack,
+call the C version of the call-back and then restore the value of A4 to what the
+library wants.
+        For the above call-backs, the assembly level glue is listed below. 
+
+;;; vltface.asm
+;
+;   DESCRIPTION:
+;   ===========
+;
+;        This is an interface to VLT callback functions from
+;        external protocol libraries.
+;
+;   AUTHOR/DATE:  W.G.J. Langeveld, March 1989.
+;   ============
+;
+;;;
+
+        public  _geta4
+
+setup   macro
+        movem.l d2/d3/d4-d7/a2-a6,-(sp)
+        jsr     _geta4                        ; Get a4.
+        endm
+
+push    macro
+        move.l  \1,-(sp)
+        endm
+
+fix     macro
+        ifc     '\1',''
+                mexit
+        endc
+        ifle    \1-8
+                addq.l  #\1,sp
+        endc
+        ifgt    \1-8
+                lea     \1(sp),sp
+        endc
+        endm
+
+restore macro
+        fix     \1
+        movem.l (sp)+,d2/d3/d4-d7/a2-a6        
+        rts
+        endm
+
+        public  _avlt_fopen
+        public  _vlt_fopen
+        public  _avlt_fclose
+        public  _vlt_fclose
+        public  _avlt_fread
+        public  _vlt_fread
+        public  _avlt_sread
+        public  _vlt_sread
+        public  _avlt_swrite
+        public  _vlt_swrite
+        public  _avlt_update
+        public  _vlt_update
+        public  _avlt_chkabort
+        public  _vlt_chkabort
+        public  _avlt_gets
+        public  _vlt_gets
+
+_avlt_fopen:
+        setup
+        push    a1
+        push    a0
+        jsr     _vlt_fopen
+        restore 8
+
+_avlt_fclose:
+        setup
+        push    a0
+        jsr     _vlt_fclose
+        restore 4
+
+_avlt_fread:
+        setup
+        push    a1
+        push    d1
+        push    d0
+        push    a0
+        jsr     _vlt_fread
+        restore 16
+
+_avlt_sread:
+        setup
+        push    d1
+        push    d0
+        push    a0
+        jsr     _vlt_sread
+        restore 12
+
+_avlt_swrite:
+        setup
+        push    d0
+        push    a0
+        jsr     _vlt_swrite
+        restore 8
+
+_avlt_update:
+        setup
+        push    a0
+        jsr     _vlt_update
+        restore 4
+
+_avlt_chkabort:
+        setup
+        jsr     _vlt_chkabort
+        restore
+
+_avlt_gets:
+        setup
+        push    a1
+        push    a0
+        jsr     _vlt_gets
+        restore 8
+
+                              __                
+                             /  \ o    /        
+                       -----/----\----/-----
+                           /    o \__/          
+                                                
+
+
+
+
+
+
+6. XPR Extensions
+=================
+
+        While simple protocols can usually get by with the functionality  given
+in sections 2 through 5 above, some more elaborate protocols may need additional
+functionality. Also, one may want to present the user with a more polished
+interface in certain situations. This is accomplished under the XPR
+specification in a number of ways.
+        It has become clear that in many cases the communications program needs
+to know a few details about the XPR that it is currently running. Some of these
+relate to simple yes/no decisions on the part of the communications program, and
+can be represented as bits that are either set or not. A number of bits in the
+return codes of the XProtocolSetup() function have been defined in this way, and
+they are listed in section 6.1.
+        The straightforward way to extend the XPR capabilities is through the
+use of more call-back functions. The first such function, xpr_options(), was
+already described in a previous release of this document. This document will
+describe and standardize this and a few more such functions in section 6.2.
+        Finally, there is a need in certain file transfer protocols to monitor
+what host and/or user are doing even while not in the process of sending or
+receiving files by protocol transfer. For that purpose, a few XPR library
+functions have been added. The mechanics of this is described in section 6.3.
+
+
+6.1 Library function calling conventions and return codes.
+----------------------------------------------------------
+
+        This section defines more precisely what the return codes of the four
+standard XPR library functions mean. Also, in some cases calling conventions
+are more clearly specified.
+
+6.1.1 XProtocolSetup()
+----------------------
+
+        The library function XProtocolSetup() is called with as the single
+argument a pointer to a previously initialized XPR_IO structure. The calling
+sequence is:
+
+        long setup_flags = XProtocolSetup(struct XPR_IO *IO);
+        D0                                A0
+
+where struct XPR_IO is defined as in section 3 and appendix B.
+        When this function is called by the communications program with a NULL
+value in the xpr_filename field, the function is expected to prompt the user for
+setup information. When the xpr_filename field points to a null terminated
+string, this string is expected to be interpreted as a direct command or
+initialization sequence, and the function is in general NOT expected to prompt
+the user for input. An exception to this latter rule occurs, when the command or
+initialization string directly or indirectly instructs the XPR to prompt the
+user for input. In particular, the empty string "", should always be interpreted
+as a void command (a NOP), and should never cause XProtocolSetup() to prompt for
+input.
+        This is particularly useful when the communications program only wants
+to retrieve the value of setup_flags, which is the return code of
+XProtocolSetup(), without going through the protocol setup sequence.
+        With this extension of the specification, it now becomes natural to 
+always call XProtocolSetup() right after opening the XPR library, either with an
+empty string or with an initialization string if one can be found. In all cases,
+the XPR should return a proper value for the return code, as defined below. The
+communications program still should have a menu option or other way to allow the
+user to go through an XPR setup sequence, by calling XProtocolSetup() with a
+NULL pointer in the xpr_filename field.
+
+        The return code, setup_flags, is a bit mask. The currently defined bits,
+when turned on, have the following meaning:
+
+        Bit 0:   Successful completion.
+        Bit 1:   Protocol requires no communications program supplied file
+                 requester for receive: either the XPR supplies the file
+                 requester or the protocol is capable of receiving file name
+                 information through other means (e.g., from the host).
+        Bit 2:   Protocol requires no communications program supplied file
+                 requester for send: either the XPR supplies the file requester
+                 or the protocol is capable of receiving file name information
+                 through other means.
+        Bit 3:   Communications program is requested to call XProtocolHostMon()
+                 for all serial port input (see section 6.3).
+        Bit 4:   Communications program is requested to call XProtocolUserMon()
+                 for all user input (see section 6.3).
+        Bit 5:   Communications program is requested to call XProtocolHostMon()
+                 without waiting for serial input (see section 6.3).
+[>*
+        Bit15:   Communication program should not open transfer status
+                 screen. (Protocol handles status/skip/abort etc...)
+                 This will propably need working xpr_getptr option which
+                 is 4th extension.
+        Bit16:   Protocol follows XPR2.001 definations.
+                 (Upload files are always open with mode "r")
+        Bit17:   Protocol uses internal double buffer, xpr_swrite can
+                 return immediately if previous xpr_swrite is done.
+                 If previous xpr_swrite isn't done you must wait till
+                 it's sent and return after that. Ie. comprog don't
+                 wait current xpr_swrite. This is generally known as
+                 double buffering;-)
+<*]
+
+        The value 0L is returned to indicate failure.
+
+
+6.1.2 XProtocolSend()
+---------------------
+
+The calling sequence is:
+
+        long status = XProtocolSend(struct XPR_IO *IO);
+        D0                          A0
+
+where struct XPR_IO is defined as in section 3 and appendix B.
+        The value 0L is returned to indicate failure, 1L to indicate success.
+Other non-zero return codes are also to be interpreted as successful, but the
+meaning of the other bits is not currently specified.
+
+
+6.1.3 XProtocolReceive()
+------------------------
+
+The calling sequence is:
+
+        long status = XProtocolReceive(struct XPR_IO *IO);
+        D0                             A0
+
+where struct XPR_IO is defined as in section 3 and appendix B.
+        The value 0L is returned to indicate failure, 1L to indicate success.
+Other non-zero return codes are also to be interpreted as successful, but the
+meaning of the other bits is not currently specified.
+
+
+6.1.4 XProtocolCleanup()
+------------------------
+
+The calling sequence is:
+
+        long status = XProtocolCleanup(struct XPR_IO *IO);
+        D0                             A0
+
+where struct XPR_IO is defined as in section 3 and appendix B.
+        The value 0L is returned to indicate failure, 1L to indicate success.
+Other non-zero return codes are also to be interpreted as successful, but the
+meaning of the other bits is not currently specified.
+
+
+
+
+6.2 XPR_IO extension functions.
+-------------------------------
+
+        The following functions are now part of the XPR_IO extended structure
+definition:
+
+        xpr_options()     Prompts user for commands or options.
+        xpr_unlink()      Deletes files by name.
+        xpr_squery()      Returns actual size of current serial buffer contents.
+        xpr_getptr()      Gets various pointers from user.
+
+        The following sections will discuss each of these functions in detail.
+
+
+6.2.1    long  *xpr_options();
+------------------------------
+
+        This function is in the first extension field of the XPR_IO structure.
+Only use this function if the value of the xpr_extension field is 1L or larger.
+The calling sequence is:
+
+        long status = (*xpr_options)(long n, struct xpr_option *opt[])
+        D0                           D0      A0
+
+The function passes to the comm program a pointer to an array of n pointers to
+xpr_option structures, where n is limited to 31. The xpr_option structures are
+defined as follows:
+
+struct xpr_option {
+   char *xpro_description;      /* description of the option                  */
+   long  xpro_type;             /* type of option                             */
+   char *xpro_value;            /* pointer to a buffer with the current value */
+   long  xpro_length;           /* buffer size                                */
+}
+
+Valid values for xpro_type are:
+
+#define XPRO_BOOLEAN 1L         /* xpro_value is "yes", "no", "on" or "off"   */
+#define XPRO_LONG    2L         /* xpro_value is string representing a number */
+#define XPRO_STRING  3L         /* xpro_value is a string                     */
+#define XPRO_HEADER  4L         /* xpro_value is ignored                      */
+#define XPRO_COMMAND 5L         /* xpro_value is ignored                      */
+#define XPRO_COMMPAR 6L         /* xpro_value contains command parameters     */
+
+        The array is allocated and initialized by the XPR to default values. If
+the comm program implements this function, it should display the description of
+the option and its current value to the user and allow him/her to change them.
+This could be accomplished either by dynamically building a requester or by
+displaying each line one at a time and allow the user to enter new values or
+accept the default. Options that have boolean values could be implemented by the
+comm program as boolean gadgets, but the new value must be returned as "yes" or
+"on" for logical 1 or "no" or "off" for logical 0 in the xpro_value buffer.
+Note, that the XPR, if it uses this function must recognize both "yes" and "on"
+for logical 1 and "no" and "off" for logical 0. Long values must if necessary be
+converted to a string and copied to the xpro_value buffer.  For options that
+have string values, the comm program must ensure that the new string selected by
+the user fits in the value buffer as determined by the xpro_length field. The
+buffer is supplied by the XPR, and must be large enough to be able to hold the
+'\0' termination.
+        The option of type XPRO_HEADER contains a pointer to an explanatory
+message in its xpro_description field. It is to be interpreted as a header
+string for the options that follow. It has no other function, any bits
+corresponding to this option in the return value should be ignored, and the
+xpr_value string is meaningless, but should be initialized to either NULL or a
+valid pointer to a buffer. The message should have a length of 50 characters or
+less.
+        The options of type XPRO_COMMAND and XPRO_COMMPAR are used for such
+functions as Kermit Bye or Finish. Simple commands (XPRO_COMMAND) could be
+displayed as boolean gadgets in a requester, while commands needing parameters
+could have an associated string gadget. The difference between commands like
+this and other options is that when one of these commands is selected, the
+requester should disappear and xpr_options() should return immediately, with
+only the bit coresponding to the command set. Therefore, ideally, the XPR should
+not mix XPRO_COMMAND/XPRO_COMMPAR options with other options (except of type
+XPRO_HEADER). Rather, the XPR should first call xpr_options() with only 
+XPRO_COMMAND/XPRO_COMMPAR/XPRO_HEADER options, one of which would be a "Change
+Defaults" command (type XPRO_COMMAND). This command, when selected, would cause
+the XPR to call xpr_options() with a list of other xpr_option structures for
+non-commands and their headers. This way, the communications program would
+automatically list the XPR commands first, and one of the commands would be a
+"Change Defaults" command, which when selected by the user would bring up a
+second requester with the various other options supported by the XPR. For simple
+commands, the xpr_value string is meaningless and should either be set to NULL
+or contain a valid pointer to a buffer anyway. For commands needing parameters,
+the xpr_value string should contain the current default value of the parameter.
+There is a compatibility issue: communications programs written with earlier
+versions of the XPR spec may not know about XPRO_COMMAND etc. It is therefore
+advisable to bring up the second requester anyway if no command is selected
+from the first requester. In that case, it would be a good idea to include a
+"CANCEL" command in the first requester, which does nothing but provide a means
+to prevent the second requester from appearing.
+
+        As an example, when selecting a ZMODEM based XPR the following array of
+xpr_option structures could be passed to the comm program:
+
+xpro_description                xpro_value    xpro_type
+--------------------------------------------------------------
+Convert NL to NL/CR             no            XPRO_BOOLEAN
+Escape only CTRL chars          yes           XPRO_BOOLEAN
+Escape ALL chars                no            XPRO_BOOLEAN
+Send full pathname              yes           XPRO_BOOLEAN
+Send 1K blocks                  no            XPRO_BOOLEAN
+Subpacket length                512           XPRO_LONG
+Disable 32-bit CRC              no            XPRO_BOOLEAN
+Protect destination file        no            XPRO_BOOLEAN
+Timeout value (sec)             10            XPRO_LONG
+Delete after transmission       no            XPRO_BOOLEAN
+Overwrite existing file         no            XPRO_BOOLEAN
+
+Notice again, that the COMM program still knows little about the individual
+option items (and in fact there is no way for it to find out, in keeping with
+the philosophy of XPR). Also notice that a cheap way to implement this function
+is to loop over the n supplied xpr_option's and to call the likely already
+implemented xpr_gets function with the option description and the value buffer
+(but remember that some options may not have valid value buffers!).
+        It is important to follow a few rules when calling this function: the
+description strings should be 25 characters or less (except for XPRO_HEADER's).
+The value strings can be any length up to 255 characters, but be aware that in a
+typical situation only about 10 to 15 of them will be displayed in a string
+gadget.
+        The return value, status, reflects which options have changed by having
+the corresponding bit set. The first option in the xpr_option array corresponds
+to  bit 0 (low-order), etc. If the options are all of the types boolean, long,
+string or header, the comm program may decide to not detect whether the options
+changed or not, and 0x07FFFFFFL may be returned, in effect specifying that all
+options have changed. On the other hand, if the communications program returns
+a value with multiple bits set even though some or all of the options are of
+type command, the XPR should be careful to cause minimal damage, or display
+an error message.
+        If nothing changed or no command was selected, 0L is returned. If an
+error occurred, the function returns -1L.
+
+
+6.2.2    long  *xpr_unlink();
+-----------------------------
+
+        This function is in the second extension field of the XPR_IO structure.
+Only use this function if the value of the xpr_extension field is 2L or larger.
+The calling sequence is:
+
+        long status = (*xpr_unlink)(char *filename)
+        D0                          A0
+
+This function returns 0L on success, -1L on failure. It attempts to delete the
+file who's name is contained in the character array pointed to bye the only
+argument. The file cannot be locked at the time by any process.
+
+
+6.2.3    long  *xpr_squery();
+------------------------------
+
+        This function is in the third extension field of the XPR_IO structure.
+Only use this function if the value of the xpr_extension field is 3L or larger.
+The calling sequence is:
+
+        long size = (*xpr_squery)()
+        D0
+
+        This function returns the number of characters currently available
+in the serial device. It returns -1L on error. When no characters are available
+the function returns 0L.
+
+
+6.2.4    long  *xpr_getptr();
+-----------------------------
+
+        This function is in the fourth extension field of the XPR_IO structure.
+Only use this function if the value of the xpr_extension field is 4L or larger.
+The calling sequence is:
+
+        long *ptr = (*xpr_getptr)(type)
+        D0                        D0
+
+This function returns selected pointers to structures or buffers defined in 
+the communications program.
+        Currently the only allowed pointer type is 
+
+        type:                   resulting pointer:         
+        ...................................................
+
+        1L                      pointer to custom Screen
+                                or 0L for Workbench.
+
+        (other values)          (to be determined)
+
+This function can be used to open windows on the communications program's
+custom screen, and together with the library functions XProtocolHostMon() and
+XProtocolUserMon() such protocols as DoubleTalk should be feasible. Indeed,
+entire external terminal emulations might be written in this way.
+
+The function returns -1L on failure. Note that the failure can be due to 
+various causes: the communications program may not want to return a particular
+pointer, the version may not know about some allowed types, or the type may for
+other reasons not be valid. Also: if 0L is returned, it is up to the XPR to 
+determine whether this is a legal return value. With type 1, this is fine, but
+in general a NULL pointer may of course not be valid. The XPR is responsible
+for closing any windows or other resources on a call to XProtocolCleanup().
+
+
+6.3 New library functions.
+--------------------------
+
+        We now discuss the two library functions XProtocolHostMon and
+XProtocolUserMon(). These two functions are provided by the XPR as additional
+library entries and their presence is made known to the communications program
+by setting certain bits in the return value of XProtocolSetup(). They are called
+by the communcations program whenever data is received from (HostMon) or sent to
+(UserMon) the serial port, except that care has to be taken that these functions
+are not called directly or indirectly by the xpr_sread() and xpr_swrite()
+functions.
+
+
+6.3.1 XProtocolHostMon()
+------------------------
+
+        This function should be called by the communications program only when
+bit 3 of the flags returned by XProtocolSetup() is set. Calling this function
+when bit 3 is not set will probably cause a system failure. The function should
+be called just after any input from the serial device is received, and just
+before anything else is done with the received data. The calling sequence is
+
+        long newactual = XProtocolHostMon(struct XPR_IO *IO, char *serbuff,
+        D0                                A0                 A1
+                                          long actual, long maxsize)
+                                          D0           D1
+
+Here, IO is a previously initialized XPR_IO structure, serbuff is a pointer to a
+buffer containing the data from the serial device, actual is the number of bytes
+received from the serial device, and maxsize is the actual allocated size of
+serbuff. The XPR is entitled to make any modifications to the data in serbuff it
+wants, as long as the amount of modified data does not overflow the buffer as
+indicated by maxsize. When the XPR is done looking at or changing the data, it
+returns the new actual number of bytes of data in serbuff in newactual. Note,
+that some actions of the XPR may cause the buffer to become invalid: for
+efficiency, the communications program will usually hand a pointer to its one
+and only serial port read buffer in "serbuff" rather than making a copy every
+time. Whenever the XPR, based on the information found in the buffer, decides to
+call any of the callbacks that deal with the serial device (xpr_sread(),
+xpr_sflush(), xpr_squery()), the communications program may reuse the buffer,
+erasing the previous contents. Consequently, if the XPR needs to preserve the
+contents of the buffer, it must first make a local copy. Whenever there is a
+chance that the data in serbuff was invalidated, the XPR should return
+newactual = 0L.
+	Note to the communications program author: when this function is called
+after serial input was received, the state of the communications program is
+usually such that no serial read request is outstanding. Still, the XPR may
+start a file transfer from inside XProtocolHostMon. This situation is different
+from the case where the user requests an upload or download by selecting e.g. a
+menu item: at such a time, the communications program typically does have an
+outstanding serial read request. Moreover, upon return from the
+XProtocolHostMon() call, a previous call by the XPR to xpr_sread() may have
+caused a serial read request to be queued. It is therefore important that the
+communications program ensure that read requests are queued when appropriate,
+including from inside xpr_sread(), and that read requests are not queued more
+than once.
+	Some XPR's may require control even when there is no outstanding
+serial input or user input. In order to prevent the communications program
+from going into a Wait() state, there is another bit returned by
+XProtocolSetup(). When bit 5 is set, the communications program should not
+wait, but call XProtocolHostMon() instead. If XProtocolHostMon() returns a
+non-zero newactual, the data in serbuff should be treated just as if new
+serial input was received. The XPR should never set this bit unless there is
+a good reason: bypassing the communications program's Wait is very multitasking
+unfriendly.
+
+        This function, together with XProtocolUserMon(), can be used to modify
+the behavior of communications programs dramatically. Especially, the entire data
+handling of the communications program could be bypassed by returning newactual
+= 0L, and processing all data inside of XProtocolHostMon(), effectively allowing
+external terminal emulations if the XPR were to open appropriate windows for
+displaying the data. It is in fact possible to have both an external protocol
+(XPR) and an external emulation (XEM) running at the same time: the best way
+to do this is to have duplicate copies of the xpr.lib glue routines, one for
+XPR's and one for XEM's. It is recommended that names of external emulation
+libraries follow the prescription: xem<emulation>.library, e.g. xemvt100.library
+or xemtek4014.library.
+        Another use for these functions would be to decode and encode and
+perhaps compress the data after, resp. before transmission, for example for use
+with hosts supporting error correction/detection protocols such as MNP.
+        A more mundane purpose of this function is to watch the data stream
+for incoming escape or control sequences otherwise not supported by the 
+communications program. Most notably, those sequences used to automatically
+start file transfers as in ZMODEM or CompuServe B+, etc. When such a sequence
+is detected, the XPR should directly call the appropriate XPR function to
+handle the transfer from inside XProtocolHostMon(), and return newactual = 0L
+to the communications program after the transfer has finished.
+	Note to the XPR implementer: if the protocol the XPR implements is able
+to autostart using XProtocolHostMon(), but als needs user input, it can use
+xpr_gets() or xpr_options(). If those functions do not satisfy the need, the XPR
+must use other means. One should be aware that for example the ARP file
+requester can be called from inside an XPR library, in the same manner as it
+can be called from any other program. The function xpr_getptr() can be used to
+retrieve the pointer to the communications program's screen.
+
+
+6.3.2 XProtocolUserMon()
+------------------------
+
+        This function should be called by the communications program only when
+bit 4 of the flags returned by XProtocolSetup() is set. Calling this function
+when bit 4 is not set will probably cause a system failure. The function should
+be called just before any output is sent to the serial device. The calling
+sequence is
+
+        long newactual = XProtocolUserMon(struct XPR_IO *IO, char *serbuff,
+        D0                                A0                 A1
+                                          long actual, long maxsize)
+                                          D0           D1
+
+Here, IO is a previously initialized XPR_IO structure, serbuff is a pointer to a
+buffer containing the data to be sent to the host, actual is the number of bytes
+to be sent, and maxsize is the actual allocated size of serbuff. The XPR is
+entitled to make any modifications to the data in serbuff it wants, as long as
+the amount of modified data does not overflow the buffer as indicated by
+maxsize. When the XPR is done looking at or changing the data, it returns the
+new actual number of bytes of data in serbuff in newactual.
+        This function, together with XProtocolHostMon(), can be used to modify
+the behavior of communications programs dramatically. Especially, the entire data
+handling of the communications program could be bypassed by returning newactual
+= 0L, and processing all data inside of XProtocolUserMon(), effectively allowing
+external terminal emulations, if the XPR were to open appropriate windows for
+displaying the data. To get RAW KEY user input etc., the XPR would however have
+to also open its own windows for IDCMP input. To that end, the function
+xpr_getptr can be used to obtain the pointer to the screen of the communications
+program where the window(s) should open.
+        Another use for these functions would be to decode and encode and
+perhaps compress the data after, resp. before transmission, for example for use
+with hosts supporting error correction/detection protocols such as MNP.
+
+                              __                
+                             /  \ o    /        
+                       -----/----\----/-----
+                           /    o \__/          
+                                                
+
+This concludes the documentation on external protocols using Amiga shared
+libraries. If you have any questions, comments or suggestions, contact me on
+BIX.
+        Meanwhile, have fun!
+
+
+
+
+
+
+
+
+Appendix A: XPR library skeleton.
+=================================
+
+;;; libface.c
+;
+;   DESCRIPTION:
+;   ===========
+;
+;       This is the skeleton for an Amiga Exec library.
+;       This version is written for Aztec C. It is based on the example
+;       library by Jim Mackraz who got some stuff from Neil Katin.
+;       This library implements a protocol transfer library.
+;       All changes and additions by me.
+;
+;   AUTHOR/DATE:  W.G.J. Langeveld, February 1989.
+;   ============
+;
+;;;
+
+        include 'exec/types.i'
+
+setup   macro
+        movem.l d2/d3/d4-d7/a2-a6,-(sp)
+        jsr     _geta4                  ;set up a4 for small model
+        endm
+
+push    macro
+        move.l  \1,-(sp)
+        endm
+
+fix     macro
+        ifc     '\1',''
+                mexit
+        endc
+        ifle    \1-8
+                addq.l  #\1,sp
+        endc
+        ifgt    \1-8
+                lea     \1(sp),sp
+        endc
+        endm
+
+restore macro
+        fix     \1
+        movem.l (sp)+,d2/d3/d4-d7/a2-a6 
+        rts
+        endm
+
+        dseg
+
+        public  _libfunctab
+_libfunctab:
+        dc.l    XPRopen
+        dc.l    XPRclose
+        dc.l    XPRexpunge
+        dc.l    $0000
+        dc.l    XPRXProtocolCleanup
+        dc.l    XPRXProtocolSetup
+        dc.l    XPRXProtocolSend
+        dc.l    XPRXProtocolReceive
+        dc.l    XPRXProtocolHostMon
+        dc.l    XPRXProtocolUserMon
+        dc.l    $ffffffff
+
+        cseg
+
+        ;--- library functions
+        public  _XPROpen
+        public  _XPRClose
+        public  _XPRExpunge
+        public  _XProtocolCleanup
+        public  _XProtocolSetup
+        public  _XProtocolSend
+        public  _XProtocolReceive
+        public  _XProtocolHostMon
+        public  _XProtocolUserMon
+
+        public  _geta4
+
+XPRopen:
+        setup
+        push a6
+        jsr     _XPROpen
+        restore 4
+
+XPRclose:
+        setup
+        push a6
+        jsr     _XPRClose
+        restore 4
+
+XPRexpunge:
+        setup
+        push a6
+        jsr     _XPRExpunge
+        restore 4
+
+XPRXProtocolCleanup:
+        setup
+        push a0
+        jsr     _XProtocolCleanup
+        restore 4
+
+XPRXProtocolSetup:
+        setup
+        push a0
+        jsr     _XProtocolSetup
+        restore 4
+
+XPRXProtocolSend:
+        setup
+        push a0
+        jsr     _XProtocolSend
+        restore 4
+
+XPRXProtocolReceive:
+        setup
+        push a0
+        jsr     _XProtocolReceive
+        restore 4
+
+XPRXProtocolHostMon:
+        setup
+        push d1
+        push d0
+        push a1
+        push a0
+        jsr     _XProtocolHostMon
+        restore 16
+
+XPRXProtocolUserMon:
+        setup
+        push d1
+        push d0
+        push a1
+        push a0
+        jsr     _XProtocolUserMon
+        restore 16
+
+
+        end
+
+
+
+
+
+Appendix B: The xproto.h include file
+=====================================
+
+/** xproto.h
+*
+*   Include file for External Protocol Handling
+*
+**/
+/*
+*   The structure
+*/
+struct XPR_IO {
+                  char  *xpr_filename;      /* File name(s)             */
+                  long (*xpr_fopen)();      /* Open file                */
+                  long (*xpr_fclose)();     /* Close file               */
+                  long (*xpr_fread)();      /* Get char from file       */
+                  long (*xpr_fwrite)();     /* Put string to file       */
+                  long (*xpr_sread)();      /* Get char from serial     */
+                  long (*xpr_swrite)();     /* Put string to serial     */
+                  long (*xpr_sflush)();     /* Flush serial input buffer*/
+                  long (*xpr_update)();     /* Print stuff              */
+                  long (*xpr_chkabort)();   /* Check for abort          */
+                  long (*xpr_chkmisc)();    /* Check misc. stuff        */
+                  long (*xpr_gets)();       /* Get string interactively */
+                  long (*xpr_setserial)();  /* Set and Get serial info  */
+                  long (*xpr_ffirst)();     /* Find first file name     */
+                  long (*xpr_fnext)();      /* Find next file name      */
+                  long (*xpr_finfo)();      /* Return file info         */
+                  long (*xpr_fseek)();      /* Seek in a file           */
+                  long   xpr_extension;     /* Number of extensions     */
+                  long  *xpr_data;          /* Initialized by Setup.    */
+                  long (*xpr_options)();    /* Multiple XPR options.    */
+                  long (*xpr_unlink)();     /* Delete a file.           */
+                  long (*xpr_squery)();     /* Query serial device      */
+                  long (*xpr_getptr)();     /* Get various host ptrs    */
+              };
+/*
+*   Number of defined extensions
+*/
+
+#define XPR_EXTENSION 6L
+
+/*
+*   The functions
+*/
+extern long XProtocolSend(),  XProtocolReceive(),
+            XProtocolSetup(), XProtocolCleanup();
+/*
+*   Flags returned by XProtocolSetup()
+*/
+#define XPRS_FAILURE    0x00000000L
+#define XPRS_SUCCESS    0x00000001L
+#define XPRS_NORECREQ   0x00000002L
+#define XPRS_NOSNDREQ   0x00000004L
+#define XPRS_HOSTMON    0x00000008L
+#define XPRS_USERMON    0x00000010L
+#define XPRS_HOSTNOWAIT 0x00000020L
+#define XPRS_NOUPDATE   0x00008000L
+#define XPRS_SMARTXFER  0x00010000L
+#define XPRS_DOUBLE     0x00020000L
+
+/*
+*   The update structure
+*/
+struct XPR_UPDATE {     long  xpru_updatemask;
+                        char *xpru_protocol;
+                        char *xpru_filename;
+                        long  xpru_filesize;
+                        char *xpru_msg;
+                        char *xpru_errormsg;
+                        long  xpru_blocks;
+                        long  xpru_blocksize;
+                        long  xpru_bytes;
+                        long  xpru_errors;
+                        long  xpru_timeouts;
+                        long  xpru_packettype;
+                        long  xpru_packetdelay;
+                        long  xpru_chardelay;
+                        char *xpru_blockcheck;
+                        char *xpru_expecttime;
+                        char *xpru_elapsedtime;
+                        long  xpru_datarate;
+                        long  xpru_reserved1;
+                        long  xpru_reserved2;
+                        long  xpru_reserved3;
+                        long  xpru_reserved4;
+                        long  xpru_reserved5;
+                   };
+/*
+*   The possible bit values for the xpru_updatemask are:
+*/
+#define XPRU_UPLOAD             0x80000000L
+#define XPRU_DNLOAD             0x40000000L
+#define XPRU_PROTOCOL           0x00000001L
+#define XPRU_FILENAME           0x00000002L
+#define XPRU_FILESIZE           0x00000004L
+#define XPRU_MSG                0x00000008L
+#define XPRU_ERRORMSG           0x00000010L
+#define XPRU_BLOCKS             0x00000020L
+#define XPRU_BLOCKSIZE          0x00000040L
+#define XPRU_BYTES              0x00000080L
+#define XPRU_ERRORS             0x00000100L
+#define XPRU_TIMEOUTS           0x00000200L
+#define XPRU_PACKETTYPE         0x00000400L
+#define XPRU_PACKETDELAY        0x00000800L
+#define XPRU_CHARDELAY          0x00001000L
+#define XPRU_BLOCKCHECK         0x00002000L
+#define XPRU_EXPECTTIME         0x00004000L
+#define XPRU_ELAPSEDTIME        0x00008000L
+#define XPRU_DATARATE           0x00010000L
+/*
+*   The xpro_option structure
+*/
+struct xpr_option {
+   char *xpro_description;      /* description of the option                  */
+   long  xpro_type;             /* type of option                             */
+   char *xpro_value;            /* pointer to a buffer with the current value */
+   long  xpro_length;           /* buffer size                                */
+};
+/*
+*   Valid values for xpro_type are:
+*/
+#define XPRO_BOOLEAN 1L         /* xpro_value is "yes", "no", "on" or "off"   */
+#define XPRO_LONG    2L         /* xpro_value is string representing a number */
+#define XPRO_STRING  3L         /* xpro_value is a string                     */
+#define XPRO_HEADER  4L         /* xpro_value is ignored                      */
+#define XPRO_COMMAND 5L         /* xpro_value is ignored                      */
+#define XPRO_COMMPAR 6L         /* xpro_value contains command parameters     */
