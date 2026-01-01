@@ -2,14 +2,14 @@
 This script builds DCTelnet with SAS/C under Amiga Shell 3.2
 dual-target support for 68000 and 68020 CPU
 
-Must be run from build dir
-
-Build on RAM: volume to speedup
-It captures the output to Build-output.txt
-
 Make this script executable :
     PROTECT #?.arexx +SRE
 
+Must be run from "build/" dir
+
+It captures the output to Build-output.txt
+
+Build on RAM: volume to speedup
 */
 
 /* Instruct ARexx to send commands to the Amiga shell */
@@ -22,6 +22,7 @@ repoRootDir = PRAGMA(DIRECTORY)
 /* || concatenate strings without spaces */
 outFile  = initialDir  || "/Build-output.txt"
 srcDir   = repoRootDir || "/src"
+docsDir  = repoRootDir || "/docs"
 
 
 'ECHO "Building starts at: " NOLINE >' outFile
@@ -52,23 +53,45 @@ dummy=PRAGMA(DIRECTORY, buildDir)
 'smake CPU='cpu' >>' outFile
 
 
-'ECHO "Build complete at: " NOLINE >>' outFile
+'ECHO "Compile complete at: " NOLINE >>' outFile
 'DATE >>' outFile
 
-dummy=PRAGMA(DIRECTORY, initialDir)
 
 IF EXISTS('RAM:build-000/DCTelnet') | EXISTS('RAM:build-020/DCTelnet')
 THEN DO
     /* EXISTS() does not support wildcard in directory name*/
 
+    SAY ""
+    SAY "Built executable files:"
+    'LIST   RAM:build-0??/DCTelnet'
     'md5sum RAM:build-0??/DCTelnet'
 
-    'COPY  FROM RAM:build-000/DCTelnet  TO DCTelnet      CLONE'
-    'COPY  FROM RAM:build-020/DCTelnet  TO DCTelnet.020  CLONE'
+    SAY ""
+    SAY "Build the LHA package:"
+    'DELETE RAM:build-package  ALL >>' outFile
+    'COPY  FROM "'initialDir'/package"         TO RAM:build-package CLONE ALL  >>' outFile
+    dummy=PRAGMA(DIRECTORY, "RAM:build-package")
 
-    archiveName = 'DCTelnet-' || DATE(SORTED) || '-' || TIME(SECONDS)
-    'lha -a -Qa a "'archiveName'.lha"  DCTelnet DCTelnet.0?0'
-    /* lhA parentheses wildcard explained in LhA.man v2.8  §2.1.6 Recursive file collection */
+    'COPY  FROM RAM:build-000/DCTelnet         TO DCTelnet/DCTelnet        CLONE >>' outFile
+    'COPY  FROM RAM:build-020/DCTelnet         TO DCTelnet/DCTelnet.020    CLONE >>' outFile
+
+    'COPY  FROM "'repoRootDir'/LICENSE"         TO DCTelnet/docs            CLONE  >>' outFile
+    'COPY  FROM "'docsDir'/DCTelnet.#?"        TO DCTelnet/docs            CLONE  >>' outFile
+    'COPY  FROM "'docsDir'/FILE_ID.DIZ"        TO ""                       CLONE  >>' outFile
+
+
+    'DELETE .info  DCTelnet/#?/.info >>' outFile
+
+    archiveName = initialDir || '/DCTelnet.lha'
+    /* Warning: removing the files before on Windows may cause issues with these commands */
+    'DELETE "'archiveName'" >>' outFile
+    'lha -r -a -Qa a "'archiveName'" >>' outFile
+    /*
+        -r  Collect files recursively
+        -a  Preserve file attributes (D)
+        -Qa Use simple console I/O
+    */
+    'md5sum "'archiveName'"'
 END
 
 /* Normal end */
