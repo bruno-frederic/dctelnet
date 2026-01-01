@@ -1,0 +1,20 @@
+/* default script for vt340 */
+/* Command-words are case-sensitive..!! */
+
+SetClass		'VT340_8'
+SetIdent		'VT340'
+NewlineMode		'OFF'
+InsertMode		'OFF'
+WrapMode		'OFF'
+CursorVisible		'ON'
+SmoothScroll		'OFF'
+Use24lines		'OFF'
+AdjustLines		'OFF'
+DestructiveBS		'OFF'
+DestructiveFF		'ON'
+DestructiveDEL		'OFF'
+SwapBSDEL		'OFF'
+UseISOLatin1		'ON'
+TitleBar		'ON'
+SaveScreenTo		'RAM:SCREEN'
+AnswerBackMsg		''

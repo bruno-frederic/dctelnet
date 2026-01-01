@@ -1,0 +1,295 @@
+
+                     /** XEm structure description **/
+
+     (with parts from XPr-Documentation  written by W.G.J. Langeveld)
+
+
+
+LONG (*xem_sread)();	/* very similar to xpr_sread */
+--------------------
+
+  The xem_sread() call-back function has the following calling sequence:
+
+     LONG count = (*xem_sread)(UBYTE *buffer, LONG size, LONG timeout)
+           D0                        A0            D0         D1
+
+The first argument is a pointer to a buffer to receive the characters from the
+serial port, with a size specified in the second argument. The third item is a
+timeout in microseconds. The function returns the actual number of characters
+put into the buffer, or -1L on error. When the timeout argument is non-zero, the
+function will return when one of three events occurs: (1) the timeout period
+has expired, or (2) the buffer has been filled with  exactly "size" characters,
+or (3) an error occurs.
+        Specifically, when the routine is called, a timer is started and set to
+the value contained in timeout. The routine now starts collecting data from the 
+serial port and stores them in buffer. If the timer times out before size
+characters are received, the routine returns immediately with count set to the
+actual number of characters received. In case no characters at all are received,
+it will return count = 0L. If the buffer is full before the timer has expired,
+the routine returns immediately with count = size. It is up to the xem to set
+the  timeout long enough to ensure that at the current baud rate the buffer can
+actually be filled to the specified size within the timeout period. The routine
+can also return with count set to -1L. This might happen, for example, when the
+carrier is lost. The xem should then fairly quickly get around to checking
+the abort status using the xem_chkabort() function: BBS programs will want to
+regain control quickly after the carrier is dropped.
+        The timeout may be set to 0L if the objective is to just read any
+characters that may currently be available. In this case, the function will not
+start up a timer, but will instead check the serial device for currently
+available characters and return them in the usual fashion, and return as quickly
+as possible. Note: the value 0L for the timeout argument is a special case.
+Remember that AmigaDOS 1.3 may have problems with small non-zero values for
+timeouts.
+
+
+
+LONG (*xem_swrite)();	/* very similar to xpr_swrite() */
+---------------------
+
+The xem_swrite() call-back function has the following calling sequence:
+
+  LONG status = (*xem_swrite)(UBYTE *buffer, LONG size)
+       D0                           A0          D0
+
+This function writes a buffer with the given size to the serial port.
+It returns 0L on success, non-zero on failure.
+
+
+
+LONG (*xem_sflush)();	/* very similar to xpr_sflush() */
+---------------------
+
+The xem_sflush call-back function has the following calling sequence:
+
+  LONG status = (*xem_sflush)()
+      D0
+
+This function flushes all the data in the serial port input buffer.  It is
+typically used to recover after a read/write error.
+The function returns 0L on success, non-zero on failure.
+
+
+
+LONG (*xem_sbreak)();
+---------------------
+
+The xem_sbreak call-back function has the following calling sequence:
+
+  LONG status = (*xem_sbreak)()
+      D0
+
+This function sends a break signal across the serial line.
+The function returns 0L on success, non-zero on failure.
+
+
+
+LONG  *xem_squery();
+--------------------
+
+The xem_squery call-back function has the following calling sequence:
+
+        LONG size = (*xem_squery)()
+          D0
+
+This function returns the number of characters currently available
+in the serial device. It returns -1L on error. When no characters
+are available the function returns 0L.
+
+
+VOID *xem_sstart();
+-------------------
+
+The xem_sstart call-back function has the following calling sequence:
+
+      VOID (*xem_sstart)(VOID);
+
+This function tells the comm program to restart the serial read activity.
+
+
+
+BOOL (*xem_sstop)();
+--------------------
+
+The xem_sstop call-back function has the following calling sequence:
+
+      BOOL (*xem_sstop)(VOID);
+
+This function tells the comm program to stop the serial read activity.
+After this call, the xem owns the serial line. This function enables
+the xem to startup external protocols (xpr).
+The function returns 0L on success, non-zero on failure.
+
+
+
+VOID *xem_tbeep();
+------------------
+
+The xem_tbeep call-back function has the following calling sequence:
+
+      VOID (*xem_tbeep)(ULONG ntimes, ULONG delay);
+
+This function tells the comm program to perform a user-preferred
+DisplayBeep. This beep should be done `ntimes' with a `delay' between
+each beep.
+
+
+
+LONG (*xem_tgets)();
+--------------------
+
+The xem_tgets call-back function has the following calling sequence:
+
+        LONG status = (*xem_tgets)(UBYTE *prompt, UBYTE *buffer)
+             D0                        A0             A1
+
+The first argument is a pointer to a string containing a prompt, to be displayed
+by the communications program in any manner it sees fit. The second argument
+should be a pointer to a buffer to receive the user's response. The third
+argument is the size of the buffer in bytes.
+The function returns 0L on failure or user cancellation, non-zero on success.
+The buffer has to be supplied by the xem.
+
+
+
+LONG  *xem_options();	/* 100% compatible to xpr_options */
+---------------------
+
+      LONG status = (*xem_options)(LONG n, struct xem_option *opt[])
+            D0                       D0               A0
+
+The function passes to the comm program a pointer to an array of n pointers to
+xem_option structures, where n is limited to 31. The xem_option structures are
+defined as follows:
+
+struct xem_option {
+   char *xemo_description;      /* description of the option                  */
+   long  xemo_type;             /* type of option                             */
+   char *xemo_value;            /* pointer to a buffer with the current value */
+   long  xemo_length;           /* buffer size                                */
+}
+
+Valid values for xemo_type are:
+
+#define XEMO_BOOLEAN 1L         /* xemo_value is "yes", "no", "on" or "off"   */
+#define XEMO_LONG    2L         /* xemo_value is string representing a number */
+#define XEMO_STRING  3L         /* xemo_value is a string                     */
+#define XEMO_HEADER  4L         /* xemo_value is ignored                      */
+#define XEMO_COMMAND 5L         /* xemo_value is ignored                      */
+#define XEMO_COMMPAR 6L         /* xemo_value contains command parameters     */
+
+        The array is allocated and initialized by the xem to default values. If
+the comm program implements this function, it should display the description of
+the option and its current value to the user and allow him/her to change them.
+This could be accomplished either by dynamically building a requester or by
+displaying each line one at a time and allow the user to enter new values or
+accept the default. Options that have boolean values could be implemented by the
+comm program as boolean gadgets, but the new value must be returned as "yes" or
+"on" for logical 1 or "no" or "off" for logical 0 in the xemo_value buffer.
+Note, that the xem, if it uses this function must recognize both "yes" and "on"
+for logical 1 and "no" and "off" for logical 0. Long values must if necessary be
+converted to a string and copied to the xemo_value buffer.  For options that
+have string values, the comm program must ensure that the new string selected by
+the user fits in the value buffer as determined by the xemo_length field. The
+buffer is supplied by the xem, and must be large enough to be able to hold the
+'\0' termination.
+        The option of type XEMO_HEADER contains a pointer to an explanatory
+message in its xemo_description field. It is to be interpreted as a header
+string for the options that follow. It has no other function, any bits
+corresponding to this option in the return value should be ignored, and the
+xem_value string is meaningless, but should be initialized to either NULL or a
+valid pointer to a buffer. The message should have a length of 50 characters or
+less.
+        The options of type XEMO_COMMAND and XEMO_COMMPAR are used for such
+functions as a main menu. Simple commands (XEMO_COMMAND) could be
+displayed as boolean gadgets in a requester, while commands needing parameters
+could have an associated string gadget. The difference between commands like
+this and other options is that when one of these commands is selected, the
+requester should disappear and xem_options() should return immediately, with
+only the bit coresponding to the command set. Therefore, ideally, the xem should
+not mix XEMO_COMMAND/XEMO_COMMPAR options with other options (except of type
+XEMO_HEADER). Rather, the xem should first call xem_options() with only 
+XEMO_COMMAND/XEMO_COMMPAR/XEMO_HEADER options, one of which would be a "Change
+Defaults" command (type XEMO_COMMAND). This command, when selected, would cause
+the xem to call xem_options() with a list of other xem_option structures for
+non-commands and their headers. This way, the communications program would
+automatically list the xem commands first, and one of the commands would be a
+"Change Defaults" command, which when selected by the user would bring up a
+second requester with the various other options supported by the xem. For simple
+commands, the xem_value string is meaningless and should either be set to NULL
+or contain a valid pointer to a buffer anyway. For commands needing parameters,
+the xem_value string should contain the current default value of the parameter.
+
+        As an example, when selecting a VT based xem the following array of
+xem_option structures could be passed to the comm program:
+
+xemo_description                xemo_value    xemo_type
+--------------------------------------------------------------
+Newline mode                    no            XEMO_BOOLEAN
+Insert mode                     yes           XEMO_BOOLEAN
+Wrap mode                       no            XEMO_BOOLEAN
+Cursor visible                  yes           XEMO_BOOLEAN
+Smooth scroll                   no            XEMO_BOOLEAN
+Answer-back msg                 foobar        XEMO_STRING
+
+Notice again, that the COMM program still knows little about the individual
+option items (and in fact there is no way for it to find out, in keeping with
+the philosophy of xem). Also notice that a cheap way to implement this function
+is to loop over the n supplied xem_option's and to call the likely already
+implemented xem_gets function with the option description and the value buffer
+(but remember that some options may not have valid value buffers!).
+        It is important to follow a few rules when calling this function: the
+description strings should be 25 characters or less (except for XEMO_HEADER's).
+The value strings can be any length up to 255 characters, but be aware that in a
+typical situation only about 10 to 15 of them will be displayed in a string
+gadget.
+        The return value, status, reflects which options have changed by having
+the corresponding bit set. The first option in the xem_option array corresponds
+to  bit 0 (low-order), etc. If the options are all of the types boolean, long,
+string or header, the comm program may decide to not detect whether the options
+changed or not, and 0x07FFFFFFL may be returned, in effect specifying that all
+options have changed. On the other hand, if the communications program returns
+a value with multiple bits set even though some or all of the options are of
+type command, the xem should be careful to cause minimal damage, or display
+an error message.
+If nothing changed or no command was selected, 0L is returned.
+If an error occurred, the function returns -1L.
+
+
+
+LONG (*xem_process_macrokeys)();
+--------------------------------
+
+The xem_xem_process_macrokeys call-back function has
+the following calling sequence:
+
+   LONG status = (*xem_xem_process_macrokeys)(struct XEmulatorMacroKey *key)
+        D0                                             A0
+
+the xem has matched a key attached in the macrokey list. The comm program
+is now requested to dispatch this key. This can happen in various
+variants:
+1: there could be a function pointer key->xmk_UserData to handle
+   this specific key; e.g. XON/XOFF handling.
+2: The comm program could take the key->xmk_Code as an index and
+   use it in a string array.
+
+struct XEmulatorMacroKey {
+  struct MinNode xmk_Node;
+  UWORD	xmk_Qualifier;	/* see below */
+  UBYTE	xmk_Type;	/* see below */
+  UBYTE	xmk_Code;	/* raw or cooked key-code */
+  APTR	xmk_UserData;	/* comm-proggy private data */
+			/* could be a function ptr or a modem cmd */
+};
+
+/*----- Qualifiers for XMK_QUALIFIER -----*/
+#define XMKQ_NONE      0 /* execute this key if no qualfier is pressed */
+#define XMKQ_SHIFT     1 /* execute this key if a shift key is pressed */
+#define XMKQ_ALTERNATE 2 /* execute this key if  an alt key is pressed */
+#define XMKQ_CONTROL   3 /* execute this key if control key is pressed */
+
+/*----- Types for XMK_TYPE -----*/
+#define XMKT_IGNORE 1	/* ignore this key definition */
+#define XMKT_RAWKEY 2	/* xmk_Code is raw */
+#define XMKT_COOKED 3	/* xmk_Code is cooked */
+

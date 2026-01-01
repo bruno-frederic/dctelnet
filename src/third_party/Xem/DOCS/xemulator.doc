@@ -1,0 +1,575 @@
+TABLE OF CONTENTS
+
+xem.library/XEmulatorSetup
+xem.library/XEmulatorOpenConsole
+xem.library/XEmulatorCloseConsole
+xem.library/XEmulatorCleanup
+xem.library/XEmulatorWrite
+xem.library/XEmulatorSignal
+xem.library/XEmulatorHostMon
+xem.library/XEmulatorUserMon
+xem.library/XEmulatorOptions
+xem.library/XEmulatorClearConsole
+xem.library/XEmulatorResetConsole
+xem.library/XEmulatorResetTextStyles
+xem.library/XEmulatorResetCharset
+xem.library/XEmulatorGetFreeMacroKeys
+xem.library/XEmulatorMacroKeyFilter
+xem.library/XEmulatorInfo
+xem.library/XEmulatorPreferences
+
+xem.library/XEmulatorSetup                         xem.library/XEmulatorSetup
+
+   NAME
+	XEmulatorSetup -- initializes internal structure used by the emulator
+
+   SYNOPSIS
+	result = XEmulatorSetup(xem_io)
+	D0			A0
+
+	BOOL XEmulatorSetup(struct XEM_IO *);
+
+   FUNCTION
+	Before a comm-proggy calls this function, it has to initialize
+	the XEM_IO structure ( => sample InitXEmReq(); ).
+	XEmulatorSetup() allocates and initializes emulator-private
+	data. A pointer to this data is stored in io->xem_console.
+	A comm-proggy isn't allowed to touch io->xem_console.
+	XEmulatorSetup() has to be the very first function call
+	after opening the library.
+
+   INPUTS
+	xem_io - pointer to a properly initialized XEM_IO structure
+
+   RESULTS
+	TRUE on success, FALSE on failure.
+
+   SEE ALSO
+	xem.library/XEmulatorCleanup
+
+xem.library/XEmulatorOpenConsole             xem.library/XEmulatorOpenConsole
+
+   NAME
+	XEmulatorOpenConsole -- initializes screen and window
+
+   SYNOPSIS
+	result = XEmulatorOpenConsole(xem_io)
+	D0				A0
+
+	BOOL XEmulatorOpenConsole(struct XEM_IO *);
+
+   FUNCTION
+	XEmulatorOpenConsole has to be called after a comm-proggy has
+	opened (or changed) its screen and/or window.
+	XEmulatorOpenConsole resets its internal data structure and
+	sets custom-fonts, special drawing modes, etc..
+	At this call, the emulator should allocate window-specific data
+	like history-buffers...
+
+   INPUTS
+	xem_io - pointer to a properly initialized XEM_IO structure
+
+   RESULTS
+	TRUE on success, FALSE on failure.
+
+   SEE ALSO
+	xem.library/XEmulatorCloseConsole
+
+xem.library/XEmulatorCloseConsole           xem.library/XEmulatorCloseConsole
+
+   NAME
+	XEmulatorCloseConsole -- releases screen and window
+
+   SYNOPSIS
+	XEmulatorCloseConsole(xem_io);
+				A0
+
+	VOID XEmulatorCloseConsole(struct XEM_IO *);
+
+   FUNCTION
+   	The comm-proggy wants to close its screen and/or window. It
+   	gives the emulator the chance to free window-specific data.
+	
+   INPUTS
+	xem_io - pointer to a properly initialized XEM_IO structure
+
+   RESULTS
+	Nothing returned.
+
+   SEE ALSO
+	xem.library/XEmulatorOpenConsole
+
+xem.library/XEmulatorCleanup                     xem.library/XEmulatorCleanup
+
+   NAME
+	XEmulatorCleanup -- free internal structure used by the emulator.
+
+   SYNOPSIS
+	XEmulatorCleanup(xem_io);
+			A0
+	VOID XEmulatorCleanup(struct XEM_IO *);
+
+   FUNCTION
+   Frees internal structure used by the emulator.
+	The comm-proggy shouldn't call any XEmulator function
+	after this, except XEmulatorSetup...
+
+   INPUTS
+	xem_io - pointer to a properly initialized XEM_IO structure
+
+   RESULTS
+	Nothing returned.
+
+   SEE ALSO
+	xem.library/XEmulatorSetup
+
+xem.library/XEmulatorWrite                         xem.library/XEmulatorWrite
+
+   NAME
+	XEmulatorWrite -- Write data into the window
+
+   SYNOPSIS
+	XEmulatorWrite(xem_io, buffer, length);
+			a0	a1	d0
+
+	VOID XEmulatorWrite(struct XEM_IO *, UBYTE *, LONG);
+
+   FUNCTION
+	XemWrite() writes bytes of data to the window contained in the XEM_IO
+	structure. 'length' indicates the length of data to be written,
+	could also be -1 if 'buffer' is null terminated.
+	'buffer' is a pointer to the buffer to be written.
+
+   INPUTS
+	xem_io - pointer to a properly initialized XEM_IO structure
+	buffer - pointer to the buffer
+	length - integer
+
+   RESULTS
+	Nothing returned.
+
+xem.library/XEmulatorSignal                       xem.library/XEmulatorSignal
+
+   NAME
+	XEmulatorSignal -- Emulator private event has happened
+
+   SYNOPSIS
+	result = XEmulatorSignal(xem_io, signal);
+	D0			A0	D0
+
+	BOOL XEmulatorSignal(struct XEM_IO *, ULONG);
+
+   FUNCTION
+	this function gives the emulator the ability to asynchronously
+	process data or to own an arexx-port.
+	the emulator puts his signal(s) prepared as a signal-mask
+	into *xem_io->xem_signal and the comm-proggy puts this signal-mask
+	into its main Wait() loop.
+	Everytime Wait() returns a signalset and the external
+	signal-mask is included, the comm-proggy has to call
+	XEmulatorSignal() with the signalset.
+	If the emulator returns FALSE, the comm-proggy should call
+	XEmulatorCloseConsole() followed by an XEmulatorCleanup().
+	After this, it could invoke its own emulator or startup
+	a previously used emulator...
+
+   INPUTS
+	xem_io - pointer to a properly initialized XEM_IO structure
+	signal - integer
+
+   RESULTS
+	TRUE on success, FALSE on failure.
+
+xem.library/XEmulatorHostMon                     xem.library/XEmulatorHostMon
+
+   NAME
+	XEmulatorHostMon -- let have a look at incoming serial data 
+
+   SYNOPSIS
+	destinationLength = XEmulatorHostMon(xem_io, hostData, actual);
+		D0				A0	A1	D0
+
+	ULONG XEmulatorHostMon(struct XEM_IO *, struct HostData *, ULONG);
+
+   FUNCTION
+	hostdata is pointer to structure containing data, pointers and
+	flags to convert incoming serial data in pure ASCII text.
+	Actual is the number of bytes received from the serial device.
+	If hostData->Destination is non-NULL, this function
+	builds another string to contain the pure ASCII contents,
+	i.e. not including any ANSI ESC- or CSI control sequences.
+	This string is placed in hostData->Destination. hostData-Source
+	contents a pointer to the original data received from
+	the serial device.
+	It returns the actual number of bytes of data in
+	hostData->Destination in destinationLength.
+	HostData->InESC and hostData->InCSI are emulator private flags
+	to indicate there's a ANSI control sequence in process or not.
+	The comm-proggy isn't allowed to touch these flags at any time
+	except when allocating the structure and initializing it to FALSE.
+	At run time, it has only to support the hostData->Source and
+	hostData->Destination elements.
+
+   NOTE
+	The emulator isn't allowed to change data in hostData->Source.
+
+   WARNING
+	hostData->Destination has to have the same
+	dimension as hostData->Source!
+
+   INPUTS
+	xem_io   - pointer to a properly initialized XEM_IO structure
+	hostdata - pointer to a HostData structure
+	actual   - integer
+
+   RESULTS
+	destinationLength - the number of characters in the
+	                    hostdata->Destination buffer, or 0 if
+	                    hostdata was NULL.
+
+
+xem.library/XEmulatorUserMon                     xem.library/XEmulatorUserMon
+
+   NAME
+	XEmulatorUserMon -- Decode single raw key input event to a string.
+
+   SYNOPSIS
+	actual = XEmulatorUserMon(xem_io,buffer,length,intuimsg);
+	D0			A0	A1	D0	A2
+
+	ULONG XEmulatorUserMon(struct XEM_IO *, UBYTE *, ULONG,
+					struct IntuiMessage *);
+
+   FUNCTION
+	This console function converts input events of type
+	IECLASS_RAWKEY to ANSI bytes, based on the emulator, and
+	places the result into the buffer.
+	This function also emulates the keyboard of the external 
+	emulator. For example it generates the PF keys of a VT terminal. 
+
+   INPUTS
+	xem_io   - pointer to a properly initialized XEM_IO structure
+	buffer   - a byte buffer large enough to hold all anticipated
+	           characters generated by this conversion.
+	length   - maximum anticipation, i.e. the buffer size in bytes.
+	intuimsg - a pointer to a valid (not ReplyMsg()'ed)
+	           IntuiMessage structure
+
+   RESULTS
+	actual - the number of characters in the buffer, or -1 if
+	         a buffer overflow was about to occur.
+
+xem.library/XEmulatorOptions                     xem.library/XEmulatorOptions
+
+   NAME
+	XEmulatorOptions -- let the user to change options
+
+   SYNOPSIS
+	result = XEmulatorOptions(xem_io);
+	D0			A0
+
+	BOOL XEmulatorOptions(struct XEM_IO *);
+
+   FUNCTION
+   tells the emulator to setup his options structure
+	and to call xem_io->xem_options().
+	xem_io->xem_options is 100% compatible to xpr_io->xpr_options.
+
+   INPUTS
+	xem_io - pointer to a properly initialized XEM_IO structure
+
+   RESULTS
+	TRUE on success, FALSE on failure.
+
+
+xem.library/XEmulatorClearConsole           xem.library/XEmulatorClearConsole
+
+   NAME
+	XEmulatorClearConsole -- clear the display
+
+   SYNOPSIS
+	XEmulatorClearConsole(xem_io);
+				A0
+
+	VOID XEmulatorClearConsole(struct XEM_IO *);
+
+   FUNCTION
+	clear the screen and home the cursor.
+
+   INPUTS
+	xem_io - pointer to a properly initialized XEM_IO structure
+
+   RESULTS
+	Nothing returned.
+
+xem.library/XEmulatorResetConsole           xem.library/XEmulatorResetConsole
+
+   NAME
+   	XEmulatorResetConsole -- resets the emulator
+
+   SYNOPSIS
+	XEmulatorResetConsole(xem_io);
+				A0
+
+	VOID XEmulatorResetConsole(struct XEM_IO *);
+
+   FUNCTION
+   	XEmulatorResetConsole will clear the screen and home the cursor,
+	reset possible charsets, textstyles, etc..
+
+   INPUTS
+	xem_io - pointer to a properly initialized XEM_IO structure
+
+   RESULTS
+	Nothing returned.
+
+xem.library/XEmulatorResetTextStyles     xem.library/XEmulatorResetTextStyles
+
+   NAME
+	XEmulatorResetTextStyles -- resets text-styles
+
+   SYNOPSIS
+	XEmulatorResetTextStyles(xem_io);
+				A0
+
+	VOID XEmulatorResetTextStyles(struct XEM_IO *);
+
+   FUNCTION
+	When you're using an ANSI emulator, it can happen that
+	your BBS enables blink-invers-bold... text attributes.
+	XEmulatorResetTextStyles disables such alien things
+	to human readable text..
+
+   INPUTS
+	xem_io - pointer to a properly initialized XEM_IO structure
+
+   RESULTS
+	Nothing returned.
+
+xem.library/XEmulatorResetCharset           xem.library/XEmulatorResetCharset
+
+   NAME
+	XEmulatorResetCharset -- resets charset
+
+   SYNOPSIS
+	XEmulatorResetCharset(xem_io);
+				A0
+
+	VOID XEmulatorResetCharset(struct XEM_IO *);
+
+   FUNCTION
+	When you're useing an Amiga- or VTxxx emulator, this function
+	disables alternative charsets and steps back to the `normal'
+	ISO Latin-1 or DEC charset.
+
+   INPUTS
+	xem_io - pointer to a properly initialized XEM_IO structure
+
+   RESULTS
+	Nothing returned.
+
+xem.library/XEmulatorGetFreeMacroKeys   xem.library/XEmulatorGetFreeMacroKeys
+
+   NAME
+	XEmulatorGetFreeMacroKeys -- return free macro keys
+
+   SYNOPSIS
+	freeKeys = XEmulatorGetFreeMacroKeys(xem_io, qualifier);
+	D0					A0	D0
+
+	ULONG XEmulatorGetFreeMacroKeys(struct XEM_IO *, ULONG);
+
+   FUNCTION
+   returns a bitmask containing the free macro-keys specified
+   by qualifier. There are the following qualifier-types:
+	XMKQ_NONE, XMKQ_SHIFT, XMKQ_ALTERNATE, XMKQ_CONTROL
+
+   INPUTS
+	xem_io - pointer to a properly initialized XEM_IO structure
+
+   RESULTS
+   	freeKeys - integer
+
+   SEE ALSO
+	xem.library/XEmulatorMacroKeyFilter
+
+xem.library/XEmulatorMacroKeyFilter       xem.library/XEmulatorMacroKeyFilter
+
+   NAME
+	XEmulatorMacroKeyFilter -- install macro-key definitions
+
+   SYNOPSIS
+	result = XEmulatorMacroKeyFilter(xem_io,keys);
+	D0				A0	A1
+
+	BOOL XEmulatorMacroKeyFilter(struct XEM_IO *, struct List *);
+
+   FUNCTION
+	Tells the emulator to accept a new list. If list is NULL,
+	the emulators key-filter is disabled.
+	list is a standard Amiga List structure. The nodes attached to
+	this list are called `struct XEmulatorMacroKey'.
+	Their elements are:
+
+struct XEmulatorMacroKey {
+  struct MinNode xmk_Node;
+  UWORD	xmk_Qualifier;	/* see below */
+  UBYTE	xmk_Type;	/* see below */
+  UBYTE	xmk_Code;	/* raw or cooked key-code */
+  APTR	xmk_UserData;	/* comm-proggy private data */
+			/* could be a function ptr or a modem cmd */
+};
+
+/*----- Qualifiers for XMK_QUALIFIER -----*/
+#define XMKQ_NONE      0 /* execute this key if no qualfier is pressed */
+#define XMKQ_SHIFT     1 /* execute this key if a shift key is pressed */
+#define XMKQ_ALTERNATE 2 /* execute this key if  an alt key is pressed */
+#define XMKQ_CONTROL   3 /* execute this key if control key is pressed */
+
+/*----- Types for XMK_TYPE -----*/
+#define XMKT_IGNORE 1	/* ignore this key definition */
+#define XMKT_RAWKEY 2	/* xmk_Code is raw */
+#define XMKT_COOKED 3	/* xmk_Code is cooked */
+
+
+   INPUTS
+	xem_io - pointer to a properly initialized XEM_IO structure
+
+   RESULTS
+	TRUE on success, FALSE on failure.
+
+   SEE ALSO
+	xem.library/XEmulatorGetFreeMacroKeys
+
+xem.library/XEmulatorInfo                           xem.library/XEmulatorInfo
+
+   NAME
+	XEmulatorInfo -- return info about the emulator
+
+   SYNOPSIS
+	XEmulatorInfo(xem_io, type);
+			A0	d0
+
+	VOID XEmulatorInfo(struct XEM_IO *, ULONG);
+
+   FUNCTION
+	This function returns selected pointers to structures or buffers
+	defined in the external emulator.
+	Currently defined info-types:
+
+	XEMI_CURSOR_POSITION
+	returns the actual cursor-position. Home is 1,1.
+
+	XEMI_CONSOLE_DIMENSIONS
+	returns the console dimensions in columns and lines.
+
+   INPUTS
+	xem_io - pointer to a properly initialized XEM_IO structure
+	type - integer
+
+	SAMPLE-CODE
+
+	/* for use in the emulator */
+
+LONG __saveds __asm XEmulatorInfo(register __a0 struct XEM_IO *io, register __d0 ULONG type)
+{
+   struct ASCIIConsole *con = (struct ASCIIConsole *)io->xem_console;
+   LONG result = -1;
+
+   if(con != NULL)
+   {
+      switch(type)
+      {
+         case XEMI_CURSOR_POSITION:
+            result = XEMI_CREATE_POSITION(con->col, con->row);
+         break;
+
+         case XEMI_CONSOLE_DIMENSIONS:
+            result = XEMI_CREATE_DIMENSIONS(con->columns, con->rows);
+         break;
+
+      }
+   }
+   return(result);
+}
+
+
+	/* for use in comm-proggy */
+
+   {
+      LONG result;
+
+		/* get actual cursor position */
+
+      result = XEmulatorInfo(XEmActualVars, XEMI_CURSOR_POSITION);
+      if(result != -1)
+      {
+         WORD cursorX, cursorY;
+
+         cursorX = XEMI_EXTRACT_X_POSITION(result);	/* Origin is 1 */
+         cursorY = XEMI_EXTRACT_Y_POSITION(result);	/* Origin is 1 */
+         .
+         .
+         .
+      }
+   }
+
+
+   {
+      LONG result;
+
+      result = XEmulatorInfo(XEmActualVars, XEMI_CONSOLE_DIMENSIONS);
+      if(result != -1)
+      {
+         WORD lines, columns;
+
+			/* get columns and lines */
+
+         columns = XEMI_EXTRACT_COLUMNS(result);
+         lines   = XEMI_EXTRACT_LINES(result);
+         .
+         .
+         .
+      }
+   }
+
+
+   RESULTS
+	-1 on failure
+
+xem.library/XEmulatorPreferences             xem.library/XEmulatorPreferences
+
+   NAME
+	XEmulatorPreferences -- load or save preferences file
+
+   SYNOPSIS
+	XEmulatorPreferences(xem_io, fileName, mode);
+				A0	a1	d0
+
+	VOID XEmulatorPreferences(struct XEM_IO *, STRPTR, ULONG);
+
+   FUNCTION
+	Depending on the mode, XEmulatorPreferences loads or saves a
+	preferences-file named fileName.
+	In case of XEM_PREFS_RESET, the emulator steps back to its
+	internal presets; the fileName is ignored and should be NULL.
+
+	The preferences-files are placed in ENV:xem
+	A preferences-file-name consists of the library-name
+	without the `.library` extension.
+	a preferences-file for an xemascii.library would be
+	called xemascii..
+
+/*----- Modes for XEmulatorPreferences -----*/
+#define XEM_PREFS_RESET	0	/* Reset to builtin defaults	*/
+#define XEM_PREFS_LOAD	1	/* Load preferences from file	*/
+#define XEM_PREFS_SAVE	2	/* Save preferences to file	*/
+
+   INPUTS
+	xem_io   - pointer to a properly initialized XEM_IO structure
+	fileName - STRPTR
+	mode     - integer
+
+   RESULTS
+	TRUE on success, FALSE on failure.
+
