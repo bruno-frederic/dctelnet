@@ -1,0 +1,588 @@
+@DATABASE "DC-TelNet.guide"
+@node "MAIN" "DC-TelNet Guide"
+@author "zED"
+@TOC "MAIN"
+
+                             @{b}DC-TelNet © v1.5@{ub}
+     ______  ______ ____________________    _________    ____________________
+    /\_____\/\_____\\_________\______\__\  /\______\_\  /\__\______\_________\
+   / /  ___ \/  ___//___   ___/  ____/  / / /  ____/  \/ /  /  ____/___   ___/
+  / /  // / /  /     / /  // /  /_\ /  / / /  /_\ /    \/  /  /_\   / /  /
+ / /  // / /  /_    / /  // /  ___//  /_/ /  ___//   /\   /  ___/  / /  /
+/ /  /_\/ /  /__\  / /  // /  /__\/  /__\/  /__\/   / /  /  /__\  / /  /
+\/_______/______/  \/__/ \/______/______/______/___/\/__/______/  \/__/
+                                Version 1.5
+
+ @{"   Introduction  " LINK INTRODUCTION} What is DC-Telnet?
+ @{"   Requirements  " LINK REQUIREMENTS} What you need to run it
+ @{"    Features     " LINK FEATURES} Features list of DC-Telnet
+ @{"   Installation  " LINK INSTALL} Use the Installer or...
+ @{"    How to use   " LINK HOWTO} How to use
+ @{"     History     " LINK HISTORY} Changes in this update and previous versions
+ @{"   Contributers  " LINK CONTRIB} People who have contributed to the project
+ @{" About the Author" LINK AUTHOR} How to get ahold of the author
+@EndNode
+
+@node INTRODUCTION "Introducing, DC-Telnet"
+
+  DC-Telnet, is a telnet client program designed for use with any
+Amiga computer running Kickstart 2.0 or higher.  It's easy to use,
+fast and reliable.
+
+@EndNode
+
+@node REQUIREMENTS "DC-Telnet, System Requirements"
+
+  DC-TELNET requires the following hardware/software....
+
+   - 68020+ Amiga
+
+   - Kickstart/Workbench V2.0 (V36) or higher.
+
+   - A TCP stack, AmiTCP, Miami or other.
+
+   - XPR library for transfers (ex. xprzmodem.library)
+
+   - ibmcon.device (for ANSI colour) (comes with it)
+
+   - reqtools.library
+
+@EndNode
+
+@node FEATURES "Features of DC-Telnet"
+
+   DC-Telnet is power packed with....
+
+          - Address book with Username & Password enteries
+            also Sorting by Name, Reverse Name & Last Connect
+
+          - BackSpace/DEL swapping, for connecting to unix machines.
+
+          - Strip colour, for those 2 colour workbench screens.
+
+          - User definable function keys.
+
+          - Screen to back hidden, as seen in NCOMM.
+
+          - Scrollback/Review Buffer with print option.
+
+          - Fast & Simple, direct interface to bsdsocket.library.
+
+          - Fast ANSI display in 8 or 16 colour EGA emulation.
+
+          - Support for connecting to a non-telnet server.
+
+          - Terminal emulation with XEM libraries.
+
+          - Upload & Download with XPR libraries.
+
+          - LED's on screen so you can check connected/recieving.
+
+          - Packet Window for chatting.
+
+          - User definable ScreenModes, Fonts & Palette.
+
+          - Iconify
+
+          - Connect Treands, Connect to multipul Telnet sites at the same
+            time.
+
+          - SpeedTest, Tests the speed of scrolling & connection.
+
+          - DOES NOT REQUIRE MUI!!
+
+@EndNode
+
+@node INSTALL "Installing DC-Telnet"
+
+   DC-Telnet, can be installed using the Install script, included in the
+archive or...
+
+   1. De-archive the package.
+
+   2. Copy all the files in the devs drawer to DEVS:
+
+   3. Copy all the files in the fonts drawer to FONTS:	(optional)
+
+   4. Copy all the files in the libs drawer to LIBS:
+
+   5. Make a directory on the partition/HD that you want to copy the main
+      files to.
+
+   6. Copy DCTelnet, DCTelnet.info & this guide into the directory you
+      just created.
+
+   7. Copy the SCIcons and WBIcons directories into the directory you
+      created for DC-Telnet.
+
+***** Easy enough!  No Assigns!  No editing your User-Startup script! *****
+@EndNode
+
+@node HOWTO "DC-Telnet, How to use"
+
+  This section goes into further detail on all the features and how to
+use them...
+
+Pressing the right mouse button you will see.
+        
+ @{"   DC-Telnet  " LINK MM} DC-Telnet menu options.
+ @{"   Transfer   " LINK TRANSFER} Transfer menu options.
+ @{"  Connection  " LINK CONNECTION} Connection menu options.
+ @{"    Options   " LINK OPTIONS} Options menu.
+ @{"   Settings   " LINK PREFS} Preferences menu options.
+ @{"     Login    " LINK LOGIN} Login menu options.
+
+  Click on the above for more help on a option which falls under that
+menu.
+
+@EndNode
+
+@node MM "DC-Telnet, DC-Telnet pull down menu options.
+
+                                  @{b}@{u} ABOUT @{ub}@{uu}
+                                   ~~~~~
+  Pops up a window which displays.  Version information, date of last
+compile, which compiler was used, E-Mail address of the author, support
+web site address & other special messages.
+               Click on the "OK" button to close the window.
+
+                               @{b}@{u} SCROLL BACK @{ub}@{uu}
+                                ~~~~~~~~~~~
+  Opens a window for which you can review the text that has been sent to
+you.
+
+      UP ARROW, Scrolls backwards in the buffer.
+
+      DOWN ARROW, Scrolls forwards in the buffer.
+
+      {f1}, clear the contents of the Scroll Back Buffer.
+
+      {f3}, will Send a copy of the Scroll Back buffer to your printer.
+
+      {f5}, will open a window, you may enter a volume & file name which
+            the contents of the buffer will be saved.  The file will be
+            a standard ASCII text file, so you can view it with any
+            text viewer.
+
+                                 @{b}@{u} ICONIFY @{ub}@{uu}
+                                  ~~~~~~~
+   Closes the screen, and puts a icon on your workbench screen.
+   The program will continue to run.
+
+                               @{b}@{u} SPEED TEST @{ub}@{uu}
+                                ~~~~~~~~~~
+   By using a virtical screen line scroll, a estimate of how many lines
+   displayed per second will be calculated and displayed.
+
+                                  @{b}@{u} QUIT @{ub}@{uu}
+                                   ~~~~
+   Will immediatly EXIT/QUIT the program.
+
+@EndNode
+
+@node TRANSFER "DC-Telnet, Transfer pull down menu options."
+
+                                 @{b}@{u} UPLOAD @{ub}@{uu}
+                                  ~~~~~~
+   Will open a window for you to select a file for uploading or sending
+to the host site that you are connected to.
+
+   Multipul files can be sent, by holding down one of the SHIFT keys
+while selecting files.
+
+                                @{b}@{u} DOWNLOAD @{ub}@{uu}
+                                 ~~~~~~~~
+   Will begin downloading a file from the host site that you have connected
+to.  You must first have a valid protocol selected in the Download protocol.
+You must also have begun a download request with the host site.
+
+@EndNode
+
+@node CONNECTION "DC-Telnet, Connection pull down menu options."
+
+                                 @{b}@{u} CONNECT @{ub}@{uu}
+                                  ~~~~~~~
+  Opens a window for which you manually enter the host name and port
+number of the site that you wish to connect to.  (ex. me.tel.com,23)
+
+                             @{b}@{u} CONNECT THREAD @{ub}@{uu}
+                              ~~~~~~~~~~~~~~
+  Once you are connected to a host site, if you wish to connect to another
+at the same time, you use this option.  Again you enter the host site
+name and port number in manually (SEE: CONNECT)
+
+                               @{b}@{u} DISCONNECT @{ub}@{uu}
+                                ~~~~~~~~~~
+  Manually disconnect or exit a site that you are currently connected to.
+
+* This option will not exit the program, just the site you are connected *
+*                                   to.                                  *
+
+                              @{b}@{u} ADDRESS BOOK @{ub}@{uu}
+                               ~~~~~~~~~~~~
+Opens a window with a list of the address that you have saved.
+
+     @{b}@{u} Connect @{ub}@{uu} - Connects you to the selected site.
+ 
+     @{b}@{u} Edit @{ub}@{uu}    - Allows you to edit, Site name, Site address, port number
+                Username & Password on a selected site.
+
+     @{b}@{u} Add @{ub}@{uu}     - Adds a new entry to the address book.  You will need to
+                provide a Site name, Site address, port number, Username
+                & password for the site you wish to add.
+
+     @{b}@{u} Delete @{ub}@{uu}  - Deletes the selected entries from the address book.
+
+     @{b}@{u} Sort @{ub}@{uu}    - Entries can be sorted by Name, Reverse Name,
+                or Last Connect.
+
+  To close this window, either double click on a site name, select a site
+    and click on the CONNECT button, or click on the close gadget in the
+    left, top corner of the window.
+
+@EndNode
+
+@node Options "DC-Telnet, Options pull down menu."
+
+                              @{b}@{u} USE WORKBENCH @{ub}@{uu}
+                               ~~~~~~~~~~~~~
+ If enabled DC-Telnet will open a window on your WORKBENCH screen.
+
+NOTE:  The packet window and LEDs can not be used if this feature is
+       enabled.
+
+                              @{b}@{u} DISABLE LEDs @{ub}@{uu}
+                               ~~~~~~~~~~~~~
+  Hides the LEDS.  Which are normaly displayed in the top, right corner
+of the screen.  They emulate carrier detect & receiving lights.
+
+                              @{b}@{u} HIDE TITLEBAR @{ub}@{uu}
+                               ~~~~~~~~~~~~~
+  This will close the titlebar at the top, tho the menus are still
+accessable if you press the right mouse button.
+
+                             @{b}@{u} CRLF CORRECTION @{ub}@{uu}
+                              ~~~~~~~~~~~~~~~
+  Makes the client ignore ASCII 13 and turn all ASCII 10 into a 13,10
+combination.  In other words, turn this ON for UNIX/VT100 systems, OFF
+if you are connecting to normal BBS's.
+
+                               @{b}@{u} BS/DEL Swap @{ub}@{uu}
+                                ~~~~~~~~~~~
+  Swaps the Delete (Del) and Back Space keys on your keyboard.  This
+is useful when you are connected to a unix run host site.
+
+                            @{b}@{u} DISABLE SCROLL-B @{ub}@{uu}
+                             ~~~~~~~~~~~~~~~~
+  Disables the ScrollBack or review buffer.  Which will allow DC-Telnet
+to maintain a certain level of memory requirements.  But, you will not
+be able to review any text that has been sent.
+
+                              @{b}@{u} STRIP COLOUR @{ub}@{uu}
+                               ~~~~~~~~~~~~
+  Removes all ANSI colour codes from incoming text.  All text will be
+displayed in mono colour.
+
+                              @{b}@{u} SIMPLE TELNET @{ub}@{uu}
+                               ~~~~~~~~~~~~~
+  If enabled, DC-Telnet will use very simple telnet negotiation.  This
+can be good for certain types of unix shells.  If you connect to a shell
+but do not get a login prompt, this option should help.
+
+                              @{b}@{u} PACKET WINDOW @{ub}@{uu}
+                               ~~~~~~~~~~~~~
+  Opens a box at the bottom of the screen with a cursor, so that you
+can type whole sentences or text to the host you are connected with.
+Ideal when chatting with a system operator or sending a message.
+
+                             @{b}@{u} USE XEM LIBRARY @{ub}@{uu}
+                              ~~~~~~~~~~~~~~~
+  Enables/Uses the library for terminal emulation that you have selected.
+
+NOTE: See...@{b}@{u} Preferences menu, XEM LIBRARY @{ub}@{uu}
+
+                               @{b}@{u} Tool Window @{ub}@{uu}
+                                ~~~~~~~~~~~~~~~
+  Puts icons at the top of the window so you have easier access to
+Connect, Disconnect, Address, Info, Upload, Download & Quit.
+
+  If you wish to change these icons, they are located in the
+   SCIcons and WBIcons directory, and use standard file names.
+   They are Project type icons.  So, you can use your favorate
+   icon editor.
+
+                              @{b}@{u} Return = CR+LF @{ub}@{uu}
+                               ~~~~~~~~~~~~~~
+  If enabled, when you press the "return" key, it sends a Carriage Return
+and a Line Feed.
+
+@{b}*  Only good for non-telnet hosts!@{ub}
+
+                              @{b}@{u} Local EchoBack @{ub}@{uu}
+                               ~~~~~~~~~~~~~~
+  This option, shows you what you type straight to the screen.
+
+@{b}*  Only good for non-telnet hosts (like login to pop3 server.)@{ub}
+
+NOTE:  If you enable this option while connected to a telnet site, you
+       will see what you have typed twice.
+
+                              @{b}@{u} Raw Connection @{ub}@{uu}
+                               ~~~~~~~~~~~~~~
+  Makes sure DC-Telnet, does NOT send any telnet negotiation data.
+
+@{b}* Only good for non-telnet hosts!@{ub}
+
+@EndNode
+@node PREFS "DC-Telnet, Preferences pull down menu options."
+
+                               @{b}@{u} SCREEN MODE @{ub}@{uu}
+                                ~~~~~~~~~~~
+  Allows you to define what resolution or screen type for DC-Telnet to open.
+It can be any Amiga standard screen. (ex. NTSC, PAL, SuperHiRES, ect...)
+
+                               @{b}@{u} SCREEN FONT @{ub}@{uu}
+                                ~~~~~~~~~~~
+  Allows you to define which font DC-Telnet uses, default is topaz.font.
+  But any standard Amiga font can be used, with any size.
+
+                              @{b}@{u} SCREEN PALETTE @{ub}@{uu}
+                               ~~~~~~~~~~~~~~
+  Allows you to change the colours that DC-Telnet uses.  The amout of
+colours that you can define depends on the screen depth set in SCREEN MODE.
+
+                              @{b}@{u} DOWNLOAD PATH @{ub}@{uu}
+                               ~~~~~~~~~~~~~
+  Opens a requester, for which you set the default volume/directory for
+which all downloaded files will appear.
+
+                            @{b}@{u} TRANSFER PROTOCOL @{ub}@{uu}
+                             ~~~~~~~~~~~~~~~~~
+  Opens a requester, from which you can select a default transfer protocol
+library to use for uploading or downloading files from a connected site.
+  (ex. xprzmodem.library is used for ZMODEM protocol transfers.)
+
+                  Any standard XPR protocol can be used.
+
+                             @{b}@{u} PROTOCOL INIT.. @{ub}@{uu}
+                              ~~~~~~~~~~~~~~~
+  Allows you to customize the initialization of the protocol you wish to
+use.  You will have to consult the manual of the XPR protocol for the
+options for the protocol you wish to use.
+
+                              @{b}@{u} FUNTION KEYS @{ub}@{uu}
+                               ~~~~~~~~~~~~
+  Opens a requester, for which you can define what text is sent by
+ pressing the defined funtion key, commonly called macros.
+
+     @{b}@{u} \r @{ub}@{uu}  will send a Carriage return
+     @{b}@{u} \n @{ub}@{uu}  will send a Line Feed
+     @{b}@{u} \e @{ub}@{uu}  will send a Escape Code
+
+  (ex. a definition of "zED\r" will send "zED" with a carriage return.
+
+                            @{b}@{u} XEM Library ... @{ub}@{uu}
+                             ~~~~~~~~~~~~~~~
+  Allows you to select an external terminal emulation library, commonly
+known as XEM libraries.  They are not required.  But, provide more terminal
+emulations.  See XEM library for further documentation.
+
+  (ex. xem.vt340.library - would be used for connecting to a VT340 terminal)
+
+  NOTE: Using a XEM library will trash your window border, if the
+        USE WORKBENCH option is enabled.
+
+                            @{b}@{u} Telnet Display ID @{ub}@{uu}
+                             ~~~~~~~~~~~~~~~~~
+  If a host requests for the display type you are using.  DC-Telnet will
+send this.  You will usually only get this type of request when connecting
+to a UNIX host.
+
+   Some valid ones are:    DEC-VT100, ANSI, DUMB, ASCII
+                           (and there are hundreds more!!)
+
+                            @{b}@{u} ScrollBack Lines @{ub}@{uu}
+                             ~~~~~~~~~~~~~~~~
+  Allows you to define the maximum number of lines the scrollback buffer will
+remember, before the oldest line is deleted.
+
+                            @{b}@{u} SNAPSHOT WINDOWS @{ub}@{uu}
+                             ~~~~~~~~~~~~~~~~
+  Will keep window position settings.  So that windows will appear in
+the same place, whenever you open them.
+
+@EndNode
+
+@node LOGIN "DC-Telnet, Login pull down menu options."
+
+                              @{b}@{u} SEND USERNAME @{ub}@{uu}
+                               ~~~~~~~~~~~~~
+   Will send the name you have defined in the username field of the
+address book, to the site you are connected to.
+
+                              @{b}@{u} SEND PASSWORD @{ub}@{uu}
+                               ~~~~~~~~~~~~~
+   Will send the password you have defined in the password field of the
+address book, to the site you are connected to. 
+
+@EndNode
+@node HISTORY "DC-Telnet, History"
+
+                                 @{b}@{u} History @{ub}@{uu}
+                                  ~~~~~~~~~
+
+---[ DCTelnet 1.5 ]-------------------------------------------------------
+
+	- Transfer upload window could inadvertantly popup - fixed.
+
+	- It's now possible to abort a connection attempt.
+
+	- Using XEM libraries while in WB mode works better now.
+
+	- DCTelnet doesn't close and reopen the screen when changing
+	  simple prefs.
+
+
+
+---[ DCTelnet 1.4 ]-------------------------------------------------------
+
+	- Transfer Window uses proper dri_pens
+
+	- Can use arrow keys to move through scrollback.
+
+	- Scrollback now uses boopsi gadgets.
+
+	- Connection Information window added.
+
+	- Program saves your last upload directory.
+
+	- XEM Library support added. Allows you to use external XEM
+	  libraries for ansi/vtxxx emulation. Note: this will trash your
+	  window border if in Workbench screen.
+
+	- It's possible to change max number of lines in the Scrollback
+	  (preferences menu).
+
+	- Clearing Scrollback now possible (F1 key in Scrollback window).
+
+	- It's now possible to change the Telnet DisplayID string. This
+	  text is sent to the remote host on request (usually only when
+	  connecting to a unix host).
+
+	- Proper pulldown menu colors in Workbench mode.
+
+	- Tool Window option added.
+
+	- "Return = CR + LF" option added.
+
+	- "Local Echoback" option added.
+
+	- "Raw Connection" option added.
+
+	- Invisible "screen-to-back" gadget (when titlebar hidden) now
+	  works even during a transfer.
+
+	- "Jump Scroll" option added (only works in NOT workbench mode
+	  and NOT XEM Library mode).
+
+
+
+---[ DCTelnet 1.3 ]-------------------------------------------------------
+
+	- 'Simple Telnet' option added for loggin in to certain types of
+	  unix machines. If you connect but get no login prompt, try this
+	  this option.
+
+	- 'Strip Color' option added. Good for 1bit screens or WB mode.
+
+	- 'Packet Window' feature added (screen mode only).
+
+	- Username & Password can be saved in address book and then sent
+	  to remote host via the menus.
+
+	- ScrollBack won't scroll away while you're reading it.
+
+	- Invisible screen-to-back gadget added when in 'Hide Titlebar'
+	  mode (just like NComm).
+
+	- Print Scrollback feature added.
+
+	- Iconify option added.
+
+
+
+---[ DCTelnet 1.2 ]-------------------------------------------------------
+
+	- ScrollBack (Review Buffer) feature added.
+
+	- It's possible to snapshot the window pos/size while in workbench
+	  mode (also snapshots ScrollBack window if it's open).
+
+	- Function Keys (macros) feature added.
+
+	- ibmcon.device 1.2 can now handle any sized fonts when in screen
+          mode!
+
+	- DCTelnet now identifies itself as DEC-VT100 - good for shells.
+
+	- The transfer window text no longer screws up on different fonts.
+
+
+
+---[ DCTelnet 1.1 ]-------------------------------------------------------
+
+	- Small glitch in parameter passing fixed.
+
+	- You can no longer move windows behind the invisible ansi window.
+
+	- Download path prefs uses a file requester instead.
+
+	- Sorting the address book now works.
+
+	- After deleting entry in address book it doesn't move to the top
+	  but to the next site (cosmetic change only :)
+
+	- It's now possible to double click entries in the address book
+	  to connect to them.
+
+	- "BackSpace/DEL Swap" option added (good for unix).
+
+	- Remembers your last used upload directory for the filereq.
+
+	- LEDs are refreshed after transfers.
+
+	- It's now possible to use workbench screen.
+	  (Note: This uses console.device for ansi emulation and may be a
+           bit slower and less accurate.)
+
+	- File Transfers improved! Far less errors now!
+
+@EndNode
+@node CONTRIB "DC-Telnet, Would like to thank..."
+
+	Thanks to Ray Akey for his help with the file tranfer code,
+	it wouldn't have worked without his help.
+
+	Thanks to RaMoNsTeR\DC for the installer script.
+
+        Thanks to [sHANe] for writing this doc.
+
+        Thanks to LoOnY for creating the cool icons.
+
+@EndNode
+@node AUTHOR "DC-Telnet, Author"
+
+                       .________ _/\_ _/\_  _________
+                   ____¦____   7_)__ Y __(_(   _____/__
+                 _/     ___/ _/ \ (_\_/_) / \_  T     ¬\_
+                 \     ¦/    7   (\_`-'_/)   7  l       /
+                  \____.-----¦    ¥¥¥¥¥¥¥    ¦----.____/
+                   ¯¯¯¯¯          `^---^'         ¯¯¯¯¯
+
+                   d -÷- i -÷- G -÷- i -÷- T -÷- A -÷- L
+         c -÷- O -÷- R -÷- R -÷- U -÷- P -÷- T -÷- i -÷- O -÷- N
+
+Author EMail:		zed@mentasm.com
+
+DC Web Page:		http://www.digital-corruption.net
+@EndNode

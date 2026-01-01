@@ -1,4 +1,6 @@
-*.arexx         text eol=lf
+*.arexx          text eol=lf
+*.sh             text eol=lf
+Install_DCTelnet text eol=lf
 
 # Object file
 *.o             binary
@@ -13,6 +15,4 @@
 *.lib           binary
 *.device        binary
 
-# Third-party binaries (AmiTCP)
-**/bin/**       binary
-httpget.bin.*   binary
+package/DCTelnet/Fonts/**  binary

@@ -1,0 +1,150 @@
+
+;---[ $VER: DCTelnet Installscript 1.3 (12/03/98) by RaMoNsTeR\DC ]-----------
+
+(SET @app-name "DCTelnet")
+(SET @default-dest "SYS:")
+
+;---[ Setup the various install messages ]------------------------------------
+
+(SET selectpath	(cat "Please Select where you would like DCTelnet installed\n"
+		"A new directory called 'DCTelnet' be created")
+)
+(SET pathhelp (cat "\n\nSelect a volume or drawer where you would like the DCTelnet drawer to be created.\n\n"
+		"The main executable and support documentation etc. will be placed inside the 'DCTelnet' dir."
+		)
+)
+
+(SET messy (cat	"\n\n--××·· -÷- ··××---÷---××·· -÷- ··××---÷---××·· -÷- ··××-- -÷-\n\n"
+		"d -÷- i -÷- G -÷- i -÷- T -÷- A -÷- L\nc -÷- O -÷- R -÷- R -÷- U -÷- P -÷- T -÷- i -÷- O -÷- N\n\n"
+		"zED presents DCTelnet v1.5!\n\n"
+		"--××·· -÷- ··××---÷---××·· -÷- ··××---÷---××·· -÷- ··××-- -÷-")
+)
+
+(SET optimize 	"Would you like to install the 020+ optimized DCTelnet?")
+(SET inst	"\n\nInstalling the DCTelnet main file.")
+(SET helpinst	"\n\nThe main DCTelnet executable will now be copied to the DCTelnet dir.")
+
+;---[ Start installation ]----------------------------------------------------
+
+
+(message messy)
+
+(SET DestDir
+	(ASKDIR	(prompt selectpath)
+		(help	pathhelp) 
+		(default @default-dest)
+		(disk)
+     )
+)
+
+(SET DestDir	(TACKON DestDir "DCTelnet"))
+(SET @default-dest DestDir)
+(SET SCDir	(TACKON DestDir "SCIcons"))
+(SET WBDir	(TACKON DestDir "WBIcons"))
+
+	(COPYLIB
+		(prompt	inst)
+		(help	helpinst)
+		(source "DCTelnet/DCTelnet")
+		(dest	DestDir)
+		(infos)
+		(confirm)
+		(optional "force")
+		(optional "askuser")
+	)
+	
+	(COPYFILES
+		(prompt	"Installing the DCTelnet documentation.")
+		(help	"\n\nTo install the documentation to the DCTelnet directory leave the box ticked.\n\n"
+			"If you do not wish to install the documention deselect the checkbox.")
+		(source "DCTelnet/docs")
+		(dest	 DestDir)
+		(infos)
+		(confirm)
+		(all)
+	)
+		
+	(COPYFILES
+		(prompt	"Installing the DCTelnet SCIcons (ANSI) icons.")
+		(help	"\n\nAs from 1.4, DCTelnet now uses various icons to represent functions.\n\n"
+			"If you use Workbench to run DCTelnet, it will default to MWB (WB) style icons,\n"
+			"otherwise it will load and use the ANSI (SC) style icons.")
+		(source "DCTelnet/SCIcons")
+		(dest	 SCDir)
+		(infos)
+		(all)
+	)
+
+	(COPYFILES
+		(prompt	"Installing the DCTelnet WBIcons (MWB) icons.")
+		(help	"\n\nAs from 1.4, DCTelnet now uses various icons to represent functions.\n\n"
+			"If you use Workbench to run DCTelnet, it will default to MWB (WB) style icons,\n"
+			"otherwise it will load and use the ANSI (SC) style icons.")
+		(source "DCTelnet/WBIcons")
+		(dest	 WBDir)
+		(infos)
+		(all)
+	)
+	
+	(COPYLIB
+		(prompt	"\n\nInstalling xprftp support library.")
+		(help	"\n\nXPR is a hi-speed and far more efficient transfer method than ZModem\n\n"
+			"Quite a number of Amiga BBS systems support this protocol.\n\n"
+			"XPR-FTP Written By Zed/DC")
+		(source "DCTelnet/libs/xprftp.library")
+		(dest	"libs:")
+		(confirm)
+		(optional "force")
+		(optional "askuser")
+	)
+	
+	(COPYLIB
+		(prompt	"\n\nInstalling zmodem support library.")
+		(help	"\n\nZModem is used to transfer files via Telnet.\n\n"
+			"If it is not already installed, it is recommended to do so."
+			)
+		(source "DCTelnet/libs/xprzmodem.library")
+		(dest	"libs:")
+		(confirm)
+		(optional "force")
+		(optional "askuser")
+	)
+	
+	(COPYLIB
+		(prompt	"\n\nInstalling xemvt340 support library.")
+		(help	"\n\nExternal VT emulation support.\n\n"
+			"If it is not already installed, it is recommended to do so."
+			)
+		(source "DCTelnet/libs/xemvt340.library")
+		(dest	"libs:")
+		(confirm)
+		(optional "force")
+		(optional "askuser")
+	)
+	
+	(COPYLIB
+		(prompt	"\n\nInstalling ibmcom device for ANSI emulation.")
+		(help	"\n\nibmcon.device is used to display the 'pretty' ANSI gfx/colors.\n\n"
+			"It is essential that this be installed on your system for DCTelnet."
+			)
+		(source "DCTelnet/devs/ibmcon.device")
+		(dest	"devs:")
+		(confirm)
+		(optional "force")
+		(optional "askuser")
+	)
+	
+	(COPYFILES
+		(prompt	"Installing a few nice ANSI/BBS fonts.")
+		(help	"\n\nCheck which fonts you would like to install on your system.\n\n"
+			"These 3 are some of the most popular and nicest BBSing fonts."
+		)
+		(source "DCTelnet/fonts")
+		(dest	"fonts:")
+		(confirm)
+		(all)
+	)
+	
+(message "\n\nDCTelnet is now installed\n\nFor bugreports/support etc. please refer to the included documentation...\n\n...ENJOY!!!")
+
+(EXIT)

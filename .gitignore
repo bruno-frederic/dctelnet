@@ -1,0 +1,8 @@
+_UAEFSDB.___
+.info
+/assets.info
+/build.info
+/docs.info
+/src.info
+build/Build-output*.txt
+build/DCTelnet*.lha
