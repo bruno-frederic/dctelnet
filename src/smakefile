@@ -1,0 +1,11 @@
+.c.o:
+		SC $(CFLAGS) CPU=020 $*.c
+
+CFLAGS		= NMINC MCCONS STREQ STRMER NOSTKCHK DEF=__PROTO__ PARM=R GST=DCTelnet.gst NOSTARTUP OPT
+LFLAGS		= SC SD NOICONS STRIPDEBUG
+
+OBJS		= DCTelnet.o Xfer.o Guis.o Connect.o
+LIBS		= LIB:sc.lib
+
+DCTelnet:	$(OBJS)
+		SLINK "c.o" $(OBJS) TO $@ LIB $(LIBS) $(LFLAGS)
