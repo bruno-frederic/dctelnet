@@ -1,37 +1,73 @@
-
-;---[ $VER: DCTelnet Installscript 1.7 (dec 2025) ]-----------
+; $VER: DCTelnet Installscript 1.7 (2.1.26)
 
 (SET @app-name "DCTelnet")
 (SET @default-dest "SYS:")
 
-;---[ Setup the various install messages ]------------------------------------
 
-(SET selectpath	(cat "Please Select where you would like DCTelnet installed\n"
-		"A new directory called 'DCTelnet' be created")
+;---[ Start installation ]----------------------------------------------------
+
+(message "\n\n--××·· -÷- ··××---÷---××·· -÷- ··××---÷---××·· -÷- ··××-- -÷-\n\n"
+		 "DCTelnet - A classic Amiga Telnet/BBS client with Zmodem\n\n"
+		 "--××·· -÷- ··××---÷---××·· -÷- ··××---÷---××·· -÷- ··××-- -÷-")
+
+
+(set #os-vernum (getversion "libs:version.library"))
+(set #os-ver (/ #os-vernum 65536))
+
+; Needed for GlowIcons
+(set #iconlib-vernum (getversion "libs:icon.library"))
+(set #iconlib-ver (/ #iconlib-vernum 65536))
+
+
+(transcript "Running on OS v" #os-ver)
+
+(if (< #os-ver 36)
+	(
+		(message "Please note that this program requires AmigaOS 2.00+!\n\n"
+					"It will NOT work on 1.x." (all))
+	)
 )
-(SET pathhelp (cat "\n\nSelect a volume or drawer where you would like the DCTelnet drawer to be created.\n\n"
-		"The main executable and support documentation etc. will be placed inside the 'DCTelnet' dir."
+
+
+(set #reqtools-ver (getversion "libs:reqtools.library"))
+
+(if (= #reqtools-ver 0)
+	(
+		(if (< #os-ver 37)
+			(
+				(message "Please note that this program requires ReqTools library!\n"
+					"You will need to install it before running DCTelnet.\n\n"
+					"On AmigaOS / Kickstart 2.00 & 2.02,\n"
+					"ReqTools v2.9a from Aminet fails to load.\n"
+					"An older version of ReqTools is required:\n"
+					"ReqTools-2.2-user.lha\n\n"
+					"available here:\n\n"
+					"https://www.nic.funet.fi/pub/amiga/system/libraries/" (all))
+			)
+			; else
+			(
+				(message "Please note that this program requires ReqTools library!\n\n"
+					"You will need to install it before running DCTelnet.\n\n"
+					"It can be downloaded from Aminet: util/libs/ReqToolsUsr" (all))
+			)
 		)
+
+
+
+
+
+	)
 )
 
-(SET messy (cat	"\n\n--××·· -÷- ··××---÷---××·· -÷- ··××---÷---××·· -÷- ··××-- -÷-\n\n"
-		"DCTelnet - A classic Amiga Telnet/BBS client with Zmodem\n\n"
-		"v1.7\n\n"
-		"--××·· -÷- ··××---÷---××·· -÷- ··××---÷---××·· -÷- ··××-- -÷-")
-)
 
-(SET optimize 	"Would you like to install the 020+ optimized DCTelnet?")
-(SET inst	"\n\nInstalling the DCTelnet main file.")
-(SET helpinst	"\n\nThe main DCTelnet executable will now be copied to the DCTelnet dir.")
 
 ;---[ Start installation ]----------------------------------------------------
 
 
-(message messy)
-
 (SET DestDir
-	(ASKDIR	(prompt selectpath)
-		(help	pathhelp)
+	(ASKDIR	(prompt "Please select where you would like DCTelnet to be installed\n"
+					"a drawer will be created")
+		(help @askdir-help)
 		(default @default-dest)
 		(disk)
      )
@@ -39,28 +75,66 @@
 
 (SET DestDir	(TACKON DestDir "DCTelnet"))
 (SET @default-dest DestDir)
+(SET DocsDir	(TACKON DestDir "Docs"))
 (SET SCDir	(TACKON DestDir "SCIcons"))
 (SET WBDir	(TACKON DestDir "WBIcons"))
 
-	(COPYLIB
-		(prompt	inst)
-		(help	helpinst)
-		(source "DCTelnet/DCTelnet")
+	(COPYFILES
+		(prompt	"\n\nInstalling DCTelnet executable for 68 000.\n")
+		(help @copyfiles-help)
+		(source "DCTelnet")
+		(dest	 DestDir)
+		(infos)
+		(confirm)  ; if the "confirm" option is present, user will be prompted to indicate which
+		           ; files are to be copied, else the files will be copied silently.
+	)
+	(COPYFILES
+		(prompt	"\n\nInstalling DCTelnet executable for 68 020 CPU.\n")
+		(help @copyfiles-help)
+		(source "DCTelnet.020")
 		(dest	DestDir)
 		(infos)
 		(confirm)
-		(optional "force")
-		(optional "askuser")
 	)
 
 	(COPYFILES
 		(prompt	"Installing the DCTelnet documentation.")
-		(help	"\n\nTo install the documentation to the DCTelnet directory leave the box ticked.\n\n"
-			"If you do not wish to install the documention deselect the checkbox.")
-		(source "DCTelnet/docs")
-		(dest	 DestDir)
+		(help @copyfiles-help)
+		(source "docs")
+		(dest	 DocsDir)
 		(infos)
 		(confirm)
+		(all)			; needed to copy whole directory
+	)
+
+	(if (< #iconlib-ver 45)
+		(
+			(set #glowIconsDest	(TACKON DestDir "GlowIcons"))
+		)
+		;else
+		(
+			(set #glowIconsDest DestDir)
+		)
+	)
+
+	(COPYFILES
+		(prompt	"Installing optional GlowIcons set.")
+		(help @copyfiles-help)
+		(source "GlowIcons")
+		(dest	 #glowIconsDest)
+		(infos)
+		(confirm AVERAGE)	; so even Average user show this confirm step
+		(all)
+	)
+
+	(COPYFILES
+		(prompt	"Installing optional starter address book.\n\n"
+				"Caution: any existing address book will be overwritten.\n\n")
+		(help @copyfiles-help)
+		(source "DCTelnet.Book")
+		(dest	 DestDir)
+		(infos)
+		(confirm AVERAGE)	; so even Average user show this confirm step
 		(all)
 	)
 
@@ -69,9 +143,8 @@
 		(help	"\n\nAs from 1.4, DCTelnet now uses various icons to represent functions.\n\n"
 			"If you use Workbench to run DCTelnet, it will default to MWB (WB) style icons,\n"
 			"otherwise it will load and use the ANSI (SC) style icons.")
-		(source "DCTelnet/SCIcons")
+		(source "SCIcons")
 		(dest	 SCDir)
-		(infos)
 		(all)
 	)
 
@@ -80,58 +153,50 @@
 		(help	"\n\nAs from 1.4, DCTelnet now uses various icons to represent functions.\n\n"
 			"If you use Workbench to run DCTelnet, it will default to MWB (WB) style icons,\n"
 			"otherwise it will load and use the ANSI (SC) style icons.")
-		(source "DCTelnet/WBIcons")
+		(source "WBIcons")
 		(dest	 WBDir)
-		(infos)
 		(all)
 	)
 
+	; COPYLIB: check the version to be installed and the destination version before copying
 	(COPYLIB
-		(prompt	"\n\nInstalling xprftp support library.")
-		(help	"\n\nXPR is a hi-speed and far more efficient transfer method than ZModem\n\n"
+		(prompt	"\n\nInstalling FTP support: xprftp.library")
+		(help	"\n\nFTP is a hi-speed and far more efficient transfer method than ZModem\n\n"
 			"Quite a number of Amiga BBS systems support this protocol.\n\n"
 			"XPR-FTP Written By Zed/DC")
-		(source "DCTelnet/libs/xprftp.library")
+		(source "libs/xprftp.library")
 		(dest	"libs:")
 		(confirm)
-		(optional "force")
-		(optional "askuser")
 	)
 
 	(COPYLIB
-		(prompt	"\n\nInstalling zmodem support library.")
+		(prompt	"\n\nInstalling Zmodem support: xprzmodem.library")
 		(help	"\n\nZModem is used to transfer files via Telnet.\n\n"
 			"If it is not already installed, it is recommended to do so."
 			)
-		(source "DCTelnet/libs/xprzmodem.library")
+		(source "libs/xprzmodem.library")
 		(dest	"libs:")
 		(confirm)
-		(optional "force")
-		(optional "askuser")
 	)
 
 	(COPYLIB
-		(prompt	"\n\nInstalling xemvt340 support library.")
+		(prompt	"\n\nInstalling external terminal emulation support: xemvt340.library")
 		(help	"\n\nExternal VT emulation support.\n\n"
 			"If it is not already installed, it is recommended to do so."
 			)
-		(source "DCTelnet/libs/xemvt340.library")
+		(source "libs/xemvt340.library")
 		(dest	"libs:")
 		(confirm)
-		(optional "force")
-		(optional "askuser")
 	)
 
 	(COPYLIB
-		(prompt	"\n\nInstalling ibmcom device for ANSI emulation.")
+		(prompt	"\n\nInstalling device for ANSI color display: ibmcom.device")
 		(help	"\n\nibmcon.device is used to display the 'pretty' ANSI gfx/colors.\n\n"
 			"It is essential that this be installed on your system for DCTelnet."
 			)
-		(source "DCTelnet/devs/ibmcon.device")
+		(source "devs/ibmcon.device")
 		(dest	"devs:")
 		(confirm)
-		(optional "force")
-		(optional "askuser")
 	)
 
 	(COPYFILES
@@ -139,8 +204,9 @@
 		(help	"\n\nCheck which fonts you would like to install on your system.\n\n"
 			"These 3 are some of the most popular and nicest BBSing fonts."
 		)
-		(source "DCTelnet/fonts")
+		(source "fonts")
 		(dest	"fonts:")
+		(fonts)
 		(confirm)
 		(all)
 	)
