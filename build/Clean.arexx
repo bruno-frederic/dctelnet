@@ -9,4 +9,4 @@ Make this script executable :
 
 ADDRESS COMMAND
 
-'DELETE Build-output.txt RAM:build-0?0 ALL'
+'DELETE Build-output.txt RAM:build-package RAM:build-0?0   ALL'
