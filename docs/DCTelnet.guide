@@ -1,131 +1,118 @@
-@DATABASE "DC-TelNet.guide"
-@node "MAIN" "DC-TelNet Guide"
-@author "zED"
+@DATABASE "DCTelnet.guide"
+@$VER: DCTelnet.guide 1.7 (2.1.26)
+@node "MAIN" "DCTelnet Guide"
+@author "Shane, Zed and Bruno FREDERIC"
 @TOC "MAIN"
-
-                             @{b}DC-TelNet © v1.7@{ub}
+                              @{b}DCTelnet v1.7@{ub}
      ______  ______ ____________________    _________    ____________________
-    /\_____\/\_____\\_________\______\__\  /\______\_\  /\__\______\_________\
-   / /  ___ \/  ___//___   ___/  ____/  / / /  ____/  \/ /  /  ____/___   ___/
-  / /  // / /  /     / /  // /  /_\ /  / / /  /_\ /    \/  /  /_\   / /  /
- / /  // / /  /_    / /  // /  ___//  /_/ /  ___//   /\   /  ___/  / /  /
-/ /  /_\/ /  /__\  / /  // /  /__\/  /__\/  /__\/   / /  /  /__\  / /  /
-\/_______/______/  \/__/ \/______/______/______/___/\/__/______/  \/__/
-                                Version 1.7
+    /\\_____\\/\\_____\\\\_________\\______\\__\\  /\\______\\_\\  /\\__\\______\\_________\\
+   / /  ___ \\/  ___//___   ___/  ____/  / / /  ____/  \\/ /  /  ____/___   ___/
+  / /  // / /  /     / /  // /  /_\\ /  / / /  /_\\ /    \\/  /  /_\\   / /  /
+ / /  // / /  /_    / /  // /  ___//  /_/ /  ___//   /\\   /  ___/  / /  /
+/ /  /_\\/ /  /__\\  / /  // /  /__\\/  /__\\/  /__\\/   / /  /  /__\\  / /  /
+\\/_______/______/  \\/__/ \\/______/______/______/___/\\/__/______/  \\/__/
 
- @{"   Introduction  " LINK INTRODUCTION} What is DC-Telnet?
+                  https://github.com/bruno-frederic/dctelnet/
+
+ @{"   Introduction  " LINK INTRODUCTION} What is DCTelnet?
+ @{"     Features    " LINK FEATURES} Features list of DCTelnet
  @{"   Requirements  " LINK REQUIREMENTS} What you need to run it
- @{"    Features     " LINK FEATURES} Features list of DC-Telnet
  @{"   Installation  " LINK INSTALL} Use the Installer or...
  @{"    How to use   " LINK HOWTO} How to use
+ @{"    Known bugs   " LINK KNOWNBUGS} Known bugs
  @{"     History     " LINK HISTORY} Changes in this update and previous versions
- @{"   Contributers  " LINK CONTRIB} People who have contributed to the project
- @{" About the Author" LINK AUTHOR} How to get ahold of the author
+ @{"     Credits     " LINK CREDITS} Credits
+ @{"     License     " LINK LICENSE} License
 @EndNode
 
-@node INTRODUCTION "Introducing, DC-Telnet"
 
-  DC-Telnet, is a telnet client program designed for use with any
-Amiga computer running Kickstart 2.0 or higher.  It's easy to use,
-fast and reliable.
 
-@EndNode
+@node INTRODUCTION "Introducing, DCTelnet"
 
-@node REQUIREMENTS "DC-Telnet, System Requirements"
+@{b}DCTelnet@{ub} is a Telnet client for Commodore @{b}Amiga@{ub} computers.
+It is @{b}easy to use@{ub}, @{b}lightweight@{ub}, and @{b}reliable@{ub}.
 
-  DC-TELNET requires the following hardware/software....
-
-   - 68020+ Amiga
-
-   - Kickstart/Workbench V2.0 (V36) or higher.
-
-   - A TCP stack, AmiTCP, Miami or other.
-
-   - XPR library for transfers (ex. xprzmodem.library)
-
-   - ibmcon.device (for ANSI colour) (comes with it)
-
-   - reqtools.library
+@{b}DCTelnet@{ub} is ideal for accessing @{b}Telnet-enabled BBS systems@{ub}
+on classic @{b}Amiga hardware@{ub}, and supports @{b}file transfers via
+ZModem@{ub}.
 
 @EndNode
 
-@node FEATURES "Features of DC-Telnet"
 
-   DC-Telnet is power packed with....
 
-          - Address book with Username & Password enteries
-            also Sorting by Name, Reverse Name & Last Connect
+@node FEATURES "Features of DCTelnet"
 
-          - BackSpace/DEL swapping, for connecting to unix machines.
+- @{b}68000@{ub} compatible (no 68020 required)
 
-          - Strip colour, for those 2 colour workbench screens.
+- @{b}ZModem@{ub} upload and download using @{b}XPR libraries@{ub}
 
-          - User definable function keys.
+- Fast and efficient design: direct access to bsdsocket API
 
-          - Screen to back hidden, as seen in NCOMM.
+- Address book with username and password entries
 
-          - Scrollback/Review Buffer with print option.
+- Additional terminal emulations via @{b}XEM libraries@{ub}
 
-          - Fast & Simple, direct interface to bsdsocket.library.
+- User-definable screen modes, fonts and colour palettes
 
-          - Fast ANSI display in 8 or 16 colour EGA emulation.
+- Iconify support
 
-          - Support for connecting to a non-telnet server.
+- @{b}Multiple simultaneous Telnet connections@{ub}
 
-          - Terminal emulation with XEM libraries.
+- @{b}No MUI, ClassAct or ReAction required@{ub}
 
-          - Upload & Download with XPR libraries.
+- @{b}No telser.device required@{ub}
+@EndNode
 
-          - LED's on screen so you can check connected/recieving.
 
-          - Packet Window for chatting.
 
-          - User definable ScreenModes, Fonts & Palette.
+@node REQUIREMENTS "DCTelnet, System Requirements"
 
-          - Iconify
+- Kickstart / Workbench @{b}v2.00 (V36)@{ub} or higher
 
-          - Connect Treands, Connect to multipul Telnet sites at the same
-            time.
+- A TCP/IP stack: @{b}AmiTCP@{ub}, @{b}Miami@{ub}, UAE bsdsocket.library or compatible
 
-          - SpeedTest, Tests the speed of scrolling & connection.
+- @{b}ReqTools@{ub} library
 
-          - DOES NOT REQUIRE MUI!!
 
 @EndNode
 
-@node INSTALL "Installing DC-Telnet"
+@node INSTALL "Installing DCTelnet"
 
-   DC-Telnet, can be installed using the Install script, included in the
-archive or...
+1. Install the @{b}ReqTools@{ub} library, available on Aminet:
+   util/libs/ReqToolsUsr (https://aminet.net/package/util/libs/ReqToolsUsr)
 
-   1. De-archive the package.
+2. Download the @{b}DCTelnet@{ub} package either from Aminet: comm/tcp/DCTelnet
+   (https://aminet.net/package/comm/tcp/DCTelnet)
+   or from the GitHub releases section:
+   https://github.com/bruno-frederic/dctelnet/releases
 
-   2. Copy all the files in the devs drawer to DEVS:
+3. The DCTelnet archive includes an @{b}Installer@{ub} script.
+   When available, using the @{i}Installer@{ui} tool is the recommended installation
+   method.
 
-   3. Copy all the files in the fonts drawer to FONTS:	(optional)
+@{b}Manual installation@{ub}
 
-   4. Copy all the files in the libs drawer to LIBS:
+On older AmigaOS versions where the @{i}Installer@{ui} tool is not present
+(for example, pre-3.1.4 systems), @{b}DCTelnet@{ub} can be installed @{b}manually@{ub}.
+In this case, copy the required files to their respective system
+directories:
+- DCTelnet/Devs/ibmcon.device -> DEVS:
+- Libraries from DCTelnet/Libs -> LIBS:
+- Fonts from DCTelnet/Fonts -> FONTS:
 
-   5. Make a directory on the partition/HD that you want to copy the main
-      files to.
+The archive also includes an optional @{b}GlowIcons@{ub} icon set, which can be used
+as a modern replacement for the original icons if desired.
 
-   6. Copy DCTelnet, DCTelnet.info & this guide into the directory you
-      just created.
-
-   7. Copy the SCIcons and WBIcons directories into the directory you
-      created for DC-Telnet.
-
-***** Easy enough!  No Assigns!  No editing your User-Startup script! *****
 @EndNode
 
-@node HOWTO "DC-Telnet, How to use"
+@node HOWTO "DCTelnet, How to use"
 
   This section goes into further detail on all the features and how to
 use them...
 
 Pressing the right mouse button you will see.
 
- @{"   DC-Telnet  " LINK MM} DC-Telnet menu options.
+ @{"   DCTelnet  " LINK MM} DCTelnet menu options.
  @{"   Transfer   " LINK TRANSFER} Transfer menu options.
  @{"  Connection  " LINK CONNECTION} Connection menu options.
  @{"    Options   " LINK OPTIONS} Options menu.
@@ -137,7 +124,7 @@ menu.
 
 @EndNode
 
-@node MM "DC-Telnet, DC-Telnet pull down menu options.
+@node MM "DCTelnet, DCTelnet pull down menu options.
 
                                   @{b}@{u} ABOUT @{ub}@{uu}
                                    ~~~~~
@@ -180,7 +167,7 @@ you.
 
 @EndNode
 
-@node TRANSFER "DC-Telnet, Transfer pull down menu options."
+@node TRANSFER "DCTelnet, Transfer pull down menu options."
 
                                  @{b}@{u} UPLOAD @{ub}@{uu}
                                   ~~~~~~
@@ -198,7 +185,7 @@ You must also have begun a download request with the host site.
 
 @EndNode
 
-@node CONNECTION "DC-Telnet, Connection pull down menu options."
+@node CONNECTION "DCTelnet, Connection pull down menu options."
 
                                  @{b}@{u} CONNECT @{ub}@{uu}
                                   ~~~~~~~
@@ -242,11 +229,11 @@ Opens a window with a list of the address that you have saved.
 
 @EndNode
 
-@node Options "DC-Telnet, Options pull down menu."
+@node Options "DCTelnet, Options pull down menu."
 
                               @{b}@{u} USE WORKBENCH @{ub}@{uu}
                                ~~~~~~~~~~~~~
- If enabled DC-Telnet will open a window on your WORKBENCH screen.
+ If enabled DCTelnet will open a window on your WORKBENCH screen.
 
 NOTE:  The packet window and LEDs can not be used if this feature is
        enabled.
@@ -274,7 +261,7 @@ is useful when you are connected to a unix run host site.
 
                             @{b}@{u} DISABLE SCROLL-B @{ub}@{uu}
                              ~~~~~~~~~~~~~~~~
-  Disables the ScrollBack or review buffer.  Which will allow DC-Telnet
+  Disables the ScrollBack or review buffer.  Which will allow DCTelnet
 to maintain a certain level of memory requirements.  But, you will not
 be able to review any text that has been sent.
 
@@ -285,7 +272,7 @@ displayed in mono colour.
 
                               @{b}@{u} SIMPLE TELNET @{ub}@{uu}
                                ~~~~~~~~~~~~~
-  If enabled, DC-Telnet will use very simple telnet negotiation.  This
+  If enabled, DCTelnet will use very simple telnet negotiation.  This
 can be good for certain types of unix shells.  If you connect to a shell
 but do not get a login prompt, this option should help.
 
@@ -329,26 +316,26 @@ NOTE:  If you enable this option while connected to a telnet site, you
 
                               @{b}@{u} Raw Connection @{ub}@{uu}
                                ~~~~~~~~~~~~~~
-  Makes sure DC-Telnet, does NOT send any telnet negotiation data.
+  Makes sure DCTelnet, does NOT send any telnet negotiation data.
 
 @{b}* Only good for non-telnet hosts!@{ub}
 
 @EndNode
-@node PREFS "DC-Telnet, Preferences pull down menu options."
+@node PREFS "DCTelnet, Preferences pull down menu options."
 
                                @{b}@{u} SCREEN MODE @{ub}@{uu}
                                 ~~~~~~~~~~~
-  Allows you to define what resolution or screen type for DC-Telnet to open.
+  Allows you to define what resolution or screen type for DCTelnet to open.
 It can be any Amiga standard screen. (ex. NTSC, PAL, SuperHiRES, ect...)
 
                                @{b}@{u} SCREEN FONT @{ub}@{uu}
                                 ~~~~~~~~~~~
-  Allows you to define which font DC-Telnet uses, default is topaz.font.
+  Allows you to define which font DCTelnet uses, default is topaz.font.
   But any standard Amiga font can be used, with any size.
 
                               @{b}@{u} SCREEN PALETTE @{ub}@{uu}
                                ~~~~~~~~~~~~~~
-  Allows you to change the colours that DC-Telnet uses.  The amout of
+  Allows you to change the colours that DCTelnet uses.  The amout of
 colours that you can define depends on the screen depth set in SCREEN MODE.
 
                               @{b}@{u} DOWNLOAD PATH @{ub}@{uu}
@@ -375,11 +362,11 @@ options for the protocol you wish to use.
   Opens a requester, for which you can define what text is sent by
  pressing the defined funtion key, commonly called macros.
 
-     @{b}@{u} \r @{ub}@{uu}  will send a Carriage return
-     @{b}@{u} \n @{ub}@{uu}  will send a Line Feed
-     @{b}@{u} \e @{ub}@{uu}  will send a Escape Code
+     @{b}@{u} \\r @{ub}@{uu}  will send a Carriage return
+     @{b}@{u} \\n @{ub}@{uu}  will send a Line Feed
+     @{b}@{u} \\e @{ub}@{uu}  will send a Escape Code
 
-  (ex. a definition of "zED\r" will send "zED" with a carriage return.
+  (ex. a definition of "zED\\r" will send "zED" with a carriage return.
 
                             @{b}@{u} XEM Library ... @{ub}@{uu}
                              ~~~~~~~~~~~~~~~
@@ -394,7 +381,7 @@ emulations.  See XEM library for further documentation.
 
                             @{b}@{u} Telnet Display ID @{ub}@{uu}
                              ~~~~~~~~~~~~~~~~~
-  If a host requests for the display type you are using.  DC-Telnet will
+  If a host requests for the display type you are using.  DCTelnet will
 send this.  You will usually only get this type of request when connecting
 to a UNIX host.
 
@@ -413,7 +400,7 @@ the same place, whenever you open them.
 
 @EndNode
 
-@node LOGIN "DC-Telnet, Login pull down menu options."
+@node LOGIN "DCTelnet, Login pull down menu options."
 
                               @{b}@{u} SEND USERNAME @{ub}@{uu}
                                ~~~~~~~~~~~~~
@@ -426,27 +413,119 @@ address book, to the site you are connected to.
 address book, to the site you are connected to.
 
 @EndNode
-@node HISTORY "DC-Telnet, History"
+
+
+@node KNOWNBUGS "Known bugs"
+
+@{b}Character display issues and font selection@{ub}
+
+If, after connecting to a BBS, some characters appear incorrect or
+garbled, this is usually related to the selected terminal font.
+Make sure the font matches the character set expected by the
+remote system.
+
+Many PC-based BBSes require an @{b}ANSI-compatible font@{ub} to
+properly display line art and ANSI graphics. In such cases,
+select the bundled @{b}HyperANSI@{ub} font.
+
+On @{b}Amiga-based BBSes@{ub}, graphics are often designed for the
+classic @{b}Topaz@{ub} font. This is the case, for example, on
+@{b}Retro 32 BBS@{ub}.
+
+@{b}Important:@{ub}
+After switching the terminal font, @{b}quit DCTelnet and restart
+it@{ub} before reconnecting. This avoids the display issue
+described below and ensures correct rendering.
+
+---------------------------------------------
+
+@{b}Connection stuck after changing settings@{ub}
+@{i}(fonts, XEM, screen mode)@{ui}
+
+After changing certain display-related settings, such as the
+@{b}terminal font@{ub}, enabling the @{b}XEM library@{ub}, or
+switching the @{b}screen mode@{ub}, a subsequent Telnet
+connection may appear to succeed, but @{b}no output is
+displayed@{ub}. The status remains @{i}Connected@{ui}, while the
+terminal window no longer shows any data.
+
+This issue has been observed both with the original
+@{b}DCTelnet 1.6@{ub} built in 2006-2008 and with recent
+recompilations.
+
+@{b}Workaround:@{ub}
+After modifying any of these settings, @{b}quit DCTelnet and
+restart it@{ub} before reconnecting. Otherwise, the session may
+remain stuck in a connected state with no visible output.
+
+---------------------------------------------
+
+@{b}Address Book may not be saved correctly@{ub}
+
+Changes made in the Address Book may not be saved correctly if
+fields are validated @{b}using the mouse@{ub}.
+
+@{b}Workaround:@{ub}
+When editing Address Book entries:
+
+- Press @{b}Enter@{ub} after typing text in each field,
+  especially the password field
+- Or move to the next field using @{b}Tab@{ub}, then press
+  @{b}Enter@{ub} before leaving the entry
+
+---------------------------------------------
+
+@{b}On AmigaOS / Kickstart 2.00 and 2.02@{ub}
+
+- The included xprzmodem.library fails to load on these OS
+  versions.
+- @{b}ReqTools 2.9a@{ub}, available on Aminet, also fails to load.
+
+An older version of ReqTools is required:
+- @{b}ReqTools v2.2@{ub}
+- Use the library found in the libs13/ directory
+  (version @{b}38.390@{ub})
+- Copy reqtools.library to the LIBS: directory.
+
+For troubleshooting, it is recommended to launch @{b}DCTelnet
+from the Shell@{ub} in order to see library initialization error
+messages.
+
+@EndNode
+
+
+
+@node HISTORY "DCTelnet, History"
 
                                  @{b}@{u} History @{ub}@{uu}
                                   ~~~~~~~~~
 
 ---[ DCTelnet 1.7 ]-------------------------------------------------------
 
-	- TODO
+	- 68000 CPU support is back! Dual-target build: 68000 & 68020
 
-	- TODO
+	- Optional @{b}GlowIcons@{ub} set for modern, polished icons
+
+	- Updated Amiga Guide
+
+	- Add starter address book
+
+	- Install script improvements (checks reqtools.library)
+
+	- Source code on Github
 
 
 
 ---[ DCTelnet 1.6 ]-------------------------------------------------------
 
 	- Original DCTelnet 1.6 source code released by Zed (October 2000)
-	  https://aminet.net/package/comm/tcp/dct16_src
+	  on Aminet : https://aminet.net/package/comm/tcp/dct16_src
 
 
 
 ---[ DCTelnet 1.5 ]-------------------------------------------------------
+
+	- 68000 CPU support dropped
 
 	- Transfer upload window could inadvertantly popup - fixed.
 
@@ -573,31 +652,35 @@ address book, to the site you are connected to.
 	- File Transfers improved! Far less errors now!
 
 @EndNode
-@node CONTRIB "DC-Telnet, Would like to thank..."
 
-	Thanks to Ray Akey for his help with the file tranfer code,
-	it wouldn't have worked without his help.
 
-	Thanks to RaMoNsTeR\DC for the installer script.
 
-        Thanks to [sHANe] for writing this doc.
+@node CREDITS "Credits"
 
-        Thanks to LoOnY for creating the cool icons.
+- @{b}DCTelnet@{ub} was originally written by @{b}Zed@{ub}.
+
+- new 68000-compatible build by @{b}Bruno FREDERIC@{ub}
+
+- ReqTools is Copyright © Nico François and Magnus Holmgren
+
+
+- Thanks to Ray Akey for his help with the file tranfer code,
+  it wouldn't have worked without his help.
+
+- Thanks to RaMoNsTeR\DC for the installer script.
+
+- Thanks to [sHANe] for writing this doc.
+
+- Thanks to LoOnY for creating the cool icons.
+
 
 @EndNode
-@node AUTHOR "DC-Telnet, Author"
 
-                       .________ _/\_ _/\_  _________
-                   ____¦____   7_)__ Y __(_(   _____/__
-                 _/     ___/ _/ \ (_\_/_) / \_  T     ¬\_
-                 \     ¦/    7   (\_`-'_/)   7  l       /
-                  \____.-----¦    ¥¥¥¥¥¥¥    ¦----.____/
-                   ¯¯¯¯¯          `^---^'         ¯¯¯¯¯
 
-                   d -÷- i -÷- G -÷- i -÷- T -÷- A -÷- L
-         c -÷- O -÷- R -÷- R -÷- U -÷- P -÷- T -÷- i -÷- O -÷- N
 
-Author EMail:		zed@mentasm.com
+@node LICENSE "License"
 
-DC Web Page:		http://www.digital-corruption.net
+The original @{b}DCTelnet@{ub} code by Zed was released without an explicit
+license and remains all rights reserved. See "LICENSE" file for details.
+
 @EndNode
