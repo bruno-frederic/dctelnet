@@ -1,12 +1,12 @@
 Short:        DCTelnet - Telnet/BBS client with Zmodem
-Uploader:     Bruno FREDERIC
 Author:       Bruno FREDERIC
+Uploader:     bruno.frederic+aminet@gm...
 Type:         comm/tcp
-Version:      1.7
+Version:      1.7.1
+Replaces:     comm/tcp/DCTel_15.lha; comm/tcp/DCTelnet_16.lha
+Requires:     util/libs/ReqToolsUsr.lha
 Architecture: m68k-amigaos >= 2.0
 Distribution: Aminet
-Requires:     util/libs/ReqToolsUsr.lha
-Replaces:     comm/tcp/DCTelnet_16.lha
 
 DCTelnet is a Telnet client for Commodore Amiga computers. It is easy to
 use, lightweight, and reliable.
@@ -26,6 +26,15 @@ DCTelnet was originally written by Zed. As of January 2026, the DCTelnet
 
 This new release also offers simplified installation and improved
 documentation.
+
+---
+
+v1.7.1: fix for the installation script to ensure compatibility with
+Installer v44 as found in AmigaOS 3.5 and 3.9.
+
+The DCTelnet binaries and features are otherwise unchanged.
+
+Thanks to VincentGR76 for reporting the issue.
 
 ---
 
