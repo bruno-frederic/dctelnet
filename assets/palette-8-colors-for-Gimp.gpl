@@ -1,0 +1,12 @@
+GIMP Palette
+Name: DCTelnet 8 colors
+Columns: 8
+#
+  0   0   0	0 - black
+221 221 221	1 - low blue
+  0 221   0	2 - low green
+221 221   0	3 - low cyan
+  0   0 221	4 - low red
+221   0 221	5 - low magenta
+  0 221 221	6 - brown
+221   0   0	7 - light gray
