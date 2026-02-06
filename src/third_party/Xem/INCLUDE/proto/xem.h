@@ -5,9 +5,13 @@
 #include <exec/types.h>
 #endif
 #if !defined(CLIB_XEM_PROTOS_H) && !defined(__GNUC__)
+#ifndef __SASC
 #pragma stdargs-on
+#endif
 #include <clib/xem_protos.h>
+#ifndef __SASC
 #pragma stdargs-off
+#endif
 #endif
 
 #ifndef __NOLIBBASE__
