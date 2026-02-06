@@ -24,7 +24,7 @@
 (if (< #os-ver 36)
 	(
 		(message "Please note that this program requires AmigaOS 2.00+!\n\n"
-					"It will NOT work on 1.x." (all))
+					"It will NOT work on 1.x.")
 	)
 )
 
@@ -42,13 +42,13 @@
 					"An older version of ReqTools is required:\n"
 					"ReqTools-2.2-user.lha\n\n"
 					"available here:\n\n"
-					"https://www.nic.funet.fi/pub/amiga/system/libraries/" (all))
+					"https://www.nic.funet.fi/pub/amiga/system/libraries/")
 			)
 			; else
 			(
 				(message "Please note that this program requires ReqTools library!\n\n"
 					"You will need to install it before running DCTelnet.\n\n"
-					"It can be downloaded from Aminet: util/libs/ReqToolsUsr" (all))
+					"It can be downloaded from Aminet: util/libs/ReqToolsUsr")
 			)
 		)
 
@@ -135,7 +135,6 @@
 		(dest	 DestDir)
 		(infos)
 		(confirm "AVERAGE")	; so even Average user show this confirm step
-		(all)
 	)
 
 	(COPYFILES
@@ -211,6 +210,8 @@
 		(all)
 	)
 
-(message "\n\nDCTelnet is now installed\n\nFor bugreports/support etc. please refer to the included documentation...\n\n...ENJOY!!!")
+(message "\n\nDCTelnet is now installed\n\n"
+		"For bugreports/support etc. please refer to the included documentation...\n\n"
+		"...ENJOY!!!")
 
 (EXIT)
