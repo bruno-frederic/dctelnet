@@ -1,4 +1,9 @@
-/* DCTELNET CONNECT GUI */
+/* DCTELNET CONNECT GUI
+
+	Small window titled "Connection..." briefly displayed while connecting to server.
+	Based on GadTools.
+	Built with GadToolBox V2.0b according to the .gui file
+*/
 
 #include <exec/types.h>
 #include <intuition/intuition.h>

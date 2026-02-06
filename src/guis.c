@@ -3,26 +3,26 @@
 
 #define __USE_SYSBASE
 
-#include <proto/dos.h>
-#include <proto/exec.h>
-#include <proto/intuition.h>
-#include <proto/graphics.h>
-#include <proto/gadtools.h>
-#include <proto/wb.h>
-#include <proto/icon.h>
-#include <dos/dos.h>
-#include <exec/nodes.h>
-#include <exec/lists.h>
-#include <exec/memory.h>
-#include <intuition/intuition.h>
-#include <intuition/gadgetclass.h>
-#include <libraries/gadtools.h>
-#include <string.h>
-#include <ctype.h>
-#include <libraries/reqtools.h>
-#include <proto/reqtools.h>
-#include "abook.h"
-#include "edit.h"
+#include <proto/dos.h>                // Open(), Close(), FRead(), FWrite()
+#include <proto/exec.h>               // AllocMem(), AddTail(), FreeMem(), WaitPort(), Remove()
+#include <proto/intuition.h>          // OpenWindow(),CloseWindow(), NewObjectA() but no NewObject()
+#include <proto/graphics.h>           // Move(), SetAPen(), Text(), SetFont(), Draw()
+#include <proto/gadtools.h>           // LISTVIEW_KIND, BUTTON_KIND, GTLV_Labels...
+#include <proto/wb.h>               // BF: no errors compiling without it
+#include <proto/icon.h>               // GetDiskObjectNew(), FreeDiskObject()
+#include <dos/dos.h>                // BF: no errors compiling without it on VBCC + NDK3.2R4
+#include <exec/nodes.h>             // BF: no errors compiling without it on VBCC + NDK3.2R4
+#include <exec/lists.h>             // BF: no errors compiling without it on VBCC + NDK3.2R4
+#include <exec/memory.h>            // BF: no errors compiling without it on VBCC + NDK3.2R4
+#include <intuition/intuition.h>    // BF: no errors compiling without it on VBCC + NDK3.2R4
+#include <intuition/gadgetclass.h>  // BF: no errors compiling without it on VBCC + NDK3.2R4
+#include <libraries/gadtools.h>     // BF: no errors compiling without it on VBCC + NDK3.2R4
+#include <string.h>                   // memcpy(), strcpy(), strcat(), strlen()
+#include <ctype.h>	                  // tolower(), toupper()
+#include <libraries/reqtools.h>     // BF: no errors compiling without it on VBCC + NDK3.2R4
+#include <proto/reqtools.h>           // rtEZRequestA(), rtSetWaitPointer()
+#include "abook.h"                    // required
+#include "edit.h"                     // required
 
 
 void CheckDimensions(struct NewWindow *newwin);
@@ -279,6 +279,7 @@ struct Node *FindNode(struct List *listviewlist, UWORD lastcode)
 	struct Node *worknode;
 	UWORD i = 0;
 
+	// BF: Why this test? lastcode is UWORD, how could it be negative?
 	if(lastcode != -1  &&  listviewlist->lh_TailPred != (struct Node *)listviewlist)
 	{
 		worknode = listviewlist->lh_Head;
@@ -356,6 +357,7 @@ void AddressBook(void)
 	listviewlist->lh_TailPred = (struct Node *)listviewlist;
 	listviewlist->lh_Head = (struct Node *)&listviewlist->lh_Tail;
 
+	//Loads existing address book
 	fh = Open(bookfile, MODE_OLDFILE);
 	if(fh)
 	{
@@ -405,6 +407,7 @@ void AddressBook(void)
 				case IDCMP_VANILLAKEY:
 					switch(toupper(code))
 					{
+						// Directly jump to the part that manage the required button
 						case 'C':
 							goto connect;
 						case 'E':
@@ -420,6 +423,7 @@ void AddressBook(void)
 					subdone = TRUE;
 					break;
 
+				// A action button has been pressed in the Address Book:
 				case IDCMP_GADGETUP:
 					switch(gad->GadgetID)
 					{
@@ -461,12 +465,14 @@ delete:
 						if(worknode = FindNode(listviewlist, lastcode))
 						{
 							mysprintf(buf, "Delete \042%s\042?", worknode->ln_Name);
+							// Open a confirmation Dialog :
 							if(rtEZRequestA(buf, "Delete|Cancel", NULL, NULL, (struct TagItem *)&tags))
 							{
 								Remove(worknode);
 								FreeMem(worknode->ln_Name, sizeof(struct BookStruct));
 								FreeMem(worknode, sizeof(struct Node));
 								lastcode--;
+								// BF: Why this test? lastcode is UWORD, how could it be negative?
 								if(lastcode < 0) lastcode = 0;
 								GT_SetGadgetAttrs(Project0Gadgets[GD_LIST],Project0Wnd,0,GTLV_Labels,listviewlist,GTLV_Selected,lastcode,TAG_DONE);
 								save = TRUE;
@@ -881,11 +887,16 @@ void OpenScrollBack(UWORD sel)
 	else
 		SizeType = SYSISIZE_LOWRES;
 
-	if(SizeImage = NewObject(NULL,SYSICLASS,
-		SYSIA_Size,	SizeType,
-		SYSIA_Which,	SIZEIMAGE,
-		SYSIA_DrawInfo,	DrawInfo,
-	TAG_DONE))
+	/*
+	 NewObject() allows an arbitrary number of tags. It is a varargs stub for NewObjectA().
+	 You specify a class either as a pointer (for a private class) or by its ID string (for public
+	 classes).  If the class pointer is NULL, then the classID is used.
+	*/
+	if(SizeImage = NewObject(NULL,SYSICLASS,  // class
+		SYSIA_Size,	SizeType,                 // 1st  tag (= key/value pair = property)
+		SYSIA_Which,	SIZEIMAGE,            // 2nd  tag
+		SYSIA_DrawInfo,	DrawInfo,             // ...
+	TAG_DONE))                                // terminator tag
 	{
 		ULONG SizeWidth, SizeHeight;
 
@@ -1109,6 +1120,12 @@ int __inline OpenProject2Window( void )
 
 extern unsigned char keys[1520];
 
+/*
+Function Keys dialog (pure GadTools implementation).
+
+Allows the user to store strings that are sent to the Telnet server
+when the corresponding function key is pressed.
+*/
 void FunctionKeys(void)
 {
 	struct IntuiMessage *message;

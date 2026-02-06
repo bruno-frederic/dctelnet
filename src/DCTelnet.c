@@ -28,7 +28,7 @@ static char MainWindowTitle[] =
 #include <exec/memory.h>
 #include <exec/execbase.h>
 #include <libraries/reqtools.h>
-#include <proto/reqtools.h>
+#include <proto/reqtools.h>           // rtAllocRequestA() rtScreenModeRequest() rtPaletteRequestA()
 #include <sys/errno.h>
 #include <netdb.h>
 #include <proto/socket.h>
@@ -392,11 +392,12 @@ char FileReq(char *dir, char *pat, char *file, char *title, char dodir, ULONG fl
 	return(FALSE);
 }
 
-
+// Application-defined Exec List with Node-specific data
+// https://wiki.amigaos.net/wiki/Exec_Lists_and_Queues#Finding_the_List_of_a_Node
 struct Scroll
 {
 	struct Node	nnode;
-	long		len;
+	long		len;    // Node-specific data
 };
 
 void AddBuf(unsigned char *str, long size)
@@ -1000,6 +1001,7 @@ restart:
 
 /* ------ main loop ------ */
 
+// BF: useless label, it is nevered used in function "main".
 startloop:
 	while(!done)
 	{
@@ -1041,6 +1043,8 @@ startloop:
 
 			if(sigmask&iconsig)
 			{
+				// Workbench sends AppMessage to the application's message port to notify it
+				// https://wiki.amigaos.net/wiki/Workbench_Library#The_AppMessage_Structure
 				register struct AppMessage *appmsg;
 				while(appmsg = (struct AppMessage *)GetMsg(iconport))
 				{
@@ -1837,6 +1841,7 @@ down:				if(lasttop+((sbwin->Height - (prefs.fontsize + scr->WBorTop + 2)) / pre
 
 		}
 	}
+// BF: useless label, it is never used in function "GetWindowMsg"
 xit:
 
 	if(resize)
@@ -1978,6 +1983,7 @@ UWORD Connect_To_ServerA(char *servername, UWORD port)
 
 	c_msg("Connecting...", 4);
 
+	// connect() expects a generic sockaddr, so cast the INet socket address
 	if(connect(sok, (struct sockaddr const *)&INetSocketAddr, sizeof(INetSocketAddr)) == -1)
 	{
 		CheckError();
@@ -2293,6 +2299,8 @@ lib:
 							xemio.xem_screendepth	= scr->BitMap.Depth;
 							xemio.xem_swrite	= (long (* )(UBYTE * , LONG ))xpr_swrite;
 							xemio.xem_sread		= (long (* )(UBYTE * , LONG , LONG ))xpr_sread;
+							// BF : xpr_gets() does nothing. just a return 0. should we put a NULL instead ?
+							// seems to be the usual value for unimplemented callback functions
 							xemio.xem_sbreak	= (long (* )(void))xpr_gets;
 							xemio.xem_sstart	= (void (* )(void))xpr_gets;
 							xemio.xem_sstop		= (long (* )(void))xpr_gets;

@@ -16,7 +16,7 @@
 #include <intuition/intuition.h>
 #include <workbench/workbench.h>
 #include <libraries/reqtools.h>
-#include <proto/reqtools.h>
+#include <proto/reqtools.h>           // rtAllocRequestA (RT_FILEREQ…) in Upload()
 #include <xproto.h>
 #include <netdb.h>
 #include <bsdsocket.h>
@@ -324,6 +324,11 @@ xpr_fnext(register __d0 LONG oc,register __a0 STRPTR buffer,register __a1 STRPTR
 LONG __asm
 xpr_gets(register __a0 STRPTR Prompt,register __a1 STRPTR Buffer)
 {
+	/* The first argument is a pointer to a string containing a prompt, to be displayed by the
+	communications program in any manner it sees fit. The second argument should be a pointer to a
+	buffer to receive the user's response. It should have a size of at least 256 bytes.
+	The function returns 0L on failure or user cancellation, non-zero on success.
+	*/
 	return(0);
 }
 
@@ -566,6 +571,8 @@ LONG __saveds __asm xpr_chkabort(void)
 	{
 		if(iconport)
 		{
+			// Workbench sends AppMessage to the application's message port to notify it
+			// https://wiki.amigaos.net/wiki/Workbench_Library#The_AppMessage_Structure
 			register struct AppMessage *appmsg;
 			while(appmsg = (struct AppMessage *)GetMsg(iconport))
 			{
