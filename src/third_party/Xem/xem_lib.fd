@@ -1,0 +1,37 @@
+##base XEmulatorBase     *the name of our base used by C glue code and C PRAGMAS
+##name xemamiga          *the name of our library
+##vers 4          *version #
+##revs 1          *revision #
+##init XEmulatorInit     *to be called once (upon loading the lib)
+##expu XEmulatorExpu     *to be called once (upon expunging the lib)
+##libid External Amiga-ANSI v3.1 (23 Jun 1992)
+##bias 30         *first function is always at an offset of -30 from lib base
+*Here are all of the lib functions callable by an application
+
+##ret BOOL
+XEmulatorSetup(io)(a0)
+XEmulatorOpenConsole(io)(a0)
+##ret VOID
+XEmulatorCloseConsole(io)(a0)
+XEmulatorCleanup(io)(a0)
+XEmulatorWrite(io, string, len)(a0, a1, d0)
+##ret BOOL
+XEmulatorSignal(io, signal)(a0, d0)
+##ret ULONG
+XEmulatorHostMon(io, buf, len)(a0, a1, d0)
+XEmulatorUserMon(io, buf, len, imsg)(a0, a1, d0, a2)
+##ret BOOL
+XEmulatorOptions(io)(a0)
+XEmulatorClearConsole(io)(a0)
+XEmulatorResetConsole(io)(a0)
+XEmulatorResetTextStyles(io)(a0)
+XEmulatorResetCharset(io)(a0)
+##ret ULONG
+XEmulatorGetFreeMacroKeys(io, qualifier)(a0, d0)
+##ret BOOL
+XEmulatorMacroKeyFilter(io, list)(a0, a1)
+##ret LONG
+XEmulatorInfo(xem_io, type)(a0, d0)
+##ret BOOL
+XEmulatorPreferences(xem_io, filename, mode)(a0, a1, d0)
+##end
