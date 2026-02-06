@@ -4,6 +4,8 @@
  *
  *  GUI Designed by : -- Unnamed --
  */
+#ifndef CONNECT_H
+#define CONNECT_H
 
 #define GetString( g )      ((( struct StringInfo * )g->SpecialInfo )->Buffer  )
 #define GetNumber( g )      ((( struct StringInfo * )g->SpecialInfo )->LongInt )
@@ -47,3 +49,7 @@ extern ULONG                 Project8GTags[];
 extern void Project8Render( void );
 extern int OpenProject8Window( void );
 extern void CloseProject8Window( void );
+
+void __SAVE_DS__ __ASM__ Connect_To_Server_Child(void);
+
+#endif /* CONNECT_H */
