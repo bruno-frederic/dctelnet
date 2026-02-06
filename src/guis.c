@@ -189,7 +189,7 @@ UseTopaz:
 	FontX = FontY = Attr.ta_YSize = 8;
 }
 
-int __inline OpenProject0Window( void )
+int OpenProject0Window( void )
 {
 	struct Gadget	*g;
 	UWORD		ww, wh;
@@ -595,7 +595,7 @@ ULONG Project1GTags[] = {
 	GTST_String, 0, (GTST_MaxChars), 41, (GT_Underscore), '_', (TAG_DONE)
 };
 
-int __inline OpenProject1Window( void )
+int OpenProject1Window( void )
 {
 	struct Gadget	*g;
 	UWORD		ww, wh;
@@ -1067,7 +1067,7 @@ ULONG Project2GTags[] = {
 	(GT_Underscore), '_', (TAG_DONE)
 };
 
-int __inline OpenProject2Window( void )
+int OpenProject2Window( void )
 {
 	struct Gadget	*g;
 	UWORD		ww, wh;

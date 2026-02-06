@@ -1872,7 +1872,7 @@ xit:
 	}
 }
 
-void __inline CheckError(void)
+void CheckError(void)
 {
 	register long en = Errno();
 
