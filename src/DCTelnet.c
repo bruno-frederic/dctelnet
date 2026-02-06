@@ -1012,7 +1012,7 @@ restart:
 /* ------ main loop ------ */
 
 // BF: useless label, it is nevered used in function "main".
-startloop:
+//startloop:
 	while(!done)
 	{
 
@@ -1853,7 +1853,7 @@ down:				if(lasttop+((sbwin->Height - (prefs.fontsize + scr->WBorTop + 2)) / pre
 		}
 	}
 // BF: useless label, it is never used in function "GetWindowMsg"
-xit:
+//xit:
 
 	if(resize)
 	{
