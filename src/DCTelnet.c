@@ -32,8 +32,8 @@ static char MainWindowTitle[] =
 #include <sys/errno.h>
 #include <netdb.h>
 #include <proto/socket.h>
-#include <xem.h>
-#include <xem_proto.h>
+#include <libraries/xem.h>
+#include <proto/xem.h>
 
 
 // Stringify macro :

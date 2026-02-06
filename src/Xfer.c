@@ -17,7 +17,7 @@
 #include <workbench/workbench.h>
 #include <libraries/reqtools.h>
 #include <proto/reqtools.h>           // rtAllocRequestA (RT_FILEREQ…) in Upload()
-#include <xproto.h>
+#include <proto/Xpr.h>
 #include <netdb.h>
 #include <proto/bsdsocket.h>
 #include <sys/ioctl.h>
