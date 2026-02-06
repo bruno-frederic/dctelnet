@@ -267,6 +267,27 @@ void WindowSub(void (*Sub)(void))
 	LEDs();
 }
 
+/*
+	Lightweight requester; does not use reqtools.library. Goal: remove the dependency on the
+	unmaintained ReqTools library by using built-in requesters (EasyRequest / ASL) so the program
+	runs on systems without ReqTools.
+	Compatibility: works on KS 2.00 without ReqTools
+*/
+void EZReq(struct Window *win, const char *str)
+{
+	struct EasyStruct es;
+	es.es_StructSize   = sizeof(struct EasyStruct);
+	es.es_Flags        = 0;
+	es.es_Title        = "Information";
+	es.es_TextFormat   = str;
+	es.es_GadgetFormat = "OK";
+
+	EasyRequestArgs(win,	// This can be NULL; requester will appear on the Workbench screen
+					&es,
+					NULL,
+					NULL);
+}
+
 void SimpleReq(char *str)
 {
 	rtEZRequestA(str, "OK", NULL, NULL, (struct TagItem *)&tags);
@@ -910,9 +931,18 @@ int main(int argc, char *argv[])
 		}*/
 	}
 
+	// Needed right now for EZReq
+    IntuitionBase = (struct IntuitionBase *) OpenLibrary("intuition.library", 0);
+
 	if (!(ReqToolsBase = (struct ReqToolsBase *)OpenLibrary (REQTOOLSNAME, 0)))
 	{
-		PutStr("I need reqtools.library\n");
+		const char msg[] = "DCTelnet - Requirement Warning\n\n"
+							"reqtools.library can not be loaded.\n"
+							"DCTelnet requires ReqTools library to run.\n"
+							"It is available on Aminet: util/libs/ReqToolsUsr\n"
+							"Please install it and try again.";
+		PutStr(msg);
+		EZReq(NULL, msg);
 		return RETURN_FAIL;
 	}
 
@@ -988,7 +1018,6 @@ fixprefs:		//prefs.win_left = 0;
 
 	GfxBase = ReqToolsBase -> GfxBase;
 	GadToolsBase = ReqToolsBase -> GadToolsBase;
-	IntuitionBase = ReqToolsBase -> IntuitionBase;
 	UtilityBase = ReqToolsBase -> UtilityBase;
 
 	WorkbenchBase = OpenLibrary("workbench.library", 0);
@@ -1143,6 +1172,7 @@ restart:
 	FreeMem(slist, sizeof(struct List));
 xit:
 	CloseLibrary((struct Library *)ReqToolsBase);
+	if (IntuitionBase) CloseLibrary((struct Library *)IntuitionBase);
 
 	return RETURN_OK;
 }
@@ -1937,7 +1967,8 @@ UWORD Connect_To_ServerA(char *servername, UWORD port)
 
 	if(!SocketBase)
 	{
-		SimpleReq("You must start AmiTCP/Miami first.");
+		SimpleReq("bsdsocket.library can not be loaded.\n\n"
+					"You must start the TCP/IP stack first.");
 		return(255);
 	}
 
