@@ -1,10 +1,11 @@
 .c.o:
 		SC $(CFLAGS) CPU=$(CPU) $*.c
 
+COMPILER_STRING=SAS/C_6.58
 # Debug:
-CFLAGS   =  NoMultipleIncludes                                          Define=__PROTO__ Parameters=register                  NoStartup
+CFLAGS   = Define=COMPILER_STRING=$(COMPILER_STRING)   NoMultipleIncludes        Define=__PROTO__ Parameters=register                  NoStartup
 # Release:
-#CFLAGS   =   NoMultipleIncludes               StringMerge NoStackCheck Define=__PROTO__ Parameters=register                  NoStartup Optimize
+#CFLAGS   = Define=COMPILER_STRING=$(COMPILER_STRING)  NoMultipleIncludes               StringMerge NoStackCheck Define=__PROTO__ Parameters=register                  NoStartup Optimize
 #v1.6 CFLAGS =    NMINC          MCCONS  STREQ   STRMER      NOSTKCHK    DEF=__PROTO__         PARM=R        GST=DCTelnet.gst NOSTARTUP   OPT
 #
 # NMINC         : tells the compiler NOT to include header files that are included more than once.

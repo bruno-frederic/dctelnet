@@ -36,6 +36,10 @@ static char MainWindowTitle[] =
 #include <xem_proto.h>
 
 
+// Stringify macro :
+#define STR_(x) #x
+#define STR(x) STR_(x)
+
 struct NewMenu mynewmenu[] =
     {
         { NM_TITLE, "DC Telnet",	 0 , 0, 0, 0,},
@@ -886,7 +890,12 @@ void main(int argc, char *argv[])
 	{
 		if(argv[1][0]=='?' && argv[1][1]==0)
 		{
-			PutStr("DCTelnet <host> [<port>]\n");
+			PutStr(
+		"DCTelnet "DCTELNET_VERSION" ("__DATE__") - A classic Amiga Telnet/BBS client with Zmodem\n"
+		"compiled with: " STR(COMPILER_STRING) "\n"
+		"\n"
+		"Usage: DCTelnet <host> [<port>]\n"
+		);
 			return;
 		}
 
@@ -1498,8 +1507,7 @@ void GetWindowMsg(struct Window *wwin)
 								"                          v"DCTELNET_VERSION                  "\n"
 								"         Last Compiled .... : "__DATE__""                     "\n"
 								"         First Compiled ... : May 17 1997"                    "\n"
-								"         Compilers Used ... : SAS/C Compiler v6.58"           "\n"
-								"                              SAS/C 680x0 Assembler"          "\n"
+								"         Compilers Used ... : "STR(COMPILER_STRING)           "\n"
 								                                                               "\n"
 								"            Original author : ZED^DC"                         "\n"
 								                                                               "\n"
