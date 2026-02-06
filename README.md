@@ -19,6 +19,12 @@ It is **easy to use**, **lightweight**, and **reliable**.
 > DCTelnet 1.5/1.6 releases available on Aminet target 68020+ CPUs only.
 >
 > This new release also offers **simplified installation** and **improved documentation**.
+>
+> 🎨 **Help wanted: UI icons**
+>
+> To give DCTelnet a more modern look, I’m looking for help to design a new set of toolbar icons.
+> If you have pixel-art or icon design skills, your help would be greatly appreciated.
+> See [issue #6](https://github.com/bruno-frederic/dctelnet/issues/6) for details.
 
 ---
 
@@ -97,7 +103,7 @@ After switching the terminal font, **quit DCTelnet and restart it** before recon
 
 ### Connection stuck after changing settings (fonts, XEM, screen mode)
 
-After changing certain display-related settings (such as the **terminal font**, enabling the **XEM library**, or switching the **screen mode**) subsequent Telnet connection may appear to succeed, but **no output is displayed**. The status remains *Connected*, while the terminal window no longer shows any data.
+After changing certain display-related settings (such as the **terminal font**, enabling the **XEM library**, or switching the **screen mode**) subsequent Telnet connection may appear to succeed, but **no output is displayed**. The status remains *Connected*, while the terminal window no longer shows any data.  [(issue #3)](https://github.com/bruno-frederic/dctelnet/issues/3)
 
 This issue has been observed both with the original **DCTelnet 1.6** built in 2006-2008 and with recent recompilations.
 
@@ -107,7 +113,7 @@ After modifying any of these settings, **quit DCTelnet and restart it** before r
 
 ### Address Book may not be saved correctly
 
-Changes made in the Address Book may not be saved correctly if fields are validated **using the mouse**.
+Changes made in the Address Book may not be saved correctly if fields are validated **using the mouse**. [(issue #4)](https://github.com/bruno-frederic/dctelnet/issues/4)
 
 **Workaround:**
 When editing Address Book entries:
@@ -118,6 +124,8 @@ When editing Address Book entries:
 ### On AmigaOS / Kickstart 2.00 & 2.02
 
 - The included `xprzmodem.library` fails to load on these OS versions.
+  As a result, ZModem file transfers are not available on these OS versions.
+  [(issue #5)](https://github.com/bruno-frederic/dctelnet/issues/5)
 - **ReqTools 2.9a**, available on Aminet (`util/libs/ReqToolsUsr`), also fails to load.
 
   An older version of ReqTools is required:
