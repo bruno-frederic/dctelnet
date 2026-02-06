@@ -7,7 +7,7 @@
 static const char __ver[] = "$VER: DCTelnet " DCTELNET_VERSION " " __AMIGADATE__;
 
 static char MainWindowTitle[] =
-  "DCTelnet " DCTELNET_VERSION " " __AMIGADATE__ " - A classic Amiga Telnet/BBS client with Zmodem";
+  "DCTelnet " DCTELNET_VERSION " " __AMIGADATE__ " - A classic Amiga Telnet/BBS client";
 
 #define __USE_SYSBASE
 
