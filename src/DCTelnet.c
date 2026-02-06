@@ -127,10 +127,10 @@ extern void OpenToolWindow(char setmenus);
 extern void CloseToolWindow(void);
 extern void CheckDimensions(struct NewWindow *newwin);
 
-extern LONG __saveds __asm xpr_swrite(register __a0 UBYTE *buffer, register __d0 LONG size);
-extern LONG __saveds __asm xpr_sread(register __a0 UBYTE *buffer, register __d0 ULONG size, register __d1 ULONG timeout);
-extern LONG __saveds __asm xpr_sflush(void);
-extern LONG __asm xpr_gets(register __a0 STRPTR Prompt,register __a1 STRPTR Buffer);
+extern LONG __SAVE_DS__ __ASM__ xpr_swrite(__REG__(a0, UBYTE *buffer), __REG__(d0, LONG size));
+extern LONG __SAVE_DS__ __ASM__ xpr_sread(__REG__(a0, UBYTE *buffer), __REG__(d0, ULONG size), __REG__(d1, ULONG timeout));
+extern LONG __SAVE_DS__ __ASM__ xpr_sflush(void);
+extern LONG __ASM__ xpr_gets(__REG__(a0, STRPTR Prompt), __REG__(a1, STRPTR Buffer));
 
 extern APTR Scroller;
 extern struct ExecBase *SysBase;
@@ -1895,7 +1895,7 @@ void CheckError(void)
 
 struct Task *parent, *child;
 
-extern void __saveds __asm Connect_To_Server_Child(void);
+extern void __SAVE_DS__ __ASM__ Connect_To_Server_Child(void);
 
 UWORD abort_flag;
 UWORD connect_msg_type;

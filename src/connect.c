@@ -129,7 +129,7 @@ void CloseProject8Window( void )
 extern UWORD connect_msg_type;
 extern char *connect_string;
 
-void __saveds __asm Connect_To_Server_Child(void)
+void __SAVE_DS__ __ASM__ Connect_To_Server_Child(void)
 {
 	if( OpenProject8Window() == 0)
 	{

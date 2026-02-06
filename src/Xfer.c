@@ -88,8 +88,8 @@ extern long TCPSend(char *buf, long len);
 extern void SimpleReq(char *str);
 extern void CheckDimensions(struct NewWindow *newwin);
 long init_xpr(struct XPR_IO *IO);
-LONG __saveds __asm xpr_sflush(void);
-LONG __saveds __asm xpr_chkabort(void);
+LONG __SAVE_DS__ __ASM__ xpr_sflush(void);
+LONG __SAVE_DS__ __ASM__ xpr_chkabort(void);
 char XferWindow(void);
 
 
@@ -147,8 +147,7 @@ void ProtoClean(void)
 	//ConWrite("", 1);
 }
 
-LONG __saveds __asm
-xpr_finfo(register __a0 STRPTR name,register __d0 LONG type)
+LONG __SAVE_DS__ __ASM__ xpr_finfo(__REG__(a0, STRPTR name), __REG__(d0, LONG type))
 {
 	struct FileInfoBlock *fib = AllocMem(sizeof(struct FileInfoBlock), 0);
  	BPTR lck;
@@ -168,8 +167,7 @@ xpr_finfo(register __a0 STRPTR name,register __d0 LONG type)
 	return(result);
 }
 
-LONG __saveds __asm
-xpr_swrite(register __a0 UBYTE *buffer, register __d0 LONG size)
+LONG __SAVE_DS__ __ASM__ xpr_swrite(__REG__(a0, UBYTE *buffer), __REG__(d0, LONG size))
 {
 	long ret = 0;
 	register ULONG i = 0, j = 0;
@@ -193,8 +191,7 @@ xpr_swrite(register __a0 UBYTE *buffer, register __d0 LONG size)
 	return(ret);
 }
 
-LONG __saveds __asm
-xpr_sread(register __a0 UBYTE *buffer, register __d0 ULONG size, register __d1 ULONG timeout)
+LONG __SAVE_DS__ __ASM__ xpr_sread(__REG__(a0, UBYTE *buffer), __REG__(d0, ULONG size), __REG__(d1, ULONG timeout))
 {
 	fd_set rd;
 	ULONG sig;
@@ -282,7 +279,8 @@ xpr_sread(register __a0 UBYTE *buffer, register __d0 ULONG size, register __d1 U
 	return(0);*/
 }
 
-LONG __saveds __asm xpr_sflush(void)
+LONG __SAVE_DS__ __ASM__
+xpr_sflush(void)
 {
 	fd_set rd;
 	struct timeval timer;
@@ -300,16 +298,14 @@ LONG __saveds __asm xpr_sflush(void)
 	return(0);
 }
 
-LONG __saveds __asm
-xpr_ffirst(register __a0 STRPTR buffer,register __a1 STRPTR pattern)
+LONG __SAVE_DS__ __ASM__ xpr_ffirst(__REG__(a0, STRPTR buffer), __REG__(a1, STRPTR pattern))
 {
 	strcpy(buffer, prefs.uploadpath);
 	strcat(buffer, upfirst->Name);
 	return(1);
 }
 
-LONG __saveds __asm
-xpr_fnext(register __d0 LONG oc,register __a0 STRPTR buffer,register __a1 STRPTR pattern)
+LONG __SAVE_DS__ __ASM__ xpr_fnext(__REG__(d0, LONG oc), __REG__(a0, STRPTR buffer), __REG__(a1, STRPTR pattern))
 {
 	uplist = uplist->Next;
 	if(uplist)
@@ -321,8 +317,7 @@ xpr_fnext(register __d0 LONG oc,register __a0 STRPTR buffer,register __a1 STRPTR
 	return(0);
 }
 
-LONG __asm
-xpr_gets(register __a0 STRPTR Prompt,register __a1 STRPTR Buffer)
+LONG __SAVE_DS__ __ASM__ xpr_gets(__REG__(a0, STRPTR Prompt), __REG__(a1, STRPTR Buffer))
 {
 	/* The first argument is a pointer to a string containing a prompt, to be displayed by the
 	communications program in any manner it sees fit. The second argument should be a pointer to a
@@ -332,8 +327,7 @@ xpr_gets(register __a0 STRPTR Prompt,register __a1 STRPTR Buffer)
 	return(0);
 }
 
-LONG __saveds __asm
-xpr_fopen(register __a0 STRPTR FileName,register __a1 STRPTR AccessMode)
+LONG __SAVE_DS__ __ASM__ xpr_fopen(__REG__(a0, STRPTR FileName), __REG__(a1, STRPTR AccessMode))
 {
 	register long fh;
 
@@ -364,29 +358,25 @@ xpr_fopen(register __a0 STRPTR FileName,register __a1 STRPTR AccessMode)
 	return(0);
 }
 
-LONG __saveds __asm
-xpr_fclose(register __a0 BPTR File)
+LONG __SAVE_DS__ __ASM__ xpr_fclose(__REG__(a0, BPTR File))
 {
 	if(File) Close(File);
 	return(0);
 }
 
-LONG __saveds __asm
-xpr_fread(register __a0 APTR Buffer,register __d0 LONG Size,register __d1 LONG Count,register __a1 BPTR File)
+LONG __SAVE_DS__ __ASM__ xpr_fread(__REG__(a0, APTR Buffer), __REG__(d0, LONG Size), __REG__(d1, LONG Count), __REG__(a1, BPTR File))
 {
 	if(Size==0 || Count==0) return(0);
 	return(Read(File,Buffer,Size*Count));
 }
 
-LONG __saveds __asm
-xpr_fwrite(register __a0 APTR Buffer,register __d0 LONG Size,register __d1 LONG Count,register __a1 BPTR File)
+LONG __SAVE_DS__ __ASM__ xpr_fwrite(__REG__(a0, APTR Buffer), __REG__(d0, LONG Size), __REG__(d1, LONG Count), __REG__(a1, BPTR File))
 {
 	if(Size==0 || Count==0) return(0);
 	return(Write(File,Buffer,Size*Count));
 }
 
-LONG __saveds __asm
-xpr_fseek(register __a0 BPTR File,register __d0 LONG Offset,register __d1 LONG Origin)
+LONG __SAVE_DS__ __ASM__ xpr_fseek(__REG__(a0, BPTR File), __REG__(d0, LONG Offset), __REG__(d1, LONG Origin))
 {
 	register long h;
 
@@ -400,14 +390,12 @@ xpr_fseek(register __a0 BPTR File,register __d0 LONG Offset,register __d1 LONG O
 	return((Seek(File,Offset,h)!=-1)?0:-1);
 }
 
-LONG __saveds __asm
-xpr_unlink(register __a0 STRPTR FileName)
+LONG __SAVE_DS__ __ASM__ xpr_unlink(__REG__(a0, STRPTR FileName))
 {
 	return(DeleteFile(FileName));
 }
 
-LONG __saveds __asm
-xpr_update(register __a0 struct XPR_UPDATE *xu)
+LONG __SAVE_DS__ __ASM__ xpr_update(__REG__(a0, struct XPR_UPDATE *xu))
 {
 	register long ud = xu->xpru_updatemask;
 	register UWORD gs;
@@ -565,7 +553,8 @@ long Checkwinmsg(struct Window *wwin)
 	return(0);
 }
 
-LONG __saveds __asm xpr_chkabort(void)
+LONG __SAVE_DS__ __ASM__
+xpr_chkabort(void)
 {
 	if(icon)
 	{
@@ -608,7 +597,7 @@ LONG __saveds __asm xpr_chkabort(void)
 	return(0);
 }
 
-LONG __saveds __asm
+LONG __SAVE_DS__ __ASM__
 xpr_squery(void)
 {
 	fd_set rd;
