@@ -280,7 +280,7 @@ struct Node *FindNode(struct List *listviewlist, UWORD lastcode)
 	UWORD i = 0;
 
 	// BF: Why this test? lastcode is UWORD, how could it be negative?
-	if(lastcode != -1  &&  listviewlist->lh_TailPred != (struct Node *)listviewlist)
+	if(/*lastcode != -1  &&*/  listviewlist->lh_TailPred != (struct Node *)listviewlist)
 	{
 		worknode = listviewlist->lh_Head;
 		while(i < lastcode  &&  worknode)
@@ -473,7 +473,7 @@ delete:
 								FreeMem(worknode, sizeof(struct Node));
 								lastcode--;
 								// BF: Why this test? lastcode is UWORD, how could it be negative?
-								if(lastcode < 0) lastcode = 0;
+								//if(lastcode < 0) lastcode = 0;
 								GT_SetGadgetAttrs(Project0Gadgets[GD_LIST],Project0Wnd,0,GTLV_Labels,listviewlist,GTLV_Selected,lastcode,TAG_DONE);
 								save = TRUE;
 							}
