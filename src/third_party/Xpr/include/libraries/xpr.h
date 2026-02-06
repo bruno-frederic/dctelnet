@@ -1,8 +1,15 @@
-/** xproto.h
- *
- *   Include file for External Protocol Handling
- *
- **/
+#ifndef	LIBRARIES_XPR_H
+#define	LIBRARIES_XPR_H
+/*
+**	$VER: Xpr.h 3.1 (03.02.2026)
+**
+**	structures and defines extracted from XprZmodem.h (XPRZModem v3.1 by Rainer Hess),
+**	taken from the "comm/misc/xprz31.lha" archive on Aminet CD 2.
+**
+**	This header is used for rebuilding DCTelnet.
+**
+*/
+
 /*
    *   The structure
  */
@@ -80,12 +87,6 @@ struct XPR_IO
  */
 #define XPR_EXTENSION 4L
 
-/*
-   *   The functions
- */
-#ifndef LATTICE
-extern long XProtocolSend (), XProtocolReceive (), XProtocolSetup (), XProtocolCleanup ();
-#endif
 /*
    *   Flags returned by XProtocolSetup()
  */
@@ -169,3 +170,5 @@ struct xpr_option
 #define XPRO_HEADER  4L		/* xpro_value is ignored                */
 #define XPRO_COMMAND 5L		/* xpro_value is ignored                */
 #define XPRO_COMMPAR 6L		/* xpro_value contains command parameters     */
+
+#endif	/* LIBRARIES_XPR_H */
