@@ -127,14 +127,30 @@
 		(all)
 	)
 
+(SET #address-book-path	(TACKON DestDir "DCTelnet.book"))
+(if (<> (exists #address-book-path) 0)
+	(
+		(message "\nWARNING: An address book already exists at the destination.\n\n"
+				"The existing file will be renamed to 'DCTelnet-Backup.Book'.\n")
+
+		(COPYFILES
+			(prompt	"Backing up address book.")
+			(help @copyfiles-help)
+			(source #address-book-path)
+			(dest	 DestDir)
+			(newname "DCTelnet-Backup.Book")
+			(infos)
+		)
+
+	)
+)
+
 	(COPYFILES
-		(prompt	"Installing optional starter address book.\n\n"
-				"Caution: any existing address book will be overwritten.\n\n")
+		(prompt	"Installing starter address book.")
 		(help @copyfiles-help)
 		(source "DCTelnet.Book")
 		(dest	 DestDir)
 		(infos)
-		(confirm "AVERAGE")	; so even Average user show this confirm step
 	)
 
 	(COPYFILES
