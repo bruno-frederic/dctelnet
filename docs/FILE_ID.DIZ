@@ -3,10 +3,9 @@
 | | | | |     | | / _ \ || '_ \ / _ \ __|
 | |_| | |___  | ||  __/ || | | |  __/ |_
 |____/ \____| |_| \___|_||_| |_|\___|___|
-DCTelnet v1.7.1 (25 Jan 2026)
+DCTelnet v1.8-dev (xx Feb 2026)
 A classic Amiga Telnet/BBS client with Zmodem
 * 68000 & 68020 compatible
 * optional GlowIcons
 * No MUI, ClassAct or ReAction required
 * No telser.device required
-v1.7.1: Installer script fix for OS 3.5/3.9

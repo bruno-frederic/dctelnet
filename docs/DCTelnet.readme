@@ -2,8 +2,7 @@ Short:        DCTelnet - Telnet/BBS client with Zmodem
 Author:       Bruno FREDERIC
 Uploader:     bruno.frederic+aminet@gm...
 Type:         comm/tcp
-Version:      1.7.1
-Replaces:     comm/tcp/DCTel_15.lha; comm/tcp/DCTelnet_16.lha
+Version:      1.8-dev
 Requires:     util/libs/ReqToolsUsr.lha
 Architecture: m68k-amigaos >= 2.0
 Distribution: Aminet
@@ -29,12 +28,7 @@ documentation.
 
 ---
 
-v1.7.1: fix for the installation script to ensure compatibility with
-Installer v44 as found in AmigaOS 3.5 and 3.9.
-
-The DCTelnet binaries and features are otherwise unchanged.
-
-Thanks to VincentGR76 for reporting the issue.
+v1.8: TODO
 
 ---
 
