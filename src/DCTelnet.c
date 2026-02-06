@@ -888,7 +888,8 @@ int main(int argc, char *argv[])
 
 	if(argc > 1)
 	{
-		if(argv[1][0]=='?' && argv[1][1]==0)
+		if(strcmp(argv[1], "?") == 0 || strcmp(argv[1], "/?") == 0 || strcmp(argv[1], "-?") == 0 ||
+		   strcmp(argv[1], "-h")  == 0 || strcmp(argv[1], "--help")  == 0)
 		{
 			PutStr(
 		"DCTelnet "DCTELNET_VERSION" ("__DATE__") - A classic Amiga Telnet/BBS client with Zmodem\n"
