@@ -424,7 +424,7 @@ add:
 					node->nnode.ln_Name = (char *) (long)node + sizeof(struct Scroll);
 					node->len = jj;
 					CopyMem(scrollbuf, node->nnode.ln_Name, jj - 2);
-					AddTail(slist, node);
+					AddTail(slist, (struct Node *) node);
 					lines++;
 				}
 				if(lines > prefs.sb_lines)
@@ -434,7 +434,7 @@ add:
 					nextnode = (struct Scroll *)node -> nnode.ln_Succ;
 					if(nextnode)
 					{
-						Remove(node);
+						Remove((struct Node *) node);
 						FreeMem(node, sizeof(struct Scroll)+node->len);
 					}
 				} else {
@@ -1059,7 +1059,7 @@ restart:
 				while(appmsg = (struct AppMessage *)GetMsg(iconport))
 				{
 					if(appmsg->am_NumArgs==0 && appmsg->am_ArgList==0) unicon = TRUE;
-					ReplyMsg(appmsg);
+					ReplyMsg((struct Message *)appmsg);
 				}
 			}
 
