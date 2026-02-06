@@ -1,0 +1,382 @@
+* $VER: fd2pragma.types 1.18 (18.06.2018)
+*
+* fd2pragma type definition file
+* description format is 'unknown type : known type'
+* unknown type:
+*   name of unknown type (only one word)
+* known type:
+*   consists of struct + name, enum + name, union + name, signed,
+*   unsigned, const,
+*   long (32 bit), short (16 bit), char (8 bit), int, double and float
+* For nameless structs or enums set ? as name. Structs without name, but
+* used by a typedef (like: typedef struct {...} name) get a ! as name.
+*
+* Tell me missing definitions for inclusion in future updates.
+*
+* commodities.library
+IX			: struct InputXpression
+* intuition.library (pointer to nameless structure)
+Msg			: struct ? *
+Class			: struct IClass
+* hdwrench.library
+BootBlock		: struct bootblock
+ValidIDstruct		: struct ValidIDstruct
+* graphics.library
+DisplayInfoHandle	: void *
+* resource.library
+RESOURCEFILE		: void *
+RESOURCEID		: unsigned long
+* cybergl.library
+GLvoid			: void
+GLbitfield		: unsigned long
+GLbyte			: signed char
+GLshort			: short
+GLint			: long
+GLsizei			: unsigned long
+GLubyte			: unsigned char
+GLushort		: unsigned short
+GLuint			: unsigned long
+GLfloat			: float
+GLclampf		: float
+GLdouble		: double
+GLclampd		: double
+* nameless enums
+GLboolean		: enum ?
+GLenum			: enum ?
+* these struct types are not equivalent to C-Code, but correct for fd2pragma
+GLlookAt		: struct !
+GLproject		: struct !
+GLunProject		: struct !
+GLfrustum		: struct !
+GLortho			: struct !
+GLbitmap		: struct !
+* for AmigaMesaRTL 3.0
+GLUquadricObj		: struct !
+GLUtriangulatorObj	: struct !
+GLUnurbsObj		: struct !
+GLvisual		: struct gl_visual
+GLframebuffer		: struct gl_frame_buffer
+GLcontext		: struct gl_context
+GLContext		: struct !
+* HGIDA.library
+HGIDA_Stack		: unsigned long *
+HGIDA_BoundedStack	: unsigned long *
+HGIDA_Queue		: unsigned long *
+HGIDA_BoundedQueue	: unsigned long *
+HGIDA_List		: unsigned long *
+HGIDA_ListItem		: unsigned long *
+HGIDA_Error		: enum ?
+HGIDA_Direction		: enum ?
+* AmiTCP
+uid_t			: long
+gid_t			: long
+mode_t			: unsigned short
+pid_t			: struct Task *
+fd_set			: struct fd_set
+SerScriptCallback_t	: unsigned long (*)(register __a0 void *, register __d0 unsigned long, register __a1 const unsigned char *, register __a2 struct CSource *, register __a3 struct CSource *)
+* Miami SDK
+pcap_t			: struct pcap
+pcap_dumper_t		: struct pcap_dumper
+pcap_handler		: void (*)(unsigned char *, const struct pcap_pkthdr *, const unsigned char *)
+u_char			: unsigned char
+bpf_u_int32		: unsigned long
+* ahi.library
+Fixed			: long
+sposition		: long
+* mpega.library
+MPEGA_STREAM		: struct !
+MPEGA_CTRL		: struct !
+* Warp3D
+W3D_Context		: struct W3DContext
+W3D_Driver		: struct W3DDriver
+W3D_Texture		: struct W3DTexture
+W3D_Scissor		: struct W3DScissor
+W3D_Line		: struct !
+W3D_Point		: struct !
+W3D_Triangle		: struct !
+W3D_Triangles		: struct !
+W3D_Float		: float
+W3D_Bitmap		: struct !
+W3D_Fog			: struct !
+W3D_Bool		: short
+W3D_Double		: double
+W3D_TriangleV		: struct !
+W3D_TrianglesV		: struct !
+W3D_ScreenMode		: struct !
+W3D_Color		: struct !
+W3D_Lines		: struct !
+*Picasso96API.library
+RGBFTYPE		: enum ?
+*cgxdither.library
+DITHERINFO		: void *
+*cgxsystem.library
+SLayer			: void *
+*stdarg.h (this types depend on your compiler system)
+va_list                 : char *
+time_t			: long
+size_t			: unsigned int
+ssize_t			: long
+*stdio.h (also used in SDL)
+FILE			: struct ? *
+* some useful types
+uint8			: unsigned char
+uint16			: unsigned short
+uint32			: unsigned long
+int8			: char
+int16			: short
+int32			: long
+u_char			: unsigned char
+u_short			: unsigned short
+u_int			: unsigned int
+u_long			: unsigned long
+* exec V39
+AVLKey			: void *
+* BigNum.library
+PtrBigNum		: struct BigNum *
+* AmiSSL stuff
+BF_KEY                  : struct bf_key_st
+BF_LONG                 : unsigned long
+CAST_KEY                : struct cast_key_st
+CAST_LONG               : unsigned long
+DES_LONG                : unsigned long
+des_key_schedule        : struct des_ks_struct
+const_des_cblock        : unsigned char [8]
+des_cblock              : unsigned char [8]
+IDEA_KEY_SCHEDULE       : struct idea_key_st
+MD2_CTX                 : struct MD2state_st
+MD5_CTX                 : struct MD5state_st
+MDC2_CTX                : struct mdc2_ctx_st
+RC2_KEY                 : struct rc2_key_st
+RC4_KEY                 : struct rc4_key_st
+RC5_32_KEY              : struct rc5_key_st
+RIPEMD160_CTX           : struct RIPEMD160state_st
+SHA_CTX                 : struct SHAstate_st
+ASN1_CTX                : struct asn1_ctx_st
+ASN1_OBJECT             : struct asn1_object_st
+ASN1_STRING             : struct asn1_string_st
+ASN1_TYPE               : struct asn1_type_st
+ASN1_METHOD             : struct asn1_method_st
+ASN1_HEADER             : struct asn1_header_st
+ASN1_INTEGER            : struct asn1_string_st
+ASN1_ENUMERATED         : struct asn1_string_st
+ASN1_BIT_STRING         : struct asn1_string_st
+ASN1_OCTET_STRING       : struct asn1_string_st
+ASN1_PRINTABLESTRING    : struct asn1_string_st
+ASN1_T61STRING          : struct asn1_string_st
+ASN1_IA5STRING          : struct asn1_string_st
+ASN1_UTCTIME            : struct asn1_string_st
+ASN1_GENERALIZEDTIME    : struct asn1_string_st
+ASN1_TIME               : struct asn1_string_st
+ASN1_GENERALSTRING      : struct asn1_string_st
+ASN1_UNIVERSALSTRING    : struct asn1_string_st
+ASN1_BMPSTRING          : struct asn1_string_st
+ASN1_VISIBLESTRING      : struct asn1_string_st
+ASN1_UTF8STRING         : struct asn1_string_st
+BIO                     : struct bio_st
+BIO_F_BUFFER_CTX	: struct bio_f_buffer_ctx_struct
+BIO_METHOD              : struct bio_method_st
+BIGNUM                  : struct bignum_st
+BN_CTX                  : struct bignum_ctx
+BN_ULONG                : unsigned long
+BN_MONT_CTX             : struct bn_mont_ctx_st
+BN_BLINDING             : struct bn_blinding_st
+BN_RECP_CTX             : struct bn_recp_ctx_st
+BUF_MEM                 : struct buf_mem_st
+COMP_METHOD             : struct comp_method_st
+COMP_CTX                : struct comp_ctx_st
+CONF_VALUE              : struct !
+LHASH_NODE              : struct lhash_node_st
+LHASH                   : struct lhash_st
+CRYPTO_EX_DATA          : struct crypto_ex_data_st
+CRYPTO_EX_DATA_FUNCS    : struct crypto_ex_data_func_st
+DH                      : struct dh_st
+DSA                     : struct dsa_st
+DSA_SIG                 : struct DSA_SIG_st
+ERR_STATE               : struct err_state_st
+ERR_STRING_DATA         : struct ERR_string_data_st
+EVP_PKEY                : struct evp_pkey_st
+EVP_MD                  : struct env_md_st
+EVP_MD_CTX              : struct env_md_ctx_st
+EVP_CIPHER              : struct evp_cipher_st
+EVP_CIPHER_INFO         : struct evp_cipher_info_st
+EVP_CIPHER_CTX          : struct evp_cipher_ctx_st
+EVP_ENCODE_CTX          : struct evp_Encode_Ctx_st
+EVP_PBE_KEYGEN          : struct int (*)(struct evp_cipher_ctx_st *ctx, const char *pass, int passlen, struct asn1_type_st *param, struct evp_cipher_st *cipher, struct env_md_st *md, int en_de)
+HMAC_CTX                : struct hmac_ctx_st
+OBJ_NAME                : struct obj_name_st
+PEM_ENCODE_SEAL_CTX     : struct PEM_Encode_Seal_st
+PEM_USER                : struct pem_recip_st
+PEM_CTX                 : struct pem_ctx_st
+PKCS12_MAC_DATA         : struct !
+PKCS12                  : struct !
+PKCS12_SAFEBAG          : struct !
+PKCS12_BAGS             : struct pkcs12_bag_st
+PKCS7_ISSUER_AND_SERIAL : struct pkcs7_issuer_and_serial_st
+PKCS7_SIGNER_INFO       : struct pkcs7_signer_info_st
+PKCS7_RECIP_INFO        : struct pkcs7_recip_info_st
+PKCS7_SIGNED            : struct pkcs7_signed_st
+PKCS7_ENC_CONTENT       : struct pkcs7_enc_content_st
+PKCS7_ENVELOPE          : struct pkcs7_enveloped_st
+PKCS7_SIGN_ENVELOPE     : struct pkcs7_signedandenveloped_st
+PKCS7_DIGEST            : struct pkcs7_digest_st
+PKCS7_ENCRYPT           : struct pkcs7_encrypted_st
+PKCS7                   : struct pkcs7_st
+RAND_METHOD             : struct rand_meth_st
+RSA                     : struct rsa_st
+RSA_METHOD              : struct rsa_meth_st
+TXT_DB                  : struct txt_db_st
+X509_OBJECTS            : struct X509_objects_st
+X509_ALGOR              : struct X509_algor_st
+X509_VAL                : struct X509_val_st
+X509_PUBKEY             : struct X509_pubkey_st
+X509_SIG                : struct X509_sig_st
+X509_NAME_ENTRY         : struct X509_name_entry_st
+X509_NAME               : struct X509_name_st
+X509_EXTENSION          : struct X509_extension_st
+X509_ATTRIBUTE          : struct x509_attributes_st
+X509_REQ_INFO           : struct X509_req_info_st
+X509_REQ                : struct X509_req_st
+X509_CINF               : struct x509_cinf_st
+X509                    : struct x509_st
+X509_REVOKED            : struct X509_revoked_st
+X509_CRL_INFO           : struct X509_crl_info_st
+X509_CRL                : struct X509_crl_st
+X509_PKEY               : struct private_key_st
+X509_INFO               : struct X509_info_st
+NETSCAPE_SPKAC          : struct Netscape_spkac_st
+NETSCAPE_SPKI           : struct Netscape_spki_st
+NETSCAPE_CERT_SEQUENCE  : struct Netscape_certificate_sequence
+CBC_PARAM               : struct CBCParameter_st
+PBEPARAM                : struct PBEPARAM_st
+PBE2PARAM               : struct PBE2PARAM_st
+PBKDF2PARAM             : struct PBKDF2PARAM_st
+PKCS8_PRIV_KEY_INFO     : struct pkcs8_priv_key_info_st
+X509V3_CONF_METHOD      : struct X509V3_CONF_METHOD_st
+X509V3_EXT_METHOD       : struct v3_ext_method
+X509V3_CTX              : struct v3_ext_ctx
+X509_HASH_DIR_CTX       : struct x509_hash_dir_st
+X509_CERT_FILE_CTX      : struct x509_file_st
+X509_OBJECT             : struct X509_objects_st
+X509_LOOKUP             : struct x509_lookup_st
+X509_LOOKUP_METHOD      : struct x509_lookup_method_st
+X509_STORE_CTX          : struct x509_store_state_st
+X509_STORE              : struct x509_store_st
+BIT_STRING_BITNAME      : struct BIT_STRING_BITNAME_st
+BASIC_CONSTRAINTS       : struct BASIC_CONSTRAINTS_st
+PKEY_USAGE_PERIOD       : struct PKEY_USAGE_PERIOD_st
+GENERAL_NAME            : struct GENERAL_NAME_st
+DIST_POINT_NAME         : struct DIST_POINT_NAME_st
+DIST_POINT              : struct DIST_POINT_st
+AUTHORITY_KEYID         : struct AUTHORITY_KEYID_st
+SXNETID                 : struct SXNET_ID_st
+SXNET                   : struct SXNET_st
+NOTICEREF               : struct NOTICEREF_st
+USERNOTICE              : struct USERNOTICE_st
+POLICYQUALINFO          : struct POLICYQUALINFO_st
+POLICYINFO              : struct POLICYINFO_st
+pem_password_cb         : int (*)(char *buf, int size, int rwflag, void *userdata)
+SSL_CIPHER              : struct ssl_cipher_st
+SSL                     : struct ssl_st
+SSL_CTX                 : struct ssl_ctx_st
+SSL_METHOD              : struct ssl_method_st
+SSL_SESSION             : struct ssl_session_st
+SSL_COMP                : struct ssl_comp_st
+SSL2_CTX                : struct ssl2_ctx_st
+SSL3_RECORD             : struct ssl3_record_st
+SSL3_BUFFER             : struct ssl3_buffer_st
+SSL3_CTX                : struct ssl3_ctx_st
+CERT_PKEY               : struct cert_pkey_st
+CERT                    : struct cert_st
+SESS_CERT               : struct sess_cert_st
+SSL3_ENC_METHOD         : struct ssl3_enc_method
+SSL3_COMP               : struct ssl3_comp_st
+STACK_OF(X509_ATTRIBUTE): struct stack_st_X509_ATTRIBUTE
+STACK_OF(X509_INFO)	: struct stack_st_X509_INFO
+STACK_OF(X509_NAME)	: struct stack_st_X509_NAME
+STACK_OF(X509)		: struct stack_st_X509
+STACK_OF(PKCS7_SIGNER_INFO): struct stack_st_PKCS7_SIGNER_INFO
+STACK_OF(SSL_CIPHER)	: struct stack_st_SSL_CIPHER
+STACK_OF(GENERAL_NAME)	: struct stack_st_GENERAL_NAME
+STACK_OF(CONF_VALUE)	: struct stack_st_CONF_VALUE
+STACK_OF(ASN1_OBJECT)	: struct stack_st_ASN1_OBJECT
+STACK_OF(POLICYINFO)	: struct stack_st_POLICYINFO
+STACK_OF(DIST_POINT)	: struct stack_st_DIST_POINT
+STACK_OF(X509_EXTENSION): struct stack_st_X509_EXTENSION
+STACK                   : struct stack_st
+* SDL
+SDL_bool          : enum ?
+Uint8             : unsigned char
+Sint8             : signed char
+Uint16            : unsigned short
+Sint16            : signed short
+Uint32            : unsigned long
+Sint32            : signed long
+Uint64            : unsigned long long
+Sint64            : signed long long
+SDL_version       : struct !
+SDL_RWops         : struct SDL_RWops
+SDL_Rect          : struct !
+SDL_Color         : struct !
+SDL_Palette       : struct !
+SDL_PixelFormat   : struct SDL_PixelFormat
+SDL_blit          : int (*)(struct SDL_Surface *src,void *srcrect,struct SDL_Surface *dst,void *dstrect)
+SDL_Surface       : struct SDL_Surface
+SDL_VideoInfo     : struct !
+SDL_Overlay       : struct SDL_Overlay
+SDL_GLattr        : enum ?
+SDL_GrabMode      : enum ?
+SDL_audiostatus   : enum ?
+SDL_AudioSpec     : struct !
+SDL_AudioCVT      : struct SDL_AudioCVT
+CDstatus          : enum ?
+SDL_CDtrack       : struct !
+SDL_CD            : struct SDL_CD
+SDL_Joystick      : struct _SDL_Joystick
+SDLKey            : enum ?
+SDLMod            : enum ?
+SDL_keysym        : struct !
+SDL_ActiveEvent   : struct !
+SDL_KeyboardEvent : struct !
+SDL_MouseMotionEvent : struct !
+SDL_MouseButtonEvent : struct !
+SDL_JoyAxisEvent  : struct !
+SDL_JoyBallEvent  : struct !
+SDL_JoyHatEvent   : struct !
+SDL_JoyButtonEvent : struct !
+SDL_ResizeEvent   : struct !
+SDL_ExposeEvent   : struct !
+SDL_QuitEvent     : struct !
+SDL_UserEvent     : struct !
+SDL_SysWMmsg      : struct SDL_SysWMmsg
+SDL_SysWMEvent    : struct !
+SDL_Event         : union ?
+SDL_eventaction   : enum ?
+SDL_EventFilter   : void *
+WMcursor          : struct WMcursor
+SDL_Cursor        : struct !
+SDL_mutex         : struct SDL_mutex
+SDL_sem           : struct SDL_semaphore
+SDL_cond          : struct SDL_cond
+SDL_Thread        : struct SDL_Thread
+SDL_TimerCallback : unsigned long (*)(unsigned long)
+SDL_NewTimerCallback : unsigned long (*)(unsigned long,void *)
+SDL_TimerID       : struct _SDL_TimerID
+SDL_errorcode	  : enum ?
+FPSmanager        : struct !
+Mix_Chunk         : struct !
+Mix_Music         : struct !
+Mix_MusicType     : enum ?
+Mix_EffectFunc_t  : void (*)(int,void *,int,void *)
+Mix_EffectDone_t  : void (*)(int,void *)
+Mix_Fading        : enum ?
+IPaddress         : struct !
+TCPsocket         : void *
+UDPpacket         : struct !
+UDPsocket         : void *
+SDLNet_SocketSet  : void *
+SDLNet_GenericSocket : void *
+TTF_Font          : struct !
+* zlib
+Bytef             : unsigned char
+* timer V47
+TimeVal_Type      : struct !
