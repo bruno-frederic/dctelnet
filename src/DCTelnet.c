@@ -1992,7 +1992,7 @@ UWORD Connect_To_ServerA(char *servername, UWORD port)
 	c_msg("Connecting...", 4);
 
 	// connect() expects a generic sockaddr, so cast the INet socket address
-	if(connect(sok, (struct sockaddr const *)&INetSocketAddr, sizeof(INetSocketAddr)) == -1)
+	if(connect(sok, (struct sockaddr *)&INetSocketAddr, sizeof(INetSocketAddr)) == -1)
 	{
 		CheckError();
 		shutdown(sok, 2);

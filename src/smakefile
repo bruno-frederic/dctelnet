@@ -20,7 +20,8 @@ default:
 	@echo  or: smake release
 
 INCLUDES= \
-	IDir=third_party/AmiTCP/netinclude \
+	IDir=:vbcc/bin/NDK3.2R4/Include_H \
+	IDir=third_party/netinclude \
 	IDir=third_party/ReqTools/include \
 	IDir=third_party/Xem/INCLUDE \
 	IDir=third_party/XPRotocol/include

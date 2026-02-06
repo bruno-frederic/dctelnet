@@ -1,8 +1,0 @@
-# $Id: Smake.def,v 1.2 1994/09/30 00:12:04 jraja Exp $
-PROG = in.example
-SRCS=  $(PROG).c 
-OBJS=  $(PROG).o
-LIBS=  lib netlib:net.lib
-DEFS=
-LDFLAGS= 
-

@@ -19,7 +19,7 @@
 #include <proto/reqtools.h>           // rtAllocRequestA (RT_FILEREQ…) in Upload()
 #include <xproto.h>
 #include <netdb.h>
-#include <bsdsocket.h>
+#include <proto/bsdsocket.h>
 #include <sys/ioctl.h>
 #include <sys/errno.h>
 
