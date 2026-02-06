@@ -63,6 +63,16 @@ extern char prefsfile[];
 extern char keysfile[];
 extern char bookfile[];
 
+struct BookStruct
+{
+	char	name[32];
+	char	host[52];
+	UWORD	port;
+	long	last;
+	char	username[42];
+	char	password[42];
+	char	res[82];
+};
 
 char EditProfile(struct BookStruct *book);
 
@@ -258,16 +268,6 @@ long mytime(void)
 	return( (stamp.ds_Days*24*60*60) + (stamp.ds_Minute*60) + (stamp.ds_Tick/50) + 252460800 );
 }
 
-struct BookStruct
-{
-	char	name[32];
-	char	host[52];
-	UWORD	port;
-	long	last;
-	char	username[42];
-	char	password[42];
-	char	res[82];
-};
 
 extern UWORD Connect_To_Server(char *servername, UWORD port);
 extern void LocalPrint(char *data);
