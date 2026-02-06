@@ -14,11 +14,6 @@
 (set #os-vernum (getversion "libs:version.library"))
 (set #os-ver (/ #os-vernum 65536))
 
-; Needed for GlowIcons
-(set #iconlib-vernum (getversion "libs:icon.library"))
-(set #iconlib-ver (/ #iconlib-vernum 65536))
-
-
 (transcript "Running on OS v" #os-ver)
 
 (if (< #os-ver 36)
@@ -105,26 +100,6 @@
 		(infos)
 		(confirm)
 		(all)			; needed to copy whole directory
-	)
-
-	(if (< #iconlib-ver 45)
-		(
-			(set #glowIconsDest	(TACKON DestDir "GlowIcons"))
-		)
-		;else
-		(
-			(set #glowIconsDest DestDir)
-		)
-	)
-
-	(COPYFILES
-		(prompt	"Installing optional GlowIcons set.")
-		(help @copyfiles-help)
-		(source "GlowIcons")
-		(dest	 #glowIconsDest)
-		(infos)
-		(confirm "AVERAGE")	; so even Average user show this confirm step
-		(all)
 	)
 
 (SET #address-book-path	(TACKON DestDir "DCTelnet.book"))
