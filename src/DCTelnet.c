@@ -879,7 +879,7 @@ void Finger(void)
 	}
 }
 
-void main(int argc, char *argv[])
+int main(int argc, char *argv[])
 {
 	ULONG iconsig, sigmask, winsig;
 	LONG i;
@@ -896,7 +896,7 @@ void main(int argc, char *argv[])
 		"\n"
 		"Usage: DCTelnet <host> [<port>]\n"
 		);
-			return;
+			return RETURN_OK;
 		}
 
 		strcpy(server, argv[1]);
@@ -912,7 +912,7 @@ void main(int argc, char *argv[])
 	if (!(ReqToolsBase = (struct ReqToolsBase *)OpenLibrary (REQTOOLSNAME, 0)))
 	{
 		PutStr("I need reqtools.library\n");
-		return;
+		return RETURN_FAIL;
 	}
 
 	fh = Open(prefsfile, MODE_OLDFILE);
@@ -1142,6 +1142,8 @@ startloop:
 	FreeMem(slist, sizeof(struct List));
 xit:
 	CloseLibrary((struct Library *)ReqToolsBase);
+
+	return RETURN_OK;
 }
 
 void LocalPrint(char *data)
