@@ -88,8 +88,8 @@ extern long TCPSend(char *buf, long len);
 extern void SimpleReq(char *str);
 extern void CheckDimensions(struct NewWindow *newwin);
 long init_xpr(struct XPR_IO *IO);
-LONG __SAVE_DS__ __ASM__ xpr_sflush(void);
-LONG __SAVE_DS__ __ASM__ xpr_chkabort(void);
+long xpr_sflush(void);   /* Flush serial input buffer */
+long xpr_chkabort(void);     /* Check for abort */
 char XferWindow(void);
 
 
@@ -147,7 +147,9 @@ void ProtoClean(void)
 	//ConWrite("", 1);
 }
 
-LONG __SAVE_DS__ __ASM__ xpr_finfo(__REG__(a0, STRPTR name), __REG__(d0, LONG type))
+/* Return file info */
+long __ASM__ xpr_finfo(__REG__(a0, char *filename),
+                       __REG__(d0, long typeofinfo))
 {
 	struct FileInfoBlock *fib = AllocMem(sizeof(struct FileInfoBlock), 0);
  	BPTR lck;
@@ -155,19 +157,21 @@ LONG __SAVE_DS__ __ASM__ xpr_finfo(__REG__(a0, STRPTR name), __REG__(d0, LONG ty
 
 	if(!fib) return(0);
 
- 	if(lck = Lock(name, SHARED_LOCK))
+ 	if(lck = Lock(filename, SHARED_LOCK))
 	{
 		Examine(lck, fib);
 		UnLock(lck);
 		result = fib->fib_Size;
-		if(type == 2) result = 1;
-		else if(type != 1) result = 0;
+		if(typeofinfo == 2) result = 1;
+		else if(typeofinfo != 1) result = 0;
 	}
 	FreeMem(fib, sizeof(struct FileInfoBlock));
 	return(result);
 }
 
-LONG __SAVE_DS__ __ASM__ xpr_swrite(__REG__(a0, UBYTE *buffer), __REG__(d0, LONG size))
+/* Put string to serial */
+long __ASM__ xpr_swrite(__REG__(a0, char *buffer),
+                        __REG__(d0, long size))
 {
 	long ret = 0;
 	register ULONG i = 0, j = 0;
@@ -191,7 +195,10 @@ LONG __SAVE_DS__ __ASM__ xpr_swrite(__REG__(a0, UBYTE *buffer), __REG__(d0, LONG
 	return(ret);
 }
 
-LONG __SAVE_DS__ __ASM__ xpr_sread(__REG__(a0, UBYTE *buffer), __REG__(d0, ULONG size), __REG__(d1, ULONG timeout))
+/* Get char from serial */
+long __ASM__ xpr_sread(__REG__(a0, char *buffer),
+                       __REG__(d0, long size),
+                       __REG__(d1, long timeout))
 {
 	fd_set rd;
 	ULONG sig;
@@ -279,8 +286,8 @@ LONG __SAVE_DS__ __ASM__ xpr_sread(__REG__(a0, UBYTE *buffer), __REG__(d0, ULONG
 	return(0);*/
 }
 
-LONG __SAVE_DS__ __ASM__
-xpr_sflush(void)
+/* Flush serial input buffer */
+long xpr_sflush(void)
 {
 	fd_set rd;
 	struct timeval timer;
@@ -298,26 +305,33 @@ xpr_sflush(void)
 	return(0);
 }
 
-LONG __SAVE_DS__ __ASM__ xpr_ffirst(__REG__(a0, STRPTR buffer), __REG__(a1, STRPTR pattern))
+/* Find first file name */
+long __ASM__ xpr_ffirst(__REG__(a0, char *buffer),
+                        __REG__(a1, char *pattern))
 {
 	strcpy(buffer, prefs.uploadpath);
 	strcat(buffer, upfirst->Name);
 	return(1);
 }
 
-LONG __SAVE_DS__ __ASM__ xpr_fnext(__REG__(d0, LONG oc), __REG__(a0, STRPTR buffer), __REG__(a1, STRPTR pattern))
+/* Find next file name */
+long __ASM__ xpr_fnext(__REG__(d0, long oldstate),
+				__REG__(a0, char *buffer),
+				__REG__(a1, char *pattern))
 {
 	uplist = uplist->Next;
 	if(uplist)
 	{
 		strcpy(buffer, prefs.uploadpath);
 		strcat(buffer, uplist->Name);
-		return(oc);
+		return(oldstate);
 	}
 	return(0);
 }
 
-LONG __SAVE_DS__ __ASM__ xpr_gets(__REG__(a0, STRPTR Prompt), __REG__(a1, STRPTR Buffer))
+/* Get string interactively */
+long __ASM__ xpr_gets(__REG__(a0, char *prompt),
+                      __REG__(a1, char *buffer))
 {
 	/* The first argument is a pointer to a string containing a prompt, to be displayed by the
 	communications program in any manner it sees fit. The second argument should be a pointer to a
@@ -327,29 +341,30 @@ LONG __SAVE_DS__ __ASM__ xpr_gets(__REG__(a0, STRPTR Prompt), __REG__(a1, STRPTR
 	return(0);
 }
 
-LONG __SAVE_DS__ __ASM__ xpr_fopen(__REG__(a0, STRPTR FileName), __REG__(a1, STRPTR AccessMode))
+long __ASM__ xpr_fopen(__REG__(a0, char *filename),
+                       __REG__(a1, char *accessmode))
 {
 	register long fh;
 
 	if(!icon) EraseRect(xrp, 21, posY(9), xferwin->Width-21, posY(9)+9);
 	lastgs = 0;
 
-	switch(*AccessMode)
+	switch(*accessmode)
 	{
 	case 'r':
-		return(Open(FileName, MODE_OLDFILE));
+		return(Open(filename, MODE_OLDFILE));
 
 	case 'w':
-		if(fh=Open(FileName, MODE_NEWFILE))
+		if(fh=Open(filename, MODE_NEWFILE))
 		{
 			Close((BPTR)fh);
-			SetComment(FileName, server);
-			return(Open(FileName, MODE_OLDFILE));
+			SetComment(filename, server);
+			return(Open(filename, MODE_OLDFILE));
 		}
 		break;
 
 	case 'a':
-		if(fh=Open(FileName, MODE_READWRITE))
+		if(fh=Open(filename, MODE_READWRITE))
 		{
 			Seek((BPTR)fh, 0, OFFSET_END);
 			return(fh);
@@ -358,46 +373,56 @@ LONG __SAVE_DS__ __ASM__ xpr_fopen(__REG__(a0, STRPTR FileName), __REG__(a1, STR
 	return(0);
 }
 
-LONG __SAVE_DS__ __ASM__ xpr_fclose(__REG__(a0, BPTR File))
+long __ASM__ xpr_fclose(__REG__(a0, long filepointer))
 {
-	if(File) Close(File);
+	if(filepointer) Close(filepointer);
 	return(0);
 }
 
-LONG __SAVE_DS__ __ASM__ xpr_fread(__REG__(a0, APTR Buffer), __REG__(d0, LONG Size), __REG__(d1, LONG Count), __REG__(a1, BPTR File))
+long __ASM__ xpr_fread(__REG__(a0, char *buffer),
+                       __REG__(d0, long size),
+                       __REG__(d1, long count),
+                       __REG__(a1, long fileptr))
 {
-	if(Size==0 || Count==0) return(0);
-	return(Read(File,Buffer,Size*Count));
+	if(size==0 || count==0) return(0);
+	return(Read(fileptr,buffer,size*count));
 }
 
-LONG __SAVE_DS__ __ASM__ xpr_fwrite(__REG__(a0, APTR Buffer), __REG__(d0, LONG Size), __REG__(d1, LONG Count), __REG__(a1, BPTR File))
+long __ASM__ xpr_fwrite(__REG__(a0, char *buffer),
+                        __REG__(d0, long size),
+                        __REG__(d1, long count),
+                        __REG__(a1, long fileptr))
 {
-	if(Size==0 || Count==0) return(0);
-	return(Write(File,Buffer,Size*Count));
+	if(size==0 || count==0) return(0);
+	return(Write(fileptr,buffer,size*count));
 }
 
-LONG __SAVE_DS__ __ASM__ xpr_fseek(__REG__(a0, BPTR File), __REG__(d0, LONG Offset), __REG__(d1, LONG Origin))
+long __ASM__ xpr_fseek(__REG__(a0, long fileptr),
+                       __REG__(d0, long offset),
+                       __REG__(d1, long origin))
 {
 	register long h;
 
-	switch(Origin)
+	switch(origin)
 	{
 		case 0: h=OFFSET_BEGINNING; break;
 		case 1: h=OFFSET_CURRENT; break;
 		case 2: h=OFFSET_END; break;
 		default: return(-1);
 	}
-	return((Seek(File,Offset,h)!=-1)?0:-1);
+	return((Seek(fileptr,offset,h)!=-1)?0:-1);
 }
 
-LONG __SAVE_DS__ __ASM__ xpr_unlink(__REG__(a0, STRPTR FileName))
+/* Delete a file. */
+long __ASM__ xpr_unlink(__REG__(a0, char *filename))
 {
-	return(DeleteFile(FileName));
+	return(DeleteFile(filename));
 }
 
-LONG __SAVE_DS__ __ASM__ xpr_update(__REG__(a0, struct XPR_UPDATE *xu))
+long __ASM__ xpr_update(__REG__(a0,
+                        struct XPR_UPDATE * updatestruct))
 {
-	register long ud = xu->xpru_updatemask;
+	register long ud = updatestruct->xpru_updatemask;
 	register UWORD gs;
 
 	if(icon) return(0);
@@ -405,7 +430,7 @@ LONG __SAVE_DS__ __ASM__ xpr_update(__REG__(a0, struct XPR_UPDATE *xu))
 	if(ud&XPRU_PROTOCOL)
 	{
 		Move(xrp, posX(12), posY(1));
-		Text(xrp, xu->xpru_protocol, strlen(xu->xpru_protocol));
+		Text(xrp, updatestruct->xpru_protocol, strlen(updatestruct->xpru_protocol));
 	}
 	if(ud&XPRU_FILENAME)
 	{
@@ -416,23 +441,23 @@ LONG __SAVE_DS__ __ASM__ xpr_update(__REG__(a0, struct XPR_UPDATE *xu))
 			Text(xrp, prefs.uploadpath, strlen(prefs.uploadpath));
 
 		Move(xrp, posX(12), posY(3));
-		TextFmt(xrp, "%-30s", FilePart(xu->xpru_filename));
+		TextFmt(xrp, "%-30s", FilePart(updatestruct->xpru_filename));
 	}
 	if(ud&XPRU_FILESIZE)
 	{
 		Move(xrp, posX(16), posY(4));
-		TextFmt(xrp, "%-10ld", xu->xpru_filesize);
+		TextFmt(xrp, "%-10ld", updatestruct->xpru_filesize);
 	}
 	if(ud&XPRU_BYTES)
 	{
 		Move(xrp, posX(16), posY(5));
-		TextFmt(xrp, "%-10ld", xu->xpru_bytes);
+		TextFmt(xrp, "%-10ld", updatestruct->xpru_bytes);
 
-		if(xu->xpru_filesize > 0)
+		if(updatestruct->xpru_filesize > 0)
 		{
 			Move(xrp, posX(45), posY(6));
-			TextFmt(xrp, "%ld%%  ", (xu->xpru_bytes*100)/xu->xpru_filesize);
-			gs = (xu->xpru_bytes*(xferwin->Width-42))/xu->xpru_filesize;
+			TextFmt(xrp, "%ld%%  ", (updatestruct->xpru_bytes*100)/updatestruct->xpru_filesize);
+			gs = (updatestruct->xpru_bytes*(xferwin->Width-42))/updatestruct->xpru_filesize;
 		}
 		if(gs > lastgs)
 		{
@@ -445,22 +470,22 @@ LONG __SAVE_DS__ __ASM__ xpr_update(__REG__(a0, struct XPR_UPDATE *xu))
 	if(ud&XPRU_BLOCKCHECK)
 	{
 		Move(xrp, posX(16), posY(6));
-		TextFmt(xrp, "%-10s", xu->xpru_blockcheck);
+		TextFmt(xrp, "%-10s", updatestruct->xpru_blockcheck);
 	}
 	if(ud&XPRU_ERRORS)
 	{
 		Move(xrp, posX(16), posY(7));
-		TextFmt(xrp, "%-10ld", xu->xpru_errors);
+		TextFmt(xrp, "%-10ld", updatestruct->xpru_errors);
 	}
 	if(ud&XPRU_ERRORMSG)
 	{
 		Move(xrp, posX(16), posY(8));
-		TextFmt(xrp, "%-46.46s", xu->xpru_errormsg);
+		TextFmt(xrp, "%-46.46s", updatestruct->xpru_errormsg);
 	}
 	if(ud&XPRU_MSG)
 	{
 		Move(xrp, posX(16), posY(8));
-		TextFmt(xrp, "%-46.46s", xu->xpru_msg);
+		TextFmt(xrp, "%-46.46s", updatestruct->xpru_msg);
 	}
 
 
@@ -469,17 +494,17 @@ LONG __SAVE_DS__ __ASM__ xpr_update(__REG__(a0, struct XPR_UPDATE *xu))
 	if(ud&XPRU_ELAPSEDTIME)
 	{
 		Move(xrp, posX(45), posY(4));
-		TextFmt(xrp, "%-16s", xu->xpru_elapsedtime);
+		TextFmt(xrp, "%-16s", updatestruct->xpru_elapsedtime);
 	}
 	if(ud&XPRU_EXPECTTIME)
 	{
 		Move(xrp, posX(45), posY(5));
-		TextFmt(xrp, "%-16s", xu->xpru_expecttime);
+		TextFmt(xrp, "%-16s", updatestruct->xpru_expecttime);
 	}
 	if(ud&XPRU_DATARATE)
 	{
 		Move(xrp, posX(45), posY(7));
-		TextFmt(xrp, "%-10ld", xu->xpru_datarate);
+		TextFmt(xrp, "%-10ld", updatestruct->xpru_datarate);
 	}
 	return(0);
 }
@@ -553,8 +578,7 @@ long Checkwinmsg(struct Window *wwin)
 	return(0);
 }
 
-LONG __SAVE_DS__ __ASM__
-xpr_chkabort(void)
+long xpr_chkabort(void)
 {
 	if(icon)
 	{
@@ -597,8 +621,8 @@ xpr_chkabort(void)
 	return(0);
 }
 
-LONG __SAVE_DS__ __ASM__
-xpr_squery(void)
+/* Query serial device */
+long xpr_squery(void)
 {
 	fd_set rd;
 	struct timeval timer;
