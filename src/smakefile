@@ -1,16 +1,148 @@
-.c.o:
-		SC $(CFLAGS) CPU=$(CPU) $*.c
+# Makefile for SAS/C (tested on Amiga OS 3.2 with SAS/C 6.58 and SAS smake).
+#
+# smake must be run in "src" folder under Amiga shell.
+#
+# third party proto and pragma headers must be built first by running
+# GNU make in "src/third_party" folder.
+#
+# smake                   ->  display help
+# smake release           ->  build 68000 & 68020 debug binaries
+# smake debug             ->  build 68000 & 68020 debug binaries
+# smake install           ->  install 68000 & 68020 debug binaries
+# smake clean             ->  clean all release and debug binaries
+#
+# smake manual in: SAS/C User's Guide vol2, ch 10.
+# https://archive.org/details/sasc-650-vol2/page/n291/mode/2up
+
+# smake build the first rule in the file if no target is specified.
+default:
+	@echo Run: smake debug
+	@echo  or: smake release
+
+INCLUDES= \
+	IDir=third_party/AmiTCP/netinclude \
+	IDir=third_party/ReqTools/include \
+	IDir=third_party/Xem/INCLUDE \
+	IDir=third_party/XPRotocol/include
 
 COMPILER_STRING=SAS/C_6.58
-# Debug:
-CFLAGS   = Define=COMPILER_STRING=$(COMPILER_STRING)   NoMultipleIncludes        Define=__PROTO__ Parameters=register                  NoStartup
-# Release:
-#CFLAGS   = Define=COMPILER_STRING=$(COMPILER_STRING)  NoMultipleIncludes               StringMerge NoStackCheck Define=__PROTO__ Parameters=register                  NoStartup Optimize
+CC=SC
+MAKE=smake
+
+TARGET=DCTelnet
+CPU=68000
+DEPS = abook.h connect.h edit.h fkey.h
+# The first '/' in the path is equivalent to '../' on other platforms:
+INSTALLDIR=/build/installed/DCTelnet
+
+# final OBJDIR depends on CPU and OBJ_SUFFIX
+# OBJDIR need to be on an Amiga fileystem (too many file access problem on shared WinUAE folder):
+OBJDIR            = RAM:build/sasc-$(CPU)-$(OBJ_SUFFIX)
+OBJS              = $(OBJDIR)/DCTelnet.o $(OBJDIR)/Connect.o $(OBJDIR)/Guis.o $(OBJDIR)/Xfer.o
+TARGET_EXE        = $(OBJDIR)/$(TARGET).$(CPU)
+MAKEFILE_UPTODATE = $(OBJDIR)/Makefile.uptodate
+
+
+all: $(MAKEFILE_UPTODATE) 68000 68020
+
+68000:
+	$(MAKE) CPU=68000 build
+
+68020:
+	$(MAKE) CPU=68020 build
+
+build: $(TARGET_EXE)
+
+debug:
+	$(MAKE) all -b <<(smake.def)
+OBJ_SUFFIX=debug
+CFLAGS=Define=CPU=$(CPU) Define=COMPILER_STRING=$(COMPILER_STRING) Parameters=register NoStartup \
+		Define=_DEBUG $(INCLUDES)
+LFLAGS=SC SD NOICONS
+<
+
+release:
+	$(MAKE) all -b <<(smake.def)
+OBJ_SUFFIX=release
+CFLAGS=Define=CPU=$(CPU) Define=COMPILER_STRING=$(COMPILER_STRING) Parameters=register NoStartup \
+		StringMerge NoStackCheck Optimize $(INCLUDES)
+LFLAGS=SC SD NOICONS STRIPDEBUG
+<
+
+LIBS = LIB:sc.lib
+
+$(OBJDIR)/DCTelnet.$(CPU) : $(OBJS)
+	@echo "------------- Link $@ --------------------"
+	SLINK "c.o" $(OBJS) TO $@ LIB $(LIBS) $(LFLAGS)
+
+# How to factorize rules with a separate OBJDIR in smakefile? (smake is more limited than GNU make)
+#.c/.o:
+#	$(CC) $(CFLAGS) $*.c  ObjectName=$(OBJDIR)/
+
+# FIXME: Putting OBJDIR here causes recompilation every time
+# (GNU make’s order-only "|" dependency is missing)
+$(OBJDIR)/DCTelnet.o: DCTelnet.c $(DEPS) $(OBJDIR)
+	@echo "------------- $@ --------------------"
+	$(CC) $(CFLAGS) $*.c  ObjectName=$(OBJDIR)/
+
+$(OBJDIR)/connect.o: connect.c $(DEPS) $(OBJDIR)
+	@echo "------------- $@ --------------------"
+	$(CC) $(CFLAGS) $*.c  ObjectName=$(OBJDIR)/
+
+$(OBJDIR)/guis.o: guis.c $(DEPS) $(OBJDIR)
+	@echo "------------- $@ --------------------"
+	$(CC) $(CFLAGS) $*.c  ObjectName=$(OBJDIR)/
+
+$(OBJDIR)/Xfer.o: Xfer.c $(DEPS) $(OBJDIR)
+	@echo "------------- $@ --------------------"
+	$(CC) $(CFLAGS) $*.c  ObjectName=$(OBJDIR)/
+
+
+$(OBJDIR):
+	@echo "------------- mkdir $@ --------------------"
+	MAKEDIR "RAM:build/sasc-$(CPU)-$(OBJ_SUFFIX)" ALL
+
+
+install:
+	@echo "------------- Installing debug binaries --------------------"
+	MAKEDIR "$(INSTALLDIR)" ALL
+	COPY RAM:build/sasc-68000-debug/$(TARGET).68000 TO "$(INSTALLDIR)" CLONE
+	COPY RAM:build/sasc-68020-debug/$(TARGET).68020 TO "$(INSTALLDIR)" CLONE
+
+
+clean: clean_release clean_debug
+
+clean_release:
+	$(MAKE) OBJ_SUFFIX=release clean_intermediate
+
+clean_debug:
+	$(MAKE) OBJ_SUFFIX=debug   clean_intermediate
+
+clean_intermediate: 68000_clean 68020_clean
+
+68000_clean:
+	$(MAKE) CPU=68000 OBJ_SUFFIX=$(OBJ_SUFFIX) clean_cpu
+
+68020_clean:
+	$(MAKE) CPU=68020 OBJ_SUFFIX=$(OBJ_SUFFIX) clean_cpu
+
+clean_cpu:
+	@echo "----------------- $@ $(CPU) $(OBJ_SUFFIX) ------------------------"
+	-delete $(TARGET_EXE)  $(OBJS)  $(MAKEFILE_UPTODATE)
+
+# Force clean when Makefile is updated :
+$(MAKEFILE_UPTODATE): smakefile
+	smake clean
+#	"touch" in amiga shell :
+	MAKEDIR "RAM:build/sasc-$(CPU)-$(OBJ_SUFFIX)" ALL
+	echo dummy > $@
+
+
+
 #v1.6 CFLAGS =    NMINC          MCCONS  STREQ   STRMER      NOSTKCHK    DEF=__PROTO__         PARM=R        GST=DCTelnet.gst NOSTARTUP   OPT
 #
 # NMINC         : tells the compiler NOT to include header files that are included more than once.
 #                 can save compilation time.
-# DEF=__PROTO__ : defines the specified preprocessor symbol to be used by the compiler.
 # PARM=R =      : indicates parameters should be passed in registers.
 # NOSTARTUP     : do not compile with a startup module.
 #                 (I tried to remove it to use standard SAS/C startup code but crashes)
@@ -26,6 +158,7 @@ CFLAGS   = Define=COMPILER_STRING=$(COMPILER_STRING)   NoMultipleIncludes       
 # Useless options:
 # (executable build with SAS-C 6.58 is strictly the same with or without them)
 #
+# DEF=__PROTO__ : defines the specified preprocessor symbol to be used by the compiler.
 # MCCONS        : allows up to 4 bytes to appear within single quotes as a character constant.
 #                 This option is included only for compatibility with previous releases of the
 #                 compiler, and its use is not recommended.
@@ -33,14 +166,8 @@ CFLAGS   = Define=COMPILER_STRING=$(COMPILER_STRING)   NoMultipleIncludes       
 #                 passed to a function when the function expects a pointer to a different type
 # GST=xxx.gst   : tells the compiler to use the specified GST (Global Symbol Table). (faster builds)
 
-LFLAGS		= SC SD NOICONS STRIPDEBUG
+#v1.6 LFLAGS=SC SD NOICONS STRIPDEBUG
 # SC = SmallCode : tells the linker to merge all code hunks.
 # SD = SmallData : tells the linker to merge all data and bss sections.
 # NOICONS        : prevents the linker from creating icons for the files that it creates.
 # STRIPDEBUG     : suppresses debug information in the final executable file
-
-OBJS		= DCTelnet.o Xfer.o Guis.o Connect.o
-LIBS		= LIB:sc.lib
-
-DCTelnet:	$(OBJS)
-		SLINK "c.o" $(OBJS) TO $@ LIB $(LIBS) $(LFLAGS)

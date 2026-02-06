@@ -1,0 +1,36 @@
+; This script builds DCTelnet package under AmigaOS 3.2 Shell
+;
+; Must be run from "build/" dir :
+; EXECUTE build.script
+;
+
+
+; Allow this script to be executed directly for subsequent runs :
+PROTECT #?.script +SRE
+
+set InitialDir `cd`
+CD /
+
+SET LatestPackagePath      ${InitialDir}/DCTelnet.lha
+
+echo "Build the LHA package:"
+DELETE  "$LatestPackagePath"
+DELETE  RAM:DCTelnet.info       RAM:DCTelnet   RAM:FILE_ID.DIZ         ALL
+
+COPY  FROM "build/package"                        TO RAM:             ALL
+
+COPY  FROM build/vbcc-68000-release/DCTelnet.68000  TO RAM:DCTelnet/DCTelnet
+COPY  FROM build/vbcc-68020-release/DCTelnet.68020  TO RAM:DCTelnet/DCTelnet.020
+COPY  FROM LICENSE                                  TO RAM:DCTelnet/Docs
+COPY  FROM docs/DCTelnet.#?                         TO RAM:DCTelnet/Docs
+COPY  FROM docs/FILE_ID.DIZ                         TO RAM:
+
+CD RAM:
+DELETE DCTelnet/.info DCTelnet/#?/.info
+
+lha -r -a -Qa a "$LatestPackagePath"  DCTelnet DCTelnet.info FILE_ID.DIZ
+;    -r  Collect files recursively
+;    -a  Preserve file attributes (D)
+;    -Qa Use simple console I/O
+
+CD $InitialDir
