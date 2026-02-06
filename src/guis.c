@@ -130,7 +130,7 @@ struct MyNewGadget Project0NGad[] = {
 };
 
 ULONG Project0GTags[] = {
-	GTLV_Labels, 0, (GTLV_ShowSelected), NULL, GTLV_Selected, 0, (TAG_DONE),
+	GTLV_Labels, 0, (GTLV_ShowSelected), (ULONG)NULL, GTLV_Selected, 0, (TAG_DONE),
 	(GT_Underscore), '_', (TAG_DONE),
 	(GT_Underscore), '_', (TAG_DONE),
 	(GT_Underscore), '_', (TAG_DONE),
