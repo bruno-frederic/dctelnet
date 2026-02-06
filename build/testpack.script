@@ -1,0 +1,71 @@
+; This script tests the installation of the DCTelnet package under the AmigaOS 3.2 Shell.
+; This script first removes DCTelnet from SYS: along with its libraries
+;
+; Must be run from "build/" dir :
+; EXECUTE TestPack.script
+;
+
+
+; Allow this script to be executed directly for subsequent runs :
+PROTECT #?.script +SRE
+
+set InitialDir `cd`
+
+SET LatestPackagePath      ${InitialDir}/DCTelnet.lha
+SET InstallerPackagePath   WIN:/Installer-43_3.lha
+
+
+echo "------------SYS:DCTelnet drawer:"
+DELETE SYS:DCTelnet.info       SYS:DCTelnet       ALL
+
+echo "------------device:"
+DELETE DEVS:ibmcon.device
+
+echo "------------fonts:"
+DELETE FONTS:HyperANSI.font    FONTS:HyperANSI    ALL
+DELETE FONTS:MicroKnight.font  FONTS:MicroKnight  ALL
+DELETE FONTS:P0T-NOoDLE.font   FONTS:P0T-NOoDLE   ALL
+
+echo "------------libraries:"
+DELETE LIBS:xemvt340.library
+DELETE LIBS:xprftp.library
+DELETE LIBS:xprzmodem.library
+DELETE LIBS:reqtools.library
+
+echo "------------RAM:DCTelnet drawer:"
+DELETE RAM:DCTelnet.info       RAM:DCTelnet   RAM:FILE_ID.DIZ   ALL
+
+echo "------------Unarchive latest package:"
+lha -Qa x "$LatestPackagePath"   RAM:
+
+echo "------------ Installer:"
+WHICH >NIL: Installer
+IF WARN
+  ECHO "Installer tool not found!!!"
+  SKIP end
+ELSE
+  ECHO "Installer tool found"
+  CD RAM:DCTelnet
+  Installer Install_DCTelnet APPNAME DCTelnet MINUSER NOVICE
+ENDIF
+
+
+VERSION exec.library   FULL
+VERSION version.library   FULL
+VERSION icon.library   FULL
+VERSION workbench.library   FULL
+VERSION reqtools.library   FULL
+VERSION xprzmodem.library  FULL
+VERSION xemvt340.library   FULL
+VERSION xprftp.library     FULL
+
+CD SYS:DCTelnet
+VERSION DCTelnet   FULL
+VERSION Docs/DCTelnet.guide FULL
+VERSION RAM:DCTelnet/Install_DCTelnet FULL
+
+echo "------------Launching DCTelnet:"
+DCTelnet telehack.com
+
+LAB end
+CD $InitialDir
