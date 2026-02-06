@@ -25,6 +25,13 @@ It is **easy to use**, **lightweight**, and **reliable**.
 > To give DCTelnet a more modern look, I’m looking for help to design a new set of toolbar icons.
 > If you have pixel-art or icon design skills, your help would be greatly appreciated.
 > See [issue #6](https://github.com/bruno-frederic/dctelnet/issues/6) for details.
+>
+>
+> 💬 Contact & Discussion
+>
+> Want to chat, give feedback, or share your ideas about DCTelnet?
+> Join the conversation on the [EAB forum thread](https://eab.abime.net/showthread.php?t=121939)
+
 
 ---
 
