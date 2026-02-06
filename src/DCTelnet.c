@@ -2316,7 +2316,7 @@ lib:
 							xemio.xem_sstart	= (void (* )(void))xpr_gets;
 							xemio.xem_sstop		= (long (* )(void))xpr_gets;
 							xemio.xem_sflush	= (long (* )(void))xpr_sflush;
-							xemio.xem_toptions	= (unsigned long (* )(LONG , struct xem_option ** ))xpr_gets;
+							xemio.xem_toptions	= NULL; 	// (unsigned long (* )(LONG , struct xem_option ** ))xpr_gets;
 							xemio.xem_tgets		= (long (* )(UBYTE * , UBYTE * , ULONG ))xpr_gets;
 							xemio.xem_tbeep		= (void (* )(ULONG , ULONG ))xpr_gets;
 							//xemio.xem_console	= 0;
