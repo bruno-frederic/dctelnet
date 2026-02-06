@@ -10,6 +10,10 @@
 **
 */
 
+#ifndef EXEC_TYPES_H
+#include <exec/types.h>
+#endif
+
 /*
    *   The structure
  */
@@ -18,69 +22,69 @@ struct XPR_IO
     /* File name(s) */
     char *xpr_filename;
     /* Open file */
-    long (*__asm xpr_fopen) (register __a0 char *filename,
-			     register __a1 char *accessmode);
+    long (*__ASM__ xpr_fopen) (__REG__(a0, char *filename),
+			     __REG__(a1, char *accessmode));
     /* Close file */
-    long (*__asm xpr_fclose) (register __a0 long filepointer);
+    long (*__ASM__ xpr_fclose) (__REG__(a0, long filepointer));
     /* Get char from file */
-    long (*__asm xpr_fread) (register __a0 char *buffer,
-			     register __d0 long size,
-			     register __d1 long count,
-			     register __a1 long fileptr);
+    long (*__ASM__ xpr_fread) (__REG__(a0, char *buffer),
+			     __REG__(d0, long size),
+			     __REG__(d1, long count),
+			     __REG__(a1, long fileptr));
     /* Put string to file */
-    long (*__asm xpr_fwrite) (register __a0 char *buffer,
-			      register __d0 long size,
-			      register __d1 long count,
-			      register __a1 long fileptr);
+    long (*__ASM__ xpr_fwrite) (__REG__(a0, char *buffer),
+			      __REG__(d0, long size),
+			      __REG__(d1, long count),
+			      __REG__(a1, long fileptr));
     /* Get char from serial */
-    long (*__asm xpr_sread) (register __a0 char *buffer,
-			     register __d0 long size,
-			     register __d1 long timeout);
+    long (*__ASM__ xpr_sread) (__REG__(a0, char *buffer),
+			     __REG__(d0, long size),
+			     __REG__(d1, long timeout));
     /* Put string to serial */
-    long (*__asm xpr_swrite) (register __a0 char *buffer,
-			      register __d0 long size);
+    long (*__ASM__ xpr_swrite) (__REG__(a0, char *buffer),
+			      __REG__(d0, long size));
     /* Flush serial input buffer */
     long (*xpr_sflush) (void);
     /* Print stuff */
-    long (*__asm xpr_update) (register __a0
-			      struct XPR_UPDATE * updatestruct);
+    long (*__ASM__ xpr_update) (__REG__(a0,
+			      struct XPR_UPDATE * updatestruct));
     /* Check for abort */
     long (*xpr_chkabort) (void);
     /* Check misc. stuff */
     void (*xpr_chkmisc) (void);
     /* Get string interactively */
-    long (*__asm xpr_gets) (register __a0 char *prompt,
-			    register __a1 char *buffer);
+    long (*__ASM__ xpr_gets) (__REG__(a0, char *prompt),
+			    __REG__(a1, char *buffer));
     /* Set and Get serial info */
-    long (*__asm xpr_setserial) (register __d0 long newstatus);
+    long (*__ASM__ xpr_setserial) (__REG__(d0, long newstatus));
     /* Find first file name */
-    long (*__asm xpr_ffirst) (register __a0 char *buffer,
-			      register __a1 char *pattern);
+    long (*__ASM__ xpr_ffirst) (__REG__(a0, char *buffer),
+			      __REG__(a1, char *pattern));
     /* Find next file name */
-    long (*__asm xpr_fnext) (register __d0 long oldstate,
-			     register __a0 char *buffer,
-			     register __a1 char *pattern);
+    long (*__ASM__ xpr_fnext) (__REG__(d0, long oldstate),
+			     __REG__(a0, char *buffer),
+			     __REG__(a1, char *pattern));
     /* Return file info */
-    long (*__asm xpr_finfo) (register __a0 char *filename,
-			     register __d0 long typeofinfo);
+    long (*__ASM__ xpr_finfo) (__REG__(a0, char *filename),
+			     __REG__(d0, long typeofinfo));
     /* Seek in a file */
-    long (*__asm xpr_fseek) (register __a0 long fileptr,
-			     register __d0 long offset,
-			     register __d1 long origin);
+    long (*__ASM__ xpr_fseek) (__REG__(a0, long fileptr),
+			     __REG__(d0, long offset),
+			     __REG__(d1, long origin));
     /* Number of extensions */
     long xpr_extension;
     /* Initialized by Setup. */
     long *xpr_data;
     /* Multiple XPR options. */
-    long (*__asm xpr_options) (register __d0 long n,
-			       register __a0
-			       struct xpr_option ** opt);
+    long (*__ASM__ xpr_options) (__REG__(d0, long n),
+			       __REG__(a0,
+			       struct xpr_option ** opt));
     /* Delete a file. */
-    long (*__asm xpr_unlink) (register __a0 char *filename);
+    long (*__ASM__ xpr_unlink) (__REG__(a0, char *filename));
     /* Query serial device */
     long (*xpr_squery) (void);
     /* Get various host ptrs */
-    long (*__asm xpr_getptr) (register __d0 long type);
+    long (*__ASM__ xpr_getptr) (__REG__(d0, long type));
   };
 /*
    *   Number of defined extensions

@@ -21,20 +21,20 @@ extern "C" {
 
 /* XPRotocol functions */
 
-long __saveds __asm XProtocolSend (register __a0 struct XPR_IO *xio);
-long __saveds __asm XProtocolReceive (register __a0 struct XPR_IO *xio);
-long __saveds __asm XProtocolSetup (register __a0 struct XPR_IO *xio);
-long __saveds __asm XProtocolCleanup (register __a0 struct XPR_IO *xio);
-long __saveds __asm XProtocolHostMon (
-				       register __a0 struct XPR_IO *xio,
-				       register __a1 char *serbuff,
-				       register __d0 long actual,
-				       register __d1 long maxsize);
-long __saveds __asm XProtocolUserMon (
-				       register __a0 struct XPR_IO *xio,
-				       register __a1 char *serbuff,
-				       register __d0 long actual,
-				       register __d1 long maxsize);
+long XProtocolSend (struct XPR_IO *xio);
+long XProtocolReceive (struct XPR_IO *xio);
+long XProtocolSetup (struct XPR_IO *xio);
+long XProtocolCleanup (struct XPR_IO *xio);
+long XProtocolHostMon (
+				       struct XPR_IO *xio,
+				       char *serbuff,
+				       long actual,
+				       long maxsize);
+long XProtocolUserMon (
+				       struct XPR_IO *xio,
+				       char *serbuff,
+				       long actual,
+				       long maxsize);
 
 
 #ifdef __cplusplus
