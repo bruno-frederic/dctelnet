@@ -590,7 +590,7 @@ long xpr_chkabort(void)
 			while(appmsg = (struct AppMessage *)GetMsg(iconport))
 			{
 				if(appmsg->am_NumArgs==0 && appmsg->am_ArgList==0) unicon = TRUE;
-				ReplyMsg(appmsg);
+				ReplyMsg((struct Message *)appmsg);
 			}
 		}
 
