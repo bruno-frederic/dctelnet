@@ -43,7 +43,7 @@ extern char server[64];
 extern UWORD WinTop;
 extern UBYTE done, icon, unicon;
 
-UWORD lastgs;
+UWORD xfer_gauge_width;
 UWORD xfertype, inflag;
 
 
@@ -347,7 +347,7 @@ long __ASM__ xpr_fopen(__REG__(a0, char *filename),
 	register long fh;
 
 	if(!icon) EraseRect(xrp, 21, posY(9), xferwin->Width-21, posY(9)+9);
-	lastgs = 0;
+	xfer_gauge_width = 0;
 
 	switch(*accessmode)
 	{
@@ -423,7 +423,7 @@ long __ASM__ xpr_update(__REG__(a0,
                         struct XPR_UPDATE * updatestruct))
 {
 	register long ud = updatestruct->xpru_updatemask;
-	register UWORD gs;
+	register UWORD new_xfer_gauge_width=0;
 
 	if(icon) return(0);
 
@@ -457,14 +457,15 @@ long __ASM__ xpr_update(__REG__(a0,
 		{
 			Move(xrp, posX(45), posY(6));
 			TextFmt(xrp, "%ld%%  ", (updatestruct->xpru_bytes*100)/updatestruct->xpru_filesize);
-			gs = (updatestruct->xpru_bytes*(xferwin->Width-42))/updatestruct->xpru_filesize;
+			new_xfer_gauge_width = (updatestruct->xpru_bytes*(xferwin->Width-42))/updatestruct->xpru_filesize;
 		}
-		if(gs > lastgs)
+		if(new_xfer_gauge_width > xfer_gauge_width)
 		{
+			// Fill newly progressed part of the gauge:
 			SetAPen(xrp, DrawInfo->dri_Pens[FILLPEN]);
-			RectFill(xrp, 21+lastgs, posY(9), 21+gs, posY(9)+9);
+			RectFill(xrp, 21+xfer_gauge_width, posY(9), 21+new_xfer_gauge_width, posY(9)+9);
 			SetAPen(xrp, DrawInfo->dri_Pens[TEXTPEN]);
-			lastgs = gs;
+			xfer_gauge_width = new_xfer_gauge_width;
 		}
 	}
 	if(ud&XPRU_BLOCKCHECK)
@@ -601,7 +602,7 @@ long xpr_chkabort(void)
 			CloseIcon();
 			OpenDisplay();
 			XferWindow();
-			lastgs = 0;
+			xfer_gauge_width = 0;
 			unicon = FALSE;
 		}
 
