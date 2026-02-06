@@ -293,6 +293,30 @@ struct Node *FindNode(struct List *listviewlist, UWORD lastcode)
 	return(0);
 }
 
+#ifdef __VBCC__
+	/*
+		stricmp() is not a standard C function.
+		It is used in the AdressBook sorting algorithm when click on the List Sorted By button.
+		SAS/C provide a vendor specific stricmp() implementation in string.h
+
+		AmigaOS 2.04 (v37) provides Stricmp(), so here is an implementation to keep AmigaOS 2.00
+		compatibility with VBCC:
+	*/
+int stricmp(const char *a, const char *b)
+{
+    unsigned char ca, cb;
+
+    while (*a && *b)// donc pointeur pas NULL
+    {
+        ca = (unsigned char)tolower((unsigned char)*a++);
+        cb = (unsigned char)tolower((unsigned char)*b++);
+        if (ca != cb)
+            return ca - cb;
+    }
+    return (unsigned char)*a - (unsigned char)*b;
+}
+#endif
+
 void Sort(struct List *list, char reverse, char lastconnect)
 {
 	register char *temp;
