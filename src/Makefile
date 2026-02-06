@@ -21,7 +21,7 @@
 # These includes can be placed here:
 INCLUDES := \
 	-Ithird_party/Xem/INCLUDE \
-	-Ithird_party/XPRotocol/include
+	-Ithird_party/Xpr/include
 
 # Do not use spaces or '.' VC passes '.' to the linker, which causes problems.
 COMPILER_STRING=VBCC_0_9h_patch_3

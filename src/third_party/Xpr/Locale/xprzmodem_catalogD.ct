@@ -1,0 +1,196 @@
+## version $VER: xprzmodem.catalog 1.0 (30.07.93)
+## codeset 0
+## language deutsch
+;
+MSG_ZMODEM_OPTIONS
+ZModem Einstellungen:
+; ZModem options:;
+MSG_TEXT_MODE
+Text Modus (Y,N,?,C):
+; Text mode (Y,N,?,C):;
+MSG_OVERWRITE_MODE
+Überschreib Modus (Y,N,R,S):
+; Overwrite mode (Y,N,R,S):;
+MSG_IO_BUFFER_SIZE
+I/O Puffergröße (KB):
+; I/O buffer size (KB):;
+MSG_FRAME_SIZE
+Telegramm-Größe (Bytes):
+; Frame size (bytes):;
+MSG_ERROR_LIMIT
+Fehler-Limit:
+; Error limit:;
+MSG_AUTO_ACTIVATE_RECEIVER
+Empfänger: Auto-Aktivierung:
+; Auto-activate receiver:;
+MSG_DELETE_AFTER_SENDING
+Löschen nach senden:
+; Delete after sending:;
+MSG_KEEP_PARTIAL_FILES
+Behalte Teil-Dateien:
+; Keep partial files:;
+MSG_SEND_FULL_PATH
+Sende ganzen Pfad:
+; Send full path:;
+MSG_USE_RECEIVED_PATH
+Verwende empfangenen Pfad:
+; Use received path:;
+MSG_DEFAULT_RECEIVE_PATH
+Vorgegebener Empfangs-Pfad:
+; Default receive path:;
+MSG_MAXIMUM_BLOCK_SIZE
+Maximale Block Größe:
+; Maximum Block Size:;
+MSG_NO_XPR_FINFO
+Kann nicht fortfahren; xpr_info() ist nicht unterstützt
+; Can't Resume; xpr_finfo() not supported;
+MSG_INVALID_O_FLAG
+Ignoriere falsche O Option; Nur Y, N, R oder S erlaubt
+; Invalid O flag ignored; should be Y, N, R, or S;
+MSG_INVALID_A_FLAG
+Ignoriere falsche A Option; Nur Y oder N erlaubt;
+; Invalid A flag ignored; should be Y or N;
+MSG_NO_DY_XPR_UNLINK
+Option DY nicht erlaubt; xpr_unlink() ist nicht unterstützt
+; Can't use DY; xpr_unlink() not supported;
+MSG_INVALID_D_FLAG
+Ignoriere falsche D Option; Nur Y oder N erlaubt
+; Invalid D flag ignored; should be Y or N;
+MSG_NO_KN_XPR_UNLINK
+Option KN nicht erlaubt; xpr_unlink() ist nicht unterstützt
+; Can't use KN; xpr_unlink() not supported
+MSG_INVALID_K_FLAG
+Ignoriere falsche K Option; Nur Y oder N erlaubt
+; Invalid K flag ignored; should be Y or N;
+MSG_INVALID_S_FLAG
+Ignoriere falsche S Option; Nur Y oder N erlaubt
+; Invalid S flag ignored; should be Y or N;
+MSG_INVALID_R_FLAG
+Ignoriere falsche O Option; Nur Y oder N erlaubt
+; Invalid R flag ignored; should be Y or N;
+MSG_COMM_PROG_MISSING
+Übertragungs-Programm vermisst die verwendete(n) Funktion(en); Siehe Anleitung
+; Comm prog missing required function(s); see docs;
+MSG_NOT_ENOUGH_MEMORY
+Nicht genug Speicher
+; Not enough memory;
+MSG_UPLOAD_USER_ERROR
+Upload abgebrochen oder Zeit überschritten
+; Upload cancelled or timed out;
+MSG_SKIPPED_DUE_TO_ERRORS
+Datei(en) übersprungen oder zu viele Fehler
+; One or more files skipped due to errors;
+MSG_NO_FILES_MATCH_TEMPLATE
+Keine Dateiübereinstimmung
+; No files match template;
+MSG_CANT_OPEN_FILE
+Kann Datei nicht öffnen; überspringe
+; Can't open file; skipping;
+MSG_DELETING_FILE_AFTER_SEND
+Lösche Datei nach Empfang
+; Deleting file after send;
+MSG_SENDING_TEXT_FILE
+Sende Text-Datei...
+; Sending text file...;
+MSG_SENDING_BINARY_FILE
+Sende binäre Datei...
+; Sending binary file...;
+MSG_SENDING_FILE
+Sende Datei...
+; Sending file...;
+MSG_SKIP_COMMAND_RECEIVED
+Empfänger: Kommando übersprungen
+; SKIP command received;
+MSG_TRANSFER_CANCELLED
+Übertragung abgebrochen
+; Transfer cancelled;
+MSG_DONE
+Fertig.
+; Done.;
+MSG_SENDING_EOF
+Sende Dateiende
+; Sending EOF;
+MSG_EOF_ACKNOWLEDGED
+Senden erfolgreich
+; EOF acknowledged;
+MSG_RESENDING_FROM
+Nochmaliges Senden von
+; Resending from;
+MSG_DOWNLOAD_USER_ERROR
+Download abgebrochen oder Zeit überschritten
+; Download cancelled or timed out;
+MSG_IGNORING_COMMAND
+Ignoriere Kommando
+; Ignoring command;
+MSG_DELETING_RECEIVED_FILE
+Lösche die teilweise empfangene Datei
+; Deleting partially received file;
+MSG_KEEPING_RECEIVED_FILE
+Behalte die teilweise empfangene Datei
+; Keeping partially received file;
+MSG_RETRIES_LEFT
+Versuche noch
+; retries left;
+MSG_BAD_EOF
+Falsches Dateiende; hier=%ld, dort=%ld
+; Bad EOF; here=%ld, there=%ld;
+MSG_EOF_RECEIVED
+Dateiende empfangen; Überprüfe für nächste Datei
+; EOF received; checking for next file;
+MSG_DATA_AT_BAD_POSITION
+Daten an falscher Position; hier=%ld, dort=%ld
+; Data at bad position; here=%ld, there=%ld;
+MSG_INSUFFICIENT_DISK_SPACE
+Nicht genügend Platz auf Datenträger; benötige %ld Bytes, habe %ld
+; Insufficient disk space; need %ld bytes, have %ld;
+MSG_FILE_EXISTS
+Datei existiert bereits; überspringe
+; File already exists; skipping;
+MSG_RECEIVE_BINARY
+Empfange binäre Datei...
+; Receiving binary file...;
+MSG_RECEIVE_TEXT
+Empfange Text-Datei...
+; Receiving text file...;
+MSG_ERROR_WRITING_FILE
+Fehler beim Schreiben der Datei; Datenträger voll?
+; Error writing file; disk full?;
+MSG_BAD_DATA_PACKET_CRC_16
+Falsches CRC-16 Daten-Packet\x20
+; Bad data packet CRC-16\x20;
+MSG_SENDER_CANCELED
+Abbruch durch Sender\x20
+; Sender canceled\x20;
+MSG_DATA_PACKET_TIMEOUT
+Zeitlimit Daten-Packet\x20
+; Data packet timeout\x20;
+MSG_UNRECOG_DATA_PACKET
+Unbekanntes Daten-Packet\x20
+; Unrecognizable data packet\x20;
+MSG_DATA_PACKET_TOO_LONG
+Daten-Packet zu lang\x20
+; Data packet too long\x20;
+MSG_BAD_DATA_PACKET_CRC_32
+Falsches CRC-32 Daten-Packet\x20
+; Bad data packet CRC-32\x20;
+MSG_HEADER_SEARCH_GARBAGE
+Zähler zur Auschußdaten-Suche überschritten\x20
+; Header search garbage count exceeded\x20;
+MSG_HEADER
+Haupt
+; header;
+MSG_ERROR
+Fehler
+; error;
+MSG_BAD_HEADER_CRC_16
+Falscher CRC-16 Kopf
+; Bad Header CRC-16\x20;
+MSG_BAD_HEADER_CRC_32
+Falscher CRC-32 Kopf\x20
+; Bad Header CRC-32\x20;
+MSG_BAD_HEADER_CRC
+Falscher CRC Kopf\x20
+; Bad Header CRC\x20;
+MSG_BAD_ZMODEM_ESC_SEQ
+Falsche ZMODEM Escape-Sequence\x20
+; Bad ZMODEM escape sequence\x20;

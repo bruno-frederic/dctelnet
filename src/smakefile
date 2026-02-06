@@ -24,7 +24,7 @@ INCLUDES= \
 	IDir=third_party/netinclude \
 	IDir=third_party/ReqTools/include \
 	IDir=third_party/Xem/INCLUDE \
-	IDir=third_party/XPRotocol/include
+	IDir=third_party/Xpr/include
 
 COMPILER_STRING=SAS/C_6.58
 CC=SC

@@ -1,0 +1,3 @@
+catcomp xprzmodem_catalog.cd ctfile xprzmodem_catalogD.ct
+ed -sticky xprzmodem_catalogD.ct
+catcomp xprzmodem_catalog.cd xprzmodem_catalogD.ct CATALOG catalogs/deutsch/xprzmodem.catalog

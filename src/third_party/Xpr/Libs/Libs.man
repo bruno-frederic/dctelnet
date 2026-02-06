@@ -1,0 +1,124 @@
+
+                  LIBS V1.8 (c) Copyright 1991-93 by R.Hess
+
+-----------------------------------------------------------------------------
+
+Was ist Libs:
+-------------
+
+    - Libs zeigt die im Hauptspeicher befindlichen Librarys an.
+
+    - Libs ist u.a. dann von Nutzen wenn man waehrend das System läuft
+      eine Library tauschen möchte. Man kann somit leicht überprüfen ob
+      diese angenommen wurde oder einfach um zu sehen was im System
+      läuft.
+
+
+Was sagt Libs aus:
+------------------
+
+    - Das Ausgabeformat ist:
+
+         Library-Name:  Name der Library
+         Version.....:  Version und Revision
+         Pri.........:  Mit welcher Priorität läuft Library im System
+         OCnt........:  Wie oft ist die Library geöffnet
+         Ident_String:  Identifikations-Erkennung (meist Name-Datum)
+
+Hier ein Ausschnitt:
+--------------------
+
+Library-Name              Version  Pri OCnt Ident_String
+-----------------------------------------------------------------------------
+utility.library           37.3       0   28 utility 37.3 (13.2.91)
+graphics.library          37.35      0    1 graphics 37.35 (23.5.91)
+keymap.library            37.2       0    1 keymap 37.2 (8.1.91)
+layers.library            37.7       0    1 layers 37.7 (13.3.91)
+intuition.library         37.318     0    1 intuition 37.318 (16.5.91)
+dos.library               37.44      0   60
+version.library           38.35      0    0 version 38.35 (27.7.92)
+icon.library              37.11      0    9 icon 37.11 (2.5.91)
+xprzmodem.library          2.61      0    0 xprzmodem 2.61 68030 (4.7.93)
+expansion.library         37.44    -20    1 expansion 37.44 (23.5.91)
+exec.library              37.132  -100    3 exec 37.132 (23.5.91)
+deutsch.language          38.4    -100    1 deutsch 38.4 (30.3.92)
+environment                2.0    -128    0 Arp EnvLib
+-----------------------------------------------------------------------------
+
+Manche Librarys haben auch keinen Namen, wie auch z.B. die dos.library.
+
+
+Austauschen einer Library im laufenden System:
+----------------------------------------------
+
+    - Die aktive Library sollte mit einem speziellen Befehl wie z.B.
+      "flush", "flushlibs", "VTFlush2" oder ähnlichem aus dem Haupt-
+      speicher entfernt werden. VTFlush2 liegt z.B. dem Virenkiller
+      "VT" von Heiner Schneegold bei. Es ist darauf zu Achten daß die
+      Library nicht mehr geöffnet ist, sonst ist ein Austausch nicht
+      möglich. Zugreifendes Programm in diesem Fall beenden! Neue
+      Library nach Libs: kopieren, fertig.
+
+
+Copyright:
+----------
+
+    - Das Programm darf von jeder Person genutzt und weiterverbreitet
+      werden, soweit sich dies um keine Gewerbliche Nutzung handelt.
+
+    - Autor:
+
+            Rainer Hess
+            Ahornweg 10/1
+      72622 Nürtingen           EMail: rhess@a3tnt.adsp.sub.org
+
+Gewährleistung:
+---------------
+
+    - Es wird keinerlei Garantie oder sonstigen Eigenschaften übernommen.
+      Die Benutzung des Programmes erfolgt auf eigenes Risiko.
+
+Entstehung:
+-----------
+
+    - Es wurde aus der Not geboren, da es kein Programm gab das mit den
+      ID-String der Library ausgibt. Dieser String fördert so manches
+      zu Tage was der Version-Befehl auch ab Kickstart/Workbench® 2.x
+      und höher nicht anzeigt.
+
+    - Das Programm wurde in der Programmier-Sprache C verfasst
+      und mit SAS/C® Version 6.3 übersetzt.
+
+History:
+-------
+    V1.1: Auf AStartup.obj umgebaut, ergibt erheblich kürzeren
+          Code. Wed Jul  8 1992
+
+    V1.2: Enforcer-Hit beseitigt. Ohne Startcode linken,
+          nochmals verkürzter Code.
+          Tue Sep 22 1992
+
+    V1.3: Neuer Versionstring.
+          Sun Nov 15 1992
+
+    V1.4: Formatausgabe bei Version und Size geändert.
+          Compiler-Update SAS/C V6.1.
+          Wed Dec 23 1992
+
+    V1.5: Bug bei printf("%-23s%3d.%-4d %5d %4d %s\n", ..., string).
+          Geändert auf printf("%-23s%3d.%-4d %5d %4d ". Keine Ahnung
+          warum es da ein Line-Emulator (00000004) gibt. Nun Write()
+          eingesetzt. Sun May  9 1993
+
+    V1.6: Line-Emulator scheint behoben zu sein. Jetzt anstatt mit
+          SAS/C 6.1 mit 6.3 übersetzt.
+          Sun Jun 27 1993
+
+    V1.7: Die wenig aussagende lib_PosSize auf Ausgabe der Priorität
+          der Library geändert. SysBase-Zeiger geändert.
+          Tue Jul  6 1993
+
+    V1.8: Der Bug existiert doch noch! Nachdem die TrueColor.Library
+          geöffnet ist, und Libs aufgerufen wird gibts 00000003 Error.
+          Nun mal wieder wie bei V1.5 die Ausgabe mit Write().
+          Sat Jul 10 1993

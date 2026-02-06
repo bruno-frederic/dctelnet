@@ -1,0 +1,123 @@
+Installation:
+-------------
+         copy xprzmodem.library libs:
+
+         if you use Kick2.x/WB2.1 or 3.x
+
+         copy Catalogs/deutsch/xprzmodem.catalog locale:catalogs/deutsch
+         
+         on this time there will be only a german catalog. Please send
+         me your translated *.ct-file.
+
+--------------------------------------------------------------------------
+
+This is basically version 2.50.  I just changed rx_timout from 600 to
+30 in send.c to fix uploads so they truly work.
+
+NOTE:  I compiled the 020 version using lattice 5.10b (as well as the
+       none '020 version), but since I only have a 68000, I don't know how
+       well or if it works.
+
+
+John Tillema
+jtillema@hacks.arizona.edu
+
+------
+
+Recompiled the 2.51 020 version as 2.52 after fixing the LmkFile.020 file.
+Internal name of the library was being compiled as XprZmodem.Library.020
+rather than as XprZmodem.Library.
+
+     Bill Perkins
+
+BIX: Wmperkins
+
+--------------------------------------------------------------------------
+Since v2.50 changes:-
+--------------------
+
+
+   2.50     update_rate()  fixed fatal error in current-duration
+                           calculation.  Caused 80000005 Guru.
+
+            sprintf()      replaced with Mysprintf() routine.
+                           Thanks to Jim Cooper of the SAS institude
+                           for  the libinit and linent objects.
+
+            Cyclic Redunduncy Check now uses a 32-bit hard-coded CRC table.
+            CRC-32 release by Bill Perkins.
+
+
+   2.51 -                  RX_timeout fix
+            Released initially by John Tillema.
+
+   2.52 -                  Minor 020 compilation error fixed.
+            Released by Bill Perkins.
+
+---------------------------------------------------------------------------
+
+   2.53 - Special Version by Olaf 'Olsen' Barthel Author from "Term"
+          (Don't know what he change)
+
+---------------------------------------------------------------------------
+
+  2.60  - Don't know who made this version
+  2.60a - Don't know who made this version
+
+---------------------------------------------------------------------------
+
+INFO: All Libs up to 2.61 are based on the Source of V2.52!!!
+=============================================================
+	changes:
+
+ 2.61 - mysprintf() in Utils.c - returned int changed to unsigned int
+	SAS/C get a Warning of this.
+
+	- NOT RELEASED! ONLY FOR BETATESTER.
+
+	In function XProtocolHostMon() (module Utils.c) declared
+	static UBYTE startrcv[] = { ZPAD, ZDLE, ZHEX, "00" };
+	SAS/C 6.x get a error of this.
+	Declared to:
+	static UBYTE *startrcv[] = { ZPAD, ZDLE, ZHEX, '0', '0' };
+
+ 2.62 - Now Blocksize avaiable
+
+	- NOT RELEASED!
+
+	Changes by Rainer Hess
+
+ 2.63 - Now support locale.library to use different languages with
+	Workbench 2.1, 3.x. On this time will be only the default
+	englisch-language and a german catalog-file. Please send me
+	the filled up xprzmodem_catalog.ct for your language.
+
+	- NOT RELEASED! ONLY FOR BETATESTER.
+
+	Changes by Rainer Hess
+
+ 2.64 - Aug  3 1993 - Blocksize was global declared, it's now in
+	struct Vars.
+
+	- NOT RELEASED!
+
+	Aug  4 1993 - Bug-Fix in function update_rate(), maschine
+	crashes on little files e.g. 2 Bytes - old problem from
+	2.52 and before!
+
+	Changes by Rainer Hess
+
+ 3.0  - It's time to make a full release...
+
+	Compile Date 13.August.93
+
+	Rainer Hess - EMail: rhess@a3tnt.adsp.sub.org
+
+ 3.1  - Documentation update by Geoffrey Faivre-Malloy
+	Conversion of documentation to Amigaguide format.
+
+	Code-Changes by Rainer Hess:
+	ZModem runs always with the sender blocksize or uses standart-mode
+	(M1024) if there is on one system a older zmodem.
+
+	Compile Date 03.October.93

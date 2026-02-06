@@ -1,0 +1,13 @@
+Echo "*ec*n"
+
+Echo "*e[32mMake 68020+ 2.x xprzmodem.library*e[31m"
+smake -af "smakefile.020+_2x"
+
+Echo "*e[32mMake 68020+ xprzmodem.library*e[31m"
+smake -af "smakefile.020+"
+
+Echo "*e[32mMake 680x0 2.x xprzmodem.library*e[31m"
+smake -af "smakefile.0x0_2x"
+
+Echo "*e[32mMake 680x0 xprzmodem.library*e[31m"
+smake -af "smakefile"
