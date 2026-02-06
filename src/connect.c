@@ -144,10 +144,10 @@ void __SAVE_DS__ __ASM__ Connect_To_Server_Child(void)
 
 			if(sig & winsig)
 			{
-				while (message = (struct IntuiMessage *)GetMsg(Project8Wnd->UserPort))
+				while (message = GT_GetIMsg(Project8Wnd->UserPort))
 				{
 					class = message->Class;
-					ReplyMsg(message);
+					GT_ReplyIMsg(message);
 					if(class == IDCMP_GADGETUP)
 					{
 						abort_flag = 1;

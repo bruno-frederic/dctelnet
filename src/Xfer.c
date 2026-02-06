@@ -519,12 +519,12 @@ long Checkwinmsg(struct Window *wwin)
 	struct Gadget *gad;
 	char close = FALSE;
 
-	while(im=(struct IntuiMessage *)GetMsg(wwin->UserPort))
+	while(im=GT_GetIMsg(wwin->UserPort))
 	{
 		code = im->Code;
 		class = im->Class;
 		gad = (struct Gadget *)im->IAddress;
-		ReplyMsg(im);
+		GT_ReplyIMsg(im);
 		switch(class)
 		{
 			case IDCMP_GADGETUP:

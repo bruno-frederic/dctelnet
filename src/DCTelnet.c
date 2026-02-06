@@ -1304,13 +1304,13 @@ void GetWindowMsg(struct Window *wwin)
 	static char key_csi;
 	static char key_macro;
 
-	while (message = (struct IntuiMessage *)GetMsg(wwin->UserPort))
+	while (message = GT_GetIMsg(wwin->UserPort))
 	{
 		class = message->Class;
 		code = message->Code;
 		gad = (struct Gadget *)message->IAddress;
 		qual = message->Qualifier;
-		ReplyMsg(message);
+		GT_ReplyIMsg(message);
 
 		switch (class)
 		{
