@@ -1,0 +1,14 @@
+; ReqTools.library needs ENV:
+Assign ENV: RAM:
+
+LoadWB
+
+DCTelnet/DCTelnet.68000
+
+; To be able to read messages on the console:
+; - Comment out "LoadWB"
+; - Uncomment the following "Pause" line to halt script and view output
+;Pause
+
+; Quits the emulator at the end of the program
+UAEexit EXIT

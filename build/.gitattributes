@@ -2,6 +2,7 @@
 *.script         text eol=lf
 *.sh             text eol=lf
 Install_DCTelnet text eol=lf
+Startup-Sequence text eol=lf
 
 # Object file
 *.o             binary

@@ -1,0 +1,70 @@
+{
+    "configurations": [
+        {
+            "name": "Win32",
+            "includePath": [
+                "${workspaceFolder}/**",
+                "${env:VBCC}/targets/m68k-amigaos/include",
+                "${env:VBCC}/NDK3.2R4/Include_H"
+                //"../sasc/include/**"
+            ],
+            // This file isn't included in the real build (done by VBCC), but it
+            // affects how VSCode-cpptools parses the source.
+            "forcedInclude": ["${workspaceFolder}/.vscode/suppress-warnings.h"],
+
+            "defines": [
+                "_DEBUG=",
+                // Extensions to the C language provided by VBCC (VBCC manual §3.5)
+                "__reg(x)=register",
+                "__typeof(x)=1",
+                "__alignof(x)=1",
+                "__offsetof(P,M)=offsetof(P,M)",
+                "__vattr(x)=__attribute__((x))", // attribute() known by clang and gcc, not by MSVC
+
+                // Target-Specific Variable Attributes (VBCC manual §4.8)
+                "__amigainterrupt=",
+                "__chip=",
+                "__far=",
+                "__interrupt=",
+                "__near=",
+                "__regargs=",
+                "__saveds=",
+                "__section(x)=",
+                "__stdargs",
+
+                // Predefined macros (by the compiler VBCC, manual §3.5.12)
+                "__VBCC__",
+                "__entry=__vattr(\"entry\")",
+                "__str(x)=#x",
+                "__asm(x)=",
+                "__regsused(x)=__vattr(\"regused(\"x\")\")",
+                "__varsused(x)=__vattr(\"varused(\"x\")\")",
+                "__varsmodified(x)=__vattr(\"varchanged(\"x\")\")",
+                "__noreturn(x)=__vattr(\"noreturn()\")",
+                "__alwaysreturn(x)=__vattr(\"alwaysreturn()\")",
+                "__nosidefx(x)=__vattr(\"\")",
+                "__varsmodified(x)=__vattr(\"nosidefx()\")",
+                "__stack(x)=__vattr(__str(stack1(x)))",
+                "__stack2(x)=__vattr(__str(stack2(x)))",
+                "__noinline=__vattr(\"noinline()\")",
+                "__STDC_VERSION__=199901L",
+                "__STDC__=1L",
+
+                // Predefined Macros for M68k backend (VBCC manual §4.10)
+                "__AMIGADATE__=__DATE__",
+                "__INTSIZE=32", // Either 32 (vbccm68k) or 16 for kick13s* (vbccm68ks)
+                "__M68K__",
+                "__M68000",
+
+                // Extensions to the C language provided by SAS/C:
+                "__inline=inline",
+                "__aligned="
+            ],
+            "cStandard": "c99",
+            "cppStandard": "c++98",
+            "intelliSenseMode": "clang-arm",
+            "compilerPath": ""
+        }
+    ],
+    "version": 4
+}

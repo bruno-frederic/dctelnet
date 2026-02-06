@@ -1,0 +1,57 @@
+{
+    // Environment variables VBCC and PATH must be set to the vbcc bin directory
+    //"VBCC": "/vbcc/bin",
+    //"PATH": "/vbcc/bin"
+
+    // See https://go.microsoft.com/fwlink/?LinkId=733558
+    // for the documentation about the tasks.json format
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Build Debug 68000",
+            "type": "shell",
+            "command": "make --directory=${workspaceFolder}/src  DEBUG=yes 68000 install",
+            "problemMatcher": {
+                "owner": "cpp",
+                "fileLocation": ["relative", "${workspaceFolder}/src"],
+                "pattern": {
+                    "regexp": "^(warning|error) ([0-9]*) in line ([0-9]*) of \"(.*)\": (.*)$",
+                    "severity": 1,
+                    "line": 3,
+                    "file": 4,
+                    "message": 5
+                }
+            },
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            }
+        },
+        {
+            "label": "Build proto/pragma headers",
+            "type": "shell",
+            "command": "make --directory=${workspaceFolder}/src/third_party",
+            "problemMatcher": {
+                "owner": "cpp",
+                "fileLocation": ["relative", "${workspaceFolder}"],
+                "pattern": {
+                    "regexp": "^(warning|error) ([0-9]*) in line ([0-9]*) of \"(.*)\": (.*)$",
+                    "severity": 1,
+                    "line": 3,
+                    "file": 4,
+                    "message": 5
+                }
+            },
+            "group": {
+                "kind": "build",
+                "isDefault": false
+            }
+        },
+        {
+            "label": "Clean Debug",
+            "type": "shell",
+            "command": "make clean --directory=${workspaceFolder}/src   DEBUG=yes",
+            "problemMatcher": []
+        }
+    ]
+}

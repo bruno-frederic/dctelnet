@@ -1,0 +1,36 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "type": "amiga-assembly",
+            "request": "launch",
+            "name": "WinUAE Debug",
+            "stopOnEntry": false,
+            "program": "${workspaceFolder}/build/installed/DCTelnet/DCTelnet.68000",
+            "remoteProgram": "DCTelnet/DCTelnet.68000",
+            "emulatorType": "winuae",
+            "emulatorArgs": [
+                // A1200, 3.1 ROM, expanded configuration with RTC and 4 MB Fast RAM :
+                "-s", "quickstart=a1200,1",
+
+                // Increase CPU speed:
+                "-s", "cpu_speed=max",
+                "-s", "win32.cpu_idle=30",
+
+                 // Enable IP Stack:
+                "-s", "bsdsocket_emu=true",
+
+                //
+                "-s",  "filesystem=rw,dh0:${workspaceFolder}/build/installed",
+
+                // Quality of Life WinUAE settings:
+                "-s", "win32.right_control_is_right_win=true",
+                "-s", "win32.middle_mouse=false",
+                "-s", "win32.active_capture_automatically=true",
+                "-s", "win32.start_not_captured=true",
+                "-s", "magic_mouse=true"
+            ],
+           "preLaunchTask": "Build Debug 68000"
+        }
+    ]
+}
