@@ -855,7 +855,7 @@ void ClearScrollBack(void)
 void Finger(void)
 {
 	long oldflags;
-	char tbuf[64];
+	char tbuf[64] = "reiver@plan.cat";
 	char *host;
 
 	if(rtGetStringA(tbuf, 63, "Enter EMail Address:", 0, (struct TagItem *)&tags))
