@@ -109,8 +109,8 @@ UWORD Connect_To_Server(char *servername, UWORD port);
 void ConWrite(char *data, long len);
 void LocalPrint(char *data);
 void GetWindowMsg(struct Window *wwin);
-void CloseDisplay(char);
-char OpenDisplay(char);
+void CloseDisplay(BOOL);
+BOOL OpenDisplay(BOOL);
 void OpenIcon(void);
 void CloseIcon(void);
 void LEDs(void);
@@ -2085,7 +2085,7 @@ UWORD Connect_To_ServerA(char *servername, UWORD port)
  *
  * @return TRUE on success, FALSE if the display could not be opened.
  */
-char OpenDisplay(char manageScreen)
+BOOL OpenDisplay(BOOL manageScreen)
 {
 	long i;
 
@@ -2458,7 +2458,7 @@ lib:
  *        TRUE  to fully close the screen and all display resources
  *        FALSE to close windows only and keep the screen open
  */
-void CloseDisplay(char manageScreen)
+void CloseDisplay(BOOL manageScreen)
 {
 	if(drivertype)
 	{

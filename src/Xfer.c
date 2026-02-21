@@ -82,8 +82,8 @@ extern void mysprintf(char *Buffer,char *ctl, ...);
 extern void LocalPrint(char *data);
 extern void LEDs(void);
 extern void ConWrite(char *data, long len);
-extern char OpenDisplay(void);
-extern void CloseDisplay(void);
+extern BOOL OpenDisplay(BOOL);
+extern void CloseDisplay(BOOL);
 extern void OpenIcon(void);
 extern void CloseIcon(void);
 extern void SavePrefs(void);
@@ -627,8 +627,8 @@ long Checkwinmsg(struct Window *wwin)
 	{
 		ClearMenuStrip(xferwin);
 		CloseWindow(xferwin);
-		CloseDisplay();
-		OpenIcon();
+		CloseDisplay(TRUE);       // Close the complete DCTelnet Window
+		OpenIcon();               // Iconify on the Workbench screen
 	}
 	return(0);
 }
@@ -657,9 +657,9 @@ long xpr_chkabort(void)
 
 		if(unicon)
 		{
-			CloseIcon();
-			OpenDisplay();
-			XferWindow();
+			CloseIcon();             // Close the icon on the Workbench screen
+			OpenDisplay(TRUE);       // Reopen the complete DCTelnet Window
+			XferWindow();            // Recreate the transfer window
 			xfer_gauge_width = 0;
 			unicon = FALSE;
 		}
