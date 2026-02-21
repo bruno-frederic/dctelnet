@@ -74,7 +74,7 @@ struct BookStruct
 	char	res[82];
 };
 
-char EditProfile(struct BookStruct *book);
+BOOL EditProfile(struct BookStruct *book);
 
 
 extern ULONG tags[3];
@@ -725,116 +725,121 @@ void myctime(long secs, char *outbuf)
 	strcat(outbuf, buf1);
 }
 
-char EditProfile(struct BookStruct *book)
+/*
+Opens the Edit Address Book Profile dialog.
+
+Updates the book structure only if the user validates the changes.
+
+return TRUE  if the user validated the changes (OK)
+       FALSE if the user cancelled or closed the window
+ */
+BOOL EditProfile(struct BookStruct *book)
 {
-	char lasttime[32];
-	struct IntuiMessage *message;
-	struct Gadget *gad;
-	ULONG class;
-	UWORD code;
-	char subdone = FALSE;
-	char ret;
+    char lasttime[32];
+    struct IntuiMessage *message;
+    struct Gadget *gad;
+    ULONG class;
+    UWORD code;
+    char subdone = FALSE;
+    BOOL ret = FALSE;
 
-	Project1GTags[1] = (unsigned long)book->name;
-	Project1GTags[8] = (unsigned long)book->host;
-	myctime(book->last, lasttime);
-	Project1GTags[15] = (unsigned long)lasttime;
-	Project1GTags[26] = (unsigned long)book->port;
-	Project1GTags[33] = (unsigned long)book->username;
-	Project1GTags[40] = (unsigned long)book->password;
+    // Initialize gadget fields with current book data
+    Project1GTags[1] = (unsigned long)book->name;
+    Project1GTags[8] = (unsigned long)book->host;
+    myctime(book->last, lasttime);
+    Project1GTags[15] = (unsigned long)lasttime;
+    Project1GTags[26] = (unsigned long)book->port;
+    Project1GTags[33] = (unsigned long)book->username;
+    Project1GTags[40] = (unsigned long)book->password;
 
-	if(OpenProject1Window() == 0)
-	{
-		rtSetWaitPointer(Project0Wnd);
-		ActivateGadget(Project1Gadgets[GD_SITE], Project1Wnd, 0);
-		while(!subdone)
-		{
-			WaitPort(Project1Wnd->UserPort);
-			while (message = GT_GetIMsg(Project1Wnd->UserPort))
-			{
-				register struct Gadget *vgad = 0;
-			        gad   = (struct Gadget *)message->IAddress;
-				class = message->Class;
-				code  = message->Code;
-				GT_ReplyIMsg(message);
-				switch (class)
-				{
-				case IDCMP_CLOSEWINDOW:
-					subdone = TRUE;
-					ret = FALSE;
-					break;
+    // Open the Edit Profile window
+    if(OpenProject1Window() == 0)
+    {
+        rtSetWaitPointer(Project0Wnd);  // Set "wait" mouse pointer to indicate modal operation
 
-				case IDCMP_VANILLAKEY:
-					switch(toupper(code))
-					{
-						case 'O':
-							goto ok;
-						case 'C':
-							goto cancel;
-						case 'S':
-							vgad = Project1Gadgets[GD_SITE];
-							break;
-						case 'A':
-							vgad = Project1Gadgets[GD_ADDRESS];
-							break;
-						case 'P':
-							vgad = Project1Gadgets[GD_PORT];
-							break;
-						case 'U':
-							vgad = Project1Gadgets[GD_USERNAME];
-							break;
-						case 'W':
-							vgad = Project1Gadgets[GD_PASSWORD];
-							break;
-					}
-					if(vgad) ActivateGadget(vgad, Project1Wnd, 0);
-					break;
+        // Activate the first gadget (Site Name) to receive keyboard input
+        ActivateGadget(Project1Gadgets[GD_SITE], Project1Wnd, 0);
 
-				case IDCMP_GADGETUP:
-					switch(gad->GadgetID)
-					{
-					case GD_USERNAME:
-						strcpy(book->username, ((struct StringInfo *)gad->SpecialInfo)->Buffer);
- 						ActivateGadget(Project1Gadgets[GD_PASSWORD], Project1Wnd, 0);
-						break;
-					case GD_PASSWORD:
-						strcpy(book->password, ((struct StringInfo *)gad->SpecialInfo)->Buffer);
- 						//ActivateGadget(Project1Gadgets[GD_SITE], Project1Wnd, 0);
-						break;
-					case GD_PORT:
-						book->port = ((struct StringInfo *)gad->SpecialInfo)->LongInt;
- 						ActivateGadget(Project1Gadgets[GD_USERNAME], Project1Wnd, 0);
-						break;
-					case GD_SITE:
-						strcpy(book->name, ((struct StringInfo *)gad->SpecialInfo)->Buffer);
-						ActivateGadget(Project1Gadgets[GD_ADDRESS], Project1Wnd, 0);
-						break;
-					case GD_ADDRESS:
-						strcpy(book->host, ((struct StringInfo *)gad->SpecialInfo)->Buffer);
-						ActivateGadget(Project1Gadgets[GD_PORT], Project1Wnd, 0);
-						break;
-					case GD_OK:
-ok:
-						subdone = TRUE;
-						ret = TRUE;
-						break;
-					case GD_CANCEL:
-cancel:
-						subdone = TRUE;
-						ret = FALSE;
-						break;
-					}
-				}
-			}
-		}
-		ClearPointer(Project0Wnd);
-	}
+        while(!subdone)
+        {
+            register struct Gadget *vgad = NULL;
 
-	if ( Project1Wnd ) CloseWindow( Project1Wnd );
+            WaitPort(Project1Wnd->UserPort); // Wait for input events
 
-	if ( Project1GList ) FreeGadgets( Project1GList );
+            while (message = GT_GetIMsg(Project1Wnd->UserPort))
+            {
+                gad   = (struct Gadget *)message->IAddress; // Gadget associated with the message
+                class = message->Class;
+                code  = message->Code;                      // Key code for keyboard events
+                GT_ReplyIMsg(message);                      // Acknowledge message
 
-	return(ret);
+                switch (class)
+                {
+                case IDCMP_CLOSEWINDOW:      // User clicked the close gadget
+                    subdone = TRUE;
+                    ret = FALSE;
+                    break;
+
+                case IDCMP_VANILLAKEY:       // Keyboard input (letters, Enter, etc.)
+                    switch(toupper(code))
+                    {
+                        case 'O':   // OK
+                            subdone = TRUE;
+                            ret = TRUE;
+                            break;
+                        case 'C':   // Cancel
+                            subdone = TRUE;
+                            ret = FALSE;
+                            break;
+                        // Keyboard shortcuts to jump to a specific gadget:
+                        case 'S':  vgad = Project1Gadgets[GD_SITE];        break;
+                        case 'A':  vgad = Project1Gadgets[GD_ADDRESS];     break;
+                        case 'P':  vgad = Project1Gadgets[GD_PORT];        break;
+                        case 'U':  vgad = Project1Gadgets[GD_USERNAME];    break;
+                        case 'W':  vgad = Project1Gadgets[GD_PASSWORD];    break;
+                    }
+                    if(vgad) ActivateGadget(vgad, Project1Wnd, 0); // Focus gadget
+                    break;
+
+                case IDCMP_GADGETUP:         // Mouse released over a gadget
+                    switch(gad->GadgetID)
+                    {
+                    case GD_OK:
+                        subdone = TRUE;
+                        ret = TRUE;
+                        break;
+                    case GD_CANCEL:
+                        subdone = TRUE;
+                        ret = FALSE;
+                        break;
+                    }
+                    break;
+                }
+            }
+        }
+
+        // Copy gadget values to the BookStruct if user pressed OK :
+        if (ret)
+        {
+            strcpy(book->name,
+                    ((struct StringInfo *)Project1Gadgets[GD_SITE]->SpecialInfo)->Buffer);
+            strcpy(book->host,
+                    ((struct StringInfo *)Project1Gadgets[GD_ADDRESS]->SpecialInfo)->Buffer);
+            book->port = ((struct StringInfo *)Project1Gadgets[GD_PORT]->SpecialInfo)->LongInt;
+            strcpy(book->username,
+                    ((struct StringInfo *)Project1Gadgets[GD_USERNAME]->SpecialInfo)->Buffer);
+            strcpy(book->password,
+                    ((struct StringInfo *)Project1Gadgets[GD_PASSWORD]->SpecialInfo)->Buffer);
+        }
+
+        ClearPointer(Project0Wnd); // Restore normal pointer
+    }
+
+    // Close window and free gadgets
+    if ( Project1Wnd ) CloseWindow( Project1Wnd );
+    if ( Project1GList ) FreeGadgets( Project1GList );
+
+    return ret;
 }
 
 
