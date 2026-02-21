@@ -639,6 +639,7 @@ ULONG Project1GTags[] = {
 	GTST_String, 0, (GTST_MaxChars), 41, (GT_Underscore), '_', (TAG_DONE)
 };
 
+// Draw the Edit Address Book Profile window
 int OpenProject1Window( void )
 {
 	struct Gadget	*g;

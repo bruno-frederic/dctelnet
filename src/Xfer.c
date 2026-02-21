@@ -44,7 +44,10 @@ extern UWORD WinTop;
 extern UBYTE done, icon, unicon;
 
 UWORD xfer_gauge_width;
-UWORD xfertype, inflag;
+// Download : xfertype = 1        Upload : xfertype = 2
+UWORD xfertype;
+// Set when a 0xFF escape byte is pending in the incoming transfer stream :
+UWORD ff_escape_pending;
 
 
 struct PrefsStruct
@@ -103,6 +106,17 @@ int posY(WORD n)
 	return(((xrp->Font->tf_YSize+1)*n)+3+WinTop);
 }
 
+/*
+Strip 0xFF escape bytes from the incoming stream.
+
+Telnet escape a literal 0xFF byte by sending it twice (0xFF 0xFF). This function
+collapses such sequences into a single 0xFF.
+
+The ff_escape_pending flag is kept across calls to handle cases where an escape sequence spans
+multiple received buffers.
+
+Returns the new buffer length after stripping.
+*/
 long instrip(unsigned char *buff, long length)
 {
 	register long i = 0, j = 0;
@@ -111,12 +125,12 @@ long instrip(unsigned char *buff, long length)
 	{
 		while(i < length)
 		{
-			if(buff[i]==255 && !inflag)
-				inflag = TRUE;
+			if(buff[i]==255 && !ff_escape_pending)
+				ff_escape_pending = TRUE;
 			else {
 				tb[j] = buff[i];
 				j++;
-				inflag = FALSE;
+				ff_escape_pending = FALSE;
 			}
 			i++;
 		}
@@ -147,7 +161,13 @@ void ProtoClean(void)
 	//ConWrite("", 1);
 }
 
-/* Return file info */
+/*
+This function returns information about a file given its name and the type of information requested.
+typeofinfo = 1L : file size (bytes)
+typeofinfo = 2L : file type (1L is binary ; 2L is text)
+
+returns 0 on failure
+*/
 long __ASM__ xpr_finfo(__REG__(a0, char *filename),
                        __REG__(d0, long typeofinfo))
 {
@@ -162,8 +182,8 @@ long __ASM__ xpr_finfo(__REG__(a0, char *filename),
 		Examine(lck, fib);
 		UnLock(lck);
 		result = fib->fib_Size;
-		if(typeofinfo == 2) result = 1;
-		else if(typeofinfo != 1) result = 0;
+		if(typeofinfo == 2) result = 1;            // file type is always binary
+		else if(typeofinfo != 1) result = 0;       // returns failure with unknown typeofinfo
 	}
 	FreeMem(fib, sizeof(struct FileInfoBlock));
 	return(result);
@@ -341,6 +361,11 @@ long __ASM__ xpr_gets(__REG__(a0, char *prompt),
 	return(0);
 }
 
+/*
+The following xpr_fopen(), xpr_fclose() xpr_fread(), xpr_fwrite(), xpr_fseek(), xpr_unlink()
+call-back function works in most respects identically to the stdio function fopen(),etc...
+Enables external protocols to manipulate files via the communication program.
+*/
 long __ASM__ xpr_fopen(__REG__(a0, char *filename),
                        __REG__(a1, char *accessmode))
 {
@@ -419,19 +444,31 @@ long __ASM__ xpr_unlink(__REG__(a0, char *filename))
 	return(DeleteFile(filename));
 }
 
+/*
+    This call-back function is intended to communicate a variety of values and strings from the
+    external protocol to the communications program for display. Hence, the display format itself
+    (requester, text-I/O) is left to the implementer of the communications program.
+*/
 long __ASM__ xpr_update(__REG__(a0,
                         struct XPR_UPDATE * updatestruct))
 {
+    /*
+		The mask xpru_updatemask indicates which of the other fields are valid, i.e. have had their
+		value updated. It is possible to update a single or multiple values.
+    */
 	register long ud = updatestruct->xpru_updatemask;
 	register UWORD new_xfer_gauge_width=0;
 
 	if(icon) return(0);
 
+    // xpru_protocol    -- a string that indicates the name of the protocol used
 	if(ud&XPRU_PROTOCOL)
 	{
 		Move(xrp, posX(12), posY(1));
 		Text(xrp, updatestruct->xpru_protocol, strlen(updatestruct->xpru_protocol));
 	}
+
+	// xpru_filename    -- the name of the file currently sent or received
 	if(ud&XPRU_FILENAME)
 	{
 		Move(xrp, posX(12), posY(2));
@@ -443,11 +480,15 @@ long __ASM__ xpr_update(__REG__(a0,
 		Move(xrp, posX(12), posY(3));
 		TextFmt(xrp, "%-30s", FilePart(updatestruct->xpru_filename));
 	}
+
+    // xpru_filesize    -- the size of the file
 	if(ud&XPRU_FILESIZE)
 	{
 		Move(xrp, posX(16), posY(4));
 		TextFmt(xrp, "%-10ld", updatestruct->xpru_filesize);
 	}
+
+    // xpru_bytes       -- number of transferred bytes
 	if(ud&XPRU_BYTES)
 	{
 		Move(xrp, posX(16), posY(5));
@@ -468,21 +509,29 @@ long __ASM__ xpr_update(__REG__(a0,
 			xfer_gauge_width = new_xfer_gauge_width;
 		}
 	}
+
+    // xpru_blockcheck  -- block check type (e.g. "Checksum", "CRC-16", "CRC-32")
 	if(ud&XPRU_BLOCKCHECK)
 	{
 		Move(xrp, posX(16), posY(6));
 		TextFmt(xrp, "%-10s", updatestruct->xpru_blockcheck);
 	}
+
+    // xpru_errors      -- number of errors
 	if(ud&XPRU_ERRORS)
 	{
 		Move(xrp, posX(16), posY(7));
 		TextFmt(xrp, "%-10ld", updatestruct->xpru_errors);
 	}
+
+    // xpru_errormsg    -- an "error" message  (50 characters or less)
 	if(ud&XPRU_ERRORMSG)
 	{
 		Move(xrp, posX(16), posY(8));
 		TextFmt(xrp, "%-46.46s", updatestruct->xpru_errormsg);
 	}
+
+    // xpru_msg         -- a "generic" message (50 characters or less)
 	if(ud&XPRU_MSG)
 	{
 		Move(xrp, posX(16), posY(8));
@@ -492,16 +541,21 @@ long __ASM__ xpr_update(__REG__(a0,
 
 /* row 2 */
 
+    // xpru_elapsedtime -- elapsed time from start of transfer (see xpru_expecttime)
 	if(ud&XPRU_ELAPSEDTIME)
 	{
 		Move(xrp, posX(45), posY(4));
 		TextFmt(xrp, "%-16s", updatestruct->xpru_elapsedtime);
 	}
+
+    // xpru_expecttime  -- expected transfer time (e.g. "5 min 20 sec", "00:05:30")
 	if(ud&XPRU_EXPECTTIME)
 	{
 		Move(xrp, posX(45), posY(5));
 		TextFmt(xrp, "%-16s", updatestruct->xpru_expecttime);
 	}
+
+    // xpru_datarate    -- rate of data transfer expressed in characters per second.
 	if(ud&XPRU_DATARATE)
 	{
 		Move(xrp, posX(45), posY(7));
@@ -579,6 +633,10 @@ long Checkwinmsg(struct Window *wwin)
 	return(0);
 }
 
+/*
+call-back function : check for abort
+When it returns non-zero, it means that the user has requested an abort
+*/
 long xpr_chkabort(void)
 {
 	if(icon)
@@ -789,7 +847,7 @@ void Upload(char *library)
 
 	if(icon) return;
 
-	inflag = FALSE;
+	ff_escape_pending = FALSE;
 	xfertype = 2;
 
 	if (filereq = rtAllocRequestA (RT_FILEREQ, NULL))
@@ -843,7 +901,7 @@ void Download(char *library)
 {
 	BPTR old, lck;
 
-	inflag = FALSE;
+	ff_escape_pending = FALSE;
 
 	lck = Lock(prefs.downloadpath, SHARED_LOCK);
 	if(lck)

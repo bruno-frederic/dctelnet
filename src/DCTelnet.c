@@ -573,7 +573,7 @@ void Receive(void)
 						goto norm;
 					}
 					break;
-				case 255:
+				case 255:     // The byte 0xff (255) means that the next byte is a Telnet command
 					i += 2;
 					break;
 				case '1':
@@ -632,6 +632,8 @@ norm:					outbuf[j] = buf[i];
 			return;
 		}
 
+		// The byte 0xff (255) means that the next byte is a Telnet command. If you want to send
+		// 0xff then you must send it twice to tell telnet that you don't intend to send a command.
 		if(buf[0] == 255  &&  !(prefs.flags&(1<<13))) // NOT RAW
 		{
 			if((recv(sok, &buf[1], 2, 0)) < 1)
@@ -1048,6 +1050,7 @@ restart:
 		if(doicon)
 		{
 			CloseDisplay(TRUE);
+			// inconify the application:
 			OpenIcon();
 			doicon = FALSE;
 		}
@@ -1304,6 +1307,8 @@ void OutKey(unsigned char key)
 	if(connected)
 	{
 		TCPSend((void *)&key, 1);
+
+		// If you want to send 0xff then you must double it (0xff, 0xff) to tell telnet that you don't intend to send it a command.
 		if(key==(unsigned char)255) TCPSend((void *)&key, 1);
 		if(!passflag)
 		{
@@ -2055,11 +2060,36 @@ UWORD Connect_To_ServerA(char *servername, UWORD port)
 	return(0);
 }
 
-char OpenDisplay(char doscreen)
+
+ /**
+ * @brief Open or reopen the application's display environment.
+ *
+ *
+  * The @p manageScreen parameter controls whether the screen-level resources
+ * (screen, font, GadTools visual info, Intuition DrawInfo) must be (re)opened.
+
+ * When @p manageScreen is TRUE, the function:
+ * - Opens or locks the screen (custom screen or Workbench screen)
+ * - Loads the screen font
+ * - Allocates visual and drawing resources
+ * - Used at program startup, after a screen mode change,
+ *
+ * When @p manageScreen is FALSE, the function:
+ * - Assumes the screen is already available
+ * - Only recreate windows, menus and console bindings
+ * - Used when restarting the UI without changing the screen
+ *
+ * @param manageScreen
+ *        TRUE  to (re)open and initialize the screen and all related resources
+ *        FALSE to reuse the existing screen and only recreate windows
+ *
+ * @return TRUE on success, FALSE if the display could not be opened.
+ */
+char OpenDisplay(char manageScreen)
 {
 	long i;
 
-	if(!doscreen) goto jump1;
+	if(!manageScreen) goto skip_screen_open;
 
 	if(prefs.flags&(1<<3)) wb = TRUE; else wb = FALSE;
 
@@ -2119,7 +2149,7 @@ char OpenDisplay(char doscreen)
 		WinTop = (scr->WBorTop)+(scr->Font->ta_YSize)+1;
 		vi = GetVisualInfoA(scr, 0);
 		DrawInfo = GetScreenDrawInfo(scr);
-jump1:
+skip_screen_open:
 		nwin.Screen = scr;
 		nwin.Type = PUBLICSCREEN;
 		nwin.DetailPen = 255;
@@ -2407,7 +2437,28 @@ lib:
 	return(FALSE);
 }
 
-void CloseDisplay(char doscreen)
+/**
+ * @brief Close the application's display environment.
+ *
+ * This function closes all application windows and releases display-related
+ * resources.
+ *
+ * The 'manageScreen' parameter controls whether screen-level resources
+ * should be released or preserved.
+ *
+ * When @p manageScreen is TRUE, the function also:
+ * - Frees visual and drawing resources
+ * - Closes the screen (if not running on the Workbench screen)
+ * - Releases the screen font
+ * - Used when quitting the program, changing screen mode.
+ *
+ * When @p manageScreen is FALSE, only windows are closed, allowing the screen to remain open
+ *
+ * @param manageScreen
+ *        TRUE  to fully close the screen and all display resources
+ *        FALSE to close windows only and keep the screen open
+ */
+void CloseDisplay(char manageScreen)
 {
 	if(drivertype)
 	{
@@ -2440,7 +2491,7 @@ void CloseDisplay(char doscreen)
 
 	if(menuStrip)	FreeMenus(menuStrip);
 
-	if(doscreen)
+	if(manageScreen)
 	{
 		if(vi)		FreeVisualInfo(vi);
 		if(DrawInfo)	FreeScreenDrawInfo(scr, DrawInfo);
@@ -2451,6 +2502,7 @@ void CloseDisplay(char doscreen)
 	icon = TRUE;
 }
 
+// inconify the application
 void OpenIcon(void)
 {
 	if(iconport = CreateMsgPort())
@@ -2460,6 +2512,7 @@ void OpenIcon(void)
 		prefsfile[16] = '.';
 		if(dobj)
 		{
+			// Add an icon on Workbench backdrop to inconify the application:
 			if(dcicon = AddAppIconA(0, 0, "DCTelnet", iconport, 0, dobj, 0)) return;
 
 			FreeDiskObject(dobj);
@@ -2469,6 +2522,7 @@ void OpenIcon(void)
 	iconport = 0;
 }
 
+// Uniconify the application
 void CloseIcon(void)
 {
 	if(iconport)
