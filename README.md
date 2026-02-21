@@ -18,7 +18,8 @@ It is **easy to use**, **lightweight**, and **reliable**.
 > **DCTelnet** was originally written by **Zed**. As of January 2026, the
 > DCTelnet 1.5/1.6 releases available on Aminet target 68020+ CPUs only.
 >
-> This new release also offers **simplified installation** and **improved documentation**.
+> This new release also offers **simplified installation**, **improved
+> documentation** and **bug fixes**.
 >
 > 🎨 **Help wanted: UI icons**
 >
@@ -42,8 +43,8 @@ It is **easy to use**, **lightweight**, and **reliable**.
 - Fast and efficient design : DCTelnet access the bsdsocket API directly
 - Address book with username & password entries
 - Additional terminal emulations via **XEM libraries**
-- User-definable screen modes, fonts & colour palettes
-- Iconify support
+- User-definable screen modes & fonts
+– Application can be iconified while running
 - **multiple simultaneous Telnet connections**
 - **No MUI, ClassAct or ReAction required**
 - **No `telser.device` required**
@@ -54,20 +55,16 @@ It is **easy to use**, **lightweight**, and **reliable**.
 
 - Kickstart / Workbench **v2.00 (V36)** or higher
 - A TCP/IP stack: **AmiTCP**, **Miami**, UAE bsdsocket.library or compatible
-- **ReqTools** library
 
 ---
 
 ## 📦 Installation
 
-1. Install the **ReqTools** library, available on Aminet:
-   [util/libs/ReqToolsUsr](https://aminet.net/package/util/libs/ReqToolsUsr)
-
-2. Download the DCTelnet package either from Aminet:
+1. Download the DCTelnet package either from Aminet:
    [comm/tcp/DCTelnet](https://aminet.net/package/comm/tcp/DCTelnet)
    or from the [GitHub releases section](https://github.com/bruno-frederic/dctelnet/releases).
 
-3. The DCTelnet archive includes an **Installer** script.
+2. The DCTelnet archive includes an **Installer** script.
    When available, using the *Installer* tool is the recommended installation method.
 
 ---
@@ -80,7 +77,11 @@ On older AmigaOS versions where the *Installer* tool is not present (for example
 - Libraries from `DCTelnet/Libs` -> `LIBS:`
 - Fonts from `DCTelnet/Fonts` -> `FONTS:`
 
-The archive also includes an optional **GlowIcons** icon set, which can be used as a modern replacement for the original icons if desired.
+On AmigaOS / Kickstart **2.00 & 2.02**, the default versions of
+reqtools.library and xprzmodem.library fail to load.
+Replace them with the following compatible versions:
+- `DCTelnet/Libs-r36/reqtools.library` -> `LIBS:`
+- `DCTelnet/Libs-r36/xprzmodem.library` -> `LIBS:`
 
 ---
 
@@ -88,8 +89,20 @@ The archive also includes an optional **GlowIcons** icon set, which can be used 
 
 Please refer to the included **DCTelnet.guide** documentation for detailed
 usage instructions. The guide is in **AmigaGuide** format and can be opened
-with **MultiView** on AmigaOS.
+with **MultiView** on AmigaOS 3.*.
+On Amiga OS 2.* you’ll need the AmigaGuide tool (available on Aminet: [text/hyper/aguide34](https://aminet.net/package/text/hyper/aguide34)) and to replace the "Default Tool" on DCTelnet.Guide icon to: SYS:Utilities/Amigaguide
 
+
+## 📖 How to use
+
+Please refer to the included **DCTelnet.guide** file for detailed usage
+instructions.
+
+The documentation is provided in **AmigaGuide** format:
+- On **AmigaOS 3.x**, it can be opened directly with **MultiView**.
+- On **AmigaOS 2.x**, the **AmigaGuide** tool is required (available on Aminet:
+  [text/hyper/aguide34](https://aminet.net/package/text/hyper/aguide34)).
+  In this case, update the *Default Tool* of the `DCTelnet.guide` icon to `SYS:Utilities/AmigaGuide`.
 
 ---
 
@@ -108,49 +121,56 @@ On **Amiga-based BBSes**, graphics are often designed for the classic **Topaz** 
 After switching the terminal font, **quit DCTelnet and restart it** before reconnecting. This avoids the display issue described **below** and ensures correct rendering.
 
 
-### Connection stuck after changing settings (fonts, XEM, screen mode)
+### Connection stuck after changing display settings (fonts, XEM, screen mode) or iconifying the application (fixed in v1.8)
 
-After changing certain display-related settings (such as the **terminal font**, enabling the **XEM library**, or switching the **screen mode**) subsequent Telnet connection may appear to succeed, but **no output is displayed**. The status remains *Connected*, while the terminal window no longer shows any data.  [(issue #3)](https://github.com/bruno-frederic/dctelnet/issues/3)
 
-This issue has been observed both with the original **DCTelnet 1.6** built in 2006-2008 and with recent recompilations.
+After iconifying the application or changing certain display-related settings (such as the **terminal font**, disabling the toolbar, enabling the **XEM library**, or switching the **screen mode**), the current connection and any future connections may appear successful, but **no output is displayed**. The status remains *Connected*, while the terminal window no longer shows any data. [(issue #3)](https://github.com/bruno-frederic/dctelnet/issues/3)
+
+This issue has existed since **DCTelnet 1.1** and occurs when used with certain
+versions of "bsdsocket.library", notably UAE bsdsocket.library 4.1 (WinUAE)
+and Amiberry's built-in library.
+
+The problem happens because "ibmcon.device" incorrectly releases an internal
+system signal (bit 31).
+
+Since v1.8, DCTelnet prevents this signal from being used, avoiding the
+connection freeze.
 
 **Workaround:**
-After modifying any of these settings, **quit DCTelnet and restart it** before reconnecting. Otherwise, the session may remain stuck in a connected state with no visible output.
+After modifying any of these settings, **quit DCTelnet and restart it**.
+
+Greetings to **Marius** (aka Firestone on EAB forum) for his help reporting
+this bug and testing DCTelnet across different configurations.
+
+### Address Book Profile may not be saved correctly (fixed in v1.8)
+
+This bug has been present at least since the original version 1.1 release (December 1997).
+
+Before v1.8, changes made in the Address Book Profile were not saved
+correctly when navigating between fields **with the mouse**. [(issue #4)](https://github.com/bruno-frederic/dctelnet/issues/4)
+
+**Workaround before v1.8:** When editing Address Book Profile:
+- Press **[Enter]** after typing text in each field.
+- Or move to the next field using **[Tab]**, then press **[Enter]** before leaving the profile window.
 
 
-### Address Book may not be saved correctly
+### On AmigaOS / Kickstart 2.00 & 2.02 (fixed in v1.8)
 
-Changes made in the Address Book may not be saved correctly if fields are validated **using the mouse**. [(issue #4)](https://github.com/bruno-frederic/dctelnet/issues/4)
+The `xprzmodem.library` bundled with DCTelnet since v1.1 fails to load on these OS versions. [(issue #5)](https://github.com/bruno-frederic/dctelnet/issues/5)
 
-**Workaround:**
-When editing Address Book entries:
-
-- Press **Enter** after typing text in each field, **especially the password field**
-- Or move to the next field using **Tab**, then press **Enter** before leaving the entry
-
-### On AmigaOS / Kickstart 2.00 & 2.02
-
-- The included `xprzmodem.library` fails to load on these OS versions.
-  As a result, ZModem file transfers are not available on these OS versions.
-  [(issue #5)](https://github.com/bruno-frederic/dctelnet/issues/5)
-- **ReqTools 2.9a**, available on Aminet (`util/libs/ReqToolsUsr`), also fails to load.
-
-  An older version of ReqTools is required:
-  - **ReqTools v2.2**, available here:
-    https://www.nic.funet.fi/pub/amiga/system/libraries/ReqTools-2.2-user.lha
-  - Use the library found in the `libs13/` directory (version **38.390**).
-  - Copy `reqtools.library` to the `LIBS:` directory.
-
-For troubleshooting, it is recommended to launch **DCTelnet from the Shell** in order to see library initialization error messages.
+Starting with v1.8, a compatible version of the library is included in the `Libs-r36/` directory.
 
 ---
 
 ## 🛠️ Build environment
 
-**As of January 2026:**
+**As of March 2026:**
 
 - **IDE**: VS Code (on Windows)
-- **Compiler**: SAS/C v6.58 under AmigaOS 3.2 (on WinUAE 6)
+- **Compiler**: **VBCC** and **GNU Make** on Windows, using my custom toolchain :
+  [vbcc-bin](https://github.com/bruno-frederic/vbcc-bin/tree/Bruno_toolchain)
+
+- The project can also be built with SAS/C v6.58 under AmigaOS 3.2
 
 ### Source code
 
@@ -163,8 +183,7 @@ required third-party libraries, is publicly available on **Aminet**.
 The required third-party source code dependencies are also included:
 
 - **ReqTools 2.9** from [util/libs/ReqToolsDev](https://aminet.net/package/util/libs/ReqToolsDev)
-- **AmiTCP SDK 4.3** from [comm/tcp/AmiTCP-SDK-4.3](https://aminet.net/package/comm/tcp/AmiTCP-SDK-4.3)
-- **XPRotocol v2.001** from [comm/term/xpr2001](https://aminet.net/package/comm/term/xpr2001)
+- **XPRZModem 3.1** library and sources from "comm/misc/xprz31.lha" package on Aminet CD 2
 - **Xem 2.0** from [comm/term/XEM2_0](https://aminet.net/package/comm/term/XEM2_0)
 
 ---

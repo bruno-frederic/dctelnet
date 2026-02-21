@@ -6,6 +6,6 @@
 DCTelnet v1.8-dev (xx Feb 2026)
 A classic Amiga Telnet/BBS client with Zmodem
 * 68000 & 68020 compatible
-* optional GlowIcons
+* GlowIcons
 * No MUI, ClassAct or ReAction required
 * No telser.device required

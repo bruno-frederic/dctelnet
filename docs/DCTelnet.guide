@@ -4,13 +4,13 @@
 @author "Shane, Zed and Bruno FREDERIC"
 @TOC "MAIN"
                               @{b}DCTelnet v1.8-dev@{ub}
-     ______  ______ ____________________    _________    ____________________
-    /\\_____\\/\\_____\\\\_________\\______\\__\\  /\\______\\_\\  /\\__\\______\\_________\\
-   / /  ___ \\/  ___//___   ___/  ____/  / / /  ____/  \\/ /  /  ____/___   ___/
-  / /  // / /  /     / /  // /  /_\\ /  / / /  /_\\ /    \\/  /  /_\\   / /  /
- / /  // / /  /_    / /  // /  ___//  /_/ /  ___//   /\\   /  ___/  / /  /
-/ /  /_\\/ /  /__\\  / /  // /  /__\\/  /__\\/  /__\\/   / /  /  /__\\  / /  /
-\\/_______/______/  \\/__/ \\/______/______/______/___/\\/__/______/  \\/__/
+     ______  ______ ____________________    __    ___________________
+    /\\_____\\/\\_____\\\\_________\\______\\__\\  /\\_\\  /\\__\\______\\_________\\
+   / /  ___ \\/  ___//___   ___/  ____/  / / /  \\/ /  /  ____/___   ___/
+  / /  // / /  /     / /  // /  /_\\ /  / / /    \\/  /  /_\\   / /  /
+ / /  // / /  /_    / /  // /  ___//  /_/ /   /\\   /  ___/  / /  /
+/ /  /_\\/ /  /__\\  / /  // /  /__\\/  /__\\/   / /  /  /__\\  / /  /
+\\/_______/______/  \\/__/ \\/______/______/___/\\/__/______/  \\/__/
 
                   https://github.com/bruno-frederic/dctelnet/
 
@@ -52,9 +52,9 @@ ZModem@{ub}.
 
 - Additional terminal emulations via @{b}XEM libraries@{ub}
 
-- User-definable screen modes, fonts and colour palettes
+- User-definable screen modes & fonts
 
-- Iconify support
+- Application can be iconified while running
 
 - @{b}Multiple simultaneous Telnet connections@{ub}
 
@@ -71,22 +71,16 @@ ZModem@{ub}.
 
 - A TCP/IP stack: @{b}AmiTCP@{ub}, @{b}Miami@{ub}, UAE bsdsocket.library or compatible
 
-- @{b}ReqTools@{ub} library
-
-
 @EndNode
 
 @node INSTALL "Installing DCTelnet"
 
-1. Install the @{b}ReqTools@{ub} library, available on Aminet:
-   util/libs/ReqToolsUsr (https://aminet.net/package/util/libs/ReqToolsUsr)
-
-2. Download the @{b}DCTelnet@{ub} package either from Aminet: comm/tcp/DCTelnet
+1. Download the @{b}DCTelnet@{ub} package either from Aminet:
    (https://aminet.net/package/comm/tcp/DCTelnet)
    or from the GitHub releases section:
    https://github.com/bruno-frederic/dctelnet/releases
 
-3. The DCTelnet archive includes an @{b}Installer@{ub} script.
+2. The DCTelnet archive includes an @{b}Installer@{ub} script.
    When available, using the @{i}Installer@{ui} tool is the recommended installation
    method.
 
@@ -100,8 +94,11 @@ directories:
 - Libraries from DCTelnet/Libs -> LIBS:
 - Fonts from DCTelnet/Fonts -> FONTS:
 
-The archive also includes an optional @{b}GlowIcons@{ub} icon set, which can be used
-as a modern replacement for the original icons if desired.
+On AmigaOS / Kickstart @{b}2.00 & 2.02@{ub}, the default versions of
+reqtools.library and xprzmodem.library fail to load.
+Replace them with the following compatible versions:
+- DCTelnet/Libs-r36/reqtools.library -> LIBS:
+- DCTelnet/Libs-r36/xprzmodem.library -> LIBS:
 
 @EndNode
 
@@ -112,7 +109,7 @@ use them...
 
 Pressing the right mouse button you will see.
 
- @{"   DCTelnet  " LINK MM} DCTelnet menu options.
+ @{"   DCTelnet   " LINK MM} DCTelnet menu options.
  @{"   Transfer   " LINK TRANSFER} Transfer menu options.
  @{"  Connection  " LINK CONNECTION} Connection menu options.
  @{"    Options   " LINK OPTIONS} Options menu.
@@ -288,7 +285,7 @@ Ideal when chatting with a system operator or sending a message.
 
 NOTE: See...@{b}@{u} Preferences menu, XEM LIBRARY @{ub}@{uu}
 
-                               @{b}@{u} Tool Window @{ub}@{uu}
+                               @{b}@{u} Tool Bar @{ub}@{uu}
                                 ~~~~~~~~~~~~~~~
   Puts icons at the top of the window so you have easier access to
 Connect, Disconnect, Address, Info, Upload, Download & Quit.
@@ -439,57 +436,58 @@ described below and ensures correct rendering.
 
 ---------------------------------------------
 
-@{b}Connection stuck after changing settings@{ub}
-@{i}(fonts, XEM, screen mode)@{ui}
+@{b}Connection stuck after changing display settings (fonts,@{ub}
+@{b}XEM, screen mode) or iconifying the application (fixed in v1.8)@{ub}
 
-After changing certain display-related settings, such as the
-@{b}terminal font@{ub}, enabling the @{b}XEM library@{ub}, or
-switching the @{b}screen mode@{ub}, a subsequent Telnet
-connection may appear to succeed, but @{b}no output is
-displayed@{ub}. The status remains @{i}Connected@{ui}, while the
-terminal window no longer shows any data.
+After iconifying the application or changing certain display-related
+settings (such as the terminal font, disabling the toolbar, enabling the XEM
+library, or switching the screen mode), the current connection and any
+future connections may appear successful, but @{b}no output is
+displayed@{ub}. The status remains @{i}Connected@{ui}, while the terminal window
+no longer shows any data.
 
-This issue has been observed both with the original
-@{b}DCTelnet 1.6@{ub} built in 2006-2008 and with recent
-recompilations.
+This issue has existed since @{b}DCTelnet 1.1@{ub} and occurs when used with certain
+versions of "bsdsocket.library", notably UAE bsdsocket.library 4.1 (WinUAE)
+and Amiberry's built-in library.
 
-@{b}Workaround:@{ub}
-After modifying any of these settings, @{b}quit DCTelnet and
-restart it@{ub} before reconnecting. Otherwise, the session may
-remain stuck in a connected state with no visible output.
+The problem happens because "ibmcon.device" incorrectly releases an internal
+system signal (bit 31).
 
----------------------------------------------
+Since v1.8, DCTelnet prevents this signal from being used, avoiding the
+connection freeze.
 
-@{b}Address Book may not be saved correctly@{ub}
+@{b}Workaround before v1.8:@{ub}
+After modifying any of these settings, @{b}quit DCTelnet and restart
+it@{ub}.
 
-Changes made in the Address Book may not be saved correctly if
-fields are validated @{b}using the mouse@{ub}.
-
-@{b}Workaround:@{ub}
-When editing Address Book entries:
-
-- Press @{b}Enter@{ub} after typing text in each field,
-  especially the password field
-- Or move to the next field using @{b}Tab@{ub}, then press
-  @{b}Enter@{ub} before leaving the entry
+Greetings to @{b}Marius@{ub} (aka Firestone on EAB forum) for his help reporting
+this bug and testing DCTelnet across different configurations.
 
 ---------------------------------------------
 
-@{b}On AmigaOS / Kickstart 2.00 and 2.02@{ub}
+@{b}Address Book Profile may not be saved correctly (fixed in v1.8)@{ub}
 
-- The included xprzmodem.library fails to load on these OS
-  versions.
-- @{b}ReqTools 2.9a@{ub}, available on Aminet, also fails to load.
 
-An older version of ReqTools is required:
-- @{b}ReqTools v2.2@{ub}
-- Use the library found in the libs13/ directory
-  (version @{b}38.390@{ub})
-- Copy reqtools.library to the LIBS: directory.
+This bug has been present at least since the original version 1.1 release
+(December 1997).
 
-For troubleshooting, it is recommended to launch @{b}DCTelnet
-from the Shell@{ub} in order to see library initialization error
-messages.
+Before v1.8, changes made in the Address Book Profile were not saved
+correctly when navigating between fields @{b}with the mouse@{ub}.
+
+@{b}Workaround before v1.8:@{ub} When editing Address Book Profile:
+- Press @{b}[Enter]@{ub} after typing text in each field.
+- Or move to the next field using @{b}[Tab]@{ub}, then press @{b}[Enter]@{ub}
+  before leaving the profile window.
+
+---------------------------------------------
+
+@{b}On AmigaOS / Kickstart 2.00 and 2.02 (fixed in v1.8)@{ub}
+
+The xprzmodem.library bundled with DCTelnet since v1.1 fails to load on
+these OS versions.
+
+Starting with v1.8, a compatible version of the library is included in the
+"Libs-r36" directory.
 
 @EndNode
 
@@ -502,161 +500,193 @@ messages.
 
 ---[ DCTelnet 1.8 ]-------------------------------------------------------
 
-	- TODO
+- Fix Address Book Profile save bug
+  Changes in Address Book profiles are now correctly saved even when fields
+  are edited using the mouse. This bug has been present at least since the
+  original version 1.1 release (December 1997).
 
+- Fix garbage displayed in Finger 'Enter Email Address' input field, an
+  issue introduced in v1.4 along with the Finger function.
+
+- Added a workaround for a long-standing connection freeze issue occurring
+  after changing display settings.
+  This issue has existed since DCTelnet 1.1 and occurs when using certain
+  versions of "bsdsocket.library", notably UAE bsdsocket.library 4.1 (WinUAE)
+  and Amiberry's built-in library.
+
+- Update all package icons to Glowicons including 4-color planar variant
+
+- Added ReqTools and XPRZModem libraries to the package:
+  - reqtools.library 2.9a (38.1436 20/02/97) for AmigaOS 2.04+
+  - reqtools.library 2.2c (38.390 20/09/93) for AmigaOS 2.00 & 2.02
+  - XPRZModem.library 3.1 (03/10/93) for AmigaOS 2.00 & 2.02
+  (The XPRZModem.library 3.1 version for OS 2.04+ has already been part of
+  the package since DCTelnet v1.1.)
+
+- Added startup checks for required libraries (e.g., ReqTools.library)
+  DCTelnet will show a proper message instead of exiting silently.
+
+- Install script: fixed incompatibilities with Installer v44 as found in
+  AmigaOS 3.5 & 3.9 and with the legacy Commodore Installer v2.
+
+- Switched to VBCC for compilation (cross-compilation and improved
+  long-term maintainability). The codebase is now C99-compliant, and
+  remains build-compatible with SAS/C 6.58.
+
+- Upgrade NDK to AmigaOS NDK 3.2R4
 
 
 
 ---[ DCTelnet 1.7 ]-------------------------------------------------------
 
-	- 68000 CPU support is back! Dual-target build: 68000 & 68020
+- 68000 CPU support is back! Dual-target build: 68000 & 68020
 
-	- Optional @{b}GlowIcons@{ub} set for modern, polished icons
+- Optional @{b}GlowIcons@{ub} set for modern, polished icons
 
-	- Updated Amiga Guide
+- Updated Amiga Guide
 
-	- Add starter address book
+- Add starter address book
 
-	- Install script improvements (checks reqtools.library)
+- Install script improvements (checks reqtools.library)
 
-	- Source code on Github
+- Source code on Github
 
 
 
 ---[ DCTelnet 1.6 ]-------------------------------------------------------
 
-	- Original DCTelnet 1.6 source code released by Zed (October 2000)
-	  on Aminet : https://aminet.net/package/comm/tcp/dct16_src
+- Original DCTelnet 1.6 source code released by Zed (October 2000)
+  on Aminet : https://aminet.net/package/comm/tcp/dct16_src
 
 
 
 ---[ DCTelnet 1.5 ]-------------------------------------------------------
 
-	- 68000 CPU support dropped
+- 68000 CPU support dropped
 
-	- Transfer upload window could inadvertantly popup - fixed.
+- Transfer upload window could inadvertantly popup - fixed.
 
-	- It's now possible to abort a connection attempt.
+- It's now possible to abort a connection attempt.
 
-	- Using XEM libraries while in WB mode works better now.
+- Using XEM libraries while in WB mode works better now.
 
-	- DCTelnet doesn't close and reopen the screen when changing
-	  simple prefs.
+- DCTelnet doesn't close and reopen the screen when changing
+  simple prefs.
 
 
 
 ---[ DCTelnet 1.4 ]-------------------------------------------------------
 
-	- Transfer Window uses proper dri_pens
+- Transfer Window uses proper dri_pens
 
-	- Can use arrow keys to move through scrollback.
+- Can use arrow keys to move through scrollback.
 
-	- Scrollback now uses boopsi gadgets.
+- Scrollback now uses boopsi gadgets.
 
-	- Connection Information window added.
+- Connection Information window added.
 
-	- Program saves your last upload directory.
+- Program saves your last upload directory.
 
-	- XEM Library support added. Allows you to use external XEM
-	  libraries for ansi/vtxxx emulation. Note: this will trash your
-	  window border if in Workbench screen.
+- XEM Library support added. Allows you to use external XEM
+  libraries for ansi/vtxxx emulation. Note: this will trash your
+  window border if in Workbench screen.
 
-	- It's possible to change max number of lines in the Scrollback
-	  (preferences menu).
+- It's possible to change max number of lines in the Scrollback
+  (preferences menu).
 
-	- Clearing Scrollback now possible (F1 key in Scrollback window).
+- Clearing Scrollback now possible (F1 key in Scrollback window).
 
-	- It's now possible to change the Telnet DisplayID string. This
-	  text is sent to the remote host on request (usually only when
-	  connecting to a unix host).
+- It's now possible to change the Telnet DisplayID string. This
+  text is sent to the remote host on request (usually only when
+  connecting to a unix host).
 
-	- Proper pulldown menu colors in Workbench mode.
+- Proper pulldown menu colors in Workbench mode.
 
-	- Tool Window option added.
+- Tool Window option added.
 
-	- "Return = CR + LF" option added.
+- "Return = CR + LF" option added.
 
-	- "Local Echoback" option added.
+- "Local Echoback" option added.
 
-	- "Raw Connection" option added.
+- "Raw Connection" option added.
 
-	- Invisible "screen-to-back" gadget (when titlebar hidden) now
-	  works even during a transfer.
+- Invisible "screen-to-back" gadget (when titlebar hidden) now
+  works even during a transfer.
 
-	- "Jump Scroll" option added (only works in NOT workbench mode
-	  and NOT XEM Library mode).
+- "Jump Scroll" option added (only works in NOT workbench mode
+  and NOT XEM Library mode).
 
 
 
 ---[ DCTelnet 1.3 ]-------------------------------------------------------
 
-	- 'Simple Telnet' option added for loggin in to certain types of
-	  unix machines. If you connect but get no login prompt, try this
-	  this option.
+- 'Simple Telnet' option added for loggin in to certain types of
+  unix machines. If you connect but get no login prompt, try this
+  this option.
 
-	- 'Strip Color' option added. Good for 1bit screens or WB mode.
+- 'Strip Color' option added. Good for 1bit screens or WB mode.
 
-	- 'Packet Window' feature added (screen mode only).
+- 'Packet Window' feature added (screen mode only).
 
-	- Username & Password can be saved in address book and then sent
-	  to remote host via the menus.
+- Username & Password can be saved in address book and then sent
+  to remote host via the menus.
 
-	- ScrollBack won't scroll away while you're reading it.
+- ScrollBack won't scroll away while you're reading it.
 
-	- Invisible screen-to-back gadget added when in 'Hide Titlebar'
-	  mode (just like NComm).
+- Invisible screen-to-back gadget added when in 'Hide Titlebar'
+  mode (just like NComm).
 
-	- Print Scrollback feature added.
+- Print Scrollback feature added.
 
-	- Iconify option added.
+- Iconify option added.
 
 
 
 ---[ DCTelnet 1.2 ]-------------------------------------------------------
 
-	- ScrollBack (Review Buffer) feature added.
+- ScrollBack (Review Buffer) feature added.
 
-	- It's possible to snapshot the window pos/size while in workbench
-	  mode (also snapshots ScrollBack window if it's open).
+- It's possible to snapshot the window pos/size while in workbench
+  mode (also snapshots ScrollBack window if it's open).
 
-	- Function Keys (macros) feature added.
+- Function Keys (macros) feature added.
 
-	- ibmcon.device 1.2 can now handle any sized fonts when in screen
+- ibmcon.device 1.2 can now handle any sized fonts when in screen
           mode!
 
-	- DCTelnet now identifies itself as DEC-VT100 - good for shells.
+- DCTelnet now identifies itself as DEC-VT100 - good for shells.
 
-	- The transfer window text no longer screws up on different fonts.
+- The transfer window text no longer screws up on different fonts.
 
 
 
 ---[ DCTelnet 1.1 ]-------------------------------------------------------
 
-	- Small glitch in parameter passing fixed.
+- Small glitch in parameter passing fixed.
 
-	- You can no longer move windows behind the invisible ansi window.
+- You can no longer move windows behind the invisible ansi window.
 
-	- Download path prefs uses a file requester instead.
+- Download path prefs uses a file requester instead.
 
-	- Sorting the address book now works.
+- Sorting the address book now works.
 
-	- After deleting entry in address book it doesn't move to the top
-	  but to the next site (cosmetic change only :)
+- After deleting entry in address book it doesn't move to the top
+  but to the next site (cosmetic change only :)
 
-	- It's now possible to double click entries in the address book
-	  to connect to them.
+- It's now possible to double click entries in the address book
+  to connect to them.
 
-	- "BackSpace/DEL Swap" option added (good for unix).
+- "BackSpace/DEL Swap" option added (good for unix).
 
-	- Remembers your last used upload directory for the filereq.
+- Remembers your last used upload directory for the filereq.
 
-	- LEDs are refreshed after transfers.
+- LEDs are refreshed after transfers.
 
-	- It's now possible to use workbench screen.
-	  (Note: This uses console.device for ansi emulation and may be a
+- It's now possible to use workbench screen.
+  (Note: This uses console.device for ansi emulation and may be a
            bit slower and less accurate.)
 
-	- File Transfers improved! Far less errors now!
+- File Transfers improved! Far less errors now!
 
 @EndNode
 
@@ -674,9 +704,10 @@ messages.
 - Thanks to Ray Akey for his help with the file tranfer code,
   it wouldn't have worked without his help.
 
-- Thanks to RaMoNsTeR\DC for the installer script.
+- Thanks to RaMoNsTeR\DC for his previous contribution to the installer
+script.
 
-- Thanks to [sHANe] for writing this doc.
+- Thanks to [sHANe] for putting together the original documentation.
 
 - Thanks to LoOnY for creating the cool icons.
 
