@@ -21,6 +21,7 @@ static char MainWindowTitle[] =
 #include <proto/icon.h>               // GetDiskObjectNew(), FreeDiskObject()
 #include <proto/wb.h>                 // AddAppIconA(), RemoveAppIcon()
 #include <proto/keymap.h>             // MapRawKey()
+#include <devices/conunit.h>          // CONU_SNIPMAP, CONU_CHARMAP, CONFLAG_DEFAULT
 #include <libraries/reqtools.h>       // struct rtFileList, RT_FILEREQ, RT_Window
 #include <proto/reqtools.h>           // rtAllocRequestA() rtScreenModeRequest() rtPaletteRequestA()
 #include <proto/socket.h>             // send(), <CloseSocket>()
@@ -110,25 +111,26 @@ struct IntuitionBase *IntuitionBase;
 struct GfxBase *GfxBase;
 struct Library *KeymapBase, *XEmulatorBase, *GadToolsBase, *SocketBase;
 struct Library *DiskfontBase, *IconBase, *WorkbenchBase, *UtilityBase;
-struct Window *win, *sbwin, *toolBarWin;
+
+struct Window *win, *scrollbackWin, *toolBarWin;
 static struct Window *pwin;
-struct List *slist;
+struct List *scrollbackList;
 struct Screen *scr;
-struct DrawInfo *DrawInfo;
-static struct Gadget window_back;
-struct NewGadget ng;
-static struct TextAttr fontattr;
-struct TextFont *ansifont;
-static struct IOStdReq writeio;
+struct DrawInfo *drawInfo;
+static struct Gadget screenToBackGadget; // In top right corner when title bar is hidden in full screen
+struct NewGadget newGadget;
+static struct TextAttr fontAttr;
+struct TextFont *ansiFont;
+static struct IOStdReq writeIOReq;
 static struct MsgPort *WriteConPort;
 struct Menu *menuStrip;
-static struct DiskObject *dobj;
-struct MsgPort *iconport;
-static struct AppIcon *dcicon;
-static struct hostent *HostAddr;
-static struct sockaddr_in INetSocketAddr;
-static struct XEM_IO xemio;
-struct NewWindow nwin;
+static struct DiskObject *diskObj;
+struct MsgPort *iconPort;
+static struct AppIcon *appIconOnWB;
+static struct hostent *hostAddr;
+static struct sockaddr_in inetSocketAddr;
+static struct XEM_IO xemIO;
+struct NewWindow newWin;
 
 #define BUFSIZE 250
 static UBYTE strBuffer[BUFSIZE+2];
@@ -142,41 +144,43 @@ enum	{	GAD_SCROLLER,
 
 struct PrefsStruct prefs;
 
-ULONG tags[5];
-static BPTR fh;
-long lines;
-static long jj;
-long sok, bytes;
-static long contime, sent;
-void *vi;
+ULONG reqtoolsTags[5];
+static BPTR fileHandle;
+long nScrollbackLines;
+static long indexInScrollBuffer;
+long tcpSocket, nBytesReceived;
+static long conectionTime, nBytesSent;
+void *visualInfos;
 char username[42], password[42];
 unsigned char buf[2048], keys[1520];
 static unsigned char conbuf[16], scrollbuf[402];
 char server[64];
 static ULONG lasttop;		// last topline of scrollback
-UWORD cport = 23;	// current tcp port
-UWORD WinTop;		// WinTop topEdge (titlebar height)
-UBYTE done;		// program finished
-static UBYTE connected;	// tcp connected
-static UBYTE passall;		// passall telnet negotiation
-static UBYTE passflag;		// already sent 8bit info
-static UBYTE restartflag;	// prefs changed, restart
-static UBYTE reopenscreen;	// flag
-UBYTE wb;		// running in wb
-UBYTE icon;		// iconified
-static UBYTE doicon;		// must iconify
-UBYTE unicon;		// must uniconify
+UWORD tcpPort = 23;	// current tcp port
+UWORD winTop;		// WinTop topEdge (titlebar height)
+BOOL shouldQuitApp;	// program finished
+static BOOL isConnected;	// tcp connected
+static UBYTE passAll;		// passall telnet negotiation
+static UBYTE passFlag;		// already sent 8bit info
+static BOOL shouldRestart;	// prefs changed, restart
+static BOOL shouldReopenScreen;	// flag
+BOOL isRunningOnWB; // running in wb
+BOOL isAppIconified;	// iconified
+static BOOL shouldIconify;		// must iconify
+BOOL shouldUniconify;		// must uniconify
 static UBYTE drivertype;	// drivertype 0 - normal    1 - xem library
-static UBYTE finger;		// finger? BOOLEAN
+#define DRIVER_NORMAL  0
+#define DRIVER_XEM_LIB 1
+static BOOL isFingerRequest;		// isFingerRequest?
 
-static UWORD colorpens[]  = { 1,4,1,1,6,4,1,0,5,4,1,6,65535 };
+static UWORD colorPens[]  = { 1,4,1,1,6,4,1,0,5,4,1,6,65535 };
 static UWORD color[] = { 0x0000, 0x0DDD, 0x00D0, 0x0DD0, 0x000D, 0x0D0D, 0x00DD, 0x0D00,
 		  0x0555, 0x0FFF, 0x00F0, 0x0FF0, 0x000F, 0x0F0F, 0x00FF, 0x0F00, 65535 };
 /*                 black,    white,  green, yellow, blue, purple, aqua,   red */
 
-char prefsfile[] = "PROGDIR:DCTelnet.Prefs";
-char bookfile[]  = "PROGDIR:DCTelnet.Book";
-char keysfile[]  = "PROGDIR:DCTelnet.Keys";
+char const prefsFilename[] = "PROGDIR:DCTelnet.Prefs";
+char const bookFilename[]  = "PROGDIR:DCTelnet.Book";
+char const keysFilename[]  = "PROGDIR:DCTelnet.Keys";
 static char *programName;            // Name of the program as provided by argv[0] or task::tc_Node.ln_Name
 
 
@@ -187,15 +191,19 @@ void mysprintf(char *Buffer, char *ctl, ...)
 
 static void ConWrite(char *data, long len)
 {
-	if(!icon)
+	if(!isAppIconified)
 	{
 		if(drivertype)
-			XEmulatorWrite(&xemio, data, len);
+			XEmulatorWrite(&xemIO, data, len);
 		else {
-			writeio.io_Data = data;
-			writeio.io_Length = len;
-			writeio.io_Command = CMD_WRITE;
-			DoIO((struct IORequest *)&writeio);
+			// Doc about passing requests to I/O device:
+			// https://amigadev.elowar.com/read/ADCD_2.1/Devices_Manual_guide/node0006.html
+
+			// An I/O request typically has three fields set for every command sent to a device:
+			writeIOReq.io_Data = data;
+			writeIOReq.io_Length = len;
+			writeIOReq.io_Command = CMD_WRITE;
+			DoIO((struct IORequest *)&writeIOReq); // DoIO() is a synchronous function
 		}
 	}
 }
@@ -219,18 +227,18 @@ void TextFmt(struct RastPort *rP, char *ctl, ...)
 
 long TCPSend(char *buf, long len)
 {
-	if(send(sok, buf, len, 0) < 0) return -1;
-	sent += len;
+	if(send(tcpSocket, buf, len, 0) < 0) return -1;
+	nBytesSent += len;
 	return len;
 }
 
 static void WindowSub(void (*Sub)(void))
 {
-	if(sbwin) rtSetWaitPointer(sbwin);
+	if(scrollbackWin) rtSetWaitPointer(scrollbackWin);
 	if (toolBarWin) rtSetWaitPointer(toolBarWin);
 	rtSetWaitPointer(win);
 	Sub();
-	if(sbwin) ClearPointer(sbwin);
+	if(scrollbackWin) ClearPointer(scrollbackWin);
 	if (toolBarWin) ClearPointer(toolBarWin);
 	ClearPointer(win);
 	LEDs();
@@ -265,30 +273,30 @@ void SimpleReq(char *str)
 
 static void DisConnect(char remote, char quiet)
 {
-	if(connected)
+	if(isConnected)
 	{
-		if(!quiet && !icon)
+		if(!quiet && !isAppIconified)
 		{
 			register long spent;
 			if(remote)
 				LocalPrint("›m\r\nConnection closed by foreign host");
 			else
 				LocalPrint("›m\r\nConnection closed");
-			spent = mytime() - contime;
+			spent = mytime() - conectionTime;
 			LocalFmt(". %02ld:%02ld:%02ld spent online.\r\n", spent/3600, (spent/60)%60, spent%60);
 		}
-		shutdown(sok, 2);
-		CloseSocket(sok);
+		shutdown(tcpSocket, 2);
+		CloseSocket(tcpSocket);
 
-		connected = FALSE;
-		passall = FALSE;
-		passflag = FALSE;
-		bytes = 0;
-		sent = 0;
+		isConnected = FALSE;
+		passAll = FALSE;
+		passFlag = FALSE;
+		nBytesReceived = 0;
+		nBytesSent = 0;
 
-		if(finger)
+		if(isFingerRequest)
 		{
-			finger = FALSE;
+			isFingerRequest = FALSE;
 			OnMenu(win, FULLMENUNUM(3, -1, 0));
 		}
 
@@ -298,11 +306,11 @@ static void DisConnect(char remote, char quiet)
 
 void SavePrefs(void)
 {
-	fh = Open(prefsfile, MODE_NEWFILE);
-	if(fh)
+	fileHandle = Open(prefsFilename, MODE_NEWFILE);
+	if(fileHandle)
 	{
-		Write(fh, &prefs, sizeof(struct PrefsStruct));
-		Close(fh);
+		Write(fileHandle, &prefs, sizeof(struct PrefsStruct));
+		Close(fileHandle);
 	}
 }
 
@@ -406,21 +414,21 @@ static void AddBuf(unsigned char *str, long size)
 		{
 			case 10:
 add:
-				scrollbuf[jj] = 0;
-				jj += 2;
-				node = AllocMem(sizeof(struct Scroll) + jj, MEMF_PUBLIC|MEMF_CLEAR);
+				scrollbuf[indexInScrollBuffer] = 0;
+				indexInScrollBuffer += 2;
+				node = AllocMem(sizeof(struct Scroll) + indexInScrollBuffer, MEMF_PUBLIC|MEMF_CLEAR);
 				if(node)
 				{
 					node->nnode.ln_Name = (char *) (long)node + sizeof(struct Scroll);
-					node->len = jj;
-					CopyMem(scrollbuf, node->nnode.ln_Name, jj - 2);
-					AddTail(slist, (struct Node *) node);
-					lines++;
+					node->len = indexInScrollBuffer;
+					CopyMem(scrollbuf, node->nnode.ln_Name, indexInScrollBuffer - 2);
+					AddTail(scrollbackList, (struct Node *) node);
+					nScrollbackLines++;
 				}
-				if(lines > prefs.sb_lines)
+				if(nScrollbackLines > prefs.sb_lines)
 				{
-					lines--;
-					node = (struct Scroll *)slist->lh_Head;
+					nScrollbackLines--;
+					node = (struct Scroll *)scrollbackList->lh_Head;
 					nextnode = (struct Scroll *)node -> nnode.ln_Succ;
 					if(nextnode)
 					{
@@ -428,14 +436,14 @@ add:
 						FreeMem(node, sizeof(struct Scroll)+node->len);
 					}
 				} else {
-					if(sbwin)
+					if(scrollbackWin)
 					{
-						SetGadgetAttrs((struct Gadget *)Scroller, sbwin, NULL,
-							PGA_Total,	lines,
+						SetGadgetAttrs((struct Gadget *)Scroller, scrollbackWin, NULL,
+							PGA_Total,	nScrollbackLines,
 						TAG_DONE);
 					}
 				}
-				jj = 0;
+				indexInScrollBuffer = 0;
 				break;
 			case 7:
 			case 9:
@@ -463,9 +471,9 @@ add:
 						numb[n] = 0;
 						for(n=0; n<atoi(numb); n++)
 						{
-							if(jj > 400) goto add;
-							scrollbuf[jj] = ' ';
-							jj++;
+							if(indexInScrollBuffer > 400) goto add;
+							scrollbuf[indexInScrollBuffer] = ' ';
+							indexInScrollBuffer++;
 						}
 						break;
 					case 'H':
@@ -474,9 +482,9 @@ add:
 				}
 				break;
 			default:
-				if(jj > 400) goto add;
-				scrollbuf[jj] = str[i];
-				jj++;
+				if(indexInScrollBuffer > 400) goto add;
+				scrollbuf[indexInScrollBuffer] = str[i];
+				indexInScrollBuffer++;
 				break;
 		}
 		i++;
@@ -487,9 +495,9 @@ static void Receive(void)
 {
 	register long length;
 
-	if(passall)
+	if(passAll)
 	{
-		if((length = recv(sok, buf, sizeof buf, 0)) < 1)
+		if((length = recv(tcpSocket, buf, sizeof buf, 0)) < 1)
 			DisConnect(TRUE, FALSE);
 		else {
 			char upload = FALSE;
@@ -507,7 +515,7 @@ static void Receive(void)
 				Close(fh);
 			}*/
 
-			if(((prefs.flags&5) == 0)  &&  !icon) // if bits 0 and 2 are clear
+			if(((prefs.flags&5) == 0)  &&  !isAppIconified) // if bits 0 and 2 are clear
 			{
 				SetAPen(&scr->RastPort, 10);
 				RectFill(&scr->RastPort, scr->Width-70, 3, scr->Width-62, prefs.fontsize-2);
@@ -586,7 +594,7 @@ norm:					outbuf[j] = buf[i];
 
             // Draw connection activity indicator when Title bar AND LEDs are enabled
             // AND NOT iconified
-			if(((prefs.flags & (FLAG_HIDE_TITLEBAR | FLAG_HIDE_LEDS)) == 0)  &&  !icon)
+			if(((prefs.flags & (FLAG_HIDE_TITLEBAR | FLAG_HIDE_LEDS)) == 0)  &&  !isAppIconified)
                 EraseRect(&scr->RastPort, scr->Width-72, 2, scr->Width-60, prefs.fontsize-1);
 
 			FreeMem(outbuf, length+256);
@@ -594,11 +602,11 @@ norm:					outbuf[j] = buf[i];
 			if(download) Download(prefs.xferlibrary);
 			if(upload) Upload(prefs.xferlibrary);
 
-			bytes += length;
+			nBytesReceived += length;
 		}
 	} else {
 
-		if((recv(sok, buf, 1, 0)) < 1)
+		if((recv(tcpSocket, buf, 1, 0)) < 1)
 		{
 			DisConnect(TRUE, FALSE);
 			return;
@@ -608,19 +616,19 @@ norm:					outbuf[j] = buf[i];
 		// 0xff then you must send it twice to tell telnet that you don't intend to send a command.
 		if(buf[0] == 255  &&  !(prefs.flags & FLAG_RAW_CONNECTION)) // NOT a Raw Connection
 		{
-			if((recv(sok, &buf[1], 2, 0)) < 1)
+			if((recv(tcpSocket, &buf[1], 2, 0)) < 1)
 			{
 				DisConnect(TRUE, FALSE);
 				return;
 			}
-			bytes += 2;
+			nBytesReceived += 2;
 
 			if(prefs.flags & FLAG_SIMPLE_TELNET) // Very simple telnet negotiation
 			{
 				if(buf[1] == 253)
 				{
 					if(!buf[2])
-						passall = TRUE;
+						passAll = TRUE;
 					else {
 						buf[1] = 252;
 						TCPSend(buf, 3);
@@ -630,11 +638,11 @@ norm:					outbuf[j] = buf[i];
 				switch(buf[1])
 				{
 					case 250: //SubNeg
-						recv(sok, &buf[8], 3, 0);
-						bytes += 3;
+						recv(tcpSocket, &buf[8], 3, 0);
+						nBytesReceived += 3;
 						if(buf[2] == 24)
 						{
-							//recv(sok, buf, 3, 0);
+							//recv(tcpSocket, buf, 3, 0);
 							TCPSend("\377\372\030\000", 4);
 							TCPSend(prefs.displayidstr, strlen(prefs.displayidstr));
 							TCPSend("\377\360", 2);
@@ -642,7 +650,7 @@ norm:					outbuf[j] = buf[i];
 						break;
 					case 253: //DO
 						if(!buf[2])
-							passall = TRUE;
+							passAll = TRUE;
 						else {
 							if(buf[2] != 24) // !TERMTYPE
 								buf[1] = 252; //WON'T
@@ -671,9 +679,9 @@ norm:					outbuf[j] = buf[i];
 				}
 			}
 		} else {
-			bytes++;
+			nBytesReceived++;
 			if(buf[0]) ConWrite(buf, 1);
-			if(bytes > 128) passall = TRUE;
+			if(nBytesReceived > 128) passAll = TRUE;
 		}
 	}
 }
@@ -682,7 +690,7 @@ static void SendMisc(char *str, long len)
 {
 	if(len == -1) len = strlen(str);
 
-	if(connected)
+	if(isConnected)
 		TCPSend(str, len);
 	else
 		ConWrite(str, len);
@@ -747,11 +755,11 @@ norm:				buf[j] = str[i];
 void LEDs(void)
 {
 	// Draw connection activity indicator when Title bar AND LEDs are enabled AND NOT iconified
-	if((prefs.flags & (FLAG_HIDE_TITLEBAR | FLAG_HIDE_LEDS)) == 0  &&  !icon)
+	if((prefs.flags & (FLAG_HIDE_TITLEBAR | FLAG_HIDE_LEDS)) == 0  &&  !isAppIconified)
 	{
 		EraseRect(&scr->RastPort, scr->Width-72, 2, scr->Width-60, prefs.fontsize-1);
 		EraseRect(&scr->RastPort, scr->Width-86, 2, scr->Width-74, prefs.fontsize-1);
-		if(connected)
+		if(isConnected)
 		{
 			SetAPen(&scr->RastPort, 15);
 			RectFill(&scr->RastPort, scr->Width-84, 3, scr->Width-76, prefs.fontsize-2);
@@ -834,7 +842,7 @@ static void ClearScrollBack(void)
 {
 	struct Scroll *worknode, *nextnode;
 
-	worknode = (struct Scroll *)slist->lh_Head;
+	worknode = (struct Scroll *)scrollbackList->lh_Head;
 	while(worknode)
 	{
 		nextnode = (struct Scroll *)worknode -> nnode.ln_Succ;
@@ -843,9 +851,9 @@ static void ClearScrollBack(void)
 		FreeMem(worknode, sizeof(struct Scroll)+worknode->len);
 		worknode = nextnode;
 	}
-	slist->lh_Tail = 0;
-	slist->lh_TailPred = (struct Node *)slist;
-	slist->lh_Head = (struct Node *)&slist->lh_Tail;
+	scrollbackList->lh_Tail = 0;
+	scrollbackList->lh_TailPred = (struct Node *)scrollbackList;
+	scrollbackList->lh_Head = (struct Node *)&scrollbackList->lh_Tail;
 }
 
 static void Finger(void)
@@ -854,7 +862,7 @@ static void Finger(void)
 	char tbuf[64] = "reiver@plan.cat";
 	char *host;
 
-	if(rtGetStringA(tbuf, 63, "Enter EMail Address:", 0, (struct TagItem *)&tags))
+	if(rtGetStringA(tbuf, 63, "Enter EMail Address:", 0, (struct TagItem *)&reqtoolsTags))
 	{
 		host = strchr(tbuf, '@');
 		if(host)
@@ -866,9 +874,9 @@ static void Finger(void)
 			if(Connect_To_Server(host, 79) == 0)
 			{
 				mysprintf(buf, "/W %s\r\n", tbuf);
-				send(sok, buf, strlen(buf), 0);
+				send(tcpSocket, buf, strlen(buf), 0);
 				OffMenu(win, FULLMENUNUM(3, -1, 0));
-				finger = TRUE;
+				isFingerRequest = TRUE;
 			}
 			prefs.flags = oldflags;
 		}
@@ -908,7 +916,7 @@ int main(int argc, char *argv[])
 
 		strcpy(server, argv[1]);
 
-		if(argc > 2) cport = atoi(argv[2]);
+		if(argc > 2) tcpPort = atoi(argv[2]);
 
 		/*if(argc > 3)
 		{
@@ -931,10 +939,10 @@ int main(int argc, char *argv[])
 		return RETURN_FAIL;
 	}
 
-	fh = Open(prefsfile, MODE_OLDFILE);
-	if(fh)
+	fileHandle = Open(prefsFilename, MODE_OLDFILE);
+	if(fileHandle)
 	{
-		if(Read(fh, &prefs, sizeof(struct PrefsStruct)) < 252) // IF OLD CONFIG FILE
+		if(Read(fileHandle, &prefs, sizeof(struct PrefsStruct)) < 252) // IF OLD CONFIG FILE
 		{
 			/*//prefs.win_left = 0;
 			prefs.win_top = 11;
@@ -945,13 +953,13 @@ int main(int argc, char *argv[])
 			prefs.sb_width = 640;
 			prefs.sb_height = (prefs.DisplayHeight / 2) - 4;*/
 
-			Close(fh);
+			Close(fileHandle);
 			goto fixprefs;
 		}
-		Close(fh);
+		Close(fileHandle);
 	} else {
 
-		icon = TRUE;
+		isAppIconified = TRUE;
 
 		SimpleReq(	"This is the first time you've run DCTelnet."	"\n"
 										"\n"
@@ -989,17 +997,17 @@ fixprefs:		//prefs.win_left = 0;
 	if(prefs.sb_lines == 0) prefs.sb_lines = 300;
 	if(prefs.displayidstr[0] == 0) strcpy(prefs.displayidstr, "VT102");
 
-	fh = Open(keysfile, MODE_OLDFILE);
-	if(fh)
+	fileHandle = Open(keysFilename, MODE_OLDFILE);
+	if(fileHandle)
 	{
-		Read(fh, keys, 1520);
-		Close(fh);
+		Read(fileHandle, keys, 1520);
+		Close(fileHandle);
 	}
 
-	slist = AllocMem(sizeof(struct List), MEMF_CLEAR|MEMF_PUBLIC);
-	if(!slist) goto xit;
-	slist->lh_TailPred = (struct Node *)slist;
-	slist->lh_Head = (struct Node *)&slist->lh_Tail;
+	scrollbackList = AllocMem(sizeof(struct List), MEMF_CLEAR|MEMF_PUBLIC);
+	if(!scrollbackList) goto xit;
+	scrollbackList->lh_TailPred = (struct Node *)scrollbackList;
+	scrollbackList->lh_Head = (struct Node *)&scrollbackList->lh_Tail;
 
 	GfxBase = ReqToolsBase -> GfxBase;
 	GadToolsBase = ReqToolsBase -> GadToolsBase;
@@ -1011,13 +1019,13 @@ fixprefs:		//prefs.win_left = 0;
 	IconBase = OpenLibrary("icon.library", 0);
 	SocketBase = OpenLibrary("bsdsocket.library", 0);
 
-	reopenscreen = TRUE;
+	shouldReopenScreen = TRUE;
 restart:
-	if(OpenDisplay(reopenscreen))
+	if(OpenDisplay(shouldReopenScreen))
 	{
-		if(!restartflag && server[0] != 0 && !connected) Connect_To_Server(server, cport);
-		restartflag = FALSE;
-		reopenscreen = FALSE;
+		if(!shouldRestart && server[0] != 0 && !isConnected) Connect_To_Server(server, tcpPort);
+		shouldRestart = FALSE;
+		shouldReopenScreen = FALSE;
 
 		timer.tv_sec = 30;
 		timer.tv_usec = 0;
@@ -1027,95 +1035,95 @@ restart:
 
 // BF: useless label, it is nevered used in function "main".
 //startloop:
-	while(!done)
+	while(!shouldQuitApp)
 	{
 
-		if(doicon)
+		if(shouldIconify)
 		{
 			CloseDisplay(TRUE);
 			// inconify the application:
 			OpenIcon();
-			doicon = FALSE;
+			shouldIconify = FALSE;
 		}
 
-		if(unicon)
+		if(shouldUniconify)
 		{
 			CloseIcon();
 			OpenDisplay(TRUE);
-			unicon = FALSE;
+			shouldUniconify = FALSE;
 		}
 
-		if(icon) // ICONIFIED
+		if(isAppIconified)
 		{
-			if(iconport) iconsig = 1L<<iconport->mp_SigBit;
+			if(iconPort) iconsig = 1L<<iconPort->mp_SigBit;
 
-			if(connected)
+			if(isConnected)
 			{
 				FD_ZERO(&rd);
-				FD_SET(sok, &rd);
+				FD_SET(tcpSocket, &rd);
 				sigmask = SIGBREAKF_CTRL_C | SIGBREAKF_CTRL_F | iconsig;
 
-				i = WaitSelect(sok + 1, &rd, 0, 0, &timer, &sigmask);
+				i = WaitSelect(tcpSocket + 1, &rd, 0, 0, &timer, &sigmask);
 
 			} else {
 				i = 0;
 				sigmask = Wait( SIGBREAKF_CTRL_C | SIGBREAKF_CTRL_F | iconsig );
 			}
 
-	 		if(sigmask&SIGBREAKF_CTRL_F) unicon = TRUE;
+	 		if(sigmask&SIGBREAKF_CTRL_F) shouldUniconify = TRUE;
 
-			if(sigmask&SIGBREAKF_CTRL_C) done = TRUE;
+			if(sigmask&SIGBREAKF_CTRL_C) shouldQuitApp = TRUE;
 
 			if(sigmask&iconsig)
 			{
 				// Workbench sends AppMessage to the application's message port to notify it
 				// https://wiki.amigaos.net/wiki/Workbench_Library#The_AppMessage_Structure
 				register struct AppMessage *appmsg;
-				while(appmsg = (struct AppMessage *)GetMsg(iconport))
+				while(appmsg = (struct AppMessage *)GetMsg(iconPort))
 				{
-					if(appmsg->am_NumArgs==0 && appmsg->am_ArgList==0) unicon = TRUE;
+					if(appmsg->am_NumArgs==0 && appmsg->am_ArgList==0) shouldUniconify = TRUE;
 					ReplyMsg((struct Message *)appmsg);
 				}
 			}
 
 			if(i != 0) Receive();
 
-		} else {
+		} else { // app is not iconified
 
 			winsig = 1L << win->UserPort->mp_SigBit;
-			if(connected)
+			if(isConnected)
 			{
 				FD_ZERO(&rd);
-				FD_SET(sok, &rd);
+				FD_SET(tcpSocket, &rd);
 
 				sigmask = winsig;
 
-				if(sbwin) sigmask |= 1L << sbwin->UserPort->mp_SigBit;
+				if(scrollbackWin) sigmask |= 1L << scrollbackWin->UserPort->mp_SigBit;
 				if(pwin) sigmask |= 1L << pwin->UserPort->mp_SigBit;
 				if (toolBarWin) sigmask |= 1L << toolBarWin->UserPort->mp_SigBit;
 
-				i = WaitSelect(sok + 1, &rd, 0, 0, &timer, &sigmask);
+				i = WaitSelect(tcpSocket + 1, &rd, 0, 0, &timer, &sigmask);
 
 				GetWindowMsg(win);
 
-				if(sbwin) GetWindowMsg(sbwin);
+				if(scrollbackWin) GetWindowMsg(scrollbackWin);
 				if(pwin) GetWindowMsg(pwin);
 				if (toolBarWin) GetWindowMsg(toolBarWin);
 
 				if(i != 0) Receive();
 
-			} else {
+			} else {  // not connected
 				ULONG sig;
 
-				if(sbwin)  sig = 1L << sbwin->UserPort->mp_SigBit; else sig = 0;
+				if(scrollbackWin)  sig = 1L << scrollbackWin->UserPort->mp_SigBit; else sig = 0;
 				if(pwin) sig |= 1L << pwin->UserPort->mp_SigBit;
 				if (toolBarWin) sig |= 1L << toolBarWin->UserPort->mp_SigBit;
 
 				sigmask = Wait( sig | winsig | SIGBREAKF_CTRL_C );
 
-				if(sbwin)
+				if(scrollbackWin)
 				{
-					if(sigmask&(1L << sbwin->UserPort->mp_SigBit)) GetWindowMsg(sbwin);
+					if(sigmask&(1L << scrollbackWin->UserPort->mp_SigBit)) GetWindowMsg(scrollbackWin);
 				}
 				if(pwin)
 				{
@@ -1127,11 +1135,11 @@ restart:
 				}
 
 				if(sigmask&winsig) GetWindowMsg(win);
-				if(sigmask&SIGBREAKF_CTRL_C) done = TRUE;
+				if(sigmask&SIGBREAKF_CTRL_C) shouldQuitApp = TRUE;
 			}
-			if(restartflag)
+			if(shouldRestart)
 			{
-				CloseDisplay(reopenscreen);
+				CloseDisplay(shouldReopenScreen);
 				goto restart;
 			}
 
@@ -1155,7 +1163,7 @@ restart:
 	CloseLibrary(SocketBase);
 
 	ClearScrollBack();
-	FreeMem(slist, sizeof(struct List));
+	FreeMem(scrollbackList, sizeof(struct List));
 xit:
 	CloseLibrary((struct Library *)ReqToolsBase);
 	if (IntuitionBase) CloseLibrary((struct Library *)IntuitionBase);
@@ -1166,27 +1174,27 @@ xit:
 static void SaveScrollBack(char *fname)
 {
 	struct Scroll *worknode, *nextnode;
-	fh = Lock(fname, SHARED_LOCK);
-	if(fh)
+	fileHandle = Lock(fname, SHARED_LOCK);
+	if(fileHandle)
 	{
-		UnLock(fh);
-		if(!rtEZRequestA("File Already Exists.","OverWrite|Cancel", NULL, NULL, (struct TagItem *)&tags))
+		UnLock(fileHandle);
+		if(!rtEZRequestA("File Already Exists.","OverWrite|Cancel", NULL, NULL, (struct TagItem *)&reqtoolsTags))
 			return;
 	}
-	fh = Open(fname, MODE_NEWFILE);
-	if(fh)
+	fileHandle = Open(fname, MODE_NEWFILE);
+	if(fileHandle)
 	{
-		worknode = (struct Scroll *)slist->lh_Head;
+		worknode = (struct Scroll *)scrollbackList->lh_Head;
 		while(worknode)
 		{
 			nextnode = (struct Scroll *)worknode -> nnode.ln_Succ;
 			if(!nextnode) break;
 
-			Write(fh, (char *) (long)worknode + sizeof(struct Scroll), worknode->len-2);
-			Write(fh, "\n", 1);
+			Write(fileHandle, (char *) (long)worknode + sizeof(struct Scroll), worknode->len-2);
+			Write(fileHandle, "\n", 1);
 			worknode = nextnode;
 		}
-		Close(fh);
+		Close(fileHandle);
 	}
 }
 
@@ -1197,7 +1205,7 @@ static void Connect(char thread)
 
 	if(!thread) strcpy(tbuf, server); else tbuf[0] = 0;
 
-	if(rtGetStringA(tbuf, 63, "Enter host,port:", 0, (struct TagItem *)&tags))
+	if(rtGetStringA(tbuf, 63, "Enter host,port:", 0, (struct TagItem *)&reqtoolsTags))
 	{
 		if(tbuf[0] != 0)
 		{
@@ -1215,8 +1223,8 @@ static void Connect(char thread)
 				mysprintf(buf, "run DCTelnet %s %ld <>NIL:", tbuf, port);
 				Execute(buf, 0, 0);
 			} else {
-				cport = port;
-				Connect_To_Server(tbuf, cport);
+				tcpPort = port;
+				Connect_To_Server(tbuf, tcpPort);
 			}
 		}
 	}
@@ -1224,9 +1232,9 @@ static void Connect(char thread)
 
 static void Information(void)
 {
-	if(connected)
+	if(isConnected)
 	{
-		register long spent = mytime() - contime;
+		register long spent = mytime() - conectionTime;
 
 		mysprintf(buf,	"     Host Name ... : %s\n"
 				"    IP Address ... : %s\n"
@@ -1234,19 +1242,19 @@ static void Information(void)
 				"   Online Time ... : %02ld:%02ld:%02ld\n"
 				"    Bytes Sent ... : %ld\n"
 				"Bytes Received ... : %ld",
-			HostAddr->h_name,
-			Inet_NtoA(INetSocketAddr.sin_addr.s_addr),
-			cport,
+			hostAddr->h_name,
+			Inet_NtoA(inetSocketAddr.sin_addr.s_addr),
+			tcpPort,
 			spent/3600, (spent/60)%60, spent%60,
-			sent,
-			bytes);
+			nBytesSent,
+			nBytesReceived);
 
 		rtEZRequestTags(buf, "OK", NULL, NULL,
 				RT_Window,	win,
 				RT_ReqPos,	REQPOS_CENTERSCR,
 				TAG_DONE);
 	} else
-		SimpleReq("Not connected");
+		SimpleReq("Not isConnected");
 }
 
 
@@ -1277,16 +1285,16 @@ static void OutKey(unsigned char key)
 			if(key == 127) key = 8;
 		}
 	}
-	if(connected)
+	if(isConnected)
 	{
 		TCPSend((void *)&key, 1);
 
 		// If you want to send 0xff then you must double it (0xff, 0xff) to tell telnet that you don't intend to send it a command.
 		if(key==(unsigned char)255) TCPSend((void *)&key, 1);
-		if(!passflag)
+		if(!passFlag)
 		{
 			TCPSend("\377\375\000\377\373\000", 6); // 8-bit data path
-			passflag = TRUE;
+			passFlag = TRUE;
 		}
 		if(prefs.flags & FLAG_LOCAL_ECHO) goto cwrite;
 	} else
@@ -1339,12 +1347,13 @@ static void GetWindowMsg(struct Window *wwin)
 				ActivateGadget(&strGad, pwin, 0);
 			}
 
-			if(wwin == sbwin)
+			if(wwin == scrollbackWin)
 			{
 				GetAttr(PGA_Top, Scroller, (ULONG *)&lasttop);
 				RefreshListView(lasttop);
 			}
 
+			// The gadget in top right corner when title bar is hidden in full screen mode
 			if(gad->GadgetID == 20) ScreenToBack(scr);
 
 			if(wwin == toolBarWin)
@@ -1365,7 +1374,7 @@ static void GetWindowMsg(struct Window *wwin)
 						break;
 					case 4:
 					case 5:
-						if(connected)
+						if(isConnected)
 						{
 							if(gad->GadgetID == 4)
 								Upload(prefs.xferlibrary);
@@ -1376,7 +1385,7 @@ static void GetWindowMsg(struct Window *wwin)
 						break;
 					case 6:
 						//if(rtEZRequestA("Quit?", "Quit|Cancel", NULL, NULL, (struct TagItem *)&tags))
-							done = TRUE;
+							shouldQuitApp = TRUE;
 						break;
 				}
 			}
@@ -1385,7 +1394,7 @@ static void GetWindowMsg(struct Window *wwin)
 
 		case IDCMP_NEWSIZE:
 			//LocalPrint("\017\233\164\233\165\233\166\233\167");
-			if(wwin == sbwin) resize = TRUE;
+			if(wwin == scrollbackWin) resize = TRUE;
 			break;
 
 
@@ -1395,7 +1404,7 @@ static void GetWindowMsg(struct Window *wwin)
 
 
 		case IDCMP_RAWKEY:
-			if(wwin == sbwin)
+			if(wwin == scrollbackWin)
 			{
 				switch(code)
 				{
@@ -1413,14 +1422,14 @@ static void GetWindowMsg(struct Window *wwin)
 					}
 					break;
 				case 82:
-					if(rtEZRequestA("Print Scrollback?", "Print|Cancel", NULL, NULL, (struct TagItem *)&tags))
+					if(rtEZRequestA("Print Scrollback?", "Print|Cancel", NULL, NULL, (struct TagItem *)&reqtoolsTags))
 						SaveScrollBack("PRT:");
 					break;
 				case 80:
 					ClearScrollBack();
-					lines = 0;
+					nScrollbackLines = 0;
 					lasttop = 0;
-					SetGadgetAttrs((struct Gadget *)Scroller, sbwin, NULL,
+					SetGadgetAttrs((struct Gadget *)Scroller, scrollbackWin, NULL,
 						PGA_Total,	0,
 					TAG_DONE);
 					RefreshListView(0);
@@ -1509,7 +1518,7 @@ static void GetWindowMsg(struct Window *wwin)
 				/*subNum  = SUBNUM(menuNumber);*/
 				switch(menuNum)
 				{
-				case 0:
+				case 0: // Menu DC Telnet
 					switch(itemNum)
 					{
 					case 0:
@@ -1533,14 +1542,14 @@ static void GetWindowMsg(struct Window *wwin)
 						break;
 
 					case 2:
-						if(wwin != sbwin)
+						if(wwin != scrollbackWin)
 						{
 							CloseScrollBack();
 							OpenScrollBack(lasttop);
 						}
 						break;
 					case 3:
-						doicon = TRUE;
+						shouldIconify = TRUE;
 						break;
 
 					case 4:
@@ -1550,12 +1559,12 @@ static void GetWindowMsg(struct Window *wwin)
 						WindowSub(Finger);
 						break;
 					case 7:
-						done = TRUE;
+						shouldQuitApp = TRUE;
 						break;
 					}
 					break;
-				case 1:
-					if(connected)
+				case 1: // Menu Transfer
+					if(isConnected)
 					{
 						switch(itemNum)
 						{
@@ -1573,10 +1582,10 @@ static void GetWindowMsg(struct Window *wwin)
 							{
 								register long r;
 								strcat(buf, fbuf);
-								fh = Open(buf, MODE_OLDFILE);
-								if(fh)
+								fileHandle = Open(buf, MODE_OLDFILE);
+								if(fileHandle)
 								{
-									while(r = Read(fh, buf, sizeof buf))
+									while(r = Read(fileHandle, buf, sizeof buf))
 									{
 										register long i;
 										for(i=0; i<r; i++)
@@ -1585,7 +1594,7 @@ static void GetWindowMsg(struct Window *wwin)
 										}
 										TCPSend(buf, r);
 									}
-									Close(fh);
+									Close(fileHandle);
 								}
 							}
 							break;
@@ -1594,7 +1603,7 @@ static void GetWindowMsg(struct Window *wwin)
 					} else
 						SimpleReq("You better connect first.");
 					break;
-				case 2:
+				case 2: // Menu Connection
 					switch(itemNum)
 					{
 					case 0:
@@ -1619,13 +1628,13 @@ static void GetWindowMsg(struct Window *wwin)
 
 					}
 					break;
-				case 3:
+				case 3: // Menu Options
 					switch(itemNum)
 					{
 					case 0:
 						UpdatePrefsFlagFromMenu(item, FLAG_USE_WORKBENCH);
-						restartflag = TRUE;
-						reopenscreen = TRUE;
+						shouldRestart = TRUE;
+						shouldReopenScreen = TRUE;
 						break;
 					case 1: // Disable LEDs
 						if(item->Flags & CHECKED)
@@ -1644,8 +1653,8 @@ static void GetWindowMsg(struct Window *wwin)
 						break;
 					case 2:
 						UpdatePrefsFlagFromMenu(item, FLAG_HIDE_TITLEBAR);
-						restartflag = TRUE;
-						reopenscreen = TRUE;
+						shouldRestart = TRUE;
+						shouldReopenScreen = TRUE;
 						break;
 					case 3:
 						UpdatePrefsFlagFromMenu(item, FLAG_CRLF_CORRECTION);
@@ -1664,29 +1673,29 @@ static void GetWindowMsg(struct Window *wwin)
 						UpdatePrefsFlagFromMenu(item, FLAG_SIMPLE_TELNET);
 						break;
 					case 8:
-						if(wb)
+						if (isRunningOnWB)
 							SimpleReq("Packet Window cannot work in Workbench mode.");
 						else
-							restartflag = TRUE;
+							shouldRestart = TRUE;
 
 						UpdatePrefsFlagFromMenu(item, FLAG_PACKET_WINDOW);
 						break;
 
 					case 9:
-						restartflag = TRUE;
+						shouldRestart = TRUE;
 						UpdatePrefsFlagFromMenu(item, FLAG_USE_XEM_LIBRARY);
 						break;
 
 					case 10:
 						UpdatePrefsFlagFromMenu(item, FLAG_TOOL_BAR);
-						if(wb)
+						if (isRunningOnWB)
 						{
 							if(item->Flags & CHECKED)
 								OpenToolBarWindow(TRUE);
 							else
 								CloseToolBarWindow();
 						} else
-							restartflag = TRUE;
+							shouldRestart = TRUE;
 						break;
 
 					case 11:
@@ -1702,19 +1711,19 @@ static void GetWindowMsg(struct Window *wwin)
 						break;
 					case 14:
 						UpdatePrefsFlagFromMenu(item, FLAG_JUMP_SCROLL);
-						if(!wb && !(prefs.flags & FLAG_USE_XEM_LIBRARY)) restartflag = TRUE;
+						if(!isRunningOnWB && !(prefs.flags & FLAG_USE_XEM_LIBRARY)) shouldRestart = TRUE;
 						break;
 					}
 					break;
 
-				case 4:
+				case 4: // Menu Settings
 					switch(itemNum)
 					{
-					case 0:
+					case 0: // Screen Mode...
 						if(ChooseScreen(FALSE))
 						{
-							restartflag = TRUE;
-							reopenscreen = TRUE;
+							shouldRestart = TRUE;
+							shouldReopenScreen = TRUE;
 						}
 						break;
 
@@ -1733,8 +1742,8 @@ static void GetWindowMsg(struct Window *wwin)
 							{
 								strcpy(prefs.fontname, fontreq->Attr.ta_Name);
 								prefs.fontsize = fontreq->Attr.ta_YSize;
-								restartflag = TRUE;
-								reopenscreen = TRUE;
+								shouldRestart = TRUE;
+								shouldReopenScreen = TRUE;
 							}
 							rtFreeRequest(fontreq);
 						}
@@ -1743,7 +1752,7 @@ static void GetWindowMsg(struct Window *wwin)
 						reqinfo = rtAllocRequestA(RT_REQINFO, NULL);
 						if(reqinfo)
 						{
-							if(rtPaletteRequestA("Screen Palette..", reqinfo, (struct TagItem *)&tags) != -1)
+							if(rtPaletteRequestA("Screen Palette..", reqinfo, (struct TagItem *)&reqtoolsTags) != -1)
 							{
 								UWORD i = 0;
 
@@ -1771,7 +1780,7 @@ static void GetWindowMsg(struct Window *wwin)
 						break;
 
 					case 5:
-						rtGetStringA(prefs.xferinit, 51, "Protocol Init..", 0, (struct TagItem *)&tags);
+						rtGetStringA(prefs.xferinit, 51, "Protocol Init..", 0, (struct TagItem *)&reqtoolsTags);
 						break;
 
 					case 6:
@@ -1781,30 +1790,30 @@ static void GetWindowMsg(struct Window *wwin)
 					case 7:
 						if(FileReq("LIBS:", "xem#?.library", prefs.displaydriver, "XEM Library..", FALSE, FREQF_PATGAD))
 						{
-							if(prefs.flags & FLAG_USE_XEM_LIBRARY) restartflag = TRUE;
+							if(prefs.flags & FLAG_USE_XEM_LIBRARY) shouldRestart = TRUE;
 						}
 						break;
 
 					case 8:
-						rtGetStringA(prefs.displayidstr, 31, "Telnet Display ID..", 0, (struct TagItem *)&tags);
+						rtGetStringA(prefs.displayidstr, 31, "Telnet Display ID..", 0, (struct TagItem *)&reqtoolsTags);
 						break;
 
 					case 9:
-						rtGetLongA(&prefs.sb_lines, "ScrollBack Lines..", NULL, (struct TagItem *)&tags);
+						rtGetLongA(&prefs.sb_lines, "ScrollBack Lines..", NULL, (struct TagItem *)&reqtoolsTags);
 						break;
 
-					case 10:
+					case 10: // Snapshot Windows
 						prefs.win_top = win->TopEdge;
 						prefs.win_left = win->LeftEdge;
 						prefs.win_height = win->Height;
 						prefs.win_width = win->Width;
 
-						if(sbwin)
+						if(scrollbackWin)
 						{
-							prefs.sb_left = sbwin->LeftEdge;
-							prefs.sb_top = sbwin->TopEdge;
-							prefs.sb_width = sbwin->Width;
-							prefs.sb_height = sbwin->Height;
+							prefs.sb_left = scrollbackWin->LeftEdge;
+							prefs.sb_top = scrollbackWin->TopEdge;
+							prefs.sb_width = scrollbackWin->Width;
+							prefs.sb_height = scrollbackWin->Height;
 						}
 						if (toolBarWin)
 						{
@@ -1815,7 +1824,7 @@ static void GetWindowMsg(struct Window *wwin)
 						break;
 					}
 					break;
-				case 5:
+				case 5: // Menu Login
 					switch(itemNum)
 					{
 					case 0:
@@ -1835,8 +1844,8 @@ static void GetWindowMsg(struct Window *wwin)
 
 
 		case IDCMP_CLOSEWINDOW:
-			if(wwin == win) done = TRUE;
-			if(wwin == sbwin) close = TRUE;
+			if(wwin == win) shouldQuitApp = TRUE;
+			if(wwin == scrollbackWin) close = TRUE;
 			if(wwin == toolBarWin) shouldCloseToolbarWin = TRUE;
 			break;
 
@@ -1849,10 +1858,10 @@ up:				if(lasttop > 0) lasttop--;
 				break;
 
 			case GAD_DOWN:
-down:				if(lasttop+((sbwin->Height - (prefs.fontsize + scr->WBorTop + 2)) / prefs.fontsize) < lines) lasttop++;
+down:				if(lasttop+((scrollbackWin->Height - (prefs.fontsize + scr->WBorTop + 2)) / prefs.fontsize) < nScrollbackLines) lasttop++;
 				break;
 			}
-			SetGadgetAttrs((struct Gadget *)Scroller, sbwin, NULL,
+			SetGadgetAttrs((struct Gadget *)Scroller, scrollbackWin, NULL,
 				PGA_Top,	lasttop,
 			TAG_DONE);
 
@@ -1865,11 +1874,11 @@ down:				if(lasttop+((sbwin->Height - (prefs.fontsize + scr->WBorTop + 2)) / pre
 
 	if(resize)
 	{
-		SetRast(sbwin->RPort, 0);
-		RefreshWindowFrame(sbwin);
+		SetRast(scrollbackWin->RPort, 0);
+		RefreshWindowFrame(scrollbackWin);
 		RefreshListView(lasttop);
-		SetGadgetAttrs((struct Gadget *)Scroller, sbwin, NULL,
-			PGA_Visible,	(sbwin->Height - (prefs.fontsize + scr->WBorTop + 2)) / prefs.fontsize,
+		SetGadgetAttrs((struct Gadget *)Scroller, scrollbackWin, NULL,
+			PGA_Visible,	(scrollbackWin->Height - (prefs.fontsize + scr->WBorTop + 2)) / prefs.fontsize,
 		TAG_END);
 	}
 	if(close) CloseScrollBack();
@@ -1901,13 +1910,14 @@ static void CheckError(void)
 
 #include <dos/dostags.h>
 
-struct Task *parent;
-static struct Task *child;
+// An AmigaOS Task is roughly equivalent to a thread within the program's address space
+struct Task *parentTask;
+static struct Task *childTask;
 
-
-UWORD abort_flag;
-UWORD connect_msg_type;
-char *connect_string;
+// This flag is set by the "Connecting..." window task when the user cancels the operation:
+BOOL isConnectionAborted;
+UWORD connectMsgType;
+char *connectString;
 
 static UWORD Connect_To_ServerA(char *servername, UWORD port);
 
@@ -1915,15 +1925,19 @@ UWORD Connect_To_Server(char *servername, UWORD port)
 {
 	UWORD ret;
 
-	parent = FindTask(0);
+    parentTask = FindTask(NULL);   // Get current Task
 
-	child = (struct Task *)CreateNewProcTags(NP_Entry, Connect_To_Server_Child, TAG_DONE);
+
+    // In V36 (AmigaOS 2.00 & 2.02), NP_Arguments was broken in a number of ways, and probably
+    // should be avoided.
+	childTask = (struct Task *)CreateNewProcTags(NP_Entry, HandleConnectingWindowTask, TAG_DONE);
 
 	ret = Connect_To_ServerA(servername, port);
-	Signal(child, SIGBREAKF_CTRL_C);
+	Signal(childTask, SIGBREAKF_CTRL_C);
 
 	Wait(SIGBREAKF_CTRL_E);
 
+	// Check & clear CTRL_C signal
 	while((SetSignal(0L, SIGBREAKF_CTRL_C) & SIGBREAKF_CTRL_C))
 	{
 	}
@@ -1931,11 +1945,14 @@ UWORD Connect_To_Server(char *servername, UWORD port)
 	return(ret);
 }
 
+// Notify HandleConnectingWindowTask that a new message should be displayed
 static void c_msg(char *msg, UWORD type)
 {
-	connect_string = msg;
-	connect_msg_type = type;
-	Signal(child, SIGBREAKF_CTRL_E);
+	connectString = msg;
+	connectMsgType = type;
+	Signal(childTask, SIGBREAKF_CTRL_E);
+
+	// Wait for HandleConnectingWindowTask to acknowledge the signal
 	Wait(SIGBREAKF_CTRL_E);
 }
 
@@ -1966,11 +1983,11 @@ static UWORD Connect_To_ServerA(char *servername, UWORD port)
 
 	strcpy(server, servername);
 
-	abort_flag = 0;
-	HostAddr = gethostbyname(server);
-	if(!HostAddr)
+	isConnectionAborted = 0;
+	hostAddr = gethostbyname(server);
+	if(!hostAddr)
 	{
-		if(abort_flag)
+		if(isConnectionAborted)
 			LocalPrint("Host lookup aborted.\r\n");
 		else
 			LocalPrint("Unknown host. Maybe you misspelt it?\r\n");
@@ -1978,24 +1995,24 @@ static UWORD Connect_To_ServerA(char *servername, UWORD port)
 		return(1);
 	}
 
-	INetSocketAddr.sin_len = sizeof(INetSocketAddr);
-	INetSocketAddr.sin_port = port;
-	INetSocketAddr.sin_family = AF_INET;
-	INetSocketAddr.sin_addr.s_addr = 0;
+	inetSocketAddr.sin_len = sizeof(inetSocketAddr);
+	inetSocketAddr.sin_port = port;
+	inetSocketAddr.sin_family = AF_INET;
+	inetSocketAddr.sin_addr.s_addr = 0;
 
-	memcpy(&INetSocketAddr.sin_addr, HostAddr->h_addr, HostAddr->h_length);
-	//CopyMem(HostAddr->h_addr, &INetSocketAddr.sin_addr, HostAddr->h_length);
+	memcpy(&inetSocketAddr.sin_addr, hostAddr->h_addr, hostAddr->h_length);
+	//CopyMem(hostAddr->h_addr, &inetSocketAddr.sin_addr, hostAddr->h_length);
 
-	c_msg(Inet_NtoA(INetSocketAddr.sin_addr.s_addr), 1);
-	c_msg(HostAddr->h_name, 2);
+	c_msg(Inet_NtoA(inetSocketAddr.sin_addr.s_addr), 1);
+	c_msg(hostAddr->h_name, 2);
 
 	LocalFmt("Connecting to ›32m%s›m (›36m%s›m) port ›35m%ld›m...\r\n",
-		HostAddr->h_name,
-		Inet_NtoA(INetSocketAddr.sin_addr.s_addr),
+		hostAddr->h_name,
+		Inet_NtoA(inetSocketAddr.sin_addr.s_addr),
 		port);
 
-	sok = socket(HostAddr->h_addrtype, SOCK_STREAM, 0);
-	if(sok == -1)
+	tcpSocket = socket(hostAddr->h_addrtype, SOCK_STREAM, 0);
+	if(tcpSocket == -1)
 	{
 		LocalPrint("Cannot Open Socket.\r\n");
 		LEDs();
@@ -2005,11 +2022,11 @@ static UWORD Connect_To_ServerA(char *servername, UWORD port)
 	c_msg("Connecting...", 4);
 
 	// connect() expects a generic sockaddr, so cast the INet socket address
-	if(connect(sok, (struct sockaddr *)&INetSocketAddr, sizeof(INetSocketAddr)) == -1)
+	if(connect(tcpSocket, (struct sockaddr *)&inetSocketAddr, sizeof(inetSocketAddr)) == -1)
 	{
 		CheckError();
-		shutdown(sok, 2);
-		CloseSocket(sok);
+		shutdown(tcpSocket, 2);
+		CloseSocket(tcpSocket);
 		LEDs();
 		return(3);
 	}
@@ -2019,15 +2036,15 @@ static UWORD Connect_To_ServerA(char *servername, UWORD port)
 	if(!(prefs.flags & FLAG_RAW_CONNECTION))
 		TCPSend("\377\375\003", 3);
 	else {
-		passall = TRUE;
-		passflag = TRUE;
+		passAll = TRUE;
+		passFlag = TRUE;
 	}
 
-	if(wb) WindowToFront(win); else ScreenToFront(scr);
+	if (isRunningOnWB) WindowToFront(win); else ScreenToFront(scr);
 
-	contime = mytime();
+	conectionTime = mytime();
 
-	connected = TRUE;
+	isConnected = TRUE;
 
 	LEDs();
 
@@ -2065,37 +2082,37 @@ BOOL OpenDisplay(BOOL manageScreen)
 
 	if(!manageScreen) goto skip_screen_open;
 
-	if(prefs.flags & FLAG_USE_WORKBENCH) wb = TRUE; else wb = FALSE;
+	if(prefs.flags & FLAG_USE_WORKBENCH) isRunningOnWB = TRUE; else isRunningOnWB = FALSE;
 
-	fontattr.ta_Name = prefs.fontname;
-	fontattr.ta_YSize = prefs.fontsize;
-	ansifont = OpenDiskFont(&fontattr);
-	if(!ansifont)
+	fontAttr.ta_Name = prefs.fontname;
+	fontAttr.ta_YSize = prefs.fontsize;
+	ansiFont = OpenDiskFont(&fontAttr);
+	if(!ansiFont)
 	{
-		fontattr.ta_Name = "topaz.font";
-		fontattr.ta_YSize = 8;
-		ansifont = OpenFont(&fontattr);
+		fontAttr.ta_Name = "topaz.font";
+		fontAttr.ta_YSize = 8;
+		ansiFont = OpenFont(&fontAttr);
 	}
 
-	if(wb)
+	if (isRunningOnWB)
 	{
 		prefs.flags |= FLAG_HIDE_LEDS;
 		prefs.flags &= ~FLAG_PACKET_WINDOW;		   // Not Packet Window
 		scr = LockPubScreen(0L);
 	} else {
 		register UWORD *pens;
-		static struct NewScreen nscr;
+		static struct NewScreen newscr;
 
-		if(prefs.DisplayDepth < 3) pens = &colorpens[12]; else pens = colorpens;
+		if(prefs.DisplayDepth < 3) pens = &colorPens[12]; else pens = colorPens;
 
-		memcpy(&nscr.Width, &prefs.DisplayWidth, 6);
-		nscr.BlockPen = 1;
-		nscr.Type = CUSTOMSCREEN;
-		nscr.Font = &fontattr;
+		memcpy(&newscr.Width, &prefs.DisplayWidth, 6);
+		newscr.BlockPen = 1;
+		newscr.Type = CUSTOMSCREEN;
+		newscr.Font = &fontAttr;
 		// Main window title in full screen mode:
-		nscr.DefaultTitle = MainWindowTitle;
+		newscr.DefaultTitle = MainWindowTitle;
 
-		scr = OpenScreenTags(&nscr,
+		scr = OpenScreenTags(&newscr,
 			SA_DisplayID,	prefs.DisplayID,
        	       	        SA_Pens,	(ULONG)pens,
 			SA_ShowTitle,	!(prefs.flags & FLAG_HIDE_TITLEBAR),
@@ -2112,7 +2129,7 @@ BOOL OpenDisplay(BOOL manageScreen)
 			SA_ShowTitle,	!prefs.flags&1,
 			SA_Type,	CUSTOMSCREEN,
        	       	        SA_Pens,	(ULONG)pens,
-			SA_Font,	&fontattr,
+			SA_Font,	&fontAttr,
 			SA_AutoScroll,	TRUE,
 			SA_Interleaved,	TRUE,
        	       	        TAG_END);*/
@@ -2120,16 +2137,16 @@ BOOL OpenDisplay(BOOL manageScreen)
 
 	if(scr)
 	{
-		WinTop = (scr->WBorTop)+(scr->Font->ta_YSize)+1;
-		vi = GetVisualInfoA(scr, 0);
-		DrawInfo = GetScreenDrawInfo(scr);
+		winTop = (scr->WBorTop)+(scr->Font->ta_YSize)+1;
+		visualInfos = GetVisualInfoA(scr, 0);
+		drawInfo = GetScreenDrawInfo(scr);
 skip_screen_open:
-		nwin.Screen = scr;
-		nwin.Type = PUBLICSCREEN;
-		nwin.DetailPen = 255;
-		nwin.BlockPen = 255;
+		newWin.Screen = scr;
+		newWin.Type = PUBLICSCREEN;
+		newWin.DetailPen = 255;
+		newWin.BlockPen = 255;
 
-		if(wb)
+		if (isRunningOnWB)
 		{
 			static UWORD sizes[4] = { 200, 50, 1600, 1200 };
 
@@ -2138,21 +2155,21 @@ skip_screen_open:
 			mynewmenu[40].nm_Flags = NM_ITEMDISABLED;  // ScreenMode
 			mynewmenu[42].nm_Flags = NM_ITEMDISABLED;  // ScreenPalette
 
-			memcpy(&nwin, &prefs.win_left, 8);
-			memcpy(&nwin.MinWidth, &sizes, 8);
-			nwin.IDCMPFlags = IDCMP_RAWKEY | IDCMP_CLOSEWINDOW | IDCMP_MENUPICK;
-			//nwin.Flags = WFLG_GIMMEZEROZERO|WFLG_NEWLOOKMENUS|WFLG_SIMPLE_REFRESH|WFLG_ACTIVATE|WFLG_CLOSEGADGET|WFLG_DRAGBAR|WFLG_DEPTHGADGET|WFLG_SIZEGADGET;
-			nwin.Flags = WFLG_GIMMEZEROZERO|WFLG_NEWLOOKMENUS|WFLG_SMART_REFRESH|WFLG_ACTIVATE|WFLG_CLOSEGADGET|WFLG_DRAGBAR|WFLG_DEPTHGADGET|WFLG_SIZEGADGET;
+			memcpy(&newWin, &prefs.win_left, 8);
+			memcpy(&newWin.MinWidth, &sizes, 8);
+			newWin.IDCMPFlags = IDCMP_RAWKEY | IDCMP_CLOSEWINDOW | IDCMP_MENUPICK;
+			//newWin.Flags = WFLG_GIMMEZEROZERO|WFLG_NEWLOOKMENUS|WFLG_SIMPLE_REFRESH|WFLG_ACTIVATE|WFLG_CLOSEGADGET|WFLG_DRAGBAR|WFLG_DEPTHGADGET|WFLG_SIZEGADGET;
+			newWin.Flags = WFLG_GIMMEZEROZERO|WFLG_NEWLOOKMENUS|WFLG_SMART_REFRESH|WFLG_ACTIVATE|WFLG_CLOSEGADGET|WFLG_DRAGBAR|WFLG_DEPTHGADGET|WFLG_SIZEGADGET;
 			// Main window title in windowed workbench mode:
-			nwin.Title = MainWindowTitle;
-			nwin.FirstGadget = 0;
+			newWin.Title = MainWindowTitle;
+			newWin.FirstGadget = 0;
 
-			CheckDimensions(&nwin);
+			CheckDimensions(&newWin);
 
-			win = OpenWindow(&nwin);
+			win = OpenWindow(&newWin);
 			UnlockPubScreen(0L, scr);
 			if(prefs.flags & FLAG_TOOL_BAR) OpenToolBarWindow(FALSE);
-		} else {
+		} else { // running in full screen
 			struct Gadget *backgad;
 			UWORD top, height;
 
@@ -2169,13 +2186,13 @@ skip_screen_open:
 			{
 				top = 0;
 				height = scr->Height;
-				backgad = &window_back;
-				window_back.Width = 20;
-				window_back.Height = 9;
-				window_back.Activation = RELVERIFY;
-				window_back.GadgetType = BOOLGADGET;
-				window_back.LeftEdge = scr->Width - 20;
-				window_back.GadgetID = 20;
+				backgad = &screenToBackGadget;
+				screenToBackGadget.Width = 20;
+				screenToBackGadget.Height = 9;
+				screenToBackGadget.Activation = RELVERIFY;
+				screenToBackGadget.GadgetType = BOOLGADGET;
+				screenToBackGadget.LeftEdge = scr->Width - 20;
+				screenToBackGadget.GadgetID = 20;
 			} else {
 				top = prefs.fontsize + 3;
 				height = scr->Height - (prefs.fontsize + 3);
@@ -2193,9 +2210,9 @@ skip_screen_open:
 				}
 			}
 
-			nwin.LeftEdge = 0;
-			nwin.Title = 0;
-			nwin.Width = scr->Width;
+			newWin.LeftEdge = 0;
+			newWin.Title = 0;
+			newWin.Width = scr->Width;
 
 			if(prefs.flags & FLAG_PACKET_WINDOW)	// Packet
 			{
@@ -2209,45 +2226,45 @@ skip_screen_open:
 				strGad.Width = scr->Width;
 				strGad.Height = prefs.fontsize;
 
-				nwin.TopEdge = top+height;
-				nwin.Height = prefs.fontsize+2,
-				nwin.FirstGadget = &strGad;
-				nwin.IDCMPFlags =	IDCMP_MENUPICK |
+				newWin.TopEdge = top+height;
+				newWin.Height = prefs.fontsize+2,
+				newWin.FirstGadget = &strGad;
+				newWin.IDCMPFlags =	IDCMP_MENUPICK |
 							IDCMP_GADGETUP;
-				nwin.Flags =	WFLG_NEWLOOKMENUS |
+				newWin.Flags =	WFLG_NEWLOOKMENUS |
 						WFLG_BORDERLESS |
 						WFLG_BACKDROP;
 
-				pwin = OpenWindow(&nwin);
+				pwin = OpenWindow(&newWin);
 
 				SetAPen(pwin->RPort, 1);
 				Draw(pwin->RPort, pwin->Width, 0);
 			}
 
-			nwin.TopEdge = top;
-			nwin.Height = height;
-			nwin.FirstGadget = backgad;
-			nwin.IDCMPFlags =	IDCMP_GADGETUP |
+			newWin.TopEdge = top;
+			newWin.Height = height;
+			newWin.FirstGadget = backgad;
+			newWin.IDCMPFlags =	IDCMP_GADGETUP |
 						IDCMP_RAWKEY |
 						IDCMP_CLOSEWINDOW |
 						IDCMP_MENUPICK;
-			nwin.Flags =	WFLG_SMART_REFRESH |
+			newWin.Flags =	WFLG_SMART_REFRESH |
 					WFLG_NEWLOOKMENUS |
 					WFLG_BORDERLESS |
 					WFLG_ACTIVATE |
 					WFLG_BACKDROP;
 
-			win = OpenWindow(&nwin);
+			win = OpenWindow(&newWin);
 		}
 
 		if(win)
 		{
 			if((prefs.flags & FLAG_USE_XEM_LIBRARY) && prefs.displaydriver[0])
 			{
-				drivertype = 1;
+				drivertype = DRIVER_XEM_LIB;
 				mynewmenu[38].nm_Flags = NM_ITEMDISABLED;
 			} else {
-				drivertype = 0;
+				drivertype = DRIVER_NORMAL;
 				mynewmenu[38].nm_Flags = HIGHCOMP|CHECKIT|MENUTOGGLE;
 				prefs.flags &= ~FLAG_USE_XEM_LIBRARY;
 			}
@@ -2276,12 +2293,12 @@ skip_screen_open:
 					//mynewmenu[i+24].nm_Flags = HIGHCOMP|CHECKIT|MENUTOGGLE;
 			}
 
-			tags[0] = RT_Window;
-			tags[1] = (ULONG)win;
-			tags[2] = RT_WaitPointer;
-			tags[3] = TRUE;
+			reqtoolsTags[0] = RT_Window;
+			reqtoolsTags[1] = (ULONG)win;
+			reqtoolsTags[2] = RT_WaitPointer;
+			reqtoolsTags[3] = TRUE;
 
-			SetFont(win->RPort, ansifont);
+			SetFont(win->RPort, ansiFont);
 
 			if(menuStrip = CreateMenusA(mynewmenu, 0))
 			{
@@ -2293,80 +2310,97 @@ skip_screen_open:
 				//item->Flags &= ~HIGHCOMP;
 				item->Flags = 150;
 
-				ltags[1] = wb;
- 				LayoutMenusA(menuStrip, vi, (struct TagItem *)&ltags);
+				ltags[1] = isRunningOnWB;
+ 				LayoutMenusA(menuStrip, visualInfos, (struct TagItem *)&ltags);
 
 				SetMenuStrip(win, menuStrip);
 
 				if(pwin) ResetMenuStrip(pwin, menuStrip);
 				if (toolBarWin) ResetMenuStrip(toolBarWin, menuStrip);
 
-				if(drivertype) goto lib;
+				if(drivertype == DRIVER_XEM_LIB) goto lib;
 cantfind:
+                // Exec Device I/O Functions docs:
+                // https://amigadev.elowar.com/read/ADCD_2.1/Libraries_Manual_guide/node02A5.html
+
+				// needed for async IO replies, but we will do sync IO anyway, so unused:
 				WriteConPort = CreateMsgPort();
 				if(WriteConPort)
 				{
 					char *dev;
 					UWORD unit;
 
-					writeio.io_Message.mn_ReplyPort = WriteConPort;
-					writeio.io_Data = win;
-					writeio.io_Length = sizeof(struct Window);
+				   // Doc about OpenDevice() to open a console device :
+		   // https://amigadev.elowar.com/read/ADCD_2.1/Libraries_Manual_guide/node029E.html
+           // https://amigadev.elowar.com/read/ADCD_2.1/Includes_and_Autodocs_2._guide/node0509.html
 
-					if(wb)
+		   // The console device :
+		   // https://amigadev.elowar.com/read/ADCD_2.1/Devices_Manual_guide/node0080.html
+
+					//the window that is used by the console device for output:
+					writeIOReq.io_Data = win;
+					writeIOReq.io_Length = sizeof(struct Window);
+
+					// needed for async IO replies, but we will do sync IO anyway, so useless:
+					writeIOReq.io_Message.mn_ReplyPort = WriteConPort;
+
+					// The unit number that is a standard parameter for an open call is used
+					// specially by this device.
+					if (isRunningOnWB)
 					{
 						dev = "console.device";
-						unit = 3;
+						unit = CONU_SNIPMAP;
 					} else {
 						dev = "ibmcon.device";
 						if(prefs.flags & FLAG_JUMP_SCROLL)
-							unit = 2;
+							unit = 2; // unit 2 is undocumented in the NDK and AmigaOS docs
 						else
-							unit = 1;
+							unit = CONU_CHARMAP;
 					}
 
-					i = OpenDevice(dev, unit, (struct IORequest *)&writeio, 0);
+
+					i = OpenDevice(dev, unit, (struct IORequest *)&writeIOReq, CONFLAG_DEFAULT);
 
 					if(i == 0)
 					{
 lib:
-						if(drivertype)
+						if(drivertype == DRIVER_XEM_LIB)
 						{
 							XEmulatorBase = OpenLibrary(prefs.displaydriver, 0);
 							if(!XEmulatorBase)
 							{
-								drivertype = 0;
+								drivertype = DRIVER_NORMAL;
 								SimpleReq("Failed to open XEM library.");
 								goto cantfind;
 							}
-							xemio.xem_window	= win;
-							xemio.xem_font 		= ansifont;
-							//xemio.xem_signal	= 0;
-							xemio.xem_screendepth	= scr->BitMap.Depth;
-							xemio.xem_swrite	= (long (* )(UBYTE * , LONG ))xpr_swrite;
-							xemio.xem_sread		= (long (* )(UBYTE * , LONG , LONG ))xpr_sread;
+							xemIO.xem_window	= win;
+							xemIO.xem_font 		= ansiFont;
+							//xemIO.xem_signal	= 0;
+							xemIO.xem_screendepth	= scr->BitMap.Depth;
+							xemIO.xem_swrite	= (long (* )(UBYTE * , LONG ))xpr_swrite;
+							xemIO.xem_sread		= (long (* )(UBYTE * , LONG , LONG ))xpr_sread;
 							// BF : xpr_gets() does nothing. just a return 0. should we put a NULL instead ?
 							// seems to be the usual value for unimplemented callback functions
-							xemio.xem_sbreak	= (long (* )(void))xpr_gets;
-							xemio.xem_sstart	= (void (* )(void))xpr_gets;
-							xemio.xem_sstop		= (long (* )(void))xpr_gets;
-							xemio.xem_sflush	= (long (* )(void))xpr_sflush;
-							xemio.xem_toptions	= NULL; 	// (unsigned long (* )(LONG , struct xem_option ** ))xpr_gets;
-							xemio.xem_tgets		= (long (* )(UBYTE * , UBYTE * , ULONG ))xpr_gets;
-							xemio.xem_tbeep		= (void (* )(ULONG , ULONG ))xpr_gets;
-							//xemio.xem_console	= 0;
-							//xemio.xem_process_macrokeys = 0;
+							xemIO.xem_sbreak	= (long (* )(void))xpr_gets;
+							xemIO.xem_sstart	= (void (* )(void))xpr_gets;
+							xemIO.xem_sstop		= (long (* )(void))xpr_gets;
+							xemIO.xem_sflush	= (long (* )(void))xpr_sflush;
+							xemIO.xem_toptions	= NULL; 	// (unsigned long (* )(LONG , struct xem_option ** ))xpr_gets;
+							xemIO.xem_tgets		= (long (* )(UBYTE * , UBYTE * , ULONG ))xpr_gets;
+							xemIO.xem_tbeep		= (void (* )(ULONG , ULONG ))xpr_gets;
+							//xemIO.xem_console	= 0;
+							//xemIO.xem_process_macrokeys = 0;
 
-							XEmulatorSetup(&xemio);
-							XEmulatorOpenConsole(&xemio);
-							XEmulatorMacroKeyFilter(&xemio, NULL);
+							XEmulatorSetup(&xemIO);
+							XEmulatorOpenConsole(&xemIO);
+							XEmulatorMacroKeyFilter(&xemIO, NULL);
 						}
 
-						icon = FALSE;
+						isAppIconified = FALSE;
 
 						LEDs();
 
-						if(!connected)
+						if(!isConnected)
 						{
 							register UWORD flags;
 							register char cpu;
@@ -2434,16 +2468,17 @@ lib:
  */
 void CloseDisplay(BOOL manageScreen)
 {
-	if(drivertype)
+	if(drivertype == DRIVER_XEM_LIB)
 	{
 		if(win)
 		{
-			XEmulatorCloseConsole(&xemio);
-			XEmulatorCleanup(&xemio);
+			XEmulatorCloseConsole(&xemIO);
+			XEmulatorCleanup(&xemIO);
 			CloseLibrary(XEmulatorBase);
 		}
 	} else {
-		if(writeio.io_Error == 0) CloseDevice((struct IORequest *)&writeio);
+		// https://amigadev.elowar.com/read/ADCD_2.1/Devices_Manual_guide/node0190.html
+		if(writeIOReq.io_Error == 0) CloseDevice((struct IORequest *)&writeIOReq);
 		if(WriteConPort) DeleteMsgPort(WriteConPort);
 	}
 
@@ -2467,43 +2502,44 @@ void CloseDisplay(BOOL manageScreen)
 
 	if(manageScreen)
 	{
-		if(vi)		FreeVisualInfo(vi);
-		if(DrawInfo)	FreeScreenDrawInfo(scr, DrawInfo);
-		if(!wb && scr)	CloseScreen(scr);
-		if(ansifont)	CloseFont(ansifont);
+		if(visualInfos)		FreeVisualInfo(visualInfos);
+		if(drawInfo)	FreeScreenDrawInfo(scr, drawInfo);
+		if(!isRunningOnWB && scr)	CloseScreen(scr);
+		if(ansiFont)	CloseFont(ansiFont);
 	}
 
-	icon = TRUE;
+	isAppIconified = TRUE;
 }
 
 // inconify the application
 void OpenIcon(void)
 {
-	if(iconport = CreateMsgPort())
+	if(iconPort = CreateMsgPort())
 	{
 		// reads in a Workbench disk object in from disk. The name parameter will have ".info"
 		// postpended to it, and the icon file of that name will be read.
 		// If the call fails, it will return zero.
-		dobj = GetDiskObjectNew(programName);
-		if(dobj)
+		diskObj = GetDiskObjectNew(programName);
+		if(diskObj)
 		{
 			// Add an icon on Workbench backdrop to inconify the application:
-			if(dcicon = AddAppIconA(0, 0, "DCTelnet", iconport, 0, dobj, 0)) return;
+			// Return immediately if AddAppIconA() succeeds.
+			if(appIconOnWB = AddAppIconA(0, 0, "DCTelnet", iconPort, 0, diskObj, 0)) return;
 
-			FreeDiskObject(dobj);
+			FreeDiskObject(diskObj);
 		}
-		DeleteMsgPort(iconport);
+		DeleteMsgPort(iconPort);
 	}
-	iconport = 0;
+	iconPort = 0;
 }
 
-// Uniconify the application
+// shouldUniconifyify the application
 void CloseIcon(void)
 {
-	if(iconport)
+	if(iconPort)
 	{
-		RemoveAppIcon(dcicon);
-		FreeDiskObject(dobj);
-		DeleteMsgPort(iconport);
+		RemoveAppIcon(appIconOnWB);
+		FreeDiskObject(diskObj);
+		DeleteMsgPort(iconPort);
 	}
 }

@@ -31,10 +31,9 @@ struct BookStruct
 static BOOL EditProfile(struct BookStruct *book);
 
 
-
-static struct Window         *Project0Wnd;
-static struct Gadget         *Project0GList;
-static struct Gadget         *Project0Gadgets[6];
+static struct Window         *Project0Wnd;           // "Address Book" window
+static struct Gadget         *Project0GList;         // "Address Book" window GList
+static struct Gadget         *Project0Gadgets[6];    // "Address Book" window Gadgets
 #define Project0Width 420
 #define Project0Height 132
 static struct TextAttr		Attr;
@@ -92,22 +91,22 @@ char MakeGadgets(struct MyNewGadget ProjectNGad[], struct Gadget *ProjectGadgets
 {
 	UWORD lc, tc;
 
-	ng.ng_VisualInfo = vi;
-	ng.ng_TextAttr   = &Attr;
+	newGadget.ng_VisualInfo = visualInfos;
+	newGadget.ng_TextAttr   = &Attr;
 
 	for( lc = 0, tc = 0; lc < Count; lc++ )
 	{
 		//CopyMem((char * )&ProjectNGad[ lc ], (char * )&ng, (long)sizeof( struct MyNewGadget ));
 
-		memcpy((char * )&ng, (char * )&ProjectNGad[ lc ], sizeof( struct MyNewGadget ));
+		memcpy((char * )&newGadget, (char * )&ProjectNGad[ lc ], sizeof( struct MyNewGadget ));
 
-		ng.ng_GadgetID	 = lc;
-		ng.ng_LeftEdge   = OffX + ComputeX( ng.ng_LeftEdge );
-		ng.ng_TopEdge    = OffY + ComputeY( ng.ng_TopEdge );
-		ng.ng_Width      = ComputeX( ng.ng_Width );
-		ng.ng_Height     = ComputeY( ng.ng_Height);
+		newGadget.ng_GadgetID	 = lc;
+		newGadget.ng_LeftEdge   = OffX + ComputeX( newGadget.ng_LeftEdge );
+		newGadget.ng_TopEdge    = OffY + ComputeY( newGadget.ng_TopEdge );
+		newGadget.ng_Width      = ComputeX( newGadget.ng_Width );
+		newGadget.ng_Height     = ComputeY( newGadget.ng_Height);
 
-		ProjectGadgets[ lc ] = g = CreateGadgetA((ULONG)ProjectGTypes[ lc ], g, &ng, ( struct TagItem * )&ProjectGTags[ tc ] );
+		ProjectGadgets[ lc ] = g = CreateGadgetA((ULONG)ProjectGTypes[ lc ], g, &newGadget, ( struct TagItem * )&ProjectGTags[ tc ] );
 
 		while( ProjectGTags[ tc ] ) tc += 2;
 		tc++;
@@ -158,16 +157,16 @@ static int OpenProject0Window( void )
 	x = ww + OffX + scr->WBorRight;
 	y = wh + OffY + scr->WBorBottom;
 
-	nwin.LeftEdge = (scr->Width - x) / 2;
-	nwin.TopEdge = (scr->Height - y) / 2;
-	nwin.Width = x;
-	nwin.Height = y;
-	nwin.IDCMPFlags = LISTVIEWIDCMP|BUTTONIDCMP|CYCLEIDCMP|IDCMP_CLOSEWINDOW|IDCMP_REFRESHWINDOW|IDCMP_VANILLAKEY;
-	nwin.Flags = WFLG_DRAGBAR|WFLG_DEPTHGADGET|WFLG_CLOSEGADGET|WFLG_SMART_REFRESH|WFLG_ACTIVATE|WFLG_RMBTRAP;
-	nwin.FirstGadget = Project0GList;
-	nwin.Title = "DCTelnet: Address Book";
+	newWin.LeftEdge = (scr->Width - x) / 2;
+	newWin.TopEdge = (scr->Height - y) / 2;
+	newWin.Width = x;
+	newWin.Height = y;
+	newWin.IDCMPFlags = LISTVIEWIDCMP|BUTTONIDCMP|CYCLEIDCMP|IDCMP_CLOSEWINDOW|IDCMP_REFRESHWINDOW|IDCMP_VANILLAKEY;
+	newWin.Flags = WFLG_DRAGBAR|WFLG_DEPTHGADGET|WFLG_CLOSEGADGET|WFLG_SMART_REFRESH|WFLG_ACTIVATE|WFLG_RMBTRAP;
+	newWin.FirstGadget = Project0GList;
+	newWin.Title = "DCTelnet: Address Book";
 
-	Project0Wnd = OpenWindow(&nwin);
+	Project0Wnd = OpenWindow(&newWin);
 	if(!Project0Wnd) return( 4L );
 
 /*	if ( ! ( Project0Wnd = OpenWindowTags( NULL,
@@ -191,12 +190,12 @@ static int OpenProject0Window( void )
 					OffY + ComputeY( 80 ),
 					ComputeX( 399 ),
 					ComputeY( 43 ),
-					GT_VisualInfo, vi, GTBB_Recessed, TRUE, TAG_DONE );
+					GT_VisualInfo, visualInfos, GTBB_Recessed, TRUE, TAG_DONE );
 	DrawBevelBox( Project0Wnd->RPort, OffX + ComputeX( 3 ),
 					OffY + ComputeY( 2 ),
 					ComputeX( 415 ),
 					ComputeY( 128 ),
-					GT_VisualInfo, vi, TAG_DONE );
+					GT_VisualInfo, visualInfos, TAG_DONE );
 
 	return( 0L );
 }
@@ -332,7 +331,7 @@ void AddressBook(void)
 	listviewlist->lh_Head = (struct Node *)&listviewlist->lh_Tail;
 
 	// Load existing address book entries from disk
-	fh = Open(bookfile, MODE_OLDFILE);
+	fh = Open(bookFilename, MODE_OLDFILE);
 	if(fh)
 	{
 		while(!readfin)
@@ -445,7 +444,7 @@ delete:
 						{
 							mysprintf(buf, "Delete \042%s\042?", worknode->ln_Name);
 							// Open a confirmation Dialog :
-							if(rtEZRequestA(buf, "Delete|Cancel", NULL, NULL, (struct TagItem *)&tags))
+							if(rtEZRequestA(buf, "Delete|Cancel", NULL, NULL, (struct TagItem *)&reqtoolsTags))
 							{
 								Remove(worknode);
 								FreeMem(worknode->ln_Name, sizeof(struct BookStruct));
@@ -507,7 +506,7 @@ add:
 	// Initiate connection if requested
 	if(ret)
 	{
-		cport = conbook->port;
+		tcpPort = conbook->port;
 		if(Connect_To_Server(conbook->host, conbook->port) == 0)
 		{
 			conbook->last = mytime();
@@ -517,7 +516,7 @@ add:
 	}
 
 	// Save address book back to disk if modified
-	if(save) fh = Open(bookfile, MODE_NEWFILE); else fh = 0;
+	if(save) fh = Open(bookFilename, MODE_NEWFILE); else fh = 0;
 
 	worknode = listviewlist -> lh_Head;
 	while(1)
@@ -536,10 +535,9 @@ add:
 }
 
 
-
-static struct Window         *Project1Wnd;
-static struct Gadget         *Project1GList;
-static struct Gadget         *Project1Gadgets[8];
+static struct Window         *Project1Wnd;           // "Edit Address Book Profile" window
+static struct Gadget         *Project1GList;         // "Edit Address Book Profile" window GList
+static struct Gadget         *Project1Gadgets[8];    // "Edit Address Book Profile" window gadgets
 #define Project1Width 450
 #define Project1Height 103
 
@@ -596,16 +594,16 @@ static int OpenProject1Window( void )
 	x = ww + OffX + scr->WBorRight;
 	y = wh + OffY + scr->WBorBottom;
 
-	nwin.LeftEdge = (scr->Width - x) / 2;
-	nwin.TopEdge = (scr->Height - y) / 2;
-	nwin.Width = x;
-	nwin.Height = y;
-	nwin.IDCMPFlags = STRINGIDCMP|TEXTIDCMP|BUTTONIDCMP|IDCMP_CLOSEWINDOW|IDCMP_REFRESHWINDOW|IDCMP_VANILLAKEY;
-	nwin.Flags = WFLG_DRAGBAR|WFLG_DEPTHGADGET|WFLG_CLOSEGADGET|WFLG_SMART_REFRESH|WFLG_ACTIVATE|WFLG_RMBTRAP;
-	nwin.FirstGadget = Project1GList;
-	nwin.Title = "Edit Address Book Profile";
+	newWin.LeftEdge = (scr->Width - x) / 2;
+	newWin.TopEdge = (scr->Height - y) / 2;
+	newWin.Width = x;
+	newWin.Height = y;
+	newWin.IDCMPFlags = STRINGIDCMP|TEXTIDCMP|BUTTONIDCMP|IDCMP_CLOSEWINDOW|IDCMP_REFRESHWINDOW|IDCMP_VANILLAKEY;
+	newWin.Flags = WFLG_DRAGBAR|WFLG_DEPTHGADGET|WFLG_CLOSEGADGET|WFLG_SMART_REFRESH|WFLG_ACTIVATE|WFLG_RMBTRAP;
+	newWin.FirstGadget = Project1GList;
+	newWin.Title = "Edit Address Book Profile";
 
-	Project1Wnd = OpenWindow(&nwin);
+	Project1Wnd = OpenWindow(&newWin);
 	if(!Project1Wnd) return( 4L );
 
 	/*if ( ! ( Project1Wnd = OpenWindowTags( NULL,
@@ -629,7 +627,7 @@ static int OpenProject1Window( void )
 					OffY + ComputeY( 1 ),
 					ComputeX( 444 ),
 					ComputeY( 86 ),
-					GT_VisualInfo, vi, TAG_DONE );
+					GT_VisualInfo, visualInfos, TAG_DONE );
 	return( 0L );
 }
 
@@ -796,33 +794,33 @@ APTR Scroller;
 
 void CloseScrollBack(void)
 {
-	if(sbwin)
+	if(scrollbackWin)
 	{
-		ClearMenuStrip(sbwin);
-		CloseWindow(sbwin);
+		ClearMenuStrip(scrollbackWin);
+		CloseWindow(scrollbackWin);
 		DisposeObject(Scroller);
 		DisposeObject(UpArrow);
 		DisposeObject(DownArrow);
 		DisposeObject(UpImage);
 		DisposeObject(DownImage);
-		sbwin = 0;
+		scrollbackWin = 0;
 	}
 }
 
 void RefreshListView(UWORD top)
 {
-	register struct RastPort *rp = sbwin->RPort;
-	struct Node *node = FindNode(slist, top);
+	register struct RastPort *rp = scrollbackWin->RPort;
+	struct Node *node = FindNode(scrollbackList, top);
 	UWORD WWinTop = rp->Font->tf_YSize + scr->WBorTop + 2;
 	UWORD y, i = 0;
 	char print = TRUE;
 
 	Move(rp, 5, WWinTop);
 	WWinTop += rp->Font->tf_YSize;
-	SetAPen(rp, DrawInfo->dri_Pens[TEXTPEN]);
+	SetAPen(rp, drawInfo->dri_Pens[TEXTPEN]);
 	while(1)
 	{
-		UWORD chars = (sbwin->Width - 28) / rp->Font->tf_XSize;
+		UWORD chars = (scrollbackWin->Width - 28) / rp->Font->tf_XSize;
 		UWORD len;
 
 		if(print)
@@ -837,11 +835,11 @@ void RefreshListView(UWORD top)
 
 		y = WWinTop + (i * rp->Font->tf_YSize);
 
-		if(y > (sbwin->Height-5)) break;
+		if(y > (scrollbackWin->Height-5)) break;
 
 		Move(rp, 5, y);
 		if(print) Text(rp, node->ln_Name, chars);
-		EraseRect(rp, rp->cp_x, (rp->cp_y-rp->Font->tf_YSize)+2, sbwin->Width - 24, rp->cp_y+1);
+		EraseRect(rp, rp->cp_x, (rp->cp_y-rp->Font->tf_YSize)+2, scrollbackWin->Width - 24, rp->cp_y+1);
 
 		if(print) node = node->ln_Succ;
 		i++;
@@ -876,7 +874,7 @@ void OpenScrollBack(UWORD sel)
 	if(SizeImage = NewObject(NULL,SYSICLASS,  // class
 		SYSIA_Size,	SizeType,                 // 1st  tag (= key/value pair = property)
 		SYSIA_Which,	SIZEIMAGE,            // 2nd  tag
-		SYSIA_DrawInfo,	DrawInfo,             // ...
+		SYSIA_DrawInfo,	drawInfo,             // ...
 	TAG_DONE))                                // terminator tag
 	{
 		ULONG SizeWidth, SizeHeight;
@@ -889,7 +887,7 @@ void OpenScrollBack(UWORD sel)
 		if(UpImage = NewObject(NULL, SYSICLASS,
 			SYSIA_Size,	SizeType,
 			SYSIA_Which,	UPIMAGE,
-			SYSIA_DrawInfo,	DrawInfo,
+			SYSIA_DrawInfo,	drawInfo,
 		TAG_DONE))
 		{
 			GetAttr(IA_Height, UpImage, &ArrowHeight);
@@ -897,7 +895,7 @@ void OpenScrollBack(UWORD sel)
 			if(DownImage = NewObject(NULL, SYSICLASS,
 				SYSIA_Size,	SizeType,
 				SYSIA_Which,	DOWNIMAGE,
-				SYSIA_DrawInfo,	DrawInfo,
+				SYSIA_DrawInfo,	drawInfo,
 			TAG_DONE))
 			{
 				if(Scroller = NewObject(NULL, PROPGCLASS,
@@ -915,7 +913,7 @@ void OpenScrollBack(UWORD sel)
 					PGA_Borderless,	TRUE,
 					PGA_Top,	sel,
 					PGA_Visible,	(prefs.sb_height - (prefs.fontsize + scr->WBorTop + 2)) / prefs.fontsize,
-					PGA_Total,	lines,
+					PGA_Total,	nScrollbackLines,
 				TAG_DONE))
 				{
 					if(UpArrow = NewObject(NULL, BUTTONGCLASS,
@@ -944,18 +942,18 @@ void OpenScrollBack(UWORD sel)
 							ICA_MAP,	ArrowMappings,
 						TAG_DONE))
 						{
-							memcpy(&nwin, &prefs.sb_left, 8);
-							nwin.IDCMPFlags = IDCMP_IDCMPUPDATE | LISTVIEWIDCMP | IDCMP_MENUPICK | IDCMP_NEWSIZE | IDCMP_CLOSEWINDOW | BUTTONIDCMP | IDCMP_RAWKEY;
-							nwin.Flags = WFLG_NOCAREREFRESH | WFLG_ACTIVATE|WFLG_CLOSEGADGET|WFLG_DRAGBAR|WFLG_DEPTHGADGET|WFLG_SIZEGADGET;
-							nwin.FirstGadget = Scroller;
-							nwin.Title = "Scroll Back:  F1 - Clear  F3 - Print  F5 - Save";
-							nwin.MinWidth = 180;
-							nwin.MinHeight = 50;
-							nwin.MaxWidth = 1600;
-							nwin.MaxHeight = 1200;
-							CheckDimensions(&nwin);
-							sbwin = OpenWindow(&nwin);
-							/*sbwin = OpenWindowTags(NULL,
+							memcpy(&newWin, &prefs.sb_left, 8);
+							newWin.IDCMPFlags = IDCMP_IDCMPUPDATE | LISTVIEWIDCMP | IDCMP_MENUPICK | IDCMP_NEWSIZE | IDCMP_CLOSEWINDOW | BUTTONIDCMP | IDCMP_RAWKEY;
+							newWin.Flags = WFLG_NOCAREREFRESH | WFLG_ACTIVATE|WFLG_CLOSEGADGET|WFLG_DRAGBAR|WFLG_DEPTHGADGET|WFLG_SIZEGADGET;
+							newWin.FirstGadget = Scroller;
+							newWin.Title = "Scroll Back:  F1 - Clear  F3 - Print  F5 - Save";
+							newWin.MinWidth = 180;
+							newWin.MinHeight = 50;
+							newWin.MaxWidth = 1600;
+							newWin.MaxHeight = 1200;
+							CheckDimensions(&newWin);
+							scrollbackWin = OpenWindow(&newWin);
+							/*scrollbackWin = OpenWindowTags(NULL,
 								WA_Title,		"Scroll Back:  F1 - Clear  F3 - Print  F5 - Save",
 								WA_Left,		prefs.sb_left,
 								WA_Top,			prefs.sb_top,
@@ -970,11 +968,11 @@ void OpenScrollBack(UWORD sel)
 								WA_IDCMP,		IDCMP_IDCMPUPDATE | LISTVIEWIDCMP | IDCMP_MENUPICK | IDCMP_NEWSIZE | IDCMP_CLOSEWINDOW | BUTTONIDCMP | IDCMP_RAWKEY,
 								WA_Flags,		WFLG_NOCAREREFRESH | WFLG_ACTIVATE|WFLG_CLOSEGADGET|WFLG_DRAGBAR|WFLG_DEPTHGADGET|WFLG_SIZEGADGET,
 								TAG_END);*/
-							if(sbwin)
+							if(scrollbackWin)
 							{
-								//GT_RefreshWindow(sbwin, NULL);
+								//GT_RefreshWindow(scrollbackWin, NULL);
 								RefreshListView(sel);
-								ResetMenuStrip(sbwin, menuStrip);
+								ResetMenuStrip(scrollbackWin, menuStrip);
 							}
 						}
 					}
@@ -987,9 +985,9 @@ void OpenScrollBack(UWORD sel)
 
 #include "fkey.h"
 
-static struct Window         *Project2Wnd;
-static struct Gadget         *Project2GList;
-static struct Gadget         *Project2Gadgets[13];
+static struct Window         *Project2Wnd;           // "Function Keys" settings window
+static struct Gadget         *Project2GList;         // "Function Keys" settings window GList
+static struct Gadget         *Project2Gadgets[13];   // "Function Keys" settings window gadgets
 #define Project2Width 503
 #define Project2Height 199
 
@@ -1067,18 +1065,18 @@ static int OpenProject2Window( void )
 	x = ww + OffX + scr->WBorRight;
 	y = wh + OffY + scr->WBorBottom;
 
-	/*nwin.LeftEdge = (scr->Width - x) / 2;
-	nwin.TopEdge = (scr->Height - y) / 2;
-	nwin.Width = x;
-	nwin.Height = y;
-	nwin.IDCMPFlags = CYCLEIDCMP|STRINGIDCMP|BUTTONIDCMP|IDCMP_CLOSEWINDOW|IDCMP_REFRESHWINDOW|IDCMP_VANILLAKEY;
-	nwin.Flags = WFLG_DRAGBAR|WFLG_DEPTHGADGET|WFLG_CLOSEGADGET|WFLG_SMART_REFRESH|WFLG_ACTIVATE|WFLG_RMBTRAP;
-	nwin.FirstGadget = Project2GList;
-	nwin.Title = "Function Keys";
+	/*newWin.LeftEdge = (scr->Width - x) / 2;
+	newWin.TopEdge = (scr->Height - y) / 2;
+	newWin.Width = x;
+	newWin.Height = y;
+	newWin.IDCMPFlags = CYCLEIDCMP|STRINGIDCMP|BUTTONIDCMP|IDCMP_CLOSEWINDOW|IDCMP_REFRESHWINDOW|IDCMP_VANILLAKEY;
+	newWin.Flags = WFLG_DRAGBAR|WFLG_DEPTHGADGET|WFLG_CLOSEGADGET|WFLG_SMART_REFRESH|WFLG_ACTIVATE|WFLG_RMBTRAP;
+	newWin.FirstGadget = Project2GList;
+	newWin.Title = "Function Keys";
 
-	CheckDimensions(&nwin);
+	CheckDimensions(&newWin);
 
-	Project2Wnd = OpenWindow(&nwin);
+	Project2Wnd = OpenWindow(&newWin);
 	if(!Project2Wnd) return( 4L );*/
 
 	if ( ! ( Project2Wnd = OpenWindowTags( NULL,
@@ -1179,7 +1177,7 @@ void FunctionKeys(void)
 
 	if(save)
 	{
-		register BPTR fh = Open(keysfile, MODE_NEWFILE);
+		register BPTR fh = Open(keysFilename, MODE_NEWFILE);
 		if(fh)
 		{
 			Write(fh, buf, 1520);
@@ -1243,14 +1241,14 @@ void OpenToolBarWindow(char setmenus)
 		UWORD nextleft = scr->WBorLeft + 1, maxheight = 0, i = 0;
 		WORD wintop, spacing = 5;
 
-		if(wb)
-			wintop = WinTop;
+		if (isRunningOnWB)
+			wintop = winTop;
 		else
 			wintop = 0;
 
 		do
 		{
-			if(wb)
+			if (isRunningOnWB)
 				strcpy(buf, "PROGDIR:WBIcons/");
 			else
 				strcpy(buf, "PROGDIR:SCIcons/");
@@ -1288,15 +1286,15 @@ void OpenToolBarWindow(char setmenus)
 			return;
 		}
 
-		if(wb)
+		if (isRunningOnWB)
 		{
-			memcpy(&nwin, &prefs.toolBarWin_left, 4);
+			memcpy(&newWin, &prefs.toolBarWin_left, 4);
 
-			nwin.Width = gad->LeftEdge + gad->Width + scr->WBorRight + 1;
-			nwin.Height = maxheight + wintop + scr->WBorBottom + 3 + scr->RastPort.Font->tf_YSize;
-			nwin.Flags = WFLG_NOCAREREFRESH|WFLG_NEWLOOKMENUS|WFLG_CLOSEGADGET|WFLG_DRAGBAR|WFLG_DEPTHGADGET;
-			nwin.IDCMPFlags = IDCMP_CLOSEWINDOW | IDCMP_MENUPICK | IDCMP_GADGETUP;
-			nwin.Title = "Tool Bar";
+			newWin.Width = gad->LeftEdge + gad->Width + scr->WBorRight + 1;
+			newWin.Height = maxheight + wintop + scr->WBorBottom + 3 + scr->RastPort.Font->tf_YSize;
+			newWin.Flags = WFLG_NOCAREREFRESH|WFLG_NEWLOOKMENUS|WFLG_CLOSEGADGET|WFLG_DRAGBAR|WFLG_DEPTHGADGET;
+			newWin.IDCMPFlags = IDCMP_CLOSEWINDOW | IDCMP_MENUPICK | IDCMP_GADGETUP;
+			newWin.Title = "Tool Bar";
 		} else {
 
 			spacing = scr->Width / i;
@@ -1310,28 +1308,28 @@ void OpenToolBarWindow(char setmenus)
 				i++;
 			}
 
-			nwin.LeftEdge = 0;
+			newWin.LeftEdge = 0;
 			if(prefs.flags & FLAG_HIDE_TITLEBAR)
-				nwin.TopEdge = 0;
+				newWin.TopEdge = 0;
 			else
-				nwin.TopEdge = prefs.fontsize + 3;
+				newWin.TopEdge = prefs.fontsize + 3;
 
-			nwin.Width = scr->Width;
-			nwin.Height = maxheight + scr->RastPort.Font->tf_YSize + 4;
-			nwin.Flags = WFLG_NOCAREREFRESH|WFLG_NEWLOOKMENUS|WFLG_BACKDROP|WFLG_BORDERLESS;
-			nwin.IDCMPFlags = IDCMP_MENUPICK | IDCMP_GADGETUP | IDCMP_RAWKEY;
-			nwin.Title = 0;
+			newWin.Width = scr->Width;
+			newWin.Height = maxheight + scr->RastPort.Font->tf_YSize + 4;
+			newWin.Flags = WFLG_NOCAREREFRESH|WFLG_NEWLOOKMENUS|WFLG_BACKDROP|WFLG_BORDERLESS;
+			newWin.IDCMPFlags = IDCMP_MENUPICK | IDCMP_GADGETUP | IDCMP_RAWKEY;
+			newWin.Title = 0;
 		}
-		nwin.FirstGadget = firstgad;
+		newWin.FirstGadget = firstgad;
 
-		CheckDimensions(&nwin);
+		CheckDimensions(&newWin);
 
-		toolBarWin = OpenWindow(&nwin);
+		toolBarWin = OpenWindow(&newWin);
 		if (toolBarWin)
 		{
 			if(setmenus) ResetMenuStrip(toolBarWin, menuStrip);
 			SetFont(toolBarWin->RPort, scr->RastPort.Font);
-			SetAPen(toolBarWin->RPort, DrawInfo->dri_Pens[TEXTPEN]);
+			SetAPen(toolBarWin->RPort, drawInfo->dri_Pens[TEXTPEN]);
 			gad = firstgad;
 			while(gad)
 			{
@@ -1342,12 +1340,12 @@ void OpenToolBarWindow(char setmenus)
 
 				gad = gad->NextGadget;
 			}
-			if(!wb)
+			if(!isRunningOnWB)
 			{
-				SetAPen(toolBarWin->RPort, DrawInfo->dri_Pens[SHINEPEN]);
+				SetAPen(toolBarWin->RPort, drawInfo->dri_Pens[SHINEPEN]);
 				Move(toolBarWin->RPort, 0, toolBarWin->Height-2);
 				Draw(toolBarWin->RPort, toolBarWin->Width, toolBarWin->Height-2);
-				SetAPen(toolBarWin->RPort, DrawInfo->dri_Pens[FILLPEN]);
+				SetAPen(toolBarWin->RPort, drawInfo->dri_Pens[FILLPEN]);
 				Move(toolBarWin->RPort, 0, toolBarWin->Height-1);
 				Draw(toolBarWin->RPort, toolBarWin->Width, toolBarWin->Height-1);
 			}

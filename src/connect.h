@@ -20,6 +20,6 @@
 #define Project8_CNT 5
 
 
-void __SAVE_DS__ __ASM__ Connect_To_Server_Child(void);
+void __SAVE_DS__ __ASM__ HandleConnectingWindowTask(void);
 
 #endif /* CONNECT_H */

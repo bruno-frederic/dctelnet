@@ -25,6 +25,8 @@ static struct XPR_IO xio;
 
 static UWORD xfer_gauge_width;
 // Download : xfertype = 1        Upload : xfertype = 2
+#define XFER_DOWNLOAD 1
+#define XFER_UPLOAD   2
 static UWORD xfertype;
 // Set when a 0xFF escape byte is pending in the incoming transfer stream :
 static UWORD ff_escape_pending;
@@ -40,7 +42,7 @@ static int posX(WORD n)
 
 static int posY(WORD n)
 {
-	return(((xrp->Font->tf_YSize+1)*n)+3+WinTop);
+	return(((xrp->Font->tf_YSize+1)*n)+3+winTop);
 }
 
 /*
@@ -80,7 +82,7 @@ static long instrip(unsigned char *buff, long length)
 
 static void ProtoClean(void)
 {
-	if(!icon)
+	if(!isAppIconified)
 	{
 		OnMenu(xferwin, FULLMENUNUM(1, -1, 0));
 		OnMenu(xferwin, FULLMENUNUM(2, -1, 0));
@@ -163,7 +165,7 @@ long __ASM__ xpr_sread(__REG__(a0, char *buffer),
 	long insize;
 	struct timeval timer;
 
-	if(!icon) winsig = 1L << xferwin->UserPort->mp_SigBit; else winsig = 0;
+	if(!isAppIconified) winsig = 1L << xferwin->UserPort->mp_SigBit; else winsig = 0;
 
 	if(timeout)
 	{
@@ -181,58 +183,63 @@ long __ASM__ xpr_sread(__REG__(a0, char *buffer),
 			sig = winsig;
 
 			FD_ZERO(&rd);
-			FD_SET(sok, &rd);
+			FD_SET(tcpSocket, &rd);
 
-			if(WaitSelect(sok + 1, &rd, 0L, 0L, &timer, &sig) < 0) return(-1);
+			if(WaitSelect(tcpSocket + 1, &rd, 0L, 0L, &timer, &sig) < 0) return(-1);
 
 			if(xpr_chkabort() == -1) return(-1);
 
-			if(FD_ISSET(sok, &rd))
+			if(FD_ISSET(tcpSocket, &rd))
 			{
-				insize = recv(sok, buffer, size, 0);
+				insize = recv(tcpSocket, buffer, size, 0);
 				if(insize == -1) return(-1);
 				if(insize > 0)
 				{
 					insize = instrip(buffer, insize);
-					bytes += insize;
+					nBytesReceived += insize;
 					return(insize);
 				}
 			}
 		}
 	}
 
+	// FIONBIO : A value of 1 enables non-blocking I/O on the socket, a value of 0 disables it.
 	set = 1;
-	IoctlSocket(sok, FIONBIO, (char *)&set);
-	insize = recv(sok, buffer, size, 0);
+	IoctlSocket(tcpSocket, FIONBIO, (char *)&set);
+
+	// recv() return the length (as a long integer) of the message on successful completion.
+	// If no messages are available at the socket, the receive call waits for a message to arrive,
+	// unless the socket is nonblocking (see IoctlSocket()) in which case the value -1 is returned
+	insize = recv(tcpSocket, buffer, size, 0);
 	if(insize == -1)
 	{
 		er = Errno();
 		set = 0;
-		IoctlSocket(sok, FIONBIO, (char *)&set);
+		IoctlSocket(tcpSocket, FIONBIO, (char *)&set);
 		if(er == EWOULDBLOCK) return 0;
-		return -1;
+		return -1; // XPR interpret -1 as an error
 	}
 	set = 0;
-	IoctlSocket(sok, FIONBIO, (char *)&set);
+	IoctlSocket(tcpSocket, FIONBIO, (char *)&set);
 	insize = instrip(buffer, insize);
-	bytes += insize;
+	nBytesReceived += insize;
 	return(insize);
 
 /*	FD_ZERO(&rd);
-	FD_SET(sok, &rd);
+	FD_SET(tcpSocket, &rd);
 
 	sig = winsig;
 
 	timer.tv_sec = 0;
 	timer.tv_usec = 1;
 
-	if(WaitSelect(sok + 1, &rd, 0L, 0L, &timer, &sig) < 0) return(-1);
+	if(WaitSelect(tcpSocket + 1, &rd, 0L, 0L, &timer, &sig) < 0) return(-1);
 
 	if(xpr_chkabort() == -1) return(-1);
 
-	if(FD_ISSET(sok, &rd))
+	if(FD_ISSET(stcpSocketok, &rd))
 	{
-		insize = recv(sok, buffer, size, 0);
+		insize = recv(tcpSocket, buffer, size, 0);
 		if(insize > 0)
 		{
 			insize = instrip(buffer, insize);
@@ -250,14 +257,14 @@ long xpr_sflush(void)
 	struct timeval timer;
 
 	FD_ZERO(&rd);
-	FD_SET(sok, &rd);
+	FD_SET(tcpSocket, &rd);
 
 	timer.tv_sec = 0;
 	timer.tv_usec = 1;
 
-	if(WaitSelect(sok + 1, &rd, 0L, 0L, &timer, 0L) < 0) return(-1);
+	if(WaitSelect(tcpSocket + 1, &rd, 0L, 0L, &timer, 0L) < 0) return(-1);
 
-	if(FD_ISSET(sok, &rd)) recv(sok, buf, sizeof buf, 0);
+	if(FD_ISSET(tcpSocket, &rd)) recv(tcpSocket, buf, sizeof buf, 0);
 
 	return(0);
 }
@@ -308,7 +315,7 @@ long __ASM__ xpr_fopen(__REG__(a0, char *filename),
 {
 	register long fh;
 
-	if(!icon) EraseRect(xrp, 21, posY(9), xferwin->Width-21, posY(9)+9);
+	if(!isAppIconified) EraseRect(xrp, 21, posY(9), xferwin->Width-21, posY(9)+9);
 	xfer_gauge_width = 0;
 
 	switch(*accessmode)
@@ -396,7 +403,7 @@ long __ASM__ xpr_update(__REG__(a0,
 	register long ud = updatestruct->xpru_updatemask;
 	register UWORD new_xfer_gauge_width=0;
 
-	if(icon) return(0);
+	if(isAppIconified) return(0);
 
     // xpru_protocol    -- a string that indicates the name of the protocol used
 	if(ud&XPRU_PROTOCOL)
@@ -409,9 +416,9 @@ long __ASM__ xpr_update(__REG__(a0,
 	if(ud&XPRU_FILENAME)
 	{
 		Move(xrp, posX(12), posY(2));
-		if(xfertype == 1)
+		if(xfertype == XFER_DOWNLOAD)
 			Text(xrp, prefs.downloadpath, strlen(prefs.downloadpath));
-		else
+		else        // XFER_UPLOAD
 			Text(xrp, prefs.uploadpath, strlen(prefs.uploadpath));
 
 		Move(xrp, posX(12), posY(3));
@@ -440,9 +447,9 @@ long __ASM__ xpr_update(__REG__(a0,
 		if(new_xfer_gauge_width > xfer_gauge_width)
 		{
 			// Fill newly progressed part of the gauge:
-			SetAPen(xrp, DrawInfo->dri_Pens[FILLPEN]);
+			SetAPen(xrp, drawInfo->dri_Pens[FILLPEN]);
 			RectFill(xrp, 21+xfer_gauge_width, posY(9), 21+new_xfer_gauge_width, posY(9)+9);
-			SetAPen(xrp, DrawInfo->dri_Pens[TEXTPEN]);
+			SetAPen(xrp, drawInfo->dri_Pens[TEXTPEN]);
 			xfer_gauge_width = new_xfer_gauge_width;
 		}
 	}
@@ -526,7 +533,7 @@ static long Checkwinmsg(struct Window *wwin)
 						ScreenToBack(scr);
 						break;
 					case 6:
-						done = TRUE;
+						shouldQuitApp = TRUE;
 					case 1:
 						return(-1);
 					default:
@@ -570,47 +577,59 @@ static long Checkwinmsg(struct Window *wwin)
 	return(0);
 }
 
-/*
-call-back function : check for abort
-When it returns non-zero, it means that the user has requested an abort
-*/
+/**
+ * @brief Checks if the user has requested to abort the file transfer.
+ *
+ * This callback function is called frequently during file transfers. It handles both windowed and
+ * iconified states of the application.
+ *
+ * This ensures responsive abort handling without blocking the transfer process.
+ *
+ * @return LONG -1 if an abort is requested, 0 otherwise.
+ */
 long xpr_chkabort(void)
 {
-	if(icon)
+	// If the application is iconified on the Workbench
+	if(isAppIconified)
 	{
-		if(iconport)
+		// Process pending AppMessages from Workbench to detect a "shouldUniconifyify" request
+		if(iconPort)
 		{
 			// Workbench sends AppMessage to the application's message port to notify it
 			// https://wiki.amigaos.net/wiki/Workbench_Library#The_AppMessage_Structure
 			register struct AppMessage *appmsg;
-			while(appmsg = (struct AppMessage *)GetMsg(iconport))
+			while(appmsg = (struct AppMessage *)GetMsg(iconPort))
 			{
-				if(appmsg->am_NumArgs==0 && appmsg->am_ArgList==0) unicon = TRUE;
+				if(appmsg->am_NumArgs==0 && appmsg->am_ArgList==0)
+					shouldUniconify = TRUE;  // User requested to restore the window
 				ReplyMsg((struct Message *)appmsg);
 			}
 		}
 
-		if(SetSignal(0L, SIGBREAKF_CTRL_F) & SIGBREAKF_CTRL_F) unicon = TRUE;
+		// Check & clear CTRL_F signal
+		if(SetSignal(0L, SIGBREAKF_CTRL_F) & SIGBREAKF_CTRL_F) shouldUniconify = TRUE;
 
-		if(unicon)
+		// If shouldUniconifyify requested, restore the DCTelnet window:
+		if(shouldUniconify)
 		{
 			CloseIcon();             // Close the icon on the Workbench screen
 			OpenDisplay(TRUE);       // Reopen the complete DCTelnet Window
 			XferWindow();            // Recreate the transfer window
 			xfer_gauge_width = 0;
-			unicon = FALSE;
+			shouldUniconify = FALSE;
 		}
 
-		return(0);
+		return(0);   // Transfer continues
 	}
 
+	// Check messages from the transfer window
 	if(Checkwinmsg(xferwin) == -1) return( -1L );
 
 	// If not iconified, also check messages from the main window (win) and tool bar window (toolBarWin)
-	if(!icon)
+	if(!isAppIconified)
 	{
 		if(Checkwinmsg(win) == -1) return( -1L );
-		if(!icon && toolBarWin)
+		if(!isAppIconified && toolBarWin)
 		{
 			return(Checkwinmsg(toolBarWin));
 		}
@@ -627,16 +646,16 @@ long xpr_squery(void)
 	long oldsize;
 
 	FD_ZERO(&rd);
-	FD_SET(sok, &rd);
+	FD_SET(tcpSocket, &rd);
 
 	timer.tv_sec = 0;
 	timer.tv_usec = 1;
 
-	if(WaitSelect(sok + 1, &rd, 0L, 0L, &timer, 0L) < 0) return(-1);
+	if(WaitSelect(tcpSocket + 1, &rd, 0L, 0L, &timer, 0L) < 0) return(-1);
 
-	if(FD_ISSET(sok, &rd))
+	if(FD_ISSET(tcpSocket, &rd))
 	{
-		oldsize = recv(sok, buf, sizeof buf, MSG_PEEK);
+		oldsize = recv(tcpSocket, buf, sizeof buf, MSG_PEEK);
 		if(oldsize == -1) return -1;
 		if(oldsize < 1) return(0);
 
@@ -676,7 +695,7 @@ static char ProtoStart(char *library, char *firstfile)
 	XProtocolSetup(&xio);
 	xio.xpr_filename = firstfile;
 
-	if(icon) return(TRUE); else return(XferWindow());
+	if(isAppIconified) return(TRUE); else return(XferWindow());
 }
 
 static char XferWindow(void)
@@ -686,17 +705,17 @@ static char XferWindow(void)
 	x = 64 * win->RPort->Font->tf_XSize;
 	y = (10 * (win->RPort->Font->tf_YSize+1)) + 12;
 
-	nwin.LeftEdge = (scr->Width - x) / 2;
-	nwin.TopEdge = (scr->Height - y) / 2;
-	nwin.Width = x;
-	nwin.Height = y + WinTop;
-	nwin.IDCMPFlags = IDCMP_CLOSEWINDOW|IDCMP_MENUPICK;
-	nwin.Flags = WFLG_NEWLOOKMENUS|WFLG_ACTIVATE|WFLG_CLOSEGADGET|WFLG_DRAGBAR|WFLG_DEPTHGADGET;
-	nwin.FirstGadget = 0;
-	nwin.Title = "Transfer in Progress...";
+	newWin.LeftEdge = (scr->Width - x) / 2;
+	newWin.TopEdge = (scr->Height - y) / 2;
+	newWin.Width = x;
+	newWin.Height = y + winTop;
+	newWin.IDCMPFlags = IDCMP_CLOSEWINDOW|IDCMP_MENUPICK;
+	newWin.Flags = WFLG_NEWLOOKMENUS|WFLG_ACTIVATE|WFLG_CLOSEGADGET|WFLG_DRAGBAR|WFLG_DEPTHGADGET;
+	newWin.FirstGadget = 0;
+	newWin.Title = "Transfer in Progress...";
 
-	CheckDimensions(&nwin);
-	xferwin = OpenWindow(&nwin);
+	CheckDimensions(&newWin);
+	xferwin = OpenWindow(&newWin);
 
 /*	xferwin = OpenWindowTags(NULL,
 		WA_Title,		"Transfer in Progress...",
@@ -724,11 +743,11 @@ static char XferWindow(void)
 
 	xrp = xferwin->RPort;
 
-	SetFont(xrp, ansifont);
+	SetFont(xrp, ansiFont);
 
-	SetAPen(xrp, DrawInfo->dri_Pens[HIGHLIGHTTEXTPEN]);
+	SetAPen(xrp, drawInfo->dri_Pens[HIGHLIGHTTEXTPEN]);
 
-	/*if(wb)
+	/*if (isRunningOnWB)
 		SetAPen(xrp, DrawInfo->dri_Pens[SHINEPEN]);
 	else
 		SetAPen(xrp, DrawInfo->dri_Pens[SHADOWPEN]);*/
@@ -762,19 +781,19 @@ static char XferWindow(void)
 	reuse = posY(9)-1;
 	right = xferwin->Width-20;
 
-	SetAPen(xrp, DrawInfo->dri_Pens[SHADOWPEN]);
+	SetAPen(xrp, drawInfo->dri_Pens[SHADOWPEN]);
 	Move(xrp, 20, reuse);
 	Draw(xrp, right, reuse);
 	Move(xrp, 20, reuse);
 	Draw(xrp, 20, posY(9)+10);
 
-	SetAPen(xrp, DrawInfo->dri_Pens[SHINEPEN]);
+	SetAPen(xrp, drawInfo->dri_Pens[SHINEPEN]);
 	Move(xrp, 20, posY(9)+10);
 	Draw(xrp, right, posY(9)+10);
 	Move(xrp, right, posY(9)+10);
 	Draw(xrp, right, reuse);
 
-	SetAPen(xrp, DrawInfo->dri_Pens[TEXTPEN]);
+	SetAPen(xrp, drawInfo->dri_Pens[TEXTPEN]);
 
 	return(1);
 }
@@ -784,10 +803,10 @@ void Upload(char *library)
 	struct rtFileRequester *filereq;
 	struct rtFileList *flist;
 
-	if(icon) return;
+	if(isAppIconified) return;
 
 	ff_escape_pending = FALSE;
-	xfertype = 2;
+	xfertype = XFER_UPLOAD;
 
 	if (filereq = rtAllocRequestA (RT_FILEREQ, NULL))
 	{
@@ -847,7 +866,7 @@ void Download(char *library)
 	{
 		old = CurrentDir(lck);
 
-		xfertype = 1;
+		xfertype = XFER_DOWNLOAD;
 
 		if(ProtoStart(library, 0))
 		{

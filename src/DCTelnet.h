@@ -56,41 +56,41 @@ struct PrefsStruct
 
 // Global variables exported
 extern char server[64];
-extern long lines;
-extern long sok, bytes;
-extern struct DrawInfo *DrawInfo;
+extern long nScrollbackLines;
+extern long tcpSocket, nBytesReceived;
+extern struct DrawInfo *drawInfo;
 extern struct Menu *menuStrip;
-extern struct MsgPort *iconport;
-extern struct NewWindow nwin;
+extern struct MsgPort *iconPort;
+extern struct NewWindow newWin;
 extern struct PrefsStruct prefs;
-extern struct List *slist;
+extern struct List *scrollbackList;
 extern struct Screen *scr;
-extern struct TextFont *ansifont;
-extern struct Window *win, *sbwin, *toolBarWin;
-extern ULONG tags[5];
+extern struct TextFont *ansiFont;
+extern struct Window *win, *scrollbackWin, *toolBarWin;
+extern ULONG reqtoolsTags[5];
 
-extern struct NewGadget ng;
-extern UWORD WinTop;                // WinTop topEdge (titlebar height)
-extern UBYTE done;                  // program finished
-extern UBYTE wb;                    // running in wb
-extern UBYTE icon;                  // iconified
-extern UBYTE unicon;                // must uniconify
+extern struct NewGadget newGadget;
+extern BOOL shouldQuitApp;          // program finished
+extern BOOL isRunningOnWB;          // running in wb
+extern BOOL isAppIconified;         // iconified
+extern BOOL shouldUniconify;        // must shouldUniconifyify
 extern unsigned char buf[2048];
 extern unsigned char keys[1520];
-extern UWORD WinTop;                // WinTop topEdge (titlebar height)
-extern struct Task *parent;
+extern UWORD winTop;                // WinTop topEdge (titlebar height)
+extern struct Task *parentTask;     // An AmigaOS Task is roughly equivalent to a thread
 
-extern UWORD abort_flag;
-extern UWORD connect_msg_type;
-extern char *connect_string;
+// This flag is set by the "Connecting..." window task when the user cancels the operation:
+extern BOOL isConnectionAborted;
+extern UWORD connectMsgType;
+extern char *connectString;
 
-extern UWORD cport;	// current tcp port
+extern UWORD tcpPort;	// current tcp port
 
-extern char prefsfile[];
-extern char keysfile[];
-extern char bookfile[];
+extern const char prefsFilename[];
+extern const char keysFilename[];
+extern const char bookFilename[];
 
-extern void *vi;
+extern void *visualInfos;
 extern char username[42], password[42];
 
 
