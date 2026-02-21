@@ -290,7 +290,7 @@ void EZReq(struct Window *win, const char *str)
 
 void SimpleReq(char *str)
 {
-	rtEZRequestA(str, "OK", NULL, NULL, (struct TagItem *)&tags);
+	EZReq(win, str);	//rtEZRequestA(str, "OK", NULL, NULL, (struct TagItem *)&tags);
 	LEDs();
 }
 
