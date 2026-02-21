@@ -24,36 +24,15 @@
 )
 
 
-(set #reqtools-ver (getversion "libs:reqtools.library"))
-
-(if (= #reqtools-ver 0)
+(if (< #os-ver 37)
 	(
-		(if (< #os-ver 37)
-			(
-				(message "Please note that this program requires ReqTools library!\n"
-					"You will need to install it before running DCTelnet.\n\n"
-					"On AmigaOS / Kickstart 2.00 & 2.02,\n"
-					"ReqTools v2.9a from Aminet fails to load.\n"
-					"An older version of ReqTools is required:\n"
-					"ReqTools-2.2-user.lha\n\n"
-					"available here:\n\n"
-					"https://www.nic.funet.fi/pub/amiga/system/libraries/")
-			)
-			; else
-			(
-				(message "Please note that this program requires ReqTools library!\n\n"
-					"You will need to install it before running DCTelnet.\n\n"
-					"It can be downloaded from Aminet: util/libs/ReqToolsUsr")
-			)
-		)
-
-
-
-
-
+		(SET #SrcLibsDir	"Libs-r36")
+	)
+	; else
+	(
+		(SET #SrcLibsDir	"Libs")
 	)
 )
-
 
 
 ;---[ Start installation ]----------------------------------------------------
@@ -149,6 +128,15 @@
 	)
 
 	; COPYLIB: check the version to be installed and the destination version before copying
+	(SET #SrcReqTools	(TACKON #SrcLibsDir "reqtools.library"))
+	(COPYLIB
+		(prompt	"\n\nInstalling ReqTools library: reqtools.library")
+		(help	"\n\nReqTools is a graphical toolkit providing 'requesters'")
+		(source #SrcReqTools)
+		(dest	"libs:")
+		(confirm)
+	)
+
 	(COPYLIB
 		(prompt	"\n\nInstalling FTP support: xprftp.library")
 		(help	"\n\nFTP is a hi-speed and far more efficient transfer method than ZModem\n\n"
@@ -159,12 +147,13 @@
 		(confirm)
 	)
 
+	(SET #SrcXPRZmodem	(TACKON #SrcLibsDir "xprzmodem.library"))
 	(COPYLIB
 		(prompt	"\n\nInstalling Zmodem support: xprzmodem.library")
 		(help	"\n\nZModem is used to transfer files via Telnet.\n\n"
 			"If it is not already installed, it is recommended to do so."
 			)
-		(source "libs/xprzmodem.library")
+		(source #SrcXPRZmodem)
 		(dest	"libs:")
 		(confirm)
 	)
