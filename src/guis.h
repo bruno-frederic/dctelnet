@@ -26,8 +26,8 @@ void FunctionKeys(void);
 void AddressBook(void);
 long mytime(void);
 void RefreshListView(UWORD top);
-void OpenToolWindow(char setmenus);
-void CloseToolWindow(void);
+void OpenToolBarWindow(char setmenus);
+void CloseToolBarWindow(void);
 char MakeGadgets(struct MyNewGadget ProjectNGad[], struct Gadget *ProjectGadgets[], ULONG ProjectGTags[], struct Gadget *g, UBYTE ProjectGTypes[], UWORD Count);
 
 #endif /* GUIS_H */

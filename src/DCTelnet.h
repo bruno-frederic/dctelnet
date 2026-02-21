@@ -29,8 +29,8 @@ struct PrefsStruct
           displaydriver[32];
     ULONG sb_lines;
     char  displayidstr[32];
-    UWORD twin_left,
-          twin_top;
+    UWORD toolBarWin_left,
+          toolBarWin_top;
 };
 
 /*
@@ -66,7 +66,7 @@ extern struct PrefsStruct prefs;
 extern struct List *slist;
 extern struct Screen *scr;
 extern struct TextFont *ansifont;
-extern struct Window *win, *sbwin, *twin;
+extern struct Window *win, *sbwin, *toolBarWin;
 extern ULONG tags[5];
 
 extern struct NewGadget ng;

@@ -75,7 +75,7 @@ static struct NewMenu mynewmenu[] =
         {  NM_ITEM, "Simple Telnet",	"1", HIGHCOMP|CHECKIT|MENUTOGGLE, 0, 0,},
         {  NM_ITEM, "Packet Window",	"2", HIGHCOMP|CHECKIT|MENUTOGGLE, 0, 0,},
         {  NM_ITEM, "Use XEM Library",	"3", HIGHCOMP|CHECKIT|MENUTOGGLE, 0, 0,},
-        {  NM_ITEM, "Tool Window",	"4", HIGHCOMP|CHECKIT|MENUTOGGLE, 0, 0,},
+        {  NM_ITEM, "Tool Bar",         "4", HIGHCOMP|CHECKIT|MENUTOGGLE, 0, 0,},
         {  NM_ITEM, "Return = CR + LF",	"5", HIGHCOMP|CHECKIT|MENUTOGGLE, 0, 0,},
         {  NM_ITEM, "Local Echoback",	"6", HIGHCOMP|CHECKIT|MENUTOGGLE, 0, 0,},
         {  NM_ITEM, "Raw Connection",	"7", HIGHCOMP|CHECKIT|MENUTOGGLE, 0, 0,},
@@ -110,7 +110,7 @@ struct IntuitionBase *IntuitionBase;
 struct GfxBase *GfxBase;
 struct Library *KeymapBase, *XEmulatorBase, *GadToolsBase, *SocketBase;
 struct Library *DiskfontBase, *IconBase, *WorkbenchBase, *UtilityBase;
-struct Window *win, *sbwin, *twin;
+struct Window *win, *sbwin, *toolBarWin;
 static struct Window *pwin;
 struct List *slist;
 struct Screen *scr;
@@ -227,11 +227,11 @@ long TCPSend(char *buf, long len)
 static void WindowSub(void (*Sub)(void))
 {
 	if(sbwin) rtSetWaitPointer(sbwin);
-	if(twin) rtSetWaitPointer(twin);
+	if (toolBarWin) rtSetWaitPointer(toolBarWin);
 	rtSetWaitPointer(win);
 	Sub();
 	if(sbwin) ClearPointer(sbwin);
-	if(twin) ClearPointer(twin);
+	if (toolBarWin) ClearPointer(toolBarWin);
 	ClearPointer(win);
 	LEDs();
 }
@@ -1092,7 +1092,7 @@ restart:
 
 				if(sbwin) sigmask |= 1L << sbwin->UserPort->mp_SigBit;
 				if(pwin) sigmask |= 1L << pwin->UserPort->mp_SigBit;
-				if(twin) sigmask |= 1L << twin->UserPort->mp_SigBit;
+				if (toolBarWin) sigmask |= 1L << toolBarWin->UserPort->mp_SigBit;
 
 				i = WaitSelect(sok + 1, &rd, 0, 0, &timer, &sigmask);
 
@@ -1100,7 +1100,7 @@ restart:
 
 				if(sbwin) GetWindowMsg(sbwin);
 				if(pwin) GetWindowMsg(pwin);
-				if(twin) GetWindowMsg(twin);
+				if (toolBarWin) GetWindowMsg(toolBarWin);
 
 				if(i != 0) Receive();
 
@@ -1109,7 +1109,7 @@ restart:
 
 				if(sbwin)  sig = 1L << sbwin->UserPort->mp_SigBit; else sig = 0;
 				if(pwin) sig |= 1L << pwin->UserPort->mp_SigBit;
-				if(twin) sig |= 1L << twin->UserPort->mp_SigBit;
+				if (toolBarWin) sig |= 1L << toolBarWin->UserPort->mp_SigBit;
 
 				sigmask = Wait( sig | winsig | SIGBREAKF_CTRL_C );
 
@@ -1121,9 +1121,9 @@ restart:
 				{
 					if(sigmask&(1L << pwin->UserPort->mp_SigBit)) GetWindowMsg(pwin);
 				}
-				if(twin)
+				if (toolBarWin)
 				{
-					if(sigmask&(1L << twin->UserPort->mp_SigBit)) GetWindowMsg(twin);
+					if(sigmask&(1L << toolBarWin->UserPort->mp_SigBit)) GetWindowMsg(toolBarWin);
 				}
 
 				if(sigmask&winsig) GetWindowMsg(win);
@@ -1308,7 +1308,7 @@ static void GetWindowMsg(struct Window *wwin)
 	char fbuf[128];
 	char close = FALSE;
 	char resize = FALSE;
-	char closetwin = FALSE;
+	BOOL shouldCloseToolbarWin = FALSE;
 	static char key_csi;
 	static char key_macro;
 
@@ -1347,7 +1347,7 @@ static void GetWindowMsg(struct Window *wwin)
 
 			if(gad->GadgetID == 20) ScreenToBack(scr);
 
-			if(wwin == twin)
+			if(wwin == toolBarWin)
 			{
 				switch(gad->GadgetID)
 				{
@@ -1427,7 +1427,7 @@ static void GetWindowMsg(struct Window *wwin)
 					break;
 				}
 			}
-			if(wwin == win  ||  wwin == twin)
+			if(wwin == win  ||  wwin == toolBarWin)
 			{
 				struct InputEvent ie;
 				register ULONG i, length;
@@ -1682,9 +1682,9 @@ static void GetWindowMsg(struct Window *wwin)
 						if(wb)
 						{
 							if(item->Flags & CHECKED)
-								OpenToolWindow(TRUE);
+								OpenToolBarWindow(TRUE);
 							else
-								CloseToolWindow();
+								CloseToolBarWindow();
 						} else
 							restartflag = TRUE;
 						break;
@@ -1806,10 +1806,10 @@ static void GetWindowMsg(struct Window *wwin)
 							prefs.sb_width = sbwin->Width;
 							prefs.sb_height = sbwin->Height;
 						}
-						if(twin)
+						if (toolBarWin)
 						{
-							prefs.twin_left = twin->LeftEdge;
-							prefs.twin_top = twin->TopEdge;
+							prefs.toolBarWin_left = toolBarWin->LeftEdge;
+							prefs.toolBarWin_top = toolBarWin->TopEdge;
 						}
 
 						break;
@@ -1837,7 +1837,7 @@ static void GetWindowMsg(struct Window *wwin)
 		case IDCMP_CLOSEWINDOW:
 			if(wwin == win) done = TRUE;
 			if(wwin == sbwin) close = TRUE;
-			if(wwin == twin) closetwin = TRUE;
+			if(wwin == toolBarWin) shouldCloseToolbarWin = TRUE;
 			break;
 
 
@@ -1873,9 +1873,9 @@ down:				if(lasttop+((sbwin->Height - (prefs.fontsize + scr->WBorTop + 2)) / pre
 		TAG_END);
 	}
 	if(close) CloseScrollBack();
-	if(closetwin)
+	if(shouldCloseToolbarWin)
 	{
-		CloseToolWindow();
+		CloseToolBarWindow();
 		prefs.flags &= ~FLAG_TOOL_BAR;
 	}
 }
@@ -2151,7 +2151,7 @@ skip_screen_open:
 
 			win = OpenWindow(&nwin);
 			UnlockPubScreen(0L, scr);
-			if(prefs.flags & FLAG_TOOL_BAR) OpenToolWindow(FALSE);
+			if(prefs.flags & FLAG_TOOL_BAR) OpenToolBarWindow(FALSE);
 		} else {
 			struct Gadget *backgad;
 			UWORD top, height;
@@ -2163,7 +2163,7 @@ skip_screen_open:
 
 			LoadRGB4(&scr->ViewPort, (UWORD *)&prefs.color, 16);
 
-			if(prefs.flags & FLAG_TOOL_BAR) OpenToolWindow(FALSE);
+			if(prefs.flags & FLAG_TOOL_BAR) OpenToolBarWindow(FALSE);
 
 			if(prefs.flags&1) // HIDE TITLE
 			{
@@ -2182,13 +2182,13 @@ skip_screen_open:
 				backgad = 0;
 			}
 
-			if(twin)	// Tool Window
+			if (toolBarWin)	// Tool Window
 			{
-				top = twin->TopEdge + twin->Height + 1;
+				top = toolBarWin->TopEdge + toolBarWin->Height + 1;
 				height = scr->Height - top;
 				if(backgad)
 				{
-					AddGadget(twin, backgad, -1);
+					AddGadget(toolBarWin, backgad, -1);
 					backgad = 0;
 				}
 			}
@@ -2299,7 +2299,7 @@ skip_screen_open:
 				SetMenuStrip(win, menuStrip);
 
 				if(pwin) ResetMenuStrip(pwin, menuStrip);
-				if(twin) ResetMenuStrip(twin, menuStrip);
+				if (toolBarWin) ResetMenuStrip(toolBarWin, menuStrip);
 
 				if(drivertype) goto lib;
 cantfind:
@@ -2461,7 +2461,7 @@ void CloseDisplay(BOOL manageScreen)
 	}
 
 	CloseScrollBack();
-	CloseToolWindow();
+	CloseToolBarWindow();
 
 	if(menuStrip)	FreeMenus(menuStrip);
 

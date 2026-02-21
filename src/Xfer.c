@@ -535,7 +535,7 @@ static long Checkwinmsg(struct Window *wwin)
 				break;
 
 			case IDCMP_CLOSEWINDOW:
-				if(wwin != twin)
+				if(wwin != toolBarWin)
 				{
 					TCPSend("", 10);
 					return(-1);
@@ -605,12 +605,14 @@ long xpr_chkabort(void)
 	}
 
 	if(Checkwinmsg(xferwin) == -1) return( -1L );
+
+	// If not iconified, also check messages from the main window (win) and tool bar window (toolBarWin)
 	if(!icon)
 	{
 		if(Checkwinmsg(win) == -1) return( -1L );
-		if(!icon && twin)
+		if(!icon && toolBarWin)
 		{
-			return(Checkwinmsg(twin));
+			return(Checkwinmsg(toolBarWin));
 		}
 	}
 

@@ -1213,16 +1213,16 @@ void CheckDimensions(struct NewWindow *newwin)
 	if(newwin->TopEdge + newwin->Height > scr->Height) newwin->TopEdge = 0;
 }
 
-void CloseToolWindow(void)
+void CloseToolBarWindow(void)
 {
-	if(twin)
+	if (toolBarWin)
 	{
 		register struct MenuItem *item;
  		register UWORD i;
 
-		ClearMenuStrip(twin);
-		CloseWindow(twin);
-		twin = 0;
+		ClearMenuStrip(toolBarWin);
+		CloseWindow(toolBarWin);
+		toolBarWin = 0;
 
 		for(i=0; i<BUTTONS; i++)
 		{
@@ -1234,9 +1234,9 @@ void CloseToolWindow(void)
 	}
 }
 
-void OpenToolWindow(char setmenus)
+void OpenToolBarWindow(char setmenus)
 {
-	if(!twin)
+	if(!toolBarWin)
 	{
 		register struct Gadget *firstgad = 0;
 		register struct Gadget *gad = 0;
@@ -1290,13 +1290,13 @@ void OpenToolWindow(char setmenus)
 
 		if(wb)
 		{
-			memcpy(&nwin, &prefs.twin_left, 4);
+			memcpy(&nwin, &prefs.toolBarWin_left, 4);
 
 			nwin.Width = gad->LeftEdge + gad->Width + scr->WBorRight + 1;
 			nwin.Height = maxheight + wintop + scr->WBorBottom + 3 + scr->RastPort.Font->tf_YSize;
 			nwin.Flags = WFLG_NOCAREREFRESH|WFLG_NEWLOOKMENUS|WFLG_CLOSEGADGET|WFLG_DRAGBAR|WFLG_DEPTHGADGET;
 			nwin.IDCMPFlags = IDCMP_CLOSEWINDOW | IDCMP_MENUPICK | IDCMP_GADGETUP;
-			nwin.Title = "Tool Window";
+			nwin.Title = "Tool Bar";
 		} else {
 
 			spacing = scr->Width / i;
@@ -1326,30 +1326,30 @@ void OpenToolWindow(char setmenus)
 
 		CheckDimensions(&nwin);
 
-		twin = OpenWindow(&nwin);
-		if(twin)
+		toolBarWin = OpenWindow(&nwin);
+		if (toolBarWin)
 		{
-			if(setmenus) ResetMenuStrip(twin, menuStrip);
-			SetFont(twin->RPort, scr->RastPort.Font);
-			SetAPen(twin->RPort, DrawInfo->dri_Pens[TEXTPEN]);
+			if(setmenus) ResetMenuStrip(toolBarWin, menuStrip);
+			SetFont(toolBarWin->RPort, scr->RastPort.Font);
+			SetAPen(toolBarWin->RPort, DrawInfo->dri_Pens[TEXTPEN]);
 			gad = firstgad;
 			while(gad)
 			{
 				register UWORD len = strlen((char *)gad->UserData);
 
-				Move(twin->RPort, gad->LeftEdge + ((gad->Width - (len*scr->RastPort.Font->tf_XSize)) / 2), wintop + maxheight + scr->RastPort.Font->tf_YSize - 1);
-				Text(twin->RPort, (char *)gad->UserData, len);
+				Move(toolBarWin->RPort, gad->LeftEdge + ((gad->Width - (len*scr->RastPort.Font->tf_XSize)) / 2), wintop + maxheight + scr->RastPort.Font->tf_YSize - 1);
+				Text(toolBarWin->RPort, (char *)gad->UserData, len);
 
 				gad = gad->NextGadget;
 			}
 			if(!wb)
 			{
-				SetAPen(twin->RPort, DrawInfo->dri_Pens[SHINEPEN]);
-				Move(twin->RPort, 0, twin->Height-2);
-				Draw(twin->RPort, twin->Width, twin->Height-2);
-				SetAPen(twin->RPort, DrawInfo->dri_Pens[FILLPEN]);
-				Move(twin->RPort, 0, twin->Height-1);
-				Draw(twin->RPort, twin->Width, twin->Height-1);
+				SetAPen(toolBarWin->RPort, DrawInfo->dri_Pens[SHINEPEN]);
+				Move(toolBarWin->RPort, 0, toolBarWin->Height-2);
+				Draw(toolBarWin->RPort, toolBarWin->Width, toolBarWin->Height-2);
+				SetAPen(toolBarWin->RPort, DrawInfo->dri_Pens[FILLPEN]);
+				Move(toolBarWin->RPort, 0, toolBarWin->Height-1);
+				Draw(toolBarWin->RPort, toolBarWin->Width, toolBarWin->Height-1);
 			}
 		}
 	}
