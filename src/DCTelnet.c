@@ -229,6 +229,7 @@ UWORD color[] = { 0x0000, 0x0DDD, 0x00D0, 0x0DD0, 0x000D, 0x0D0D, 0x00DD, 0x0D00
 char prefsfile[] = "PROGDIR:DCTelnet.Prefs";
 char bookfile[]  = "PROGDIR:DCTelnet.Book";
 char keysfile[]  = "PROGDIR:DCTelnet.Keys";
+static char *programName;            // Name of the program as provided by argv[0] or task::tc_Node.ln_Name
 
 
 void mysprintf(char *Buffer, char *ctl, ...)
@@ -909,8 +910,18 @@ int main(int argc, char *argv[])
 	struct timeval timer;
 	fd_set rd;
 
-	if(argc > 1)
+	if(argc == 0) // Launched from Workbench (icon click)
 	{
+		struct Task *task = FindTask(NULL);
+		if (task)
+		{
+			programName = task->tc_Node.ln_Name;
+		}
+	}
+	else if(argc > 1) // Launched from Shell/CLI
+	{
+		programName=argv[0];
+
 		if(strcmp(argv[1], "?") == 0 || strcmp(argv[1], "/?") == 0 || strcmp(argv[1], "-?") == 0 ||
 		   strcmp(argv[1], "-h")  == 0 || strcmp(argv[1], "--help")  == 0)
 		{
@@ -2507,9 +2518,10 @@ void OpenIcon(void)
 {
 	if(iconport = CreateMsgPort())
 	{
-		prefsfile[16] = 0;
-		dobj = GetDiskObjectNew(prefsfile);
-		prefsfile[16] = '.';
+		// reads in a Workbench disk object in from disk. The name parameter will have ".info"
+		// postpended to it, and the icon file of that name will be read.
+		// If the call fails, it will return zero.
+		dobj = GetDiskObjectNew(programName);
 		if(dobj)
 		{
 			// Add an icon on Workbench backdrop to inconify the application:
