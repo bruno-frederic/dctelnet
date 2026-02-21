@@ -669,7 +669,7 @@ static char ProtoStart(char *library, char *firstfile)
 	XProtocolBase = OpenLibrary(library, 0);
 	if(!XProtocolBase)
 	{
-		LocalPrint("\r\n›0;31mERROR: ›mCould not open transfer library.\r\n");
+		LocalFmt("\r\n›0;31mERROR: ›mCould not open transfer library: %s\r\n", library);
 		return(0);
 	}
 

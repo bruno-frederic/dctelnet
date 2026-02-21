@@ -2370,7 +2370,10 @@ lib:
 							if(!XEmulatorBase)
 							{
 								drivertype = DRIVER_NORMAL;
-								SimpleReq("Failed to open XEM library.");
+								mysprintf(buf,	"Failed to open XEM library: %s",
+												prefs.displaydriver);
+								SimpleReq(buf);
+
 								goto cantfind;
 							}
 							xemIO.xem_window	= win;
