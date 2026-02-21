@@ -2,106 +2,43 @@
 
 #define __USE_SYSBASE
 
-#include <proto/dos.h>
-#include <proto/exec.h>
-#include <proto/intuition.h>
-#include <proto/graphics.h>
-#include <proto/gadtools.h>
-#include <ctype.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <exec/memory.h>
-#include <exec/io.h>
-#include <intuition/intuition.h>
-#include <workbench/workbench.h>
-#include <libraries/reqtools.h>
-#include <proto/reqtools.h>           // rtAllocRequestA (RT_FILEREQ…) in Upload()
-#include <proto/Xpr.h>
-#include <netdb.h>
-#include <proto/bsdsocket.h>
-#include <sys/ioctl.h>
-#include <sys/errno.h>
+#include <proto/exec.h>               // OpenLibrary(), GetMsg(), ReplyMsg(), SetSignal()...
+#include <proto/dos.h>                // Open(), Close(), Read(), Write(), PutStr()...
+#include <proto/intuition.h>          // OpenWindow(),CloseWindow(), OnMenu(), OffMenu()...
+#include <proto/graphics.h>           // Move(), SetAPen(), Text(), SetFont(), Draw()
+#include <proto/gadtools.h>           // GT_GetIMsg(), GT_ReplyIMsg()
+#include <workbench/workbench.h>      // struct AppMessage
+#include <libraries/reqtools.h>       // struct rtFileList, RT_FILEREQ, RT_Window
+#include <proto/reqtools.h>           // rtAllocRequestA (RT_FILEREQ) in Upload()
+#include <proto/Xpr.h>                // XProtocolSetup(), XProtocolSend(), XProtocolReceive(), ...
+#include <proto/bsdsocket.h>          // WaitSelect(), recv(), IoctlSocket(), Errno()
+#include <sys/ioctl.h>                // FIONBIO
+#include "Xfer.h"
+#include "DCTelnet.h"
+#include "guis.h"
 
-struct RastPort *xrp;
+static struct RastPort *xrp;
 struct Library *XProtocolBase;
-struct Window *xferwin;
-struct rtFileList *uplist, *upfirst;
-struct XPR_IO xio;
+static struct Window *xferwin;
+static struct rtFileList *uplist, *upfirst;
+static struct XPR_IO xio;
 
-extern struct Screen *scr;
-extern struct DrawInfo *DrawInfo;
-extern struct Window *win, *twin;
-extern struct TextFont *ansifont;
-extern struct Menu *menuStrip;
-extern struct MsgPort *iconport;
-extern struct NewWindow nwin;
-
-extern long sok, bytes, sent;
-extern unsigned char buf[2048];
-extern char server[64];
-extern UWORD WinTop;
-extern UBYTE done, icon, unicon;
-
-UWORD xfer_gauge_width;
+static UWORD xfer_gauge_width;
 // Download : xfertype = 1        Upload : xfertype = 2
-UWORD xfertype;
+static UWORD xfertype;
 // Set when a 0xFF escape byte is pending in the incoming transfer stream :
-UWORD ff_escape_pending;
+static UWORD ff_escape_pending;
 
-
-struct PrefsStruct
-{
-	ULONG	DisplayID;
-        UWORD	DisplayWidth;
-        UWORD	DisplayHeight;
-        UWORD	DisplayDepth;
-	UWORD	fontsize;
-	char	fontname[32];
-	char	downloadpath[52];
-	char	xferlibrary[52];
-	char	xferinit[52];
-	UWORD	color[16];
-	ULONG	flags;		/* BIT 0 = Hide Title Bar */
-	UWORD	win_left,	/* BIT 1 = CRLF Correction */
-		win_top,	/* BIT 2 = Hide LEDS */
-		win_width,	/* BIT 3 = Use Workbench */
-		win_height,	/* BIT 4 = BS/DEL Swap */
-		sb_left,	/* BIT 5 = Disable Logging */
-		sb_top,		/* BIT 6 = Strip Colour */
-		sb_width,	/* BIT 7 = Simple Negotiation */
-		sb_height;	/* BIT 8 = Packet Window */
-	char	uploadpath[52];
-};
-extern struct PrefsStruct prefs;
-
-
-extern void TextFmt(struct RastPort *rP, char *ctl, ...);
-extern void LocalFmt(char *ctl, ...);
-extern void mysprintf(char *Buffer,char *ctl, ...);
-extern void LocalPrint(char *data);
-extern void LEDs(void);
-extern void ConWrite(char *data, long len);
-extern BOOL OpenDisplay(BOOL);
-extern void CloseDisplay(BOOL);
-extern void OpenIcon(void);
-extern void CloseIcon(void);
-extern void SavePrefs(void);
-extern long TCPSend(char *buf, long len);
-extern void SimpleReq(char *str);
-extern void CheckDimensions(struct NewWindow *newwin);
-long init_xpr(struct XPR_IO *IO);
-long xpr_sflush(void);   /* Flush serial input buffer */
 long xpr_chkabort(void);     /* Check for abort */
-char XferWindow(void);
+static char XferWindow(void);
 
 
-int posX(WORD n)
+static int posX(WORD n)
 {
 	return((xrp->Font->tf_XSize*n)+4);
 }
 
-int posY(WORD n)
+static int posY(WORD n)
 {
 	return(((xrp->Font->tf_YSize+1)*n)+3+WinTop);
 }
@@ -117,7 +54,7 @@ multiple received buffers.
 
 Returns the new buffer length after stripping.
 */
-long instrip(unsigned char *buff, long length)
+static long instrip(unsigned char *buff, long length)
 {
 	register long i = 0, j = 0;
 	unsigned char *tb = AllocMem(length+2, MEMF_PUBLIC);
@@ -141,7 +78,7 @@ long instrip(unsigned char *buff, long length)
 	return(length);
 }
 
-void ProtoClean(void)
+static void ProtoClean(void)
 {
 	if(!icon)
 	{
@@ -564,7 +501,7 @@ long __ASM__ xpr_update(__REG__(a0,
 	return(0);
 }
 
-long Checkwinmsg(struct Window *wwin)
+static long Checkwinmsg(struct Window *wwin)
 {
 	UWORD code;
 	UWORD menuNumber, menuNum, itemNum;
@@ -706,7 +643,7 @@ long xpr_squery(void)
 	return(0);
 }
 
-char ProtoStart(char *library, char *firstfile)
+static char ProtoStart(char *library, char *firstfile)
 {
 	XProtocolBase = OpenLibrary(library, 0);
 	if(!XProtocolBase)
@@ -740,7 +677,7 @@ char ProtoStart(char *library, char *firstfile)
 	if(icon) return(TRUE); else return(XferWindow());
 }
 
-char XferWindow(void)
+static char XferWindow(void)
 {
 	WORD x, y, reuse, right;
 

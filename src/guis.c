@@ -3,65 +3,19 @@
 
 #define __USE_SYSBASE
 
-#include <proto/dos.h>                // Open(), Close(), FRead(), FWrite()
 #include <proto/exec.h>               // AllocMem(), AddTail(), FreeMem(), WaitPort(), Remove()
+#include <proto/dos.h>                // Open(), Close(), FRead(), FWrite()
 #include <proto/intuition.h>          // OpenWindow(),CloseWindow(), NewObjectA() but no NewObject()
 #include <proto/graphics.h>           // Move(), SetAPen(), Text(), SetFont(), Draw()
 #include <proto/gadtools.h>           // LISTVIEW_KIND, BUTTON_KIND, GTLV_Labels...
-#include <proto/wb.h>               // BF: no errors compiling without it
 #include <proto/icon.h>               // GetDiskObjectNew(), FreeDiskObject()
-#include <dos/dos.h>                // BF: no errors compiling without it on VBCC + NDK3.2R4
-#include <exec/nodes.h>             // BF: no errors compiling without it on VBCC + NDK3.2R4
-#include <exec/lists.h>             // BF: no errors compiling without it on VBCC + NDK3.2R4
-#include <exec/memory.h>            // BF: no errors compiling without it on VBCC + NDK3.2R4
-#include <intuition/intuition.h>    // BF: no errors compiling without it on VBCC + NDK3.2R4
-#include <intuition/gadgetclass.h>  // BF: no errors compiling without it on VBCC + NDK3.2R4
-#include <libraries/gadtools.h>     // BF: no errors compiling without it on VBCC + NDK3.2R4
+#include <proto/reqtools.h>           // rtEZRequestA(), rtSetWaitPointer()
 #include <string.h>                   // memcpy(), strcpy(), strcat(), strlen()
 #include <ctype.h>	                  // tolower(), toupper()
-#include <libraries/reqtools.h>     // BF: no errors compiling without it on VBCC + NDK3.2R4
-#include <proto/reqtools.h>           // rtEZRequestA(), rtSetWaitPointer()
 #include "abook.h"                    // required
 #include "edit.h"                     // required
-
-
-void CheckDimensions(struct NewWindow *newwin);
-
-
-struct PrefsStruct
-{
-	ULONG	DisplayID;
-        UWORD	DisplayWidth,
-		DisplayHeight,
-		DisplayDepth,
-		fontsize;
-	char	fontname[32],
-		downloadpath[52],
-		xferlibrary[52],
-		xferinit[52];
-	UWORD	color[16];
-	ULONG	flags;	/* --->    BIT 0 = Hide Title Bar */
-	UWORD	win_left,	/* BIT 1 = CRLF Correction */
-		win_top,	/* BIT 2 = Hide LEDS */
-		win_width,	/* BIT 3 = Use Workbench */
-		win_height,	/* BIT 4 = BS/DEL Swap */
-		sb_left,	/* BIT 5 = Disable Logging */
-		sb_top,		/* BIT 6 = Strip Colour */
-		sb_width,	/* BIT 7 = Simple Negotiation */
-		sb_height;	/* BIT 8 = Packet Window */
-	char	uploadpath[52],	/* BIT 9 = Display Driver */
-		displaydriver[32];/*IT 10 = Tool Window */
-	ULONG	sb_lines;
-	char	displayidstr[32];
-	UWORD	twin_left,
-		twin_top;
-};
-
-extern struct PrefsStruct prefs;
-
-extern char prefsfile[];
-extern char keysfile[];
-extern char bookfile[];
+#include "guis.h"
+#include "DCTelnet.h"
 
 struct BookStruct
 {
@@ -74,37 +28,29 @@ struct BookStruct
 	char	res[82];
 };
 
-BOOL EditProfile(struct BookStruct *book);
+static BOOL EditProfile(struct BookStruct *book);
 
 
-extern ULONG tags[3];
-extern char username[42], password[42];
-extern unsigned char buf[2048];
-extern struct Window *win, *twin;
-extern struct NewWindow nwin;
-extern void		*vi;
-extern struct Screen	*scr;
-extern struct NewGadget	ng;
-extern UWORD cport, WinTop;
-struct Window         *Project0Wnd;
-struct Gadget         *Project0GList;
-struct Gadget         *Project0Gadgets[6];
+
+static struct Window         *Project0Wnd;
+static struct Gadget         *Project0GList;
+static struct Gadget         *Project0Gadgets[6];
 #define Project0Width 420
 #define Project0Height 132
-struct TextAttr		Attr;
-UWORD                  FontX, FontY;
+static struct TextAttr		Attr;
+static UWORD                  FontX, FontY;
 UWORD                  OffX, OffY;
 
-ULONG lastsec, lasttic;
+static ULONG lastsec, lasttic;
 
-UBYTE *SORT0Labels[] = {
+static UBYTE *SORT0Labels[] = {
 	(UBYTE *)"Name",
 	(UBYTE *)"Name Reverse",
 	(UBYTE *)"Last Connect",
 	NULL };
 
 
-UBYTE Project0GTypes[] = {
+static UBYTE Project0GTypes[] = {
 	LISTVIEW_KIND,
 	BUTTON_KIND,
 	BUTTON_KIND,
@@ -113,14 +59,8 @@ UBYTE Project0GTypes[] = {
 	BUTTON_KIND
 };
 
-struct MyNewGadget
-{
-    WORD ng_LeftEdge, ng_TopEdge;       /* gadget position */
-    WORD ng_Width, ng_Height;           /* gadget size */
-    UBYTE *ng_GadgetText;               /* gadget label */
-};
 
-struct MyNewGadget Project0NGad[] = {
+static struct MyNewGadget Project0NGad[] = {
 	10, 5, 401, 72, NULL,
 	19, 84, 93, 13, (UBYTE *)"_Connect",
 	115, 84, 93, 13, (UBYTE *)"_Edit",
@@ -129,7 +69,7 @@ struct MyNewGadget Project0NGad[] = {
 	308, 84, 93, 13, (UBYTE *)"_Delete",
 };
 
-ULONG Project0GTags[] = {
+static ULONG Project0GTags[] = {
 	GTLV_Labels, 0, (GTLV_ShowSelected), (ULONG)NULL, GTLV_Selected, 0, (TAG_DONE),
 	(GT_Underscore), '_', (TAG_DONE),
 	(GT_Underscore), '_', (TAG_DONE),
@@ -199,7 +139,7 @@ UseTopaz:
 	FontX = FontY = Attr.ta_YSize = 8;
 }
 
-int OpenProject0Window( void )
+static int OpenProject0Window( void )
 {
 	struct Gadget	*g;
 	UWORD		ww, wh;
@@ -269,12 +209,9 @@ long mytime(void)
 }
 
 
-extern UWORD Connect_To_Server(char *servername, UWORD port);
-extern void LocalPrint(char *data);
-extern void mysprintf(char *Buffer, char *ctl, ...);
 
 
-struct Node *FindNode(struct List *listviewlist, UWORD lastcode)
+static struct Node *FindNode(struct List *listviewlist, UWORD lastcode)
 {
 	struct Node *worknode;
 	UWORD i = 0;
@@ -302,7 +239,7 @@ struct Node *FindNode(struct List *listviewlist, UWORD lastcode)
 		AmigaOS 2.04 (v37) provides Stricmp(), so here is an implementation to keep AmigaOS 2.00
 		compatibility with VBCC:
 	*/
-int stricmp(const char *a, const char *b)
+static int stricmp(const char *a, const char *b)
 {
     unsigned char ca, cb;
 
@@ -317,7 +254,7 @@ int stricmp(const char *a, const char *b)
 }
 #endif
 
-void Sort(struct List *list, char reverse, char lastconnect)
+static void Sort(struct List *list, char reverse, char lastconnect)
 {
 	register char *temp;
 	struct Node *worknode, *nextnode;
@@ -600,13 +537,13 @@ add:
 
 
 
-struct Window         *Project1Wnd;
-struct Gadget         *Project1GList;
-struct Gadget         *Project1Gadgets[8];
+static struct Window         *Project1Wnd;
+static struct Gadget         *Project1GList;
+static struct Gadget         *Project1Gadgets[8];
 #define Project1Width 450
 #define Project1Height 103
 
-UBYTE Project1GTypes[] = {
+static UBYTE Project1GTypes[] = {
 	STRING_KIND,
 	STRING_KIND,
 	TEXT_KIND,
@@ -617,7 +554,7 @@ UBYTE Project1GTypes[] = {
 	STRING_KIND
 };
 
-struct MyNewGadget Project1NGad[] = {
+static struct MyNewGadget Project1NGad[] = {
 	120, 5, 317, 13, (UBYTE *)"_Site Name:",
 	120, 21, 317, 13, (UBYTE *)"_Address:",
 	121, 37, 177, 13, (UBYTE *)"Last Called:",
@@ -628,7 +565,7 @@ struct MyNewGadget Project1NGad[] = {
 	120, 68, 317, 13, (UBYTE *)"Pass_word:",
 };
 
-ULONG Project1GTags[] = {
+static ULONG Project1GTags[] = {
 	GTST_String, 0, (GTST_MaxChars), 31, (GT_Underscore), '_', (TAG_DONE),
 	GTST_String, 0, (GTST_MaxChars), 51, (GT_Underscore), '_', (TAG_DONE),
 	GTTX_Text, 0, (GTTX_Border), TRUE, (TAG_DONE),
@@ -640,7 +577,7 @@ ULONG Project1GTags[] = {
 };
 
 // Draw the Edit Address Book Profile window
-int OpenProject1Window( void )
+static int OpenProject1Window( void )
 {
 	struct Gadget	*g;
 	UWORD		ww, wh;
@@ -696,7 +633,7 @@ int OpenProject1Window( void )
 	return( 0L );
 }
 
-void myctime(long secs, char *outbuf)
+static void myctime(long secs, char *outbuf)
 {
 	char buf1[16];
 	struct DateTime tostr;
@@ -734,7 +671,7 @@ Updates the book structure only if the user validates the changes.
 return TRUE  if the user validated the changes (OK)
        FALSE if the user cancelled or closed the window
  */
-BOOL EditProfile(struct BookStruct *book)
+static BOOL EditProfile(struct BookStruct *book)
 {
     char lasttime[32];
     struct IntuiMessage *message;
@@ -847,20 +784,14 @@ BOOL EditProfile(struct BookStruct *book)
 #include <intuition/imageclass.h>
 #include <intuition/icclass.h>
 
-extern struct TextAttr fontattr;
-extern struct Window *sbwin;
-extern struct Menu *menuStrip;
-extern struct List *slist;
-extern struct DrawInfo *DrawInfo;
-extern long lines;
 
 enum	{	GAD_SCROLLER,
 		GAD_UP,
 		GAD_DOWN
 	};
 
-APTR UpImage, DownImage;
-APTR UpArrow, DownArrow;
+static APTR UpImage, DownImage;
+static APTR UpArrow, DownArrow;
 APTR Scroller;
 
 void CloseScrollBack(void)
@@ -1056,19 +987,19 @@ void OpenScrollBack(UWORD sel)
 
 #include "fkey.h"
 
-struct Window         *Project2Wnd;
-struct Gadget         *Project2GList;
-struct Gadget         *Project2Gadgets[13];
+static struct Window         *Project2Wnd;
+static struct Gadget         *Project2GList;
+static struct Gadget         *Project2Gadgets[13];
 #define Project2Width 503
 #define Project2Height 199
 
 
-UBYTE *MOD0Labels[] = {
+static UBYTE *MOD0Labels[] = {
 	(UBYTE *)"None",
 	(UBYTE *)"Shift",
 	NULL };
 
-UBYTE Project2GTypes[] = {
+static UBYTE Project2GTypes[] = {
 	STRING_KIND,
 	STRING_KIND,
 	STRING_KIND,
@@ -1085,7 +1016,7 @@ UBYTE Project2GTypes[] = {
 };
 
 
-struct MyNewGadget Project2NGad[] = {
+static struct MyNewGadget Project2NGad[] = {
 	43, 21, 443, 15, (UBYTE *)"F1:",
 	43, 37, 443, 15, (UBYTE *)"F2:",
 	43, 53, 443, 15, (UBYTE *)"F3:",
@@ -1101,7 +1032,7 @@ struct MyNewGadget Project2NGad[] = {
 	394, 183, 101, 14, (UBYTE *)"_Cancel",
 };
 
-ULONG Project2GTags[] = {
+static ULONG Project2GTags[] = {
 	GTST_String, 0, (GTST_MaxChars), 151, (TAG_DONE),
 	GTST_String, 0, (GTST_MaxChars), 151, (TAG_DONE),
 	GTST_String, 0, (GTST_MaxChars), 151, (TAG_DONE),
@@ -1117,7 +1048,7 @@ ULONG Project2GTags[] = {
 	(GT_Underscore), '_', (TAG_DONE)
 };
 
-int OpenProject2Window( void )
+static int OpenProject2Window( void )
 {
 	struct Gadget	*g;
 	UWORD		ww, wh;
@@ -1168,7 +1099,6 @@ int OpenProject2Window( void )
 	return( 0L );
 }
 
-extern unsigned char keys[1520];
 
 /*
 Function Keys dialog (pure GadTools implementation).
@@ -1263,7 +1193,7 @@ void FunctionKeys(void)
 
 #define BUTTONS 7
 
-char *icons[] = {	"Connect",
+static char *icons[] = {	"Connect",
 			"Disconnect",
 			"AddressBook",
 			"Information",
@@ -1271,10 +1201,7 @@ char *icons[] = {	"Connect",
 			"Download",
 			"Quit"			};
 
-struct DiskObject *dob[BUTTONS];
-extern struct TextFont *ansifont;
-extern UBYTE wb;
-extern void SimpleReq(char *str);
+static struct DiskObject *dob[BUTTONS];
 
 
 void CheckDimensions(struct NewWindow *newwin)

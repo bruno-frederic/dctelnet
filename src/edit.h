@@ -1,3 +1,5 @@
+#ifndef EDIT_H
+#define EDIT_H
 
 #define GD_SITE                                0
 #define GD_ADDRESS                             1
@@ -17,3 +19,5 @@
 #define GDX_PASSWORD                           7
 
 #define Project1_CNT 8
+
+#endif /* EDIT_H */

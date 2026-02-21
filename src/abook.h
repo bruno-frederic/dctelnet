@@ -1,3 +1,5 @@
+#ifndef ABOOK_H
+#define ABOOK_H
 
 #define GD_LIST                                0
 #define GD_CONNECT                             1
@@ -13,3 +15,5 @@
 #define GDX_SORT                               4
 
 #define Project0_CNT 6
+
+#endif /* ABOOK_H */

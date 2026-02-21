@@ -5,33 +5,23 @@
 	Built with GadToolBox V2.0b according to the .gui file
 */
 
-#include <exec/types.h>
-#include <intuition/intuition.h>
-#include <intuition/gadgetclass.h>
-#include <libraries/gadtools.h>
-#include <graphics/displayinfo.h>
-#include <graphics/gfxbase.h>
-#include <proto/exec.h>
-#include <proto/dos.h>
-#include <proto/intuition.h>
-#include <proto/gadtools.h>
-#include <string.h>
+#include <proto/exec.h>                 // Wait(), Signal()
+#include <proto/dos.h>                  // SIGBREAKF_CTRL_C | SIGBREAKF_CTRL_E
+#include <proto/intuition.h>            // OpenWindowTags(), CloseWindow()
+#include <proto/gadtools.h>             // GT_GetIMsg(), GT_ReplyIMsg(), <CreateContext()...
 #include "connect.h"
+#include "DCTelnet.h"
+#include "guis.h"
 
-struct Window         *Project8Wnd;
-struct Gadget         *Project8GList;
-struct Gadget         *Project8Gadgets[5];
+static struct Window         *Project8Wnd;
+static struct Gadget         *Project8GList;
+static struct Gadget         *Project8Gadgets[5];
 #define Project8Width 330
 #define Project8Height 105
 #define Project8Wdt "Connecting..."
-extern UWORD                  FontX, FontY;
-extern UWORD                  OffX, OffY;
-extern struct TextAttr		Attr;
-
-extern char MakeGadgets(struct MyNewGadget ProjectNGad[], struct Gadget *ProjectGadgets[], ULONG ProjectGTags[], struct Gadget *g, UBYTE ProjectGTypes[], UWORD Count);
 
 
-UBYTE Project8GTypes[] = {
+static UBYTE Project8GTypes[] = {
 	TEXT_KIND,
 	TEXT_KIND,
 	TEXT_KIND,
@@ -39,14 +29,8 @@ UBYTE Project8GTypes[] = {
 	TEXT_KIND
 };
 
-struct MyNewGadget
-{
-    WORD ng_LeftEdge, ng_TopEdge;       /* gadget position */
-    WORD ng_Width, ng_Height;           /* gadget size */
-    UBYTE *ng_GadgetText;               /* gadget label */
-};
 
-struct MyNewGadget Project8NGad[] = {
+static struct MyNewGadget Project8NGad[] = {
 	126, 6, 157, 14, (UBYTE *)"Connect to:",
 	126, 25, 157, 15, (UBYTE *)"IP Address:",
 	126, 45, 157, 14, (UBYTE *)"Real Host:",
@@ -54,7 +38,7 @@ struct MyNewGadget Project8NGad[] = {
 	126, 64, 157, 14, (UBYTE *)"Status:",
 };
 
-ULONG Project8GTags[] = {
+static ULONG Project8GTags[] = {
 	(GTTX_Border), TRUE, (TAG_DONE),
 	(GTTX_Border), TRUE, (TAG_DONE),
 	(GTTX_Border), TRUE, (TAG_DONE),
@@ -62,13 +46,8 @@ ULONG Project8GTags[] = {
 	(GTTX_Border), TRUE, (TAG_DONE)
 };
 
-extern UWORD abort_flag;
-extern struct Task *parent;
-extern UWORD ComputeX( UWORD value );
-extern UWORD ComputeY( UWORD value );
-extern void ComputeFont( UWORD width, UWORD height );
 
-int OpenProject8Window( void )
+static int OpenProject8Window( void )
 {
 	struct Gadget *g;
 	UWORD ww, wh;
@@ -113,7 +92,7 @@ int OpenProject8Window( void )
 	return( 0L );
 }
 
-void CloseProject8Window( void )
+static void CloseProject8Window( void )
 {
 	if ( Project8Wnd        ) {
 		CloseWindow( Project8Wnd );
@@ -126,8 +105,8 @@ void CloseProject8Window( void )
 	}
 }
 
-extern UWORD connect_msg_type;
-extern char *connect_string;
+
+
 
 void __SAVE_DS__ __ASM__ Connect_To_Server_Child(void)
 {

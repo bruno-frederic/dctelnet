@@ -11,36 +11,32 @@ static char MainWindowTitle[] =
 
 #define __USE_SYSBASE
 
-#include <stdlib.h>
-#include <string.h>
-#include <proto/exec.h>
-#include <proto/dos.h>
-#include <proto/intuition.h>
-#include <proto/graphics.h>
-#include <proto/gadtools.h>
-#include <proto/diskfont.h>
-#include <proto/utility.h>
-#include <proto/icon.h>
-#include <proto/wb.h>
-#include <proto/keymap.h>
-#include <intuition/screens.h>
-#include <intuition/gadgetclass.h>
-#include <exec/memory.h>
-#include <exec/execbase.h>
-#include <libraries/reqtools.h>
+#include <proto/exec.h>               // OpenLibrary(), GetMsg(), ReplyMsg(), AllocMem()...
+#include <proto/dos.h>                // Open(), Close(), Read(), Write(), PutStr()...
+#include <proto/intuition.h>          // OpenWindow(),CloseWindow(), OnMenu(), OffMenu()...
+#include <proto/graphics.h>           // Move(), SetAPen(), Text(), SetFont(), Draw()
+#include <proto/gadtools.h>           // GT_GetIMsg(), GT_ReplyIMsg()...
+#include <proto/diskfont.h>           // OpenDiskFont()
+#include <proto/utility.h>            // GetTagData()
+#include <proto/icon.h>               // GetDiskObjectNew(), FreeDiskObject()
+#include <proto/wb.h>                 // AddAppIconA(), RemoveAppIcon()
+#include <proto/keymap.h>             // MapRawKey()
+#include <libraries/reqtools.h>       // struct rtFileList, RT_FILEREQ, RT_Window
 #include <proto/reqtools.h>           // rtAllocRequestA() rtScreenModeRequest() rtPaletteRequestA()
-#include <sys/errno.h>
-#include <netdb.h>
-#include <proto/socket.h>
-#include <libraries/xem.h>
-#include <proto/xem.h>
+#include <proto/socket.h>             // send(), <CloseSocket>()
+#include <libraries/xem.h>            // struct XEM_IO
+#include <proto/xem.h>                // XEmulatorSetup(), XEmulatorWrite()...
+#include "DCTelnet.h"
+#include "guis.h"
+#include "connect.h"
+#include "Xfer.h"
 
 
 // Stringify macro :
 #define STR_(x) #x
 #define STR(x) STR_(x)
 
-struct NewMenu mynewmenu[] =
+static struct NewMenu mynewmenu[] =
     {
         { NM_TITLE, "DC Telnet",	 0 , 0, 0, 0,},
         {  NM_ITEM, "About",		"A", 0, 0, 0,},
@@ -96,7 +92,7 @@ struct NewMenu mynewmenu[] =
         {  NM_ITEM, "XEM Library..",	"#", 0, 0, 0,},
         {  NM_ITEM, "Telnet Display ID..","9", 0, 0, 0,},
         {  NM_ITEM, "ScrollBack Lines..","0", 0, 0, 0,},
-	{  NM_ITEM, "Snapshot Windows",	"$", 0, 0, 0,},
+        {  NM_ITEM, "Snapshot Windows",	"$", 0, 0, 0,},
 
         { NM_TITLE, "Login",		 0 , 0, 0, 0,},
         {  NM_ITEM, "Send Username",	"N", 0, 0, 0,},
@@ -105,124 +101,76 @@ struct NewMenu mynewmenu[] =
         {   NM_END, NULL,		 0 , 0, 0, 0,},
     };
 
-UWORD Connect_To_Server(char *servername, UWORD port);
-void ConWrite(char *data, long len);
-void LocalPrint(char *data);
-void GetWindowMsg(struct Window *wwin);
-void CloseDisplay(BOOL);
-BOOL OpenDisplay(BOOL);
-void OpenIcon(void);
-void CloseIcon(void);
-void LEDs(void);
 
-extern void CloseScrollBack(void);
-extern void OpenScrollBack(UWORD sel);
-extern void FunctionKeys(void);
-extern void Upload(char *library);
-extern void Download(char *library);
-extern void AddressBook(void);
-extern long mytime(void);
-extern void RefreshListView(UWORD top);
-extern void OpenToolWindow(char setmenus);
-extern void CloseToolWindow(void);
-extern void CheckDimensions(struct NewWindow *newwin);
+static void GetWindowMsg(struct Window *wwin);
 
-extern LONG __SAVE_DS__ __ASM__ xpr_swrite(__REG__(a0, UBYTE *buffer), __REG__(d0, LONG size));
-extern LONG __SAVE_DS__ __ASM__ xpr_sread(__REG__(a0, UBYTE *buffer), __REG__(d0, ULONG size), __REG__(d1, ULONG timeout));
-extern LONG __SAVE_DS__ __ASM__ xpr_sflush(void);
-extern LONG __ASM__ xpr_gets(__REG__(a0, STRPTR Prompt), __REG__(a1, STRPTR Buffer));
-
-extern APTR Scroller;
 extern struct ExecBase *SysBase;
 struct ReqToolsBase *ReqToolsBase;
 struct IntuitionBase *IntuitionBase;
 struct GfxBase *GfxBase;
 struct Library *KeymapBase, *XEmulatorBase, *GadToolsBase, *SocketBase;
 struct Library *DiskfontBase, *IconBase, *WorkbenchBase, *UtilityBase;
-struct Window *win, *pwin, *sbwin, *twin;
+struct Window *win, *sbwin, *twin;
+static struct Window *pwin;
 struct List *slist;
 struct Screen *scr;
 struct DrawInfo *DrawInfo;
-struct Gadget window_back;
+static struct Gadget window_back;
 struct NewGadget ng;
-struct TextAttr fontattr;
+static struct TextAttr fontattr;
 struct TextFont *ansifont;
-struct IOStdReq writeio;
-struct MsgPort *WriteConPort;
+static struct IOStdReq writeio;
+static struct MsgPort *WriteConPort;
 struct Menu *menuStrip;
-struct DiskObject *dobj;
+static struct DiskObject *dobj;
 struct MsgPort *iconport;
-struct AppIcon *dcicon;
-struct hostent *HostAddr;
-struct sockaddr_in INetSocketAddr;
-struct XEM_IO xemio;
+static struct AppIcon *dcicon;
+static struct hostent *HostAddr;
+static struct sockaddr_in INetSocketAddr;
+static struct XEM_IO xemio;
 struct NewWindow nwin;
 
 #define BUFSIZE 250
-UBYTE strBuffer[BUFSIZE+2];
-struct StringInfo strInfo;
-struct Gadget strGad;
+static UBYTE strBuffer[BUFSIZE+2];
+static struct StringInfo strInfo;
+static struct Gadget strGad;
 
 enum	{	GAD_SCROLLER,
 		GAD_UP,
 		GAD_DOWN
 	};
 
-struct PrefsStruct
-{
-	ULONG	DisplayID;
-        UWORD	DisplayWidth,
-		DisplayHeight,
-		DisplayDepth,
-		fontsize;
-	char	fontname[32],
-		downloadpath[52],
-		xferlibrary[52],
-		xferinit[52];
-	UWORD	color[16];
-	ULONG	flags;	/* --->    BIT 0 = Hide Title Bar */
-	UWORD	win_left,	/* BIT 1 = CRLF Correction */
-		win_top,	/* BIT 2 = Hide LEDS */
-		win_width,	/* BIT 3 = Use Workbench */
-		win_height,	/* BIT 4 = BS/DEL Swap */
-		sb_left,	/* BIT 5 = Disable Logging */
-		sb_top,		/* BIT 6 = Strip Colour */
-		sb_width,	/* BIT 7 = Simple Negotiation */
-		sb_height;	/* BIT 8 = Packet Window */
-	char	uploadpath[52],	/* BIT 9 = Display Driver */
-		displaydriver[32];/*IT 10 = Tool Window */
-	ULONG	sb_lines;	/* BIT 11 = Return = CR&LF */
-	char	displayidstr[32];/* IT 12 = Local Echoback */
-	UWORD	twin_left,	/* BIT 13 = Raw Connection */
-		twin_top;	/* BIT 14 = Jump Scroll */
-} prefs;
+struct PrefsStruct prefs;
 
 ULONG tags[5];
-BPTR fh;
-long jj, lines;
-long contime, sok, bytes, sent;
+static BPTR fh;
+long lines;
+static long jj;
+long sok, bytes;
+static long contime, sent;
 void *vi;
 char username[42], password[42];
-unsigned char buf[2048], conbuf[16], scrollbuf[402], keys[1520];
+unsigned char buf[2048], keys[1520];
+static unsigned char conbuf[16], scrollbuf[402];
 char server[64];
-ULONG lasttop;		// last topline of scrollback
+static ULONG lasttop;		// last topline of scrollback
 UWORD cport = 23;	// current tcp port
 UWORD WinTop;		// WinTop topEdge (titlebar height)
 UBYTE done;		// program finished
-UBYTE connected;	// tcp connected
-UBYTE passall;		// passall telnet negotiation
-UBYTE passflag;		// already sent 8bit info
-UBYTE restartflag;	// prefs changed, restart
-UBYTE reopenscreen;	// flag
+static UBYTE connected;	// tcp connected
+static UBYTE passall;		// passall telnet negotiation
+static UBYTE passflag;		// already sent 8bit info
+static UBYTE restartflag;	// prefs changed, restart
+static UBYTE reopenscreen;	// flag
 UBYTE wb;		// running in wb
 UBYTE icon;		// iconified
-UBYTE doicon;		// must iconify
+static UBYTE doicon;		// must iconify
 UBYTE unicon;		// must uniconify
-UBYTE drivertype;	// drivertype 0 - normal    1 - xem library
-UBYTE finger;		// finger? BOOLEAN
+static UBYTE drivertype;	// drivertype 0 - normal    1 - xem library
+static UBYTE finger;		// finger? BOOLEAN
 
-UWORD colorpens[]  = { 1,4,1,1,6,4,1,0,5,4,1,6,65535 };
-UWORD color[] = { 0x0000, 0x0DDD, 0x00D0, 0x0DD0, 0x000D, 0x0D0D, 0x00DD, 0x0D00,
+static UWORD colorpens[]  = { 1,4,1,1,6,4,1,0,5,4,1,6,65535 };
+static UWORD color[] = { 0x0000, 0x0DDD, 0x00D0, 0x0DD0, 0x000D, 0x0D0D, 0x00DD, 0x0D00,
 		  0x0555, 0x0FFF, 0x00F0, 0x0FF0, 0x000F, 0x0F0F, 0x00FF, 0x0F00, 65535 };
 /*                 black,    white,  green, yellow, blue, purple, aqua,   red */
 
@@ -235,6 +183,26 @@ static char *programName;            // Name of the program as provided by argv[
 void mysprintf(char *Buffer, char *ctl, ...)
 {
 	RawDoFmt(ctl, (long *)(&ctl + 1), (void (*))"\x16\xc0\x4e\x75", Buffer);
+}
+
+static void ConWrite(char *data, long len)
+{
+	if(!icon)
+	{
+		if(drivertype)
+			XEmulatorWrite(&xemio, data, len);
+		else {
+			writeio.io_Data = data;
+			writeio.io_Length = len;
+			writeio.io_Command = CMD_WRITE;
+			DoIO((struct IORequest *)&writeio);
+		}
+	}
+}
+
+void LocalPrint(char *data)
+{
+	ConWrite(data, strlen(data));
 }
 
 void LocalFmt(char *ctl, ...)
@@ -256,7 +224,7 @@ long TCPSend(char *buf, long len)
 	return len;
 }
 
-void WindowSub(void (*Sub)(void))
+static void WindowSub(void (*Sub)(void))
 {
 	if(sbwin) rtSetWaitPointer(sbwin);
 	if(twin) rtSetWaitPointer(twin);
@@ -274,7 +242,7 @@ void WindowSub(void (*Sub)(void))
 	runs on systems without ReqTools.
 	Compatibility: works on KS 2.00 without ReqTools
 */
-void EZReq(struct Window *win, const char *str)
+static void EZReq(struct Window *win, const char *str)
 {
 	struct EasyStruct es;
 	es.es_StructSize   = sizeof(struct EasyStruct);
@@ -295,7 +263,7 @@ void SimpleReq(char *str)
 	LEDs();
 }
 
-void DisConnect(char remote, char quiet)
+static void DisConnect(char remote, char quiet)
 {
 	if(connected)
 	{
@@ -338,7 +306,7 @@ void SavePrefs(void)
 	}
 }
 
-char ChooseScreen(char firsttime)
+static char ChooseScreen(char firsttime)
 {
 	struct rtScreenModeRequester *scrmodereq;
 
@@ -376,7 +344,7 @@ char ChooseScreen(char firsttime)
 	return(FALSE);
 }
 
-char FileReq(char *dir, char *pat, char *file, char *title, char dodir, ULONG flags)
+static char FileReq(char *dir, char *pat, char *file, char *title, char dodir, ULONG flags)
 {
 	struct rtFileRequester *filereq;
 	char fbuf[128];
@@ -426,7 +394,7 @@ struct Scroll
 	long		len;    // Node-specific data
 };
 
-void AddBuf(unsigned char *str, long size)
+static void AddBuf(unsigned char *str, long size)
 {
 	register long i = 0, n;
 	struct Scroll *node, *nextnode;
@@ -515,7 +483,7 @@ add:
 	}
 }
 
-void Receive(void)
+static void Receive(void)
 {
 	register long length;
 
@@ -707,7 +675,7 @@ norm:					outbuf[j] = buf[i];
 	}
 }
 
-void SendMisc(char *str, long len)
+static void SendMisc(char *str, long len)
 {
 	if(len == -1) len = strlen(str);
 
@@ -717,7 +685,7 @@ void SendMisc(char *str, long len)
 		ConWrite(str, len);
 }
 
-void SendMacro(char *str)
+static void SendMacro(char *str)
 {
 	register UWORD t, i = 0, j = 0, len = strlen(str);
 
@@ -811,7 +779,7 @@ void LEDs(void)
 	}
 }*/
 
-void SpeedTest(void)
+static void SpeedTest(void)
 {
 	ULONG before_s, before_m;
 	ULONG after_s, after_m;
@@ -858,7 +826,7 @@ void SpeedTest(void)
 	}
 }
 
-void ClearScrollBack(void)
+static void ClearScrollBack(void)
 {
 	struct Scroll *worknode, *nextnode;
 
@@ -876,7 +844,7 @@ void ClearScrollBack(void)
 	slist->lh_Head = (struct Node *)&slist->lh_Tail;
 }
 
-void Finger(void)
+static void Finger(void)
 {
 	long oldflags;
 	char tbuf[64] = "reiver@plan.cat";
@@ -1191,27 +1159,7 @@ xit:
 	return RETURN_OK;
 }
 
-void LocalPrint(char *data)
-{
-	ConWrite(data, strlen(data));
-}
-
-void ConWrite(char *data, long len)
-{
-	if(!icon)
-	{
-		if(drivertype)
-			XEmulatorWrite(&xemio, data, len);
-		else {
-			writeio.io_Data = data;
-			writeio.io_Length = len;
-			writeio.io_Command = CMD_WRITE;
-			DoIO((struct IORequest *)&writeio);
-		}
-	}
-}
-
-void SaveScrollBack(char *fname)
+static void SaveScrollBack(char *fname)
 {
 	struct Scroll *worknode, *nextnode;
 	fh = Lock(fname, SHARED_LOCK);
@@ -1238,7 +1186,7 @@ void SaveScrollBack(char *fname)
 	}
 }
 
-void Connect(char thread)
+static void Connect(char thread)
 {
 	char tbuf[64];
 	UWORD port = 0;
@@ -1270,7 +1218,7 @@ void Connect(char thread)
 	}
 }
 
-void Information(void)
+static void Information(void)
 {
 	if(connected)
 	{
@@ -1297,7 +1245,7 @@ void Information(void)
 		SimpleReq("Not connected");
 }
 
-void CheckFlag(struct MenuItem *item, char bit)
+static void CheckFlag(struct MenuItem *item, char bit)
 {
 	if(item->Flags & CHECKED)
 		prefs.flags |= 1<<bit;
@@ -1305,7 +1253,7 @@ void CheckFlag(struct MenuItem *item, char bit)
 		prefs.flags &= ~(1<<bit);
 }
 
-void OutKey(unsigned char key)
+static void OutKey(unsigned char key)
 {
 	if(prefs.flags&(1<<4)) // BS/DEL Swap
 	{
@@ -1332,7 +1280,7 @@ cwrite:		ConWrite(&key, 1);
 }
 
 
-void GetWindowMsg(struct Window *wwin)
+static void GetWindowMsg(struct Window *wwin)
 {
 	struct MenuItem *item;
 	struct IntuiMessage *message;
@@ -1918,7 +1866,7 @@ down:				if(lasttop+((sbwin->Height - (prefs.fontsize + scr->WBorTop + 2)) / pre
 	}
 }
 
-void CheckError(void)
+static void CheckError(void)
 {
 	register long en = Errno();
 
@@ -1939,15 +1887,15 @@ void CheckError(void)
 
 #include <dos/dostags.h>
 
-struct Task *parent, *child;
+struct Task *parent;
+static struct Task *child;
 
-extern void __SAVE_DS__ __ASM__ Connect_To_Server_Child(void);
 
 UWORD abort_flag;
 UWORD connect_msg_type;
 char *connect_string;
 
-UWORD Connect_To_ServerA(char *servername, UWORD port);
+static UWORD Connect_To_ServerA(char *servername, UWORD port);
 
 UWORD Connect_To_Server(char *servername, UWORD port)
 {
@@ -1969,7 +1917,7 @@ UWORD Connect_To_Server(char *servername, UWORD port)
 	return(ret);
 }
 
-void c_msg(char *msg, UWORD type)
+static void c_msg(char *msg, UWORD type)
 {
 	connect_string = msg;
 	connect_msg_type = type;
@@ -1977,7 +1925,7 @@ void c_msg(char *msg, UWORD type)
 	Wait(SIGBREAKF_CTRL_E);
 }
 
-UWORD Connect_To_ServerA(char *servername, UWORD port)
+static UWORD Connect_To_ServerA(char *servername, UWORD port)
 {
 	if(!SocketBase) SocketBase = OpenLibrary("bsdsocket.library", 0);
 
