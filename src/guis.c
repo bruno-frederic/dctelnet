@@ -359,11 +359,24 @@ jump:
 	}
 }
 
+/**
+ * Opens and manages the Address Book window.
+ *
+ * This function:
+ * - Loads the address book entries from disk
+ * - Displays them in a listview
+ * - Allows the user to connect, add, edit, delete and sort entries
+ * - Optionally initiates a connection to the selected host
+ * - Saves modifications back to disk before exiting
+ *
+ * The function is modal and returns only when the user
+ * closes the Address Book window or initiates a connection.
+ */
 void AddressBook(void)
 {
 	struct IntuiMessage *message;
 	struct Gadget *gad;
-	struct BookStruct *book, *conbook;
+	struct BookStruct *book, *conbook=NULL;
 	struct List *listviewlist;
 	struct Node *worknode, *nextnode;
 	UWORD lastcode = 0;
@@ -381,7 +394,7 @@ void AddressBook(void)
 	listviewlist->lh_TailPred = (struct Node *)listviewlist;
 	listviewlist->lh_Head = (struct Node *)&listviewlist->lh_Tail;
 
-	//Loads existing address book
+	// Load existing address book entries from disk
 	fh = Open(bookfile, MODE_OLDFILE);
 	if(fh)
 	{
@@ -390,8 +403,10 @@ void AddressBook(void)
 			book = AllocMem(sizeof(struct BookStruct), MEMF_PUBLIC);
 			if(book)
 			{
+				// Read one address book entry
 				if(FRead(fh, book, sizeof(struct BookStruct), 1))
 				{
+					// Create a list node pointing to this entry
 					worknode = AllocMem(sizeof(struct Node), MEMF_PUBLIC|MEMF_CLEAR);
 					if(worknode)
 					{
@@ -412,11 +427,14 @@ void AddressBook(void)
 		Close(fh);
 	}
 
+	// Attach the list to the listview gadget
 	Project0GTags[1] = (unsigned long)listviewlist;
 
+	// Open the Address Book window
 	if(OpenProject0Window() == 0)
 	{
 		//GT_SetGadgetAttrs(Project0Gadgets[GD_LIST],Project0Wnd,0,GTLV_Labels,listviewlist,TAG_DONE);
+		// Main event loop
 		while(!subdone)
 		{
 			WaitPort(Project0Wnd->UserPort);
@@ -428,7 +446,7 @@ void AddressBook(void)
 				GT_ReplyIMsg(message);
 				switch (class)
 				{
-				case IDCMP_VANILLAKEY:
+				case IDCMP_VANILLAKEY:  // Keyboard shortcuts
 					switch(toupper(code))
 					{
 						// Directly jump to the part that manage the required button
@@ -443,7 +461,7 @@ void AddressBook(void)
 					}
 					break;
 
-				case IDCMP_CLOSEWINDOW:
+				case IDCMP_CLOSEWINDOW:     // User clicked the close gadget
 					subdone = TRUE;
 					break;
 
@@ -451,7 +469,7 @@ void AddressBook(void)
 				case IDCMP_GADGETUP:
 					switch(gad->GadgetID)
 					{
-					case GD_SORT:
+					case GD_SORT:       //  Sorting mode changed
 						if(code == 2)
 							Sort(listviewlist, 0, TRUE);
 						else
@@ -461,7 +479,7 @@ void AddressBook(void)
 						save = TRUE;
 						break;
 
-					case GD_LIST:
+					case GD_LIST:       // Item selected in listview or double-clicked
 						CurrentTime(&sec, &tic);
 						if(DoubleClick(lastsec, lasttic, sec, tic) && lastcode == code)
 						{
@@ -473,7 +491,7 @@ void AddressBook(void)
 						lastcode = code;
 						break;
 
-					case GD_CONNECT:
+					case GD_CONNECT:     // Connect to selected entry
 connect:
 						if(worknode = FindNode(listviewlist, lastcode))
 						{
@@ -484,7 +502,7 @@ connect:
 						}
 						break;
 
-					case GD_DELETE:
+					case GD_DELETE:      // Delete selected entry
 delete:
 						if(worknode = FindNode(listviewlist, lastcode))
 						{
@@ -504,7 +522,7 @@ delete:
 						}
 						break;
 
-					case GD_EDIT:
+					case GD_EDIT:        // Edit selected entry
 edit:
 						if(worknode = FindNode(listviewlist, lastcode))
 						{
@@ -516,7 +534,7 @@ edit:
 						}
 						break;
 
-					case GD_NEW:
+					case GD_NEW:        // Add a new entry
 add:
 						book = AllocMem(sizeof(struct BookStruct), MEMF_PUBLIC|MEMF_CLEAR);
 						if(book)
@@ -549,6 +567,7 @@ add:
 
 	if ( Project0GList ) FreeGadgets( Project0GList );
 
+	// Initiate connection if requested
 	if(ret)
 	{
 		cport = conbook->port;
@@ -560,22 +579,23 @@ add:
 		}
 	}
 
+	// Save address book back to disk if modified
 	if(save) fh = Open(bookfile, MODE_NEWFILE); else fh = 0;
 
-        worknode = listviewlist -> lh_Head;
+	worknode = listviewlist -> lh_Head;
 	while(1)
-        {
-                nextnode = worknode -> ln_Succ;
-                if(!nextnode) break;
+	{
+		nextnode = worknode -> ln_Succ;
+		if(!nextnode) break;
 
 		if(fh) FWrite(fh, worknode->ln_Name, sizeof(struct BookStruct), 1);
 
 		FreeMem(worknode->ln_Name, sizeof(struct BookStruct));
-                FreeMem(worknode, sizeof(struct Node));
-                worknode = nextnode;
-        }
-        FreeMem(listviewlist, sizeof(struct List));
-	if(fh) Close(fh);
+		FreeMem(worknode, sizeof(struct Node));
+		worknode = nextnode;
+	}
+	FreeMem(listviewlist, sizeof(struct List));
+    if(fh) Close(fh);
 }
 
 
