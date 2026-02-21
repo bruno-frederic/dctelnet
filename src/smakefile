@@ -32,7 +32,7 @@ MAKE=smake
 
 TARGET=DCTelnet
 CPU=68000
-DEPS = abook.h connect.h DCTelnet.h edit.h fkey.h guis.h Xfer.h
+DEPS = abook.h connect.h DCTelnet.h DCTelnet-debug.h edit.h fkey.h guis.h Xfer.h
 # The first '/' in the path is equivalent to '../' on other platforms:
 INSTALLDIR=/build/installed/DCTelnet
 

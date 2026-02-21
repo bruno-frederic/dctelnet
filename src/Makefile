@@ -31,7 +31,7 @@ TARGET     := DCTelnet
 CPU        ?= 68000
 CFLAGS     := +aos68k -cpu=$(CPU) -DCOMPILER_STRING=$(COMPILER_STRING) $(INCLUDES)
 SRCS       := DCTelnet.c connect.c guis.c Xfer.c
-DEPS       := abook.h connect.h DCTelnet.h edit.h fkey.h guis.h Xfer.h
+DEPS       := abook.h connect.h DCTelnet.h DCTelnet-debug.h edit.h fkey.h guis.h Xfer.h
 INSTALLDIR := ../build/installed/DCTelnet
 
 # OBJ subdir depends on DEBUG flag (use DEBUG=yes to enable)

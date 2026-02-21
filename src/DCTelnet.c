@@ -181,7 +181,9 @@ static UWORD color[] = { 0x0000, 0x0DDD, 0x00D0, 0x0DD0, 0x000D, 0x0D0D, 0x00DD,
 char const prefsFilename[] = "PROGDIR:DCTelnet.Prefs";
 char const bookFilename[]  = "PROGDIR:DCTelnet.Book";
 char const keysFilename[]  = "PROGDIR:DCTelnet.Keys";
-static char *programName;            // Name of the program as provided by argv[0] or task::tc_Node.ln_Name
+static char *programName = NULL;   // Name provided by argv[0] or task::tc_Node.ln_Name
+struct Task *thisTask = NULL;
+BYTE dontUseSig31 = -1; // don't use it, ibmcon.device will destroy it.
 
 
 void mysprintf(char *Buffer, char *ctl, ...)
@@ -883,20 +885,26 @@ static void Finger(void)
 	}
 }
 
+#include "DCTelnet-debug.h"
+
 int main(int argc, char *argv[])
 {
 	ULONG iconsig = 0, sigmask, winsig;
 	LONG i;
 	struct timeval timer;
 	fd_set rd;
+	#ifdef _DEBUG
+		ULONG beforeSigAlloc;
+		ULONG afterSigAlloc;
+		ULONG argArray[1];
+	#endif
+    thisTask = FindTask(NULL);
+
 
 	if(argc == 0) // Launched from Workbench (icon click)
 	{
-		struct Task *task = FindTask(NULL);
-		if (task)
-		{
-			programName = task->tc_Node.ln_Name;
-		}
+		if (thisTask != NULL)
+			programName = thisTask->tc_Node.ln_Name;
 	}
 	else if(argc > 1) // Launched from Shell/CLI
 	{
@@ -924,8 +932,23 @@ int main(int argc, char *argv[])
 		}*/
 	}
 
-	// Needed right now for EZReq
+    // Needed right now for EZReq
     IntuitionBase = (struct IntuitionBase *) OpenLibrary("intuition.library", 0);
+
+	if (thisTask == NULL)
+	{
+		const char msg[] = "ERROR: cannot FindTask()!";
+		PutStr(msg);
+		EZReq(NULL, msg);
+		goto clean_exit;
+	}
+
+    // Workaround for connection freeze after changing display settings: ibmcon.device improperly
+    // frees signal bit 31 when being closed. We explicitly allocate signal 31 here to prevent it
+    // from being assigned elsewhere and accidentally released.
+    dontUseSig31 = AllocSignal(31L);
+    if (dontUseSig31 != 31)
+        EZReq(NULL, "ERROR: cannot allocate sigbit 31!");
 
 	if (!(ReqToolsBase = (struct ReqToolsBase *)OpenLibrary (REQTOOLSNAME, 0)))
 	{
@@ -936,7 +959,7 @@ int main(int argc, char *argv[])
 							"Please install it and try again.";
 		PutStr(msg);
 		EZReq(NULL, msg);
-		return RETURN_FAIL;
+		goto clean_exit;
 	}
 
 	fileHandle = Open(prefsFilename, MODE_OLDFILE);
@@ -991,7 +1014,7 @@ fixprefs:		//prefs.win_left = 0;
 			prefs.sb_height = (prefs.DisplayHeight / 2) - 4;
 			SavePrefs();
 		} else
-			goto xit;
+			goto clean_exit;
 	}
 
 	if(prefs.sb_lines == 0) prefs.sb_lines = 300;
@@ -1005,7 +1028,8 @@ fixprefs:		//prefs.win_left = 0;
 	}
 
 	scrollbackList = AllocMem(sizeof(struct List), MEMF_CLEAR|MEMF_PUBLIC);
-	if(!scrollbackList) goto xit;
+	if(!scrollbackList) goto clean_exit;
+
 	scrollbackList->lh_TailPred = (struct Node *)scrollbackList;
 	scrollbackList->lh_Head = (struct Node *)&scrollbackList->lh_Tail;
 
@@ -1017,12 +1041,33 @@ fixprefs:		//prefs.win_left = 0;
 	DiskfontBase = OpenLibrary("diskfont.library", 0);
 	KeymapBase = OpenLibrary("keymap.library", 0);
 	IconBase = OpenLibrary("icon.library", 0);
+
+	#ifdef _DEBUG
+		PutStr("--> OpenLibrary(bsdsocket.library, 0)\n");
+		beforeSigAlloc = thisTask->tc_SigAlloc;
+	#endif
+
 	SocketBase = OpenLibrary("bsdsocket.library", 0);
+
+	#ifdef _DEBUG
+		PutStr("<-- OpenLibrary(bsdsocket.library, 0)\n");
+		afterSigAlloc = thisTask->tc_SigAlloc;
+		socketLibSigBit = BitPosition(beforeSigAlloc ^ afterSigAlloc); // XOR detect the differences
+		argArray[0] = socketLibSigBit;
+		VPrintf("                  socketLibSigBit = %lu\n", argArray);
+	#endif
 
 	shouldReopenScreen = TRUE;
 restart:
 	if(OpenDisplay(shouldReopenScreen))
 	{
+		#ifdef _DEBUG
+			PutStr("<-- OpenDisplay()\n");
+			PutStr("SigAlloc:"); PrintBitsULONG(thisTask->tc_SigAlloc);
+			LogWindowsSigBit();
+		#endif
+
+
 		if(!shouldRestart && server[0] != 0 && !isConnected) Connect_To_Server(server, tcpPort);
 		shouldRestart = FALSE;
 		shouldReopenScreen = FALSE;
@@ -1050,6 +1095,13 @@ restart:
 		{
 			CloseIcon();
 			OpenDisplay(TRUE);
+
+			#ifdef _DEBUG
+				PutStr("<-- OpenDisplay()\n");
+				PutStr("SigAlloc:"); PrintBitsULONG(thisTask->tc_SigAlloc);
+				LogWindowsSigBit();
+			#endif
+
 			shouldUniconify = FALSE;
 		}
 
@@ -1064,6 +1116,10 @@ restart:
 				sigmask = SIGBREAKF_CTRL_C | SIGBREAKF_CTRL_F | iconsig;
 
 				i = WaitSelect(tcpSocket + 1, &rd, 0, 0, &timer, &sigmask);
+
+				#ifdef _DEBUG
+					if (i <  0)  EZReq(win, "WaitSelect() returns < 0 (error) ! Why???");
+				#endif
 
 			} else {
 				i = 0;
@@ -1103,6 +1159,25 @@ restart:
 				if (toolBarWin) sigmask |= 1L << toolBarWin->UserPort->mp_SigBit;
 
 				i = WaitSelect(tcpSocket + 1, &rd, 0, 0, &timer, &sigmask);
+
+				#ifdef _DEBUG
+					if      (i <  0)
+					{
+						EZReq(win, "WaitSelect() returns < 0 (error) ! Why???");
+					}
+					else if (i == 0)
+					{
+						PutStr("<-- WaitSelect() => 0 = timeout or signal received\n    sigs=");
+						LogWaitSelectResult(i, sigmask);
+
+						if (FD_ISSET(tcpSocket, &rd))
+							EZReq(win, "WaitSelect() returns 0 but data received! Why???");
+					}
+					else
+					{
+						VPrintf("<-- WaitSelect() => %ld = data received in the socket\n", &i);
+					}
+				#endif
 
 				GetWindowMsg(win);
 
@@ -1164,9 +1239,20 @@ restart:
 
 	ClearScrollBack();
 	FreeMem(scrollbackList, sizeof(struct List));
-xit:
-	CloseLibrary((struct Library *)ReqToolsBase);
+clean_exit:
+	if (ReqToolsBase)  CloseLibrary((struct Library *)ReqToolsBase);
 	if (IntuitionBase) CloseLibrary((struct Library *)IntuitionBase);
+
+	if (dontUseSig31 != -1) FreeSignal(dontUseSig31);
+
+	#ifdef _DEBUG
+		PutStr("<-- clean finished... will return...\n");
+		if ((thisTask->tc_SigAlloc & 0xFFFF0000UL) != 0)
+		{
+			PutStr("ERROR: Some signal bits were not unallocated!");
+			PutStr("SigAlloc:"); PrintBitsULONG(thisTask->tc_SigAlloc);
+		}
+	#endif
 
 	return RETURN_OK;
 }
@@ -2079,6 +2165,13 @@ static UWORD Connect_To_ServerA(char *servername, UWORD port)
 BOOL OpenDisplay(BOOL manageScreen)
 {
 	long i;
+	#ifdef _DEBUG
+		ULONG beforeSigAlloc;
+		ULONG afterSigAlloc;
+		UBYTE conDeviceSigBit;
+		ULONG argArray[1];
+		PutStr("--> OpenDisplay()\n");
+	#endif
 
 	if(!manageScreen) goto skip_screen_open;
 
@@ -2358,8 +2451,24 @@ cantfind:
 							unit = CONU_CHARMAP;
 					}
 
+					#ifdef _DEBUG
+						PutStr("   --> OpenDevice()\n");
+						beforeSigAlloc = thisTask->tc_SigAlloc;
+						PutStr("SigAlloc:"); PrintBitsULONG(thisTask->tc_SigAlloc);
+						LogWindowsSigBit();
+					#endif
 
 					i = OpenDevice(dev, unit, (struct IORequest *)&writeIOReq, CONFLAG_DEFAULT);
+
+					#ifdef _DEBUG
+						PutStr("   <-- OpenDevice()\n");
+						PutStr("SigAlloc:"); PrintBitsULONG(thisTask->tc_SigAlloc);
+						afterSigAlloc = thisTask->tc_SigAlloc;
+						conDeviceSigBit = BitPosition(beforeSigAlloc ^ afterSigAlloc); // XOR help detect the difference
+						argArray[0] = conDeviceSigBit;
+						VPrintf("                   conDeviceSigBit = %lu\n", argArray);
+						LogWindowsSigBit();
+					#endif
 
 					if(i == 0)
 					{
@@ -2471,6 +2580,10 @@ lib:
  */
 void CloseDisplay(BOOL manageScreen)
 {
+	#ifdef _DEBUG
+		PutStr("--> CloseDisplay()\n");
+	#endif
+
 	if(drivertype == DRIVER_XEM_LIB)
 	{
 		if(win)
@@ -2481,8 +2594,44 @@ void CloseDisplay(BOOL manageScreen)
 		}
 	} else {
 		// https://amigadev.elowar.com/read/ADCD_2.1/Devices_Manual_guide/node0190.html
+		#ifdef _DEBUG
+			PutStr("   --> CloseDevice(&writeIOReq)\n");
+			PutStr("SigAlloc:"); PrintBitsULONG(thisTask->tc_SigAlloc);
+			LogWindowsSigBit();
+
+			if (! (thisTask->tc_SigAlloc & (1L << 31)))
+			{
+				EZReq(NULL, "ERROR: sigbit 31 has disappeared before CloseDevice()! Why???");
+			}
+		#endif
+
 		if(writeIOReq.io_Error == 0) CloseDevice((struct IORequest *)&writeIOReq);
-		if(WriteConPort) DeleteMsgPort(WriteConPort);
+
+		if (thisTask->tc_SigAlloc & (1L << 31))
+		{
+			#ifdef _DEBUG
+				PutStr("   <-- CloseDevice(&writeIOReq) => sigbit 31 preserved.\n");
+				PutStr("SigAlloc:"); PrintBitsULONG(thisTask->tc_SigAlloc);
+			#endif
+		}
+		else
+		{
+			#ifdef _DEBUG
+				PutStr("   <-- CloseDevice(&writeIOReq) => ERROR: sigbit 31 destroyed!!!\n");
+				PutStr("SigAlloc:"); PrintBitsULONG(thisTask->tc_SigAlloc);
+				PutStr("   --> AllocSignal(31L)\n");
+			#endif
+
+			dontUseSig31 = AllocSignal(31L);
+			if (dontUseSig31 != 31)
+				EZReq(NULL, "ERROR: cannot allocate sigbit 31!");
+
+			#ifdef _DEBUG
+				PutStr("SigAlloc:"); PrintBitsULONG(thisTask->tc_SigAlloc);
+			#endif
+		}
+
+		if(WriteConPort) { DeleteMsgPort(WriteConPort); WriteConPort = NULL; }
 	}
 
 	if(pwin)
@@ -2496,6 +2645,7 @@ void CloseDisplay(BOOL manageScreen)
 	{
 		ClearMenuStrip(win);
 		CloseWindow(win);
+		win = NULL;
 	}
 
 	CloseScrollBack();
@@ -2512,6 +2662,11 @@ void CloseDisplay(BOOL manageScreen)
 	}
 
 	isAppIconified = TRUE;
+
+	#ifdef _DEBUG
+		PutStr("<-- CloseDisplay()\n");
+		PutStr("SigAlloc:"); PrintBitsULONG(thisTask->tc_SigAlloc);
+	#endif
 }
 
 // inconify the application
