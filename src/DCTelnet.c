@@ -522,17 +522,17 @@ static void Receive(void)
 				case 128:
 					break;
 				case 10:
-					if(!(prefs.flags&(1<<1))) goto norm;
+					if(!(prefs.flags & FLAG_CRLF_CORRECTION)) goto norm;
 					outbuf[j] = 13;
 					j++;
 					outbuf[j] = 10;
 					j++;
 					break;
 				case 13:
-					if(!(prefs.flags&(1<<1))) goto norm; // !CRLF Correction
+					if(!(prefs.flags & FLAG_CRLF_CORRECTION)) goto norm;
 					break;
 				case 27:
-					if(!(prefs.flags&(1<<6))) goto norm; // !Strip Color
+					if(!(prefs.flags & FLAG_STRIP_COLOUR)) goto norm;
 					temp = i;
 					i += 2;
 					while(i < length && buf[i]>='0' && buf[i]<=';') i++;
@@ -571,7 +571,7 @@ norm:					outbuf[j] = buf[i];
 
 			ConWrite(outbuf, j);
 
-			if(!(prefs.flags&(1<<5))) AddBuf(outbuf, j);
+			if(!(prefs.flags & FLAG_DISABLE_SCROLLBACK)) AddBuf(outbuf, j);
 
 			/*if(debug)
 			{
@@ -584,7 +584,10 @@ norm:					outbuf[j] = buf[i];
 				}
 			}*/
 
-			if(((prefs.flags&5) == 0)  &&  !icon) EraseRect(&scr->RastPort, scr->Width-72, 2, scr->Width-60, prefs.fontsize-1);
+            // Draw connection activity indicator when Title bar AND LEDs are enabled
+            // AND NOT iconified
+			if(((prefs.flags & (FLAG_HIDE_TITLEBAR | FLAG_HIDE_LEDS)) == 0)  &&  !icon)
+                EraseRect(&scr->RastPort, scr->Width-72, 2, scr->Width-60, prefs.fontsize-1);
 
 			FreeMem(outbuf, length+256);
 
@@ -603,7 +606,7 @@ norm:					outbuf[j] = buf[i];
 
 		// The byte 0xff (255) means that the next byte is a Telnet command. If you want to send
 		// 0xff then you must send it twice to tell telnet that you don't intend to send a command.
-		if(buf[0] == 255  &&  !(prefs.flags&(1<<13))) // NOT RAW
+		if(buf[0] == 255  &&  !(prefs.flags & FLAG_RAW_CONNECTION)) // NOT a Raw Connection
 		{
 			if((recv(sok, &buf[1], 2, 0)) < 1)
 			{
@@ -612,7 +615,7 @@ norm:					outbuf[j] = buf[i];
 			}
 			bytes += 2;
 
-			if(prefs.flags&(1<<7)) // Simple Negotiation
+			if(prefs.flags & FLAG_SIMPLE_TELNET) // Very simple telnet negotiation
 			{
 				if(buf[1] == 253)
 				{
@@ -743,7 +746,8 @@ norm:				buf[j] = str[i];
 
 void LEDs(void)
 {
-	if((prefs.flags&5) == 0  &&  !icon) // if bits 0 and 2 are clear
+	// Draw connection activity indicator when Title bar AND LEDs are enabled AND NOT iconified
+	if((prefs.flags & (FLAG_HIDE_TITLEBAR | FLAG_HIDE_LEDS)) == 0  &&  !icon)
 	{
 		EraseRect(&scr->RastPort, scr->Width-72, 2, scr->Width-60, prefs.fontsize-1);
 		EraseRect(&scr->RastPort, scr->Width-86, 2, scr->Width-74, prefs.fontsize-1);
@@ -858,7 +862,7 @@ static void Finger(void)
 			host[0] = 0;
 			*host++;
 			oldflags = prefs.flags;
-			prefs.flags = 1<<13;	// Raw Connection
+			prefs.flags = FLAG_RAW_CONNECTION;	// Raw Connection (NO telnet negotiation data)
 			if(Connect_To_Server(host, 79) == 0)
 			{
 				mysprintf(buf, "/W %s\r\n", tbuf);
@@ -968,7 +972,7 @@ int main(int argc, char *argv[])
 			strcpy(prefs.xferinit, "TC,OR,B32,FO,AN,DN,KY,SN,RN");
 			memcpy(&prefs.color[0], &color[0], 32);
 			//CopyMem(&color[0], &prefs.color[0], 32);
-			prefs.flags = 1<<10;
+			prefs.flags = FLAG_TOOL_BAR;
 fixprefs:		//prefs.win_left = 0;
 			prefs.win_top = 11;
 			prefs.win_width = 640;
@@ -1140,7 +1144,7 @@ restart:
 		CloseDisplay(TRUE);
 		SavePrefs();
 
-		prefs.flags = 1;
+		prefs.flags = FLAG_HIDE_TITLEBAR;
 		DisConnect(FALSE, TRUE);
 	}
 
@@ -1245,17 +1249,27 @@ static void Information(void)
 		SimpleReq("Not connected");
 }
 
-static void CheckFlag(struct MenuItem *item, char bit)
+
+/**
+ * @brief Updates prefs.flags based on a menu item's checked state.
+ *
+ * If the menu item is checked, the prefs.flags bit is set. If it is unchecked, the flag bit is
+ * cleared.
+ *
+ * @param item Pointer to the MenuItem whose CHECKED state is to be used.
+ * @param flag The flag (bit) in prefs.flags to set or clear.
+ */
+static void UpdatePrefsFlagFromMenu(struct MenuItem *item, ULONG flag)
 {
 	if(item->Flags & CHECKED)
-		prefs.flags |= 1<<bit;
+		prefs.flags |= flag;
 	else
-		prefs.flags &= ~(1<<bit);
+		prefs.flags &= ~flag;
 }
 
 static void OutKey(unsigned char key)
 {
-	if(prefs.flags&(1<<4)) // BS/DEL Swap
+	if(prefs.flags & FLAG_BS_DEL_SWAP)
 	{
 		if(key == 8)
 			key = 127;
@@ -1274,7 +1288,7 @@ static void OutKey(unsigned char key)
 			TCPSend("\377\375\000\377\373\000", 6); // 8-bit data path
 			passflag = TRUE;
 		}
-		if(prefs.flags&(1<<12)) goto cwrite;	// Local Echoback
+		if(prefs.flags & FLAG_LOCAL_ECHO) goto cwrite;
 	} else
 cwrite:		ConWrite(&key, 1);
 }
@@ -1312,7 +1326,7 @@ static void GetWindowMsg(struct Window *wwin)
 			if(wwin == pwin)
 			{
 				RemoveGList(wwin, &strGad, 1);
-				if(prefs.flags&(1<<11))
+				if(prefs.flags & FLAG_RETURN_CRLF)
 					strcat(strBuffer, "\r\n");
 				else
 					strcat(strBuffer, "\r");
@@ -1474,7 +1488,7 @@ static void GetWindowMsg(struct Window *wwin)
 								else
 								{
 									OutKey(conbuf[i]);
-									if(conbuf[i] == '\r' && (prefs.flags&(1<<11))) OutKey('\n');
+									if(conbuf[i] == '\r' && (prefs.flags & FLAG_RETURN_CRLF)) OutKey('\n');
 								}
 							}
 						}
@@ -1609,45 +1623,45 @@ static void GetWindowMsg(struct Window *wwin)
 					switch(itemNum)
 					{
 					case 0:
-						CheckFlag(item, 3);
+						UpdatePrefsFlagFromMenu(item, FLAG_USE_WORKBENCH);
 						restartflag = TRUE;
 						reopenscreen = TRUE;
 						break;
-					case 1:
+					case 1: // Disable LEDs
 						if(item->Flags & CHECKED)
 						{
-							prefs.flags |= 1<<2;
+							prefs.flags |= FLAG_HIDE_LEDS;
 
-							if(!(prefs.flags&1))
+							if(!(prefs.flags & FLAG_HIDE_TITLEBAR))
 							{
 								SetAPen(&scr->RastPort, 1);
 								RectFill(&scr->RastPort, scr->Width-86, 2, scr->Width-60, prefs.fontsize-1);
 							}
 						} else {
-							prefs.flags &= ~(1<<2);
+							prefs.flags &= ~FLAG_HIDE_LEDS;
 							LEDs();
 						}
 						break;
 					case 2:
-						CheckFlag(item, 0);
+						UpdatePrefsFlagFromMenu(item, FLAG_HIDE_TITLEBAR);
 						restartflag = TRUE;
 						reopenscreen = TRUE;
 						break;
 					case 3:
-						CheckFlag(item, 1);
+						UpdatePrefsFlagFromMenu(item, FLAG_CRLF_CORRECTION);
 						break;
 					case 4:
-						CheckFlag(item, 4);
+						UpdatePrefsFlagFromMenu(item, FLAG_BS_DEL_SWAP);
 						break;
 					case 5:
-						CheckFlag(item, 5);
+						UpdatePrefsFlagFromMenu(item, FLAG_DISABLE_SCROLLBACK);
 						break;
 					case 6:
-						CheckFlag(item, 6);
+						UpdatePrefsFlagFromMenu(item, FLAG_STRIP_COLOUR);
 						if(item->Flags & CHECKED) LocalPrint("›m");
 						break;
 					case 7:
-						CheckFlag(item, 7);
+						UpdatePrefsFlagFromMenu(item, FLAG_SIMPLE_TELNET);
 						break;
 					case 8:
 						if(wb)
@@ -1655,16 +1669,16 @@ static void GetWindowMsg(struct Window *wwin)
 						else
 							restartflag = TRUE;
 
-						CheckFlag(item, 8);
+						UpdatePrefsFlagFromMenu(item, FLAG_PACKET_WINDOW);
 						break;
 
 					case 9:
 						restartflag = TRUE;
-						CheckFlag(item, 9);
+						UpdatePrefsFlagFromMenu(item, FLAG_USE_XEM_LIBRARY);
 						break;
 
 					case 10:
-						CheckFlag(item, 10);
+						UpdatePrefsFlagFromMenu(item, FLAG_TOOL_BAR);
 						if(wb)
 						{
 							if(item->Flags & CHECKED)
@@ -1676,19 +1690,19 @@ static void GetWindowMsg(struct Window *wwin)
 						break;
 
 					case 11:
-						CheckFlag(item, 11);
+						UpdatePrefsFlagFromMenu(item, FLAG_RETURN_CRLF);
 						break;
 
 					case 12:
-						CheckFlag(item, 12);
+						UpdatePrefsFlagFromMenu(item, FLAG_LOCAL_ECHO);
 						break;
 
 					case 13:
-						CheckFlag(item, 13);
+						UpdatePrefsFlagFromMenu(item, FLAG_RAW_CONNECTION);
 						break;
 					case 14:
-						CheckFlag(item, 14);
-						if(!wb && !(prefs.flags&(1<<9))) restartflag = TRUE;
+						UpdatePrefsFlagFromMenu(item, FLAG_JUMP_SCROLL);
+						if(!wb && !(prefs.flags & FLAG_USE_XEM_LIBRARY)) restartflag = TRUE;
 						break;
 					}
 					break;
@@ -1767,7 +1781,7 @@ static void GetWindowMsg(struct Window *wwin)
 					case 7:
 						if(FileReq("LIBS:", "xem#?.library", prefs.displaydriver, "XEM Library..", FALSE, FREQF_PATGAD))
 						{
-							if(prefs.flags&(1<<9)) restartflag = TRUE;
+							if(prefs.flags & FLAG_USE_XEM_LIBRARY) restartflag = TRUE;
 						}
 						break;
 
@@ -1862,7 +1876,7 @@ down:				if(lasttop+((sbwin->Height - (prefs.fontsize + scr->WBorTop + 2)) / pre
 	if(closetwin)
 	{
 		CloseToolWindow();
-		prefs.flags &= ~(1<<10);
+		prefs.flags &= ~FLAG_TOOL_BAR;
 	}
 }
 
@@ -1936,7 +1950,8 @@ static UWORD Connect_To_ServerA(char *servername, UWORD port)
 		return(255);
 	}
 
-	if((prefs.flags&5) == 0) // if bits 0 and 2 are clear
+	//  Draw connection activity indicator when Title bar AND LEDs are enabled
+	if((prefs.flags & (FLAG_HIDE_TITLEBAR | FLAG_HIDE_LEDS)) == 0)
 	{
 		SetAPen(&scr->RastPort, 11);
 		RectFill(&scr->RastPort, scr->Width-84, 3, scr->Width-76, prefs.fontsize-2);
@@ -2001,7 +2016,7 @@ static UWORD Connect_To_ServerA(char *servername, UWORD port)
 
 	LocalPrint("Connected.\r\n");
 
-	if(!(prefs.flags&(1<<13)))
+	if(!(prefs.flags & FLAG_RAW_CONNECTION))
 		TCPSend("\377\375\003", 3);
 	else {
 		passall = TRUE;
@@ -2050,7 +2065,7 @@ BOOL OpenDisplay(BOOL manageScreen)
 
 	if(!manageScreen) goto skip_screen_open;
 
-	if(prefs.flags&(1<<3)) wb = TRUE; else wb = FALSE;
+	if(prefs.flags & FLAG_USE_WORKBENCH) wb = TRUE; else wb = FALSE;
 
 	fontattr.ta_Name = prefs.fontname;
 	fontattr.ta_YSize = prefs.fontsize;
@@ -2064,8 +2079,8 @@ BOOL OpenDisplay(BOOL manageScreen)
 
 	if(wb)
 	{
-		prefs.flags |= (1<<2);		   // Disable Leds
-		prefs.flags &= ~(1<<8);		   // Not Packet Window
+		prefs.flags |= FLAG_HIDE_LEDS;
+		prefs.flags &= ~FLAG_PACKET_WINDOW;		   // Not Packet Window
 		scr = LockPubScreen(0L);
 	} else {
 		register UWORD *pens;
@@ -2083,7 +2098,7 @@ BOOL OpenDisplay(BOOL manageScreen)
 		scr = OpenScreenTags(&nscr,
 			SA_DisplayID,	prefs.DisplayID,
        	       	        SA_Pens,	(ULONG)pens,
-			SA_ShowTitle,	!prefs.flags&1,
+			SA_ShowTitle,	!(prefs.flags & FLAG_HIDE_TITLEBAR),
 			SA_AutoScroll,	TRUE,
 			SA_Interleaved,	TRUE,
 			TAG_END);
@@ -2136,7 +2151,7 @@ skip_screen_open:
 
 			win = OpenWindow(&nwin);
 			UnlockPubScreen(0L, scr);
-			if(prefs.flags&(1<<10)) OpenToolWindow(FALSE);
+			if(prefs.flags & FLAG_TOOL_BAR) OpenToolWindow(FALSE);
 		} else {
 			struct Gadget *backgad;
 			UWORD top, height;
@@ -2148,7 +2163,7 @@ skip_screen_open:
 
 			LoadRGB4(&scr->ViewPort, (UWORD *)&prefs.color, 16);
 
-			if(prefs.flags&(1<<10)) OpenToolWindow(FALSE);
+			if(prefs.flags & FLAG_TOOL_BAR) OpenToolWindow(FALSE);
 
 			if(prefs.flags&1) // HIDE TITLE
 			{
@@ -2182,7 +2197,7 @@ skip_screen_open:
 			nwin.Title = 0;
 			nwin.Width = scr->Width;
 
-			if(prefs.flags&(1<<8))	// Packet
+			if(prefs.flags & FLAG_PACKET_WINDOW)	// Packet
 			{
 				height -= (prefs.fontsize + 2);
 				strInfo.Buffer = strBuffer;
@@ -2227,34 +2242,34 @@ skip_screen_open:
 
 		if(win)
 		{
-			if((prefs.flags&(1<<9)) && prefs.displaydriver[0])
+			if((prefs.flags & FLAG_USE_XEM_LIBRARY) && prefs.displaydriver[0])
 			{
 				drivertype = 1;
 				mynewmenu[38].nm_Flags = NM_ITEMDISABLED;
 			} else {
 				drivertype = 0;
 				mynewmenu[38].nm_Flags = HIGHCOMP|CHECKIT|MENUTOGGLE;
-				prefs.flags &= ~(1<<9);
+				prefs.flags &= ~FLAG_USE_XEM_LIBRARY;
 			}
 
-			if(prefs.flags&(1<<0))
+			if(prefs.flags & FLAG_HIDE_TITLEBAR)
 				mynewmenu[26].nm_Flags |= CHECKED;
 			else
 				mynewmenu[26].nm_Flags = HIGHCOMP|CHECKIT|MENUTOGGLE;
 
-			if(prefs.flags&(1<<1)) // CRLF
+			if(prefs.flags & FLAG_CRLF_CORRECTION) // CRLF
 				mynewmenu[27].nm_Flags |= CHECKED;
 			else
 				mynewmenu[27].nm_Flags = HIGHCOMP|CHECKIT|MENUTOGGLE;
 
-			if(prefs.flags&(1<<2))
+			if(prefs.flags & FLAG_HIDE_LEDS)
 				mynewmenu[25].nm_Flags |= CHECKED;
 			else
 				mynewmenu[25].nm_Flags = HIGHCOMP|CHECKIT|MENUTOGGLE;
 
 			for(i=4; i<15; i++)
 			{
-				if(prefs.flags&(1<<i))
+				if(prefs.flags & (1<<i))
 					mynewmenu[i+24].nm_Flags |= CHECKED;
 				else
 					mynewmenu[i+24].nm_Flags &= ~CHECKED;
@@ -2304,7 +2319,7 @@ cantfind:
 						unit = 3;
 					} else {
 						dev = "ibmcon.device";
-						if(prefs.flags&(1<<14))
+						if(prefs.flags & FLAG_JUMP_SCROLL)
 							unit = 2;
 						else
 							unit = 1;

@@ -16,22 +16,43 @@ struct PrefsStruct
           xferlibrary[52],
           xferinit[52];
     UWORD color[16];
-    ULONG flags;  // ------------>    BIT 0 = Hide Title Bar
-    UWORD win_left,                // BIT 1 = CRLF Correction
-          win_top,                 // BIT 2 = Hide LEDS
-          win_width,               // BIT 3 = Use Workbench
-          win_height,              // BIT 4 = BS/DEL Swap
-          sb_left,                 // BIT 5 = Disable Logging
-          sb_top,                  // BIT 6 = Strip Colour
-          sb_width,                // BIT 7 = Simple Negotiation
-          sb_height;               // BIT 8 = Packet Window
-    char  uploadpath[52],          // BIT 9 = Display Driver
-          displaydriver[32];       // BIT 10 = Tool Window
-    ULONG sb_lines;                // BIT 11 = Return = CR&LF
-    char  displayidstr[32];        // BIT 12 = Local Echoback
-    UWORD twin_left,               // BIT 13 = Raw Connection
-          twin_top;                // BIT 14 = Jump Scroll
+    ULONG flags;
+    UWORD win_left,
+          win_top,
+          win_width,
+          win_height,
+          sb_left,
+          sb_top,
+          sb_width,
+          sb_height;
+    char  uploadpath[52],
+          displaydriver[32];
+    ULONG sb_lines;
+    char  displayidstr[32];
+    UWORD twin_left,
+          twin_top;
 };
+
+/*
+* Bit flags stored in PrefsStruct->flags.
+* These defines describe the meaning of each individual bit.
+* These flags map directly to the checkable items in the "Options" pull-down menu
+*/
+#define FLAG_HIDE_TITLEBAR       (1 << 0)   // BIT 0  = Hide Title Bar
+#define FLAG_CRLF_CORRECTION     (1 << 1)   // BIT 1  = CRLF Correction
+#define FLAG_HIDE_LEDS           (1 << 2)   // BIT 2  = Hide LEDS
+#define FLAG_USE_WORKBENCH       (1 << 3)   // BIT 3  = Use Workbench
+#define FLAG_BS_DEL_SWAP         (1 << 4)   // BIT 4  = BS/DEL Swap
+#define FLAG_DISABLE_SCROLLBACK  (1 << 5)   // BIT 5  = Disable Scrollback
+#define FLAG_STRIP_COLOUR        (1 << 6)   // BIT 6  = Strip Colour
+#define FLAG_SIMPLE_TELNET       (1 << 7)   // BIT 7  = Very simple telnet negotiation.
+#define FLAG_PACKET_WINDOW       (1 << 8)   // BIT 8  = Packet Window
+#define FLAG_USE_XEM_LIBRARY     (1 << 9)   // BIT 9  = Use XEM Library
+#define FLAG_TOOL_BAR            (1 << 10)  // BIT 10 = Tool bar
+#define FLAG_RETURN_CRLF         (1 << 11)  // BIT 11 = Return = CR&LF
+#define FLAG_LOCAL_ECHO          (1 << 12)  // BIT 12 = Local Echoback
+#define FLAG_RAW_CONNECTION      (1 << 13)  // BIT 13 = Raw Connection (NO telnet negotiation data)
+#define FLAG_JUMP_SCROLL         (1 << 14)  // BIT 14 = Jump Scroll
 
 // Global variables exported
 extern char server[64];

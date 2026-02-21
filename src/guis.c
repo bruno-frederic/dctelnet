@@ -1284,7 +1284,7 @@ void OpenToolWindow(char setmenus)
 		if(!firstgad)
 		{
 			SimpleReq("No icons available.");
-			prefs.flags &= ~(1<<10);
+			prefs.flags &= ~FLAG_TOOL_BAR;
 			return;
 		}
 
@@ -1311,7 +1311,7 @@ void OpenToolWindow(char setmenus)
 			}
 
 			nwin.LeftEdge = 0;
-			if(prefs.flags&(1<<0))
+			if(prefs.flags & FLAG_HIDE_TITLEBAR)
 				nwin.TopEdge = 0;
 			else
 				nwin.TopEdge = prefs.fontsize + 3;
