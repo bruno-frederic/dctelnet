@@ -905,7 +905,7 @@ void Finger(void)
 
 int main(int argc, char *argv[])
 {
-	ULONG iconsig, sigmask, winsig;
+	ULONG iconsig = 0, sigmask, winsig;
 	LONG i;
 	struct timeval timer;
 	fd_set rd;
