@@ -3,7 +3,7 @@
 /* ====================================================================== */
 
 
-#define DCTELNET_VERSION "1.8-dev"
+#define DCTELNET_VERSION "1.8"
 const char __ver[] = "$VER: DCTelnet " DCTELNET_VERSION " " __AMIGADATE__;
 
 static char MainWindowTitle[] =

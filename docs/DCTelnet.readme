@@ -2,7 +2,7 @@ Short:        DCTelnet - Telnet/BBS client with Zmodem
 Author:       Bruno FREDERIC
 Uploader:     bruno.frederic+aminet@gm...
 Type:         comm/tcp
-Version:      1.8-dev
+Version:      1.8
 Architecture: m68k-amigaos >= 2.0
 Distribution: Aminet
 
