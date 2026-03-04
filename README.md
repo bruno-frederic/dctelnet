@@ -88,21 +88,11 @@ Replace them with the following compatible versions:
 ## 📖 How to use
 
 Please refer to the included **DCTelnet.guide** documentation for detailed
-usage instructions. The guide is in **AmigaGuide** format and can be opened
-with **MultiView** on AmigaOS 3.*.
-On Amiga OS 2.* you’ll need the AmigaGuide tool (available on Aminet: [text/hyper/aguide34](https://aminet.net/package/text/hyper/aguide34)) and to replace the "Default Tool" on DCTelnet.Guide icon to: SYS:Utilities/Amigaguide
+usage instructions.
 
+It is in **AmigaGuide** format and can be opened directly on AmigaOS 3.*
 
-## 📖 How to use
-
-Please refer to the included **DCTelnet.guide** file for detailed usage
-instructions.
-
-The documentation is provided in **AmigaGuide** format:
-- On **AmigaOS 3.x**, it can be opened directly with **MultiView**.
-- On **AmigaOS 2.x**, the **AmigaGuide** tool is required (available on Aminet:
-  [text/hyper/aguide34](https://aminet.net/package/text/hyper/aguide34)).
-  In this case, update the *Default Tool* of the `DCTelnet.guide` icon to `SYS:Utilities/AmigaGuide`.
+On Amiga OS 2.*, the AmigaGuide tool is required (available on Aminet: [text/hyper/aguide34](https://aminet.net/package/text/hyper/aguide34)). In this case, update the "Default Tool" of the DCTelnet.guide icon to: SYS:Utilities/AmigaGuide
 
 ---
 

@@ -124,12 +124,11 @@ Replace them with the following compatible versions:
 Please refer to the included DCTelnet.guide documentation for detailed
 usage instructions.
 
-The documentation is provided in AmigaGuide format:
-- On AmigaOS 3.x, it can be opened directly with MultiView.
-- On AmigaOS 2.x, the AmigaGuide tool is required (available on Aminet:
+It is in AmigaGuide format and can be opened directly on AmigaOS 3.*
+
+On AmigaOS 2.*, the AmigaGuide tool is required (available on Aminet:
 https://aminet.net/package/text/hyper/aguide34). In this case, update the
 "Default Tool" of the DCTelnet.guide icon to: SYS:Utilities/AmigaGuide
-
 
 ---
 
