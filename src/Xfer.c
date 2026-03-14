@@ -31,7 +31,7 @@ static UWORD xfertype;
 // Set when a 0xFF escape byte is pending in the incoming transfer stream :
 static UWORD ff_escape_pending;
 
-long xpr_chkabort(void);     /* Check for abort */
+long __SAVE_DS__ xpr_chkabort(void);     /* Check for abort */
 static char XferWindow(void);
 
 
@@ -111,7 +111,7 @@ typeofinfo = 2L : file type (1L is binary ; 2L is text)
 
 returns 0 on failure
 */
-long __ASM__ xpr_finfo(__REG__(a0, char *filename),
+long __SAVE_DS__ __ASM__ xpr_finfo(__REG__(a0, char *filename),
                        __REG__(d0, long typeofinfo))
 {
 	struct FileInfoBlock *fib = AllocMem(sizeof(struct FileInfoBlock), 0);
@@ -136,7 +136,7 @@ long __ASM__ xpr_finfo(__REG__(a0, char *filename),
    It returns 0L on success,
    non-zero on failure. */
 #define FLAG_RAW_CONNECTION      (1 << 13)  // BIT 13 = Raw Connection (NO telnet negotiation data)
-long __ASM__ xpr_swrite(__REG__(a0, char *buffer),
+long __SAVE_DS__ __ASM__ xpr_swrite(__REG__(a0, char *buffer),
                         __REG__(d0, long size))
 {
 	long ret = -1;
@@ -166,7 +166,7 @@ long __ASM__ xpr_swrite(__REG__(a0, char *buffer),
 }
 
 /* Get char from serial */
-long __ASM__ xpr_sread(__REG__(a0, char *buffer),
+long __SAVE_DS__ __ASM__ xpr_sread(__REG__(a0, char *buffer),
                        __REG__(d0, long size),
                        __REG__(d1, long timeout))
 {
@@ -262,7 +262,7 @@ long __ASM__ xpr_sread(__REG__(a0, char *buffer),
 }
 
 /* Flush serial input buffer */
-long xpr_sflush(void)
+long __SAVE_DS__ xpr_sflush(void)
 {
 	fd_set rd;
 	struct timeval timer;
@@ -281,7 +281,7 @@ long xpr_sflush(void)
 }
 
 /* Find first file name */
-long __ASM__ xpr_ffirst(__REG__(a0, char *buffer),
+long __SAVE_DS__ __ASM__ xpr_ffirst(__REG__(a0, char *buffer),
                         __REG__(a1, char *pattern))
 {
 	strcpy(buffer, prefs.uploadpath);
@@ -290,7 +290,7 @@ long __ASM__ xpr_ffirst(__REG__(a0, char *buffer),
 }
 
 /* Find next file name */
-long __ASM__ xpr_fnext(__REG__(d0, long oldstate),
+long __SAVE_DS__ __ASM__ xpr_fnext(__REG__(d0, long oldstate),
 				__REG__(a0, char *buffer),
 				__REG__(a1, char *pattern))
 {
@@ -305,7 +305,7 @@ long __ASM__ xpr_fnext(__REG__(d0, long oldstate),
 }
 
 /* Get string interactively */
-long __ASM__ xpr_gets(__REG__(a0, char *prompt),
+long __SAVE_DS__ __ASM__ xpr_gets(__REG__(a0, char *prompt),
                       __REG__(a1, char *buffer))
 {
 	/* The first argument is a pointer to a string containing a prompt, to be displayed by the
@@ -321,7 +321,7 @@ The following xpr_fopen(), xpr_fclose() xpr_fread(), xpr_fwrite(), xpr_fseek(), 
 call-back function works in most respects identically to the stdio function fopen(),etc...
 Enables external protocols to manipulate files via the communication program.
 */
-long __ASM__ xpr_fopen(__REG__(a0, char *filename),
+long __SAVE_DS__ __ASM__ xpr_fopen(__REG__(a0, char *filename),
                        __REG__(a1, char *accessmode))
 {
 	register long fh;
@@ -353,13 +353,13 @@ long __ASM__ xpr_fopen(__REG__(a0, char *filename),
 	return(0);
 }
 
-long __ASM__ xpr_fclose(__REG__(a0, long filepointer))
+long __SAVE_DS__ __ASM__ xpr_fclose(__REG__(a0, long filepointer))
 {
 	if(filepointer) Close(filepointer);
 	return(0);
 }
 
-long __ASM__ xpr_fread(__REG__(a0, char *buffer),
+long __SAVE_DS__ __ASM__ xpr_fread(__REG__(a0, char *buffer),
                        __REG__(d0, long size),
                        __REG__(d1, long count),
                        __REG__(a1, long fileptr))
@@ -368,7 +368,7 @@ long __ASM__ xpr_fread(__REG__(a0, char *buffer),
 	return(Read(fileptr,buffer,size*count));
 }
 
-long __ASM__ xpr_fwrite(__REG__(a0, char *buffer),
+long __SAVE_DS__ __ASM__ xpr_fwrite(__REG__(a0, char *buffer),
                         __REG__(d0, long size),
                         __REG__(d1, long count),
                         __REG__(a1, long fileptr))
@@ -377,7 +377,7 @@ long __ASM__ xpr_fwrite(__REG__(a0, char *buffer),
 	return(Write(fileptr,buffer,size*count));
 }
 
-long __ASM__ xpr_fseek(__REG__(a0, long fileptr),
+long __SAVE_DS__ __ASM__ xpr_fseek(__REG__(a0, long fileptr),
                        __REG__(d0, long offset),
                        __REG__(d1, long origin))
 {
@@ -394,7 +394,7 @@ long __ASM__ xpr_fseek(__REG__(a0, long fileptr),
 }
 
 /* Delete a file. */
-long __ASM__ xpr_unlink(__REG__(a0, char *filename))
+long __SAVE_DS__ __ASM__ xpr_unlink(__REG__(a0, char *filename))
 {
 	return(DeleteFile(filename));
 }
@@ -404,7 +404,7 @@ long __ASM__ xpr_unlink(__REG__(a0, char *filename))
     external protocol to the communications program for display. Hence, the display format itself
     (requester, text-I/O) is left to the implementer of the communications program.
 */
-long __ASM__ xpr_update(__REG__(a0,
+long __SAVE_DS__ __ASM__ xpr_update(__REG__(a0,
                         struct XPR_UPDATE * updatestruct))
 {
     /*
@@ -598,7 +598,7 @@ static long Checkwinmsg(struct Window *wwin)
  *
  * @return LONG -1 if an abort is requested, 0 otherwise.
  */
-long xpr_chkabort(void)
+long __SAVE_DS__ xpr_chkabort(void)
 {
 	// If the application is iconified on the Workbench
 	if(isAppIconified)
@@ -650,7 +650,7 @@ long xpr_chkabort(void)
 }
 
 /* Query serial device */
-long xpr_squery(void)
+long __SAVE_DS__ xpr_squery(void)
 {
 	fd_set rd;
 	struct timeval timer;
