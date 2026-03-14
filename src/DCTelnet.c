@@ -567,14 +567,22 @@ static void Receive(void)
 				case 13:
 					if(!(prefs.flags & FLAG_CRLF_CORRECTION)) goto norm;
 					break;
-				case 27:
+				case 27: // ESC
 					if(!(prefs.flags & FLAG_STRIP_COLOUR)) goto norm;
 					temp = i;
-					i += 2;
-					while(i < length && buf[i]>='0' && buf[i]<=';') i++;
-					if(buf[i] != 'm')
+					i += 2; // skip ESC and '['
+
+					// Advance through digits and semicolons (color codes)
+					// ANSI colors parameters are normally digits separated by ';' (e.g. ESC[31;1m).
+					// Some modern terminals also allow ':' as a separator (e.g. ESC[38:2:255:0:0m).
+					// Using the ASCII range '0'..';' conveniently accepts digits, ':' and ';'.
+					while(i < length && buf[i]>='0' && buf[i]<=';')
+						i++;
+
+					// ensure in bounds and ended with 'm', which ends an ANSI color sequence
+					if(i >= length || buf[i] != 'm')
 					{
-						i = temp;
+						i = temp; // rollback, invalid or incomplete color sequence
 						goto norm;
 					}
 					break;
