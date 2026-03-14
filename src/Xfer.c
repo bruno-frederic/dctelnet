@@ -128,18 +128,25 @@ long __ASM__ xpr_finfo(__REG__(a0, char *filename),
 	return(result);
 }
 
-/* Put string to serial */
+/* This function writes a buffer with the given size to the serial port.
+   It returns 0L on success,
+   non-zero on failure. */
+#define FLAG_RAW_CONNECTION      (1 << 13)  // BIT 13 = Raw Connection (NO telnet negotiation data)
 long __ASM__ xpr_swrite(__REG__(a0, char *buffer),
                         __REG__(d0, long size))
 {
-	long ret = 0;
+	long ret = -1;
 	register ULONG i = 0, j = 0;
 	UBYTE *tb = AllocMem(size+size, MEMF_PUBLIC);
 	if(tb)
 	{
 		while(i < size)
 		{
-			if(buffer[i] == 255)
+			// The byte 0xff (255) means that the next byte is a Telnet command. If you want to send
+			// 0xff then you must send it twice to tell telnet that you don't intend to send a
+			// command. This escaping is only required for Telnet connections and must not be
+			// applied to raw TCP connections.
+			if((unsigned char) buffer[i] == 255 && !(prefs.flags & FLAG_RAW_CONNECTION))
 			{
 				tb[j] = buffer[i];
 				j++;
@@ -148,7 +155,7 @@ long __ASM__ xpr_swrite(__REG__(a0, char *buffer),
 			j++;
 			i++;
 		}
-		if(TCPSend(tb, j) < 0) ret = -1;
+		if(TCPSend(tb, j) >= 0) ret = 0;
 		FreeMem(tb, size+size);
 	}
 	return(ret);
