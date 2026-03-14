@@ -59,7 +59,11 @@ Returns the new buffer length after stripping.
 static long instrip(unsigned char *buff, long length)
 {
 	register long i = 0, j = 0;
-	unsigned char *tb = AllocMem(length+2, MEMF_PUBLIC);
+	unsigned char *tb = NULL;
+	if (prefs.flags & FLAG_RAW_CONNECTION)
+		return length; // No stripping for raw connections
+
+	tb = AllocMem(length+2, MEMF_PUBLIC);
 	if(tb)
 	{
 		while(i < length)
