@@ -40,6 +40,16 @@ https://eab.abime.net/showthread.php?t=121939
 
 ---
 
+v1.8.1 Changelog
+
+Bug Fixes:
+- Fix ZModem up/download bug introduced in v1.8: transfers could enter an
+  infinite loop
+- Prevent potential out-of-bounds buffer access with "Strip Colour" option
+- Properly skip IAC commands received after initial Telnet negotiation
+- Correct handling of character ÿ (0xFF) on raw TCP connections
+
+
 v1.8 Changelog
 
 Bug Fixes:

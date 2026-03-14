@@ -1,5 +1,5 @@
 @DATABASE "DCTelnet.guide"
-@$VER: DCTelnet.guide 1.8.1 (x.3.26)
+@$VER: DCTelnet.guide 1.8.1 (14.3.26)
 @node "MAIN" "DCTelnet Guide"
 @author "Shane, Zed and Bruno FREDERIC"
 @TOC "MAIN"
@@ -496,7 +496,20 @@ Starting with v1.8, a compatible version of the library is included in the
 @node HISTORY "DCTelnet, History"
 
                                  @{b}@{u} History @{ub}@{uu}
-                                  ~~~~~~~~~
+                                 ~~~~~~~~~
+
+---[ DCTelnet 1.8.1 ]-------------------------------------------------------
+
+- Fix ZModem up/download bug introduced in v1.8: transfers could enter an
+  infinite loop
+
+- Prevent potential out-of-bounds buffer access with "Strip Colour" option
+
+- Properly skip IAC commands received after initial Telnet negotiation
+
+- Correct handling of character ÿ (0xFF) on raw TCP connections
+
+
 
 ---[ DCTelnet 1.8 ]-------------------------------------------------------
 
