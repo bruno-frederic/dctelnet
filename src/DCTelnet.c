@@ -587,12 +587,147 @@ static void Receive(void)
 					}
 					break;
 				case 255:     // The byte 0xff (255) means that the next byte is a Telnet command
-					i += 2;
+					if (prefs.flags & FLAG_RAW_CONNECTION)  goto norm;
 
 					#ifdef _DEBUG
-						LocalPrint("›36m[recv() => IAC]›m");
+						LocalPrint("›36m[recv() => IAC");
 					#endif
 
+					i++;
+					if (i >= length)
+					{
+						#ifdef _DEBUG
+							LocalPrint("TODO: handle cut command sequence that arrives in multiple recv() calls");
+							LocalPrint("]›m");
+						#endif
+						// for now just ignore the IAC if it's incomplete:
+						goto end_of_loop;
+					}
+
+					#ifdef _DEBUG
+						LocalPrint(";");
+						if (TELCMD_OK(buf[i]))  LocalPrint(TELCMD(buf[i]));
+						else                       LocalPrintByte(buf[i]);
+					#endif
+
+					switch(buf[i])
+					{
+						case 255: // Escaped 255 byte, not a command; output a single 255 byte
+							#ifdef _DEBUG
+								LocalPrint("]›m");
+							#endif
+							goto norm;
+							break;
+
+						case 250: // SB : Telnet subnegotiation: IAC SB <option> ... IAC SE
+							// For now we skip the subnegotiation payload.
+							// The payload terminates with the sequence "IAC SE".
+							// We also handle escaped IAC bytes (IAC IAC) inside the payload.
+
+							// GPT version : TODO relire cette boucle un autre jour
+							i++; // move past SB to option byte
+							while (i + 1 < length)
+							{
+								#ifdef _DEBUG
+									LocalPrintByte(buf[i]);
+								#endif
+
+								if (buf[i] == 255) // IAC
+								{
+									if (buf[i+1] == 255) // Escaped IAC
+									{
+										#ifdef _DEBUG
+											LocalPrint(";255");
+										#endif
+										i++;
+									}
+									else if (buf[i+1] == SE) // End of subnegotiation
+									{
+										#ifdef _DEBUG
+											LocalPrint(";SE");
+										#endif
+										i++; // position on SE
+										break;
+									}
+									#ifdef _DEBUG
+									else
+									{
+										LocalPrint(" IAC alone! That is not supposed to happen!!!");
+									}
+									#endif
+								}
+
+								i++;
+							}
+
+							#ifdef _DEBUG
+								if (i < length && buf[i] != SE)
+								{
+									LocalPrint("TODO: handle cut subnegotiation that arrives in multiple recv() calls");
+								}
+								LocalPrint("]›m");
+							#endif
+
+							/* ma version simpliste OK qui ne gère pas les double IAC dans SB SE
+							while(i < length && buf[i] != SE)
+							{
+								#ifdef _DEBUG
+									LocalPrintByte(buf[i]);
+								#endif
+								i++;
+							}
+							#ifdef _DEBUG
+								if (i < length)
+								{
+									LocalPrint(";");
+									if (TELCMD_OK(buf[i]))  LocalPrint(TELCMD(buf[i]));
+									else                       LocalPrintByte(buf[i]);
+								}
+								else
+								{
+									LocalPrint("TODO: handle cut subnegotiation that arrives in multiple recv() calls");
+								}
+
+								LocalPrint("]›m");
+							#endif
+							*/
+
+							goto end_of_loop;
+							break;
+
+						// Option negotiation (command followed by 1 option byte)
+						case 251: // WILL
+						case 252: // WON'T
+						case 253: // DO
+						case 254: // DON'T
+							i++; // skip option byte
+
+							#ifdef _DEBUG
+								// display the option:
+								if (i < length)
+								{
+									LocalPrint(";");
+									if (TELOPT_OK(buf[i]))  LocalPrint(TELOPT(buf[i]));
+									else                    LocalPrintByte(buf[i]);
+								}
+								else
+								{
+									LocalPrint("TODO: handle cut option negotiation that arrives in multiple recv() calls");
+								}
+								LocalPrint("]›m");
+							#endif
+
+							goto end_of_loop;
+							break;
+
+						default:  // Simple Telnet command (no additional bytes)
+							#ifdef _DEBUG
+								LocalPrint("]›m");
+							#endif
+
+							goto end_of_loop;
+							break;
+					}
 					break;
 
 				// Detect ZMODEM auto-start sequence: **\x18B00
@@ -623,6 +758,8 @@ norm:
 					outbuf[j] = buf[i];
 					j++;
 				} // end of switch
+
+end_of_loop:
 				i++;
 			}
 
