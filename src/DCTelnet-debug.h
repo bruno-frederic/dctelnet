@@ -16,6 +16,25 @@ void Pause(void)
     }
 }
 
+// Wrapper around VPrintf() to simplify printing a single byte. This function hides the complexity
+// of VPrintf() and protects against VPrintf's sensitivity to types and format specifiers.
+void LogByte(unsigned char b)
+{
+	static LONG array[1] = { 0 };
+
+	array[0] = b;
+	VPrintf(" %ld", array);
+}
+
+void LocalPrintByte(unsigned char b)
+{
+	LONG l = b;
+	static char s[5] = { '\0' }; // 1 space, 3 digits, '\0'
+	mysprintf(s, " %ld", l);
+	LocalPrint(s);
+}
+
+
 void LogWindowsSigBit(void)
 {
 	ULONG array[1];

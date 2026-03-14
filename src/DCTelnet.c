@@ -11,6 +11,12 @@ static char MainWindowTitle[] =
 
 #define __USE_SYSBASE
 
+// For telnet debugging purpose:
+#ifdef _DEBUG
+#define TELCMDS
+#define TELOPTS
+#endif
+
 #include <proto/exec.h>               // OpenLibrary(), GetMsg(), ReplyMsg(), AllocMem()...
 #include <proto/dos.h>                // Open(), Close(), Read(), Write(), PutStr()...
 #include <proto/intuition.h>          // OpenWindow(),CloseWindow(), OnMenu(), OffMenu()...
@@ -25,6 +31,7 @@ static char MainWindowTitle[] =
 #include <libraries/reqtools.h>       // struct rtFileList, RT_FILEREQ, RT_Window
 #include <proto/reqtools.h>           // rtAllocRequestA() rtScreenModeRequest() rtPaletteRequestA()
 #include <proto/socket.h>             // send(), <CloseSocket>()
+#include <arpa/telnet.h>
 #include <libraries/xem.h>            // struct XEM_IO
 #include <proto/xem.h>                // XEmulatorSetup(), XEmulatorWrite()...
 #include "DCTelnet.h"
@@ -185,6 +192,8 @@ static char *programName = NULL;   // Name provided by argv[0] or task::tc_Node.
 struct Task *thisTask = NULL;
 BYTE dontUseSig31 = -1; // don't use it, ibmcon.device will destroy it.
 
+static void EZReq(struct Window *win, const char *str);
+#include "DCTelnet-debug.h"
 
 void mysprintf(char *Buffer, char *ctl, ...)
 {
@@ -215,18 +224,23 @@ void LocalPrint(char *data)
 	ConWrite(data, strlen(data));
 }
 
+// WARNING: This function uses the same global buffer "buf" that is also used by recv() to receive
+// data from the TCP socket.
 void LocalFmt(char *ctl, ...)
 {
 	RawDoFmt(ctl, (long *)(&ctl + 1), (void (*))"\x16\xc0\x4e\x75", buf);
 	ConWrite(buf, strlen(buf));
 }
 
+// WARNING: This function uses the same global buffer "buf" that is also used by recv() to receive
+// data from the TCP socket.
 void TextFmt(struct RastPort *rP, char *ctl, ...)
 {
 	RawDoFmt(ctl, (long *)(&ctl + 1), (void (*))"\x16\xc0\x4e\x75", buf);
 	Text(rP, buf, strlen(buf));
 }
 
+// Wrapper around send() from bsdsocket.library that maintains the nBytesSent counter.
 long TCPSend(char *buf, long len)
 {
 	if(send(tcpSocket, buf, len, 0) < 0) return -1;
@@ -509,13 +523,25 @@ static void Receive(void)
 			unsigned char *outbuf = AllocMem(length+256, MEMF_PUBLIC);
 			if(!outbuf) return;
 
-			/*fh = Open("ram:in.txt", MODE_READWRITE);
-			if(fh)
-			{
-				Seek(fh, 0, OFFSET_END);
-				Write(fh, buf, length);
-				Close(fh);
-			}*/
+            #ifdef _DEBUG
+                // Lots of output for debugging telnet command parsing; (un)comment if needed:
+                fileHandle = Open("PROGDIR:capture_in.bin", MODE_READWRITE);
+                if(fileHandle)
+                {
+                    Seek(fileHandle, 0, OFFSET_END);
+                    Write(fileHandle, buf, length);
+                    Close(fileHandle);
+                }
+
+                /*
+                PutStr("   --> recv() =>");
+                for (temp = 0 ; temp < length ; temp++)
+                {
+                    LogByte(buf[temp]);
+                }
+                */
+                PutStr("\n");
+            #endif
 
 			if(((prefs.flags&5) == 0)  &&  !isAppIconified) // if bits 0 and 2 are clear
 			{
@@ -554,7 +580,15 @@ static void Receive(void)
 					break;
 				case 255:     // The byte 0xff (255) means that the next byte is a Telnet command
 					i += 2;
+
+					#ifdef _DEBUG
+						LocalPrint("›36m[recv() => IAC]›m");
+					#endif
+
 					break;
+
+				// Detect ZMODEM auto-start sequence: **\x18B00
+				// Uses a small state machine (zm) to set upload/download flags
 				case '1':
 					if(zm == 5) upload = TRUE;
 					goto pnorm;
@@ -573,9 +607,14 @@ static void Receive(void)
 					goto norm;
 				default:
 pnorm:					zm = 0;
-norm:					outbuf[j] = buf[i];
+norm:
+					#ifdef _DEBUG
+						if (i >= length)       EZReq(win, "i out of bounds in Receive()!");
+						if (j >= length + 256) EZReq(win, "j out of bounds in Receive()!");
+					#endif
+					outbuf[j] = buf[i];
 					j++;
-				}
+				} // end of switch
 				i++;
 			}
 
@@ -884,8 +923,6 @@ static void Finger(void)
 		}
 	}
 }
-
-#include "DCTelnet-debug.h"
 
 int main(int argc, char *argv[])
 {
