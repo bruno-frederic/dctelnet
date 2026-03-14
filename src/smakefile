@@ -81,7 +81,7 @@ $(OBJDIR)/DCTelnet.$(CPU) : $(OBJS)
 #	$(CC) $(CFLAGS) $*.c  ObjectName=$(OBJDIR)/
 
 # FIXME: Putting OBJDIR here causes recompilation every time
-# (GNU make’s order-only "|" dependency is missing)
+# (GNU make's order-only "|" dependency is missing)
 $(OBJDIR)/DCTelnet.o: DCTelnet.c $(DEPS) $(OBJDIR)
 	@echo "------------- $@ --------------------"
 	$(CC) $(CFLAGS) $*.c  ObjectName=$(OBJDIR)/

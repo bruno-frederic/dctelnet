@@ -754,7 +754,7 @@ static BOOL EditProfile(struct BookStruct *book)
             }
         }
 
-        // Copy gadget values to the BookStruct if user pressed OK :
+        // Copy gadget values to the BookStruct if user pressed OK:
         if (ret)
         {
             strcpy(book->name,
