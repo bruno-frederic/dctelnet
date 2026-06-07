@@ -137,8 +137,8 @@ struct NewGadget newGadget;
 static struct TextAttr fontAttr;
 struct TextFont *ansiFont;
 static BOOL isConDeviceOpened = FALSE;
-static struct IOStdReq writeIOReq;
-static struct MsgPort *WriteConPort = NULL;
+static struct IOStdReq *writeConIOReq = NULL;
+static struct MsgPort *writeConPort = NULL;
 struct Menu *menuStrip;
 static struct DiskObject *diskObj;
 struct MsgPort *iconPort;
@@ -217,7 +217,7 @@ static void ConWrite(char *data, long len)
 			XEmulatorWrite(&xemIO, data, len);
 		else {
 			#ifdef _DEBUG
-			if (!isConDeviceOpened) DisplayAlert(RECOVERY_ALERT,
+			if (!writeConIOReq) DisplayAlert(RECOVERY_ALERT,
 				"Error writing to console: console device is unavailable.",
 				0);
 			#endif
@@ -226,10 +226,10 @@ static void ConWrite(char *data, long len)
 			// https://amigadev.elowar.com/read/ADCD_2.1/Devices_Manual_guide/node0006.html
 
 			// An I/O request typically has three fields set for every command sent to a device:
-			writeIOReq.io_Data = data;
-			writeIOReq.io_Length = len;
-			writeIOReq.io_Command = CMD_WRITE;
-			DoIO((struct IORequest *)&writeIOReq); // DoIO() is a synchronous function
+			writeConIOReq->io_Data = data;
+			writeConIOReq->io_Length = len;
+			writeConIOReq->io_Command = CMD_WRITE;
+			DoIO((struct IORequest *)writeConIOReq); // DoIO() is a synchronous function
 		}
 	}
 }
@@ -2661,38 +2661,26 @@ cantfind:
                 // https://amigadev.elowar.com/read/ADCD_2.1/Libraries_Manual_guide/node02A5.html
 
 				// needed for async IO replies, but we will do sync IO anyway, so unused:
-				WriteConPort = CreateMsgPort();
-				if(WriteConPort)
+				writeConPort = CreateMsgPort();
+				if(writeConPort)
 				{
-					char *dev;
-					UWORD unit;
+					UWORD unitNumber;
+					char *devName = isRunningOnWB ? "console.device" : "ibmcon.device";
 
-				   // Doc about OpenDevice() to open a console device :
-		   // https://amigadev.elowar.com/read/ADCD_2.1/Libraries_Manual_guide/node029E.html
-           // https://amigadev.elowar.com/read/ADCD_2.1/Includes_and_Autodocs_2._guide/node0509.html
+					// https://amigadev.elowar.com/read/ADCD_2.1/Includes_and_Autodocs_2._guide/node0344.html
+					writeConIOReq = CreateIORequest(writeConPort, sizeof(struct IOStdReq));
 
-		   // The console device :
-		   // https://amigadev.elowar.com/read/ADCD_2.1/Devices_Manual_guide/node0080.html
-
-					//the window that is used by the console device for output:
-					writeIOReq.io_Data = win;
-					writeIOReq.io_Length = sizeof(struct Window);
-
-					// needed for async IO replies, but we will do sync IO anyway, so useless:
-					writeIOReq.io_Message.mn_ReplyPort = WriteConPort;
 
 					// The unit number that is a standard parameter for an open call is used
 					// specially by this device.
 					if (isRunningOnWB)
 					{
-						dev = "console.device";
-						unit = CONU_SNIPMAP;
+						unitNumber = CONU_SNIPMAP;
 					} else {
-						dev = "ibmcon.device";
 						if(prefs.flags & FLAG_JUMP_SCROLL)
-							unit = 2; // unit 2 is undocumented in the NDK and AmigaOS docs
+							unitNumber = 2; // unit 2 is undocumented in the NDK and AmigaOS docs
 						else
-							unit = CONU_CHARMAP;
+							unitNumber = CONU_CHARMAP;
 					}
 
 					#ifdef _DEBUG
@@ -2701,8 +2689,18 @@ cantfind:
 						PutStr("SigAlloc:"); PrintBitsULONG(thisTask->tc_SigAlloc);
 						LogWindowsSigBit();
 					#endif
+				    // Doc about OpenDevice() to open a console device :
+		   // https://amigadev.elowar.com/read/ADCD_2.1/Libraries_Manual_guide/node029E.html
+           // https://amigadev.elowar.com/read/ADCD_2.1/Includes_and_Autodocs_2._guide/node0509.html
 
-					i = OpenDevice(dev, unit, (struct IORequest *)&writeIOReq, CONFLAG_DEFAULT);
+		            // The console device :
+		            // https://amigadev.elowar.com/read/ADCD_2.1/Devices_Manual_guide/node0080.html
+
+                    //the window that is used by the console device for output:
+					writeConIOReq->io_Data = win;
+					writeConIOReq->io_Length = sizeof(struct Window);
+
+					i = OpenDevice(devName, unitNumber, (struct IORequest *)writeConIOReq, CONFLAG_DEFAULT);
 
 					#ifdef _DEBUG
 						PutStr("   <-- OpenDevice()\n");
@@ -2839,7 +2837,7 @@ void CloseDisplay(BOOL manageScreen)
 	}
 
 	// https://amigadev.elowar.com/read/ADCD_2.1/Devices_Manual_guide/node0190.html
-	if(isConDeviceOpened)
+	if (isConDeviceOpened)
 	{
 		#ifdef _DEBUG
 			PutStr("   --> CloseDevice(&writeIOReq)\n");
@@ -2852,7 +2850,7 @@ void CloseDisplay(BOOL manageScreen)
 			}
 		#endif
 
-		CloseDevice((struct IORequest *)&writeIOReq);
+		CloseDevice((struct IORequest *)writeConIOReq);
 
 		if (thisTask->tc_SigAlloc & (1L << 31))
 		{
@@ -2879,13 +2877,18 @@ void CloseDisplay(BOOL manageScreen)
 		}
 
 		isConDeviceOpened = FALSE;
-		memset(&writeIOReq, 0, sizeof(writeIOReq));
 	}
 
-	if (WriteConPort)
+	if (writeConIOReq)
 	{
-		DeleteMsgPort(WriteConPort);
-		WriteConPort = NULL;
+		DeleteIORequest(writeConIOReq);
+		writeConIOReq=NULL;
+	}
+
+	if (writeConPort)
+	{
+		DeleteMsgPort(writeConPort);
+		writeConPort = NULL;
 	}
 
 	if(packetWin)
