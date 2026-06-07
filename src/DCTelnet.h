@@ -74,6 +74,8 @@ extern BOOL shouldQuitApp;          // program finished
 extern BOOL isRunningOnWB;          // running in wb
 extern BOOL isAppIconified;         // iconified
 extern BOOL shouldUniconify;        // must shouldUniconifyify
+// Used in Receive(), xpr_sflush(). Beware: each call to this function destroy the content
+extern UBYTE recvBuffer[4096];
 extern unsigned char buf[2048];
 extern unsigned char keys[1520];
 extern UWORD winTop;                // WinTop topEdge (titlebar height)

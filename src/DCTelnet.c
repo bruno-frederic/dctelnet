@@ -181,6 +181,8 @@ long tcpSocket, nBytesReceived;
 static long conectionTime, nBytesSent;
 void *visualInfos;
 char username[42], password[42];
+// TCP Receive buffer, used in Receive(), xpr_sflush(). Cauntion: these functs destroy the content
+UBYTE recvBuffer[4096];
 unsigned char buf[2048], keys[1520];
 static unsigned char conbuf[16], scrollbuf[402];
 char server[64];
@@ -579,7 +581,6 @@ add:
 
 static void Receive(void)
 {
-    static UBYTE recvBuffer[2048];
     static UBYTE outBuffer[sizeof(recvBuffer)];
     LONG len;
     LONG i;

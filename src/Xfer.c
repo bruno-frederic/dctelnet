@@ -45,17 +45,42 @@ static int posY(WORD n)
 	return(((xrp->Font->tf_YSize+1)*n)+3+winTop);
 }
 
-/*
-Strip 0xFF escape bytes from the incoming stream.
 
-Telnet escape a literal 0xFF byte by sending it twice (0xFF 0xFF). This function
-collapses such sequences into a single 0xFF.
-
-The ff_escape_pending flag is kept across calls to handle cases where an escape sequence spans
-multiple received buffers.
-
-Returns the new buffer length after stripping.
-*/
+/**
+ * @brief Remove Telnet escaped IAC bytes from a received data buffer.
+ *
+ * Telnet represents a literal IAC byte (0xFF) in the data stream by sending it twice (0xFF 0xFF).
+ * This function collapses such escaped sequences back into a single 0xFF byte.
+ *
+ * The global @c ff_escape_pending flag is preserved across calls so that escape sequences split
+ * across multiple TCP receive buffers are handled correctly.
+ *
+ * Raw connections (@c FLAG_RAW_CONNECTION) bypass this processing and the original buffer length is
+ * returned unchanged.
+ *
+ * @param buff
+ *        Buffer containing received data. The buffer is modified in place.
+ *
+ * @param length
+ *        Number of valid bytes in @p buff.
+ *
+ * @return
+ *        New buffer length after Telnet IAC unescaping.
+ *
+ * @note
+ *        This function is primarily used during ZModem transfers where the
+ *        Telnet parser is bypassed and only IAC escaping must be removed.
+ *
+ * @todo
+ *        better buffer handling : each function call provoke an AllocMem.
+ *        Eliminate the temporary tb buffer allocation on every call. The caller should
+ *        provide a work buffer, or the unescaping should be performed in place.
+ *
+ * @todo
+ *        Consider reusing the normal Telnet state machine during file transfers so that Telnet
+ *        commands received mid-transfer are handled correctly while still unescaping IAC-IAC
+ *        sequences.
+ */
 static long instrip(unsigned char *buff, long length)
 {
 	register long i = 0, j = 0;
@@ -101,7 +126,6 @@ static void ProtoClean(void)
 	XProtocolCleanup(&xio);
 	CloseLibrary(XProtocolBase);
 	XProtocolBase = NULL;
-	xpr_sflush();
 	//ConWrite("", 1);
 }
 
@@ -133,7 +157,7 @@ long __SAVE_DS__ __ASM__ xpr_finfo(__REG__(a0, char *filename),
 	return(result);
 }
 
-/* This function writes a buffer with the given size to the serial port.
+/* This function writes a buffer with the given size to the socket/serial port.
    It returns 0L on success,
    non-zero on failure. */
 #define FLAG_RAW_CONNECTION      (1 << 13)  // BIT 13 = Raw Connection (NO telnet negotiation data)
@@ -166,7 +190,7 @@ long __SAVE_DS__ __ASM__ xpr_swrite(__REG__(a0, char *buffer),
 	return(ret);
 }
 
-/* Get char from serial */
+/* Get char from socket/serial */
 long __SAVE_DS__ __ASM__ xpr_sread(__REG__(a0, char *buffer),
                        __REG__(d0, long size),
                        __REG__(d1, long timeout))
@@ -199,6 +223,7 @@ long __SAVE_DS__ __ASM__ xpr_sread(__REG__(a0, char *buffer),
 
 			if(WaitSelect(tcpSocket + 1, &rd, 0L, 0L, &timer, &sig) < 0) return(-1);
 
+            // TODO: check if this the responsability of the XPR library ?
 			if(xpr_chkabort() == -1) return(-1);
 
 			if(FD_ISSET(tcpSocket, &rd))
@@ -262,23 +287,47 @@ long __SAVE_DS__ __ASM__ xpr_sread(__REG__(a0, char *buffer),
 	return(0);*/
 }
 
-/* Flush serial input buffer */
+/* Flush socket/serial input buffer
+
+Used at the start of a transfer and when performing error recovery and resync when transferring
+files.
+
+Also used by Xem library.
+*/
+#define MAX_FLUSH_ITERATIONS 32
 long __SAVE_DS__ xpr_sflush(void)
 {
-	fd_set rd;
-	struct timeval timer;
+    LONG len;
+    int i = 0;
 
-	FD_ZERO(&rd);
-	FD_SET(tcpSocket, &rd);
+    // Set temporarly socket to nonblocking to quickly flush.
+    LONG mode = 1;  // The argument must be (long *)
+    IoctlSocket(tcpSocket, FIONBIO, &mode);
 
-	timer.tv_sec = 0;
-	timer.tv_usec = 1;
+    do
+    {
+        /*
+         If no messages are available at the socket, the receive call waits for a message to arrive,
+         unless the socket is nonblocking (see IoctlSocket()) in which case the value -1 is returned
+         and the external variable errno set to EAGAIN.
+        */
+        // TODO: Consider calling Receive() to continue processing pending Telnet IAC sequences.
+        len = recv(tcpSocket, recvBuffer, sizeof(recvBuffer), 0);
 
-	if(WaitSelect(tcpSocket + 1, &rd, 0L, 0L, &timer, 0L) < 0) return(-1);
+        i++;
+    } while (len > 0 && i < MAX_FLUSH_ITERATIONS);
 
-	if(FD_ISSET(tcpSocket, &rd)) recv(tcpSocket, buf, sizeof buf, 0);
+    // Set socket back to standard blocking mode:
+    mode = 0;
+    IoctlSocket(tcpSocket, FIONBIO, &mode);
 
-	return(0);
+    #ifdef _DEBUG
+        // Must remain at the end since the execution time of this call
+        // can influence timing-sensitive behavior in preceding code
+        PutStr("›32m<-- xpr_sflush()›m\n");
+    #endif
+
+    return 0; // The returned long value seems to be unused
 }
 
 /* Find first file name */
@@ -547,6 +596,19 @@ long __SAVE_DS__ __ASM__ xpr_update(__REG__(a0,
 	return(0);
 }
 
+
+void SendZmodemCancelSequence(void)
+{
+    static const UBYTE ZMODEM_CANCEL_SEQUENCE[] =
+        { 0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x18 };
+
+    #ifdef _DEBUG
+        PutStr("--> SendZmodemCancelSequence()\n");
+    #endif
+
+    TCPSend(ZMODEM_CANCEL_SEQUENCE, sizeof(ZMODEM_CANCEL_SEQUENCE));
+}
+
 static long Checkwinmsg(struct Window *wwin)
 {
 	UWORD code;
@@ -583,7 +645,7 @@ static long Checkwinmsg(struct Window *wwin)
 			case IDCMP_CLOSEWINDOW:
 				if(wwin != toolBarWin)
 				{
-					TCPSend("", 10);
+					SendZmodemCancelSequence();
 					return(-1);
 				}
 				break;
@@ -677,12 +739,27 @@ long __SAVE_DS__ xpr_chkabort(void)
 	return(0);
 }
 
-/* Query serial device */
+/**
+ * @brief Query the socket or serial device for available incoming data.
+ *
+ * This function calls recv() with MSG_PEEK option to inspect the received bytes without consuming
+ * them.
+ * The raw data is passed to instrip(), which removes the Telnet IAC sequences before returning the
+ * cleaned payload length.
+ *
+ * @return Negative value on error,
+ *         0 if no data is available,
+ *         or a positive value representing the cleaned data length after Telnet IAC removal.
+ */
 long __SAVE_DS__ xpr_squery(void)
 {
 	fd_set rd;
 	struct timeval timer;
 	long oldsize;
+
+    #ifdef _DEBUG
+        SimpleReq("xpr_squery() called!!! TODO: Determine when? why?");
+    #endif
 
 	FD_ZERO(&rd);
 	FD_SET(tcpSocket, &rd);
@@ -916,13 +993,23 @@ void Upload(char *library)
 
 			if(ProtoStart(library, buf))
 			{
-				XProtocolSend(&xio);
+				if (XProtocolSend(&xio) != XPRS_SUCCESS)
+                {
+                    SendZmodemCancelSequence();
+
+                    // Pause to let the user read the Xfer window error (~3s on PAL systems)
+                    // and to allow the cancel sequence to be transmitted to the server
+                    Delay(150);
+
+                    xpr_sflush();   // remove garbage received which prevent them to be displayed.
+                }
+
 				ProtoClean();
 			}
 			rtFreeFileList(flist);
 		} else {
-			xpr_sflush();
-			TCPSend("", 10);
+            // The file dialog was closed by the user with no file selected
+			SendZmodemCancelSequence();
 		}
 		rtFreeRequest(filereq);
 	}
@@ -943,15 +1030,24 @@ void Download(char *library)
 
 		if(ProtoStart(library, 0))
 		{
-			XProtocolReceive(&xio);
+			if(XProtocolReceive(&xio) != XPRS_SUCCESS)
+            {
+                SendZmodemCancelSequence();
+
+                // Pause to let the user read the Xfer window error (~3s on PAL systems)
+                // and to allow the cancel sequence to be transmitted to the server
+                Delay(150);
+
+                xpr_sflush();   // remove garbage received which prevent them to be displayed.
+            }
+
 			ProtoClean();
 		}
 		CurrentDir(old);
 		UnLock(lck);
 	} else {
-		TCPSend("", 10);
+		SendZmodemCancelSequence();
 		SimpleReq("Download path does not exist.");
-		xpr_sflush();
 	}
 }
 

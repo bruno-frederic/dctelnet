@@ -7,6 +7,7 @@
 void Upload(char *library);
 void Download(char *library);
 void XferOptions(char *library);
+void SendZmodemCancelSequence(void);
 
 /* DCTelnet.c needs these XPR functions to initialize XEM library (struct XEM_IO): */
 
