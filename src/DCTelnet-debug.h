@@ -39,10 +39,6 @@ void LogWindowsSigBit(void)
 {
 	ULONG array[1];
 
-	parentTask = FindTask(NULL);
-	if (! parentTask)
-		EZReq(NULL, "ERROR: cannot FindTask()!");
-
 	array[0] = dontUseSig31;
 	VPrintf("                      dontUseSig31 = %lu\n", array);
 
@@ -53,9 +49,9 @@ void LogWindowsSigBit(void)
 		{
 			PutStr("ERROR: anormal mp_SigBit!!!\n");
 		}
-		if (! (thisTask->tc_SigAlloc & (1L << array[0])))
+		if (! (mainTask->tc_SigAlloc & (1L << array[0])))
 		{
-			PutStr("ERROR: mp_SigBit disapeared from thisTask->tc_SigAlloc!!!\n");
+			PutStr("ERROR: mp_SigBit disapeared from mainTask->tc_SigAlloc!!!\n");
 		}
 		VPrintf("                  socketLib_SigBit = %lu\n", array);
 	}
@@ -67,9 +63,9 @@ void LogWindowsSigBit(void)
 		{
 			PutStr("ERROR: anormal mp_SigBit!!!\n");
 		}
-		if (! (thisTask->tc_SigAlloc & (1L << array[0])))
+		if (! (mainTask->tc_SigAlloc & (1L << array[0])))
 		{
-			PutStr("ERROR: mp_SigBit disapeared from thisTask->tc_SigAlloc!!!\n");
+			PutStr("ERROR: mp_SigBit disapeared from mainTask->tc_SigAlloc!!!\n");
 		}
 		VPrintf("          win->UserPort->mp_SigBit = %lu\n", array);
 	}
@@ -81,9 +77,9 @@ void LogWindowsSigBit(void)
 		{
 			PutStr("ERROR: anormal mp_SigBit!!!\n");
 		}
-		if (! (thisTask->tc_SigAlloc & (1L << array[0])))
+		if (! (mainTask->tc_SigAlloc & (1L << array[0])))
 		{
-			PutStr("ERROR: mp_SigBit disapeared from thisTask->tc_SigAlloc!!!\n");
+			PutStr("ERROR: mp_SigBit disapeared from mainTask->tc_SigAlloc!!!\n");
 		}
 		VPrintf("scrollbackWin->UserPort->mp_SigBit = %lu\n", array);
 	}
@@ -95,9 +91,9 @@ void LogWindowsSigBit(void)
 		{
 			PutStr("ERROR: anormal mp_SigBit!!!\n");
 		}
-		if (! (thisTask->tc_SigAlloc & (1L << array[0])))
+		if (! (mainTask->tc_SigAlloc & (1L << array[0])))
 		{
-			PutStr("ERROR: mp_SigBit disapeared from thisTask->tc_SigAlloc!!!\n");
+			PutStr("ERROR: mp_SigBit disapeared from mainTask->tc_SigAlloc!!!\n");
 		}
 		VPrintf("         packetWin->UserPort->mp_SigBit = %lu\n", array);
 	}
@@ -109,9 +105,9 @@ void LogWindowsSigBit(void)
 		{
 			PutStr("ERROR: anormal mp_SigBit!!!\n");
 		}
-		if (! (thisTask->tc_SigAlloc & (1L << array[0])))
+		if (! (mainTask->tc_SigAlloc & (1L << array[0])))
 		{
-			PutStr("ERROR: mp_SigBit disapeared from thisTask->tc_SigAlloc!!!\n");
+			PutStr("ERROR: mp_SigBit disapeared from mainTask->tc_SigAlloc!!!\n");
 		}
 		VPrintf("   toolBarWin->UserPort->mp_SigBit = %lu\n", array);
 	}
@@ -123,9 +119,9 @@ void LogWindowsSigBit(void)
 		{
 			PutStr("ERROR: anormal mp_SigBit!!!\n");
 		}
-		if (! (thisTask->tc_SigAlloc & (1L << array[0])))
+		if (! (mainTask->tc_SigAlloc & (1L << array[0])))
 		{
-			PutStr("ERROR: mp_SigBit disapeared from thisTask->tc_SigAlloc!!!\n");
+			PutStr("ERROR: mp_SigBit disapeared from mainTask->tc_SigAlloc!!!\n");
 		}
 		VPrintf("           writeConPort->mp_SigBit = %lu\n", array);
 	}
@@ -137,9 +133,9 @@ void LogWindowsSigBit(void)
 		{
 			PutStr("ERROR: anormal mp_SigBit!!!\n");
 		}
-		if (! (thisTask->tc_SigAlloc & (1L << array[0])))
+		if (! (mainTask->tc_SigAlloc & (1L << array[0])))
 		{
-			PutStr("ERROR: mp_SigBit disapeared from thisTask->tc_SigAlloc!!!\n");
+			PutStr("ERROR: mp_SigBit disapeared from mainTask->tc_SigAlloc!!!\n");
 		}
 		VPrintf("           iconPort->mp_SigBit = %lu\n", array);
 	}

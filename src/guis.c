@@ -507,7 +507,7 @@ add:
 	if(ret)
 	{
 		tcpPort = conbook->port;
-		if(Connect_To_Server(conbook->host, conbook->port) == RETURN_OK)
+		if(BeginServerConnection(conbook->host, conbook->port) == RETURN_OK)
 		{
 			conbook->last = mytime();
 			strcpy(username, conbook->username);

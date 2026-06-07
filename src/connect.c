@@ -108,10 +108,10 @@ static void CloseConnectingWindow( void )
 
 
 /**
- * @brief Entry point for task handling the "Connecting..." window display.
+ * @brief Entry point for the task handling the "Connecting..." window display.
  *
- * This function is executed in a newly created AmigaOS Task (roughly equivalent to a lightweight
- * thread) when a new connection to a server is attempted.
+ * This function is executed in a newly created AmigaOS Task/Process (roughly equivalent to a
+ * lightweight thread) when a new connection to a server is attempted.
  *
  * Its sole responsibility is to display and manage the "Connecting..." window while the connection
  * is in progress.
@@ -154,7 +154,7 @@ void __SAVE_DS__ __ASM__ HandleConnectingWindowTask(void)
 					if(class == IDCMP_GADGETUP) // User clicked a gadget (typically "Cancel")
 					{
 						isConnectionAborted = 1;  // Mark connection as aborted by the user
-						Signal(parentTask, SIGBREAKF_CTRL_C);
+						Signal(mainTask, SIGBREAKF_CTRL_C);
 					}
 				}
 			}
@@ -164,7 +164,7 @@ void __SAVE_DS__ __ASM__ HandleConnectingWindowTask(void)
 			if(sig & SIGBREAKF_CTRL_C)
 			{
 				CloseConnectingWindow();
-				Signal(parentTask, SIGBREAKF_CTRL_E);
+				Signal(mainTask, SIGBREAKF_CTRL_E);
 				return;
 			}
 
@@ -173,7 +173,7 @@ void __SAVE_DS__ __ASM__ HandleConnectingWindowTask(void)
 			{
 				// Update the text displayed in the "Connecting..." window :
 				GT_SetGadgetAttrs(ConnectingGadgets[connectMsgType], ConnectingWnd, 0, GTTX_Text, connectString, TAG_END);
-				Signal(parentTask, SIGBREAKF_CTRL_E);
+				Signal(mainTask, SIGBREAKF_CTRL_E);
 			}
 		}
 	}

@@ -77,7 +77,7 @@ extern BOOL shouldUniconify;        // must shouldUniconifyify
 extern unsigned char buf[2048];
 extern unsigned char keys[1520];
 extern UWORD winTop;                // WinTop topEdge (titlebar height)
-extern struct Task *parentTask;     // An AmigaOS Task is roughly equivalent to a thread
+extern struct Task *mainTask;       // An AmigaOS Task is roughly equivalent to a thread
 
 // This flag is set by the "Connecting..." window task when the user cancels the operation:
 extern BOOL isConnectionAborted;
@@ -108,6 +108,6 @@ void OpenIcon(void);                                    // inconify the applicat
 void SavePrefs(void);
 void EZReq(struct Window *win, const char *str);
 void SimpleReq(char *str);
-UWORD Connect_To_Server(char *servername, UWORD port);
+UWORD BeginServerConnection(char *servername, UWORD port);
 
 #endif /* DCTELNET_H */

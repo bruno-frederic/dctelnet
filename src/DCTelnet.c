@@ -72,7 +72,7 @@ static struct NewMenu mynewmenu[] =
 
         { NM_TITLE, "Connection",	 0 , 0, 0, 0,},
         {  NM_ITEM, "Connect",		"M", 0, 0, 0,},
-        {  NM_ITEM, "Connect Thread",	"G", 0, 0, 0,},
+        {  NM_ITEM, "Connect (New instance)",	"G", 0, 0, 0,},
         {  NM_ITEM, "Disconnect",	"H", 0, 0, 0,},
         {  NM_ITEM, NM_BARLABEL,	 0 , 0, 0, 0,},
         {  NM_ITEM, "Address Book",	"B", 0, 0, 0,},
@@ -196,7 +196,7 @@ char const prefsFilename[] = "PROGDIR:DCTelnet.Prefs";
 char const bookFilename[]  = "PROGDIR:DCTelnet.Book";
 char const keysFilename[]  = "PROGDIR:DCTelnet.Keys";
 static char *programName = NULL;   // Name provided by argv[0] or task::tc_Node.ln_Name
-struct Task *thisTask = NULL;
+struct Task *mainTask = NULL;
 BYTE dontUseSig31 = -1; // don't use it, ibmcon.device will destroy it.
 
 #include "DCTelnet-debug.h"
@@ -1071,7 +1071,7 @@ static void Finger(void)
 			*host++;
 			oldflags = prefs.flags;
 			prefs.flags = FLAG_RAW_CONNECTION;	// Raw Connection (NO telnet negotiation data)
-			if(Connect_To_Server(host, 79) == RETURN_OK)
+			if(BeginServerConnection(host, 79) == RETURN_OK)
 			{
 				mysprintf(buf, "/W %s\r\n", tbuf);
 				send(tcpSocket, buf, strlen(buf), 0);
@@ -1181,12 +1181,12 @@ int main(int argc, char *argv[])
 		ULONG afterSigAlloc;
 		ULONG argArray[1];
 	#endif
-	thisTask = FindTask(NULL);
+	mainTask = FindTask(NULL);
 
 	if(argc == 0) // Launched from Workbench (icon click)
 	{
-		if (thisTask != NULL)
-			programName = thisTask->tc_Node.ln_Name;
+		if (mainTask != NULL)
+			programName = mainTask->tc_Node.ln_Name;
 	}
 	else if(argc > 1) // Launched from Shell/CLI
 	{
@@ -1221,13 +1221,22 @@ int main(int argc, char *argv[])
 		goto clean_exit;
 	}
 
-	if (thisTask == NULL)
+	if (mainTask == NULL)
 	{
 		const char msg[] = "ERROR: cannot FindTask()!";
 		PutStr(msg);
 		EZReq(NULL, msg);
 		goto clean_exit;
 	}
+
+    if (programName == NULL)
+	{
+		const char msg[] = "ERROR: cannot determine program name!";
+		PutStr(msg);
+		EZReq(NULL, msg);
+		goto clean_exit;
+	}
+
 
     // Workaround for connection freeze after changing display settings: ibmcon.device improperly
     // frees signal bit 31 when being closed. We explicitly allocate signal 31 here to prevent it
@@ -1275,12 +1284,12 @@ int main(int argc, char *argv[])
 
 	#ifdef _DEBUG
 		PutStr("--> OpenLibrary(bsdsocket.library, 0)\n");
-		beforeSigAlloc = thisTask->tc_SigAlloc;
+		beforeSigAlloc = mainTask->tc_SigAlloc;
 	#endif
 	SocketBase = OpenLibrary("bsdsocket.library", 0);
 	#ifdef _DEBUG
 		PutStr("<-- OpenLibrary(bsdsocket.library, 0)\n");
-		afterSigAlloc = thisTask->tc_SigAlloc;
+		afterSigAlloc = mainTask->tc_SigAlloc;
 		socketLibSigBit = BitPosition(beforeSigAlloc ^ afterSigAlloc); // XOR detect the differences
 		argArray[0] = socketLibSigBit;
 		VPrintf("                  socketLibSigBit = %lu\n", argArray);
@@ -1293,13 +1302,13 @@ int main(int argc, char *argv[])
 
 	#ifdef _DEBUG
 		PutStr("<-- OpenDisplay()\n");
-		PutStr("SigAlloc:"); PrintBitsULONG(thisTask->tc_SigAlloc);
+		PutStr("SigAlloc:"); PrintBitsULONG(mainTask->tc_SigAlloc);
 		LogWindowsSigBit();
 	#endif
 
 	// Connect to server if it was specified in the command line. It needs an opened display.
 	if (server[0] != '\0')
-		Connect_To_Server(server, tcpPort);
+		BeginServerConnection(server, tcpPort);
 
 	shouldRestart = FALSE;
 	shouldReopenScreen = FALSE;
@@ -1329,7 +1338,7 @@ int main(int argc, char *argv[])
 
 			#ifdef _DEBUG
 				PutStr("<-- OpenDisplay()\n");
-				PutStr("SigAlloc:"); PrintBitsULONG(thisTask->tc_SigAlloc);
+				PutStr("SigAlloc:"); PrintBitsULONG(mainTask->tc_SigAlloc);
 				LogWindowsSigBit();
 			#endif
 
@@ -1494,10 +1503,10 @@ clean_exit:
 
 	#ifdef _DEBUG
 		PutStr("<-- clean finished... will return...\n");
-		if ((thisTask->tc_SigAlloc & 0xFFFF0000UL) != 0)
+		if ((mainTask->tc_SigAlloc & 0xFFFF0000UL) != 0)
 		{
 			PutStr("ERROR: Some signal bits were not unallocated!");
-			PutStr("SigAlloc:"); PrintBitsULONG(thisTask->tc_SigAlloc);
+			PutStr("SigAlloc:"); PrintBitsULONG(mainTask->tc_SigAlloc);
 		}
 	#endif
 
@@ -1531,12 +1540,26 @@ static void SaveScrollBack(char *fname)
 	}
 }
 
-static void Connect(char thread)
+/**
+ * @brief Handles the user "Connect" action from the UI.
+ *
+ * This function is triggered when the user clicks the Connect button.
+ * It prompts for a "host,port" string, parses the input, and determines the target server and TCP
+ * port (defaulting to port 23 if not specified).
+ *
+ * Depending on the execution mode:
+ * - In spawnInstance mode, it launches a new instance of DCTelnet via Execute().
+ * - otherwise, it starts the connection task through BeginServerConnection().
+ *
+ * @param spawnInstance If non-zero, runs the connection in a separate DCTelnet instance.
+ * If zero, connects in the current DCTelnet instance.
+ */
+static void OnConnectClicked(char spawnInstance)
 {
 	char tbuf[64];
 	UWORD port = 0;
 
-	if(!thread) strcpy(tbuf, server); else tbuf[0] = 0;
+	if(!spawnInstance) strcpy(tbuf, server); else tbuf[0] = '\0';
 
 	if(rtGetStringA(tbuf, 63, "Enter host,port:", 0, (struct TagItem *)&reqtoolsTags))
 	{
@@ -1551,13 +1574,19 @@ static void Connect(char thread)
 
 			if(!port) port = 23;
 
-			if(thread)
+			if(spawnInstance)
 			{
-				mysprintf(buf, "run DCTelnet %s %ld <>NIL:", tbuf, port);
-				Execute(buf, 0, 0);
+				mysprintf(buf, "run %s %s %ld <>NIL:", programName, tbuf, port);
+                #ifdef _DEBUG
+                    PutStr("--> Execute(");
+                    PutStr(buf);
+                    PutStr(")\n");
+                #endif
+                // This function attempts to execute the string commandString as a Shell command
+				Execute(buf, (BPTR) 0, (BPTR) 0);
 			} else {
 				tcpPort = port;
-				Connect_To_Server(tbuf, tcpPort);
+				BeginServerConnection(tbuf, tcpPort);
 			}
 		}
 	}
@@ -1694,7 +1723,7 @@ static void GetWindowMsg(struct Window *wwin)
 				switch(gad->GadgetID)
 				{
 					case 0:
-						Connect(FALSE);
+						OnConnectClicked(FALSE);
 						break;
 					case 1:
 						DisConnect(FALSE, FALSE);
@@ -1940,11 +1969,11 @@ static void GetWindowMsg(struct Window *wwin)
 					switch(itemNum)
 					{
 					case 0:
-						Connect(FALSE);
+						OnConnectClicked(FALSE);
 						break;
 
 					case 1:
-						Connect(TRUE);
+						OnConnectClicked(TRUE); // spawn a new DCTelnet instance
 						break;
 
 					case 2:
@@ -2244,52 +2273,65 @@ static void CheckError(void)
 #include <dos/dostags.h>
 
 // An AmigaOS Task is roughly equivalent to a thread within the program's address space
-struct Task *parentTask;
-static struct Task *childTask;
+static struct Task *connectingWindowTask;
 
 // This flag is set by the "Connecting..." window task when the user cancels the operation:
 BOOL isConnectionAborted;
 UWORD connectMsgType;
 char *connectString;
 
-static UWORD Connect_To_ServerA(char *servername, UWORD port);
+static UWORD EstablishTCPConnection(char *servername, UWORD port);
 
-UWORD Connect_To_Server(char *servername, UWORD port)
+/**
+ * @brief Establishes a TCP connection while displaying a connection progress window.
+ *
+ * Spawns a dedicated task responsible for displaying and updating the "Connecting..." window during
+ * the connection attempt. The function then performs the actual TCP connection through
+ * EstablishTCPConnection().
+ *
+ * Once the connection attempt completes, the UI task is signaled to terminate and the function
+ * waits for its acknowledgement before returning.
+ *
+ * @param servername Hostname or IP address of the remote server.
+ * @param port TCP port number to connect to.
+ *
+ * @return Connection result returned by EstablishTCPConnection().
+ */
+UWORD BeginServerConnection(char *servername, UWORD port)
 {
-	UWORD ret;
-
-    parentTask = FindTask(NULL);   // Get current Task
-
+    UWORD ret;
 
     // In V36 (AmigaOS 2.00 & 2.02), NP_Arguments was broken in a number of ways, and probably
     // should be avoided.
-	childTask = (struct Task *)CreateNewProcTags(NP_Entry, HandleConnectingWindowTask, TAG_DONE);
+    connectingWindowTask = (struct Task *) CreateNewProcTags(NP_Entry, HandleConnectingWindowTask,
+                                                             TAG_DONE);
 
-	ret = Connect_To_ServerA(servername, port);
-	Signal(childTask, SIGBREAKF_CTRL_C);
+    ret = EstablishTCPConnection(servername, port);
 
-	Wait(SIGBREAKF_CTRL_E);
+    // the UI task is signaled to terminate and the function waits for its acknowledgement.
+    Signal(connectingWindowTask, SIGBREAKF_CTRL_C);
 
-	// Check & clear CTRL_C signal
-	while((SetSignal(0L, SIGBREAKF_CTRL_C) & SIGBREAKF_CTRL_C))
-	{
-	}
+    Wait(SIGBREAKF_CTRL_E);
 
-	return(ret);
+    // Check & clear CTRL_C signal
+    while((SetSignal(0L, SIGBREAKF_CTRL_C) & SIGBREAKF_CTRL_C))
+    { }
+
+    return ret;
 }
 
 // Notify HandleConnectingWindowTask that a new message should be displayed
-static void c_msg(char *msg, UWORD type)
+static void UpdateConnectingWindowMessage(char *msg, UWORD type)
 {
 	connectString = msg;
 	connectMsgType = type;
-	Signal(childTask, SIGBREAKF_CTRL_E);
+	Signal(connectingWindowTask, SIGBREAKF_CTRL_E);
 
 	// Wait for HandleConnectingWindowTask to acknowledge the signal
 	Wait(SIGBREAKF_CTRL_E);
 }
 
-static UWORD Connect_To_ServerA(char *servername, UWORD port)
+static UWORD EstablishTCPConnection(char *servername, UWORD port)
 {
 	if(!SocketBase) SocketBase = OpenLibrary("bsdsocket.library", 0);
 
@@ -2309,8 +2351,8 @@ static UWORD Connect_To_ServerA(char *servername, UWORD port)
 
 	DisConnect(FALSE, FALSE);
 
-	c_msg("Looking up...", 4);
-	c_msg(servername, 0);
+    UpdateConnectingWindowMessage("Looking up...", 4);
+    UpdateConnectingWindowMessage(servername, 0);
 
 	LocalFmt("\r\nLooking up ›32m%s›m...\r\n", servername);
 
@@ -2336,8 +2378,8 @@ static UWORD Connect_To_ServerA(char *servername, UWORD port)
 	memcpy(&inetSocketAddr.sin_addr, hostAddr->h_addr, hostAddr->h_length);
 	//CopyMem(hostAddr->h_addr, &inetSocketAddr.sin_addr, hostAddr->h_length);
 
-	c_msg(Inet_NtoA(inetSocketAddr.sin_addr.s_addr), 1);
-	c_msg(hostAddr->h_name, 2);
+    UpdateConnectingWindowMessage(Inet_NtoA(inetSocketAddr.sin_addr.s_addr), 1);
+    UpdateConnectingWindowMessage(hostAddr->h_name, 2);
 
 	LocalFmt("Connecting to ›32m%s›m (›36m%s›m) port ›35m%ld›m...\r\n",
 		hostAddr->h_name,
@@ -2352,7 +2394,7 @@ static UWORD Connect_To_ServerA(char *servername, UWORD port)
 		return(2);
 	}
 
-	c_msg("Connecting...", 4);
+    UpdateConnectingWindowMessage("Connecting...", 4);
 
 	// connect() expects a generic sockaddr, so cast the INet socket address
 	if(connect(tcpSocket, (struct sockaddr *)&inetSocketAddr, sizeof(inetSocketAddr)) == -1)
@@ -2753,8 +2795,8 @@ BOOL OpenDisplay(void)
 
 		#ifdef _DEBUG
 			PutStr("   --> OpenDevice()\n");
-			beforeSigAlloc = thisTask->tc_SigAlloc;
-			PutStr("SigAlloc:"); PrintBitsULONG(thisTask->tc_SigAlloc);
+			beforeSigAlloc = mainTask->tc_SigAlloc;
+			PutStr("SigAlloc:"); PrintBitsULONG(mainTask->tc_SigAlloc);
 			LogWindowsSigBit();
 		#endif
 
@@ -2762,8 +2804,8 @@ BOOL OpenDisplay(void)
 
 		#ifdef _DEBUG
 			PutStr("   <-- OpenDevice()\n");
-			PutStr("SigAlloc:"); PrintBitsULONG(thisTask->tc_SigAlloc);
-			afterSigAlloc = thisTask->tc_SigAlloc;
+			PutStr("SigAlloc:"); PrintBitsULONG(mainTask->tc_SigAlloc);
+			afterSigAlloc = mainTask->tc_SigAlloc;
 			conDeviceSigBit = BitPosition(beforeSigAlloc ^ afterSigAlloc); // XOR help detect the difference
 			argArray[0] = conDeviceSigBit;
 			VPrintf("                   conDeviceSigBit = %lu\n", argArray);
@@ -2869,10 +2911,10 @@ void CloseDisplay(BOOL manageScreen)
 	{
 		#ifdef _DEBUG
 			PutStr("   --> CloseDevice(&writeIOReq)\n");
-			PutStr("SigAlloc:"); PrintBitsULONG(thisTask->tc_SigAlloc);
+			PutStr("SigAlloc:"); PrintBitsULONG(mainTask->tc_SigAlloc);
 			LogWindowsSigBit();
 
-			if (! (thisTask->tc_SigAlloc & (1L << 31)))
+			if (! (mainTask->tc_SigAlloc & (1L << 31)))
 			{
 				EZReq(NULL, "ERROR: sigbit 31 has disappeared before CloseDevice()! Why???");
 			}
@@ -2880,18 +2922,18 @@ void CloseDisplay(BOOL manageScreen)
 
 		CloseDevice((struct IORequest *)writeConIOReq);
 
-		if (thisTask->tc_SigAlloc & (1L << 31))
+		if (mainTask->tc_SigAlloc & (1L << 31))
 		{
 			#ifdef _DEBUG
 				PutStr("   <-- CloseDevice(&writeIOReq) => sigbit 31 preserved.\n");
-				PutStr("SigAlloc:"); PrintBitsULONG(thisTask->tc_SigAlloc);
+				PutStr("SigAlloc:"); PrintBitsULONG(mainTask->tc_SigAlloc);
 			#endif
 		}
 		else
 		{
 			#ifdef _DEBUG
 				PutStr("   <-- CloseDevice(&writeIOReq) => ERROR: sigbit 31 destroyed!!!\n");
-				PutStr("SigAlloc:"); PrintBitsULONG(thisTask->tc_SigAlloc);
+				PutStr("SigAlloc:"); PrintBitsULONG(mainTask->tc_SigAlloc);
 				PutStr("   --> AllocSignal(31L)\n");
 			#endif
 
@@ -2900,7 +2942,7 @@ void CloseDisplay(BOOL manageScreen)
 				EZReq(NULL, "ERROR: cannot allocate sigbit 31!");
 
 			#ifdef _DEBUG
-				PutStr("SigAlloc:"); PrintBitsULONG(thisTask->tc_SigAlloc);
+				PutStr("SigAlloc:"); PrintBitsULONG(mainTask->tc_SigAlloc);
 			#endif
 		}
 
@@ -2966,7 +3008,7 @@ void CloseDisplay(BOOL manageScreen)
 
 	#ifdef _DEBUG
 		PutStr("<-- CloseDisplay()\n");
-		PutStr("SigAlloc:"); PrintBitsULONG(thisTask->tc_SigAlloc);
+		PutStr("SigAlloc:"); PrintBitsULONG(mainTask->tc_SigAlloc);
 	#endif
 }
 
@@ -2995,7 +3037,7 @@ void OpenIcon(void)
 
     #ifdef _DEBUG
         PutStr("  <-- OpenIcon()\n");
-        PutStr("SigAlloc:"); PrintBitsULONG(thisTask->tc_SigAlloc);
+        PutStr("SigAlloc:"); PrintBitsULONG(mainTask->tc_SigAlloc);
     #endif
 }
 
