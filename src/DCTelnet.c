@@ -6,8 +6,20 @@
 #define DCTELNET_VERSION "1.9-dev"
 const char __ver[] = "$VER: DCTelnet " DCTELNET_VERSION " " __AMIGADATE__;
 
+#ifndef BUILD_HASH
+#define BUILD_HASH unknown
+#endif
+
+// Stringify macro :
+#define STR_(x) #x
+#define STR(x) STR_(x)
+
 static char MainWindowTitle[] =
+#ifdef _DEBUG
+  "DCTelnet " DCTELNET_VERSION " (" STR(BUILD_HASH) ") " __AMIGADATE__ " - A classic Amiga Telnet/BBS client";
+#else
   "DCTelnet " DCTELNET_VERSION " " __AMIGADATE__ " - A classic Amiga Telnet/BBS client";
+#endif
 
 #define __USE_SYSBASE
 
@@ -39,10 +51,6 @@ static char MainWindowTitle[] =
 #include "connect.h"
 #include "Xfer.h"
 
-
-// Stringify macro :
-#define STR_(x) #x
-#define STR(x) STR_(x)
 
 static struct NewMenu mynewmenu[] =
     {
@@ -1096,11 +1104,12 @@ int main(int argc, char *argv[])
 		   strcmp(argv[1], "-h")  == 0 || strcmp(argv[1], "--help")  == 0)
 		{
 			PutStr(
-		"DCTelnet "DCTELNET_VERSION" ("__DATE__") - A classic Amiga Telnet/BBS client with Zmodem\n"
-		"compiled with: " STR(COMPILER_STRING) "\n"
-		"\n"
-		"Usage: DCTelnet <host> [<port>]\n"
-		);
+                "DCTelnet "DCTELNET_VERSION " (build " STR(BUILD_HASH) ") ("__DATE__
+                                               ") - A classic Amiga Telnet/BBS client with Zmodem\n"
+                "compiled with: " STR(COMPILER_STRING) "\n"
+                "\n"
+                "Usage: DCTelnet <host> [<port>]\n"
+    		);
 			return RETURN_OK;
 		}
 
@@ -1791,22 +1800,22 @@ static void GetWindowMsg(struct Window *wwin)
 					{
 					case 0:
 						rtEZRequestTags(
-								"DCTelnet - A classic Amiga Telnet/BBS client with Zmodem"     "\n"
-								"                          v"DCTELNET_VERSION                  "\n"
-								"         Last Compiled .... : "__DATE__""                     "\n"
-								"         First Compiled ... : May 17 1997"                    "\n"
-								"         Compilers Used ... : "STR(COMPILER_STRING)           "\n"
-								                                                               "\n"
-								"            Original author : ZED^DC"                         "\n"
-								                                                               "\n"
-								"            Recompiled by   : Bruno FREDERIC"                 "\n"
-								                                                               "\n"
-								"                   More info/sources:"                        "\n"
-								"           github.com/bruno-frederic/dctelnet"                "\n",
-								"OK", NULL, NULL,
-								RT_Window,	win,
-								RT_ReqPos,	REQPOS_CENTERSCR,
-								TAG_DONE);
+                            "DCTelnet - A classic Amiga Telnet/BBS client with Zmodem"        "\n"
+                            "                  v"DCTELNET_VERSION " (build " STR(BUILD_HASH) ")\n"
+                            "         Last Compiled .... : "__DATE__""                        "\n"
+                            "         First Compiled ... : May 17 1997"                       "\n"
+                            "         Compilers Used ... : "STR(COMPILER_STRING)              "\n"
+                                                                                              "\n"
+                            "            Original author : ZED^DC"                            "\n"
+                                                                                              "\n"
+                            "            Recompiled by   : Bruno FREDERIC"                    "\n"
+                                                                                              "\n"
+                            "                   More info/sources:"                           "\n"
+                            "           github.com/bruno-frederic/dctelnet"                   "\n",
+                            "OK", NULL, NULL,
+                            RT_Window,	win,
+                            RT_ReqPos,	REQPOS_CENTERSCR,
+                            TAG_DONE);
 						break;
 
 					case 2:

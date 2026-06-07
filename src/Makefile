@@ -25,11 +25,13 @@ INCLUDES := \
 
 # Do not use spaces or '.' VC passes '.' to the linker, which causes problems.
 COMPILER_STRING=VBCC_0_9h_patch_3
+BUILD_HASH := $(shell git rev-parse --short HEAD)
+
 CC=vc
 
 TARGET     := DCTelnet
 CPU        ?= 68000
-CFLAGS     := +aos68k -cpu=$(CPU) -DCOMPILER_STRING=$(COMPILER_STRING) $(INCLUDES)
+CFLAGS     := +aos68k -cpu=$(CPU) -DCOMPILER_STRING=$(COMPILER_STRING) -DBUILD_HASH=$(BUILD_HASH) $(INCLUDES)
 SRCS       := DCTelnet.c connect.c guis.c Xfer.c
 DEPS       := abook.h connect.h DCTelnet.h DCTelnet-debug.h edit.h fkey.h guis.h Xfer.h
 INSTALLDIR := ../build/installed/DCTelnet
