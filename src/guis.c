@@ -367,7 +367,7 @@ void AddressBook(void)
 	aBookGTags[1] = (unsigned long)listviewlist;
 
 	// Open the Address Book window
-	if(OpenABookWindow() == 0)
+	if(OpenABookWindow() == RETURN_OK)
 	{
 		//GT_SetGadgetAttrs(aBookGadgets[GD_LIST],aBookWnd,0,GTLV_Labels,listviewlist,TAG_DONE);
 		// Main event loop
@@ -507,7 +507,7 @@ add:
 	if(ret)
 	{
 		tcpPort = conbook->port;
-		if(Connect_To_Server(conbook->host, conbook->port) == 0)
+		if(Connect_To_Server(conbook->host, conbook->port) == RETURN_OK)
 		{
 			conbook->last = mytime();
 			strcpy(username, conbook->username);
@@ -689,7 +689,7 @@ static BOOL EditProfile(struct BookStruct *book)
     editProfileGTags[40] = (unsigned long)book->password;
 
     // Open the Edit Profile window
-    if(OpenEditProfileWindow() == 0)
+    if(OpenEditProfileWindow() == RETURN_OK)
     {
         rtSetWaitPointer(aBookWnd);  // Set "wait" mouse pointer to indicate modal operation
 
@@ -1126,7 +1126,7 @@ void FunctionKeys(void)
 	fKeysGTags[41] = (ULONG)&buf[152*8];
 	fKeysGTags[46] = (ULONG)&buf[152*9];
 
-	if(OpenFKeysWindow() == 0)
+	if(OpenFKeysWindow() == RETURN_OK)
 	{
 		while(!subdone)
 		{

@@ -130,7 +130,7 @@ static void CloseConnectingWindow( void )
 void __SAVE_DS__ __ASM__ HandleConnectingWindowTask(void)
 {
 	// Open the "Connecting..." window.
-	if( OpenConnectingWindow() == 0)
+	if( OpenConnectingWindow() == RETURN_OK)
 	{
         ULONG winsig;                    // Signal mask for window events
         ULONG sig;                       // Signals received by Wait()

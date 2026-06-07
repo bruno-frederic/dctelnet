@@ -1057,7 +1057,7 @@ static void Finger(void)
 			*host++;
 			oldflags = prefs.flags;
 			prefs.flags = FLAG_RAW_CONNECTION;	// Raw Connection (NO telnet negotiation data)
-			if(Connect_To_Server(host, 79) == 0)
+			if(Connect_To_Server(host, 79) == RETURN_OK)
 			{
 				mysprintf(buf, "/W %s\r\n", tbuf);
 				send(tcpSocket, buf, strlen(buf), 0);
@@ -2652,7 +2652,7 @@ cantfind:
 						LogWindowsSigBit();
 					#endif
 
-					if(i == 0)
+					if(i == RETURN_OK)
 					{
 lib:
 						if(drivertype == DRIVER_XEM_LIB)
