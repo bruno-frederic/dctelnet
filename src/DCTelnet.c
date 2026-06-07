@@ -1183,15 +1183,21 @@ int main(int argc, char *argv[])
 	#endif
 	mainTask = FindTask(NULL);
 
-	if(argc == 0) // Launched from Workbench (icon click)
-	{
-		if (mainTask != NULL)
-			programName = mainTask->tc_Node.ln_Name;
-	}
-	else if(argc > 1) // Launched from Shell/CLI
-	{
-		programName=argv[0];
 
+    // Launched from Shell/CLI (including cases where the program is started from a Workbench icon
+    // with "Shell" selected in the "Start from" dropdown list)
+    if(argc >= 1)
+    {
+        programName=argv[0];
+    }
+    else    // Launched from Workbench
+    {
+        if (mainTask != NULL)
+            programName = mainTask->tc_Node.ln_Name;
+    }
+
+    if(argc >= 2)
+    {
 		if(strcmp(argv[1], "?") == 0 || strcmp(argv[1], "/?") == 0 || strcmp(argv[1], "-?") == 0 ||
 		   strcmp(argv[1], "-h")  == 0 || strcmp(argv[1], "--help")  == 0)
 		{
@@ -3025,7 +3031,8 @@ void OpenIcon(void)
 		if(diskObj)
 		{
 			// Add an icon on Workbench backdrop to inconify the application:
-			appIconOnWB = AddAppIconA(0, 0, "DCTelnet", iconPort, 0, diskObj, 0);
+            STRPTR s = isConnected ? server : "Disconnected";
+			appIconOnWB = AddAppIconA(0, 0, s, iconPort, NULL, diskObj, NULL);
 			if (appIconOnWB == NULL)
 			{
 				FreeDiskObject(diskObj);  diskObj  = NULL;
