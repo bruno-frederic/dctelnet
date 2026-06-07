@@ -4,10 +4,10 @@
 # For raw TCP access, make sure to select the “✔ Raw Connection” option in DCTelnet.
 #
 # Build the image:
-#   docker build -t zmodem-server .
+#   sudo docker build -t zmodem-server .
 #
 # Run the container with interactive debug output:
-#   docker run -ti -p 23:23 -p 4444:4444 zmodem-server
+#   sudo docker run -ti -p 23:23 -p 4444:4444 zmodem-server
 #
 # Once connected, you can use sz/rz to send and receive files using ZMODEM.
 
@@ -18,13 +18,21 @@ RUN apt-get update && \
     apt-get clean
 
 RUN cat << 'EOF' > /etc/motd
-[1;36m+----------------------------------------+[0m
-[1;36m|[0m   [1;32mWelcome on test server with ZMODEM[0m   [1;36m|[0m
-[1;36m+----------------------------------------+[0m
+[1;36m+-----------------------------------------------------------+[0m
+[1;36m|[0m   [1;32mWelcome on test server with ZMODEM[0m                      [1;36m|[0m
+[1;36m|[0m   Type "download" or "upload" for file Zmodem transfer"   [1;36m|[0m
+[1;36m+-----------------------------------------------------------+[0m
 EOF
 
 # https://manpages.debian.org/latest/passwd/useradd.8.html
 RUN useradd --create-home --shell /bin/bash user  &&  echo "user:***" | chpasswd
+
+
+RUN cat << 'EOF' > /home/user/.profile
+alias ll='ls -alF'
+alias download='sz'
+alias upload='rz'
+EOF
 
 # https://manpages.debian.org/latest/inetutils-telnetd/telnetd.8.en.html
 EXPOSE 23
