@@ -2,7 +2,7 @@ Short:        DCTelnet - Telnet/BBS client with Zmodem
 Author:       Bruno FREDERIC
 Uploader:     bruno.frederic+aminet@gm...
 Type:         comm/tcp
-Version:      1.8.1
+Version:      1.9-dev
 Architecture: m68k-amigaos >= 2.0
 Distribution: Aminet
 
@@ -40,39 +40,16 @@ https://eab.abime.net/showthread.php?t=121939
 
 ---
 
-v1.8.1 Changelog
+v1.9 Changelog
 
 Bug Fixes:
-- Fix ZModem up/download bug introduced in v1.8: transfers could enter an
-  infinite loop
-- Prevent potential out-of-bounds buffer access with "Strip Colour" option
-- Properly skip IAC commands received after initial Telnet negotiation
-- Correct handling of character ÿ (0xFF) on raw TCP connections
-
-
-v1.8 Changelog
-
-Bug Fixes:
-- Address Book profiles now save correctly, even when edited with
-  the mouse
-- Finger input field no longer shows garbage characters
-- Fixed connection freeze after display changes or iconifying
-- Caused by ibmcon.device improperly releases an internal system
-  signal (bit 31); v1.8 prevents this signal from being used.
-  This improves compatibility with certain bsdsocket.library
-  versions (e.g., UAE 4.1 / WinUAE, Amiberry).
-
+- TODO
 
 Libraries & Packaging:
-- ReqTools and XPRZModem libraries added to the package.
-- Startup checks added to show proper messages for missing
-  libraries.
-- Installer fixes for compatibility with AmigaOS 3.5/3.9 and
-  legacy Installer v2.
+- TODO
 
 Build & Toolchain:
-- Switched to VBCC for cross-compilation and C99 compliance.
-- NDK upgraded to AmigaOS NDK 3.2R4.
+- TODO
 
 ---
 

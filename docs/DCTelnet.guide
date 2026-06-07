@@ -1,9 +1,9 @@
 @DATABASE "DCTelnet.guide"
-@$VER: DCTelnet.guide 1.8.1 (14.3.26)
+@$VER: DCTelnet.guide 1.9-dev (x.x.26)
 @node "MAIN" "DCTelnet Guide"
 @author "Shane, Zed and Bruno FREDERIC"
 @TOC "MAIN"
-                              @{b}DCTelnet v1.8.1@{ub}
+                              @{b}DCTelnet v1.9-dev@{ub}
      ______  ______ ____________________    __    ___________________
     /\\_____\\/\\_____\\\\_________\\______\\__\\  /\\_\\  /\\__\\______\\_________\\
    / /  ___ \\/  ___//___   ___/  ____/  / / /  \\/ /  /  ____/___   ___/
@@ -508,6 +508,12 @@ Starting with v1.8, a compatible version of the library is included in the
 - Properly skip IAC commands received after initial Telnet negotiation
 
 - Correct handling of character ÿ (0xFF) on raw TCP connections
+
+
+
+---[ DCTelnet 1.9 ]-------------------------------------------------------
+
+- TODO
 
 
 
