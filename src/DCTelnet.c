@@ -44,12 +44,11 @@ static char MainWindowTitle[] =
 #include <proto/reqtools.h>           // rtAllocRequestA() rtScreenModeRequest() rtPaletteRequestA()
 #include <proto/socket.h>             // send(), <CloseSocket>()
 #include <arpa/telnet.h>
-#include <libraries/xem.h>            // struct XEM_IO
-#include <proto/xem.h>                // XEmulatorSetup(), XEmulatorWrite()...
 #include "DCTelnet.h"
 #include "guis.h"
 #include "connect.h"
 #include "Xfer.h"
+#include "Xem_wrapper.h"
 
 
 static struct NewMenu mynewmenu[] =
@@ -124,7 +123,7 @@ extern struct ExecBase *SysBase;
 struct ReqToolsBase *ReqToolsBase;
 struct IntuitionBase *IntuitionBase;
 struct GfxBase *GfxBase;
-struct Library *KeymapBase, *XEmulatorBase, *GadToolsBase, *SocketBase;
+struct Library *KeymapBase, *GadToolsBase, *SocketBase;
 struct Library *DiskfontBase, *IconBase, *WorkbenchBase, *UtilityBase;
 
 struct Window *win, *scrollbackWin, *toolBarWin;
@@ -134,8 +133,8 @@ struct Screen *scr;
 struct DrawInfo *drawInfo;
 static struct Gadget screenToBackGadget; // In top right corner when title bar is hidden in full screen
 struct NewGadget newGadget;
-static struct TextAttr fontAttr;
-struct TextFont *ansiFont;
+static struct TextAttr fontAttr;    // describes the desired font
+struct TextFont *ansiFont;          // actual font loaded via OpenFont(), ready to use
 static BOOL isConDeviceOpened = FALSE;
 static struct IOStdReq *writeConIOReq = NULL;
 static struct MsgPort *writeConPort = NULL;
@@ -145,7 +144,6 @@ struct MsgPort *iconPort;
 static struct AppIcon *appIconOnWB;
 static struct hostent *hostAddr;
 static struct sockaddr_in inetSocketAddr;
-static struct XEM_IO *xemIO;
 struct NewWindow newWin;
 
 #define BUFSIZE 250
@@ -201,7 +199,6 @@ static char *programName = NULL;   // Name provided by argv[0] or task::tc_Node.
 struct Task *thisTask = NULL;
 BYTE dontUseSig31 = -1; // don't use it, ibmcon.device will destroy it.
 
-static void EZReq(struct Window *win, const char *str);
 #include "DCTelnet-debug.h"
 
 void mysprintf(char *Buffer, char *ctl, ...)
@@ -214,7 +211,7 @@ static void ConWrite(char *data, long len)
 	if(!isAppIconified)
 	{
 		if(drivertype)
-			XEmulatorWrite(xemIO, data, len);
+			XemWrite(data, len);
 		else {
 			#ifdef _DEBUG
 			if (!writeConIOReq) DisplayAlert(RECOVERY_ALERT,
@@ -281,7 +278,7 @@ static void WindowSub(void (*Sub)(void))
 	runs on systems without ReqTools.
 	Compatibility: works on KS 2.00 without ReqTools
 */
-static void EZReq(struct Window *win, const char *str)
+void EZReq(struct Window *win, const char *str)
 {
 	struct EasyStruct es;
 	es.es_StructSize   = sizeof(struct EasyStruct);
@@ -2648,49 +2645,6 @@ void CreateAppMenus(void)
 }
 
 
-BOOL InitializeXemLibrary(void)
-{
-	xemIO = AllocMem(sizeof(struct XEM_IO), MEMF_PUBLIC|MEMF_CLEAR);
-	if (xemIO == NULL)
-	{
-		DisplayAlert(RECOVERY_ALERT, "Not enough memory!", 0);
-		return FALSE;
-	}
-
-	XEmulatorBase = OpenLibrary(prefs.displaydriver, 0);
-	if(!XEmulatorBase)
-	{
-		mysprintf(buf,	"Failed to open XEM library: %s", prefs.displaydriver);
-		EZReq(win, buf);
-
-		return FALSE;
-	}
-
-	xemIO->xem_window	= win;
-	xemIO->xem_font 		= ansiFont;
-	//xemIO->xem_signal	= 0;
-	xemIO->xem_screendepth	= scr->BitMap.Depth;
-	xemIO->xem_swrite	= (long (* )(UBYTE * , LONG ))xpr_swrite;
-	xemIO->xem_sread		= (long (* )(UBYTE * , LONG , LONG ))xpr_sread;
-	// BF : xpr_gets() does nothing. just a return 0. should we put a NULL instead ?
-	// seems to be the usual value for unimplemented callback functions
-	xemIO->xem_sbreak	= (long (* )(void))xpr_gets;
-	xemIO->xem_sstart	= (void (* )(void))xpr_gets;
-	xemIO->xem_sstop		= (long (* )(void))xpr_gets;
-	xemIO->xem_sflush	= (long (* )(void))xpr_sflush;
-	xemIO->xem_toptions	= NULL; 	// (unsigned long (* )(LONG , struct xem_option ** ))xpr_gets;
-	xemIO->xem_tgets		= (long (* )(UBYTE * , UBYTE * , ULONG ))xpr_gets;
-	xemIO->xem_tbeep		= (void (* )(ULONG , ULONG ))xpr_gets;
-	//xemIO->xem_console	= 0;
-	//xemIO->xem_process_macrokeys = 0;
-
-	XEmulatorSetup(xemIO);
-	XEmulatorOpenConsole(xemIO);
-	XEmulatorMacroKeyFilter(xemIO, NULL);
-
-    return TRUE;
-}
-
  /**
  * @brief Open or reopen the application's display environment.
  *
@@ -2739,7 +2693,24 @@ BOOL OpenDisplay(void)
     // If it fails fallback to ibmcon/console device.
 	if(drivertype == DRIVER_XEM_LIB)
 		if (! InitializeXemLibrary())
-			drivertype = DRIVER_NORMAL; // Xem lib failed to load so we’ll try with ibmcon.device
+        {
+            struct MenuItem *item = NULL;
+
+            drivertype = DRIVER_NORMAL; // Xem lib failed to load so we'll try with ibmcon.device
+
+            prefs.flags &= ~FLAG_USE_XEM_LIBRARY;
+
+            // Uncheck the "Use XEM Library" option:
+            //https://amigadev.elowar.com/read/ADCD_2.1/Includes_and_Autodocs_2._guide/node024A.html
+            // https://www.amiga-news.de/en/news/AN-2023-10-00017-EN.html
+            ClearMenuStrip(win);
+            item = ItemAddress(menuStrip, FULLMENUNUM(3, 9, NOSUB));
+
+            if (item)
+                item->Flags &= ~CHECKED;
+
+            ResetMenuStrip(win, menuStrip);
+        }
 
 
 	// The console device :
@@ -2890,15 +2861,8 @@ void CloseDisplay(BOOL manageScreen)
 		PutStr("--> CloseDisplay()\n");
 	#endif
 
-	if (XEmulatorBase)
-	{
-		XEmulatorCloseConsole(xemIO); // gives the emulator the chance to free window-specific data
-		XEmulatorCleanup(xemIO);      // free internal structure used by the emulator
-		CloseLibrary(XEmulatorBase);
-		XEmulatorBase = NULL;
-		FreeMem(xemIO,sizeof(struct XEM_IO));
-		xemIO = NULL;
-	}
+    // Unitilize XEM library if it was initialized (does nothing if it was not initialized)
+	UninitializeXemLibrary();
 
 	// https://amigadev.elowar.com/read/ADCD_2.1/Devices_Manual_guide/node0190.html
 	if (isConDeviceOpened)

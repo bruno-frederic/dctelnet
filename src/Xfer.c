@@ -314,6 +314,10 @@ long __SAVE_DS__ __ASM__ xpr_gets(__REG__(a0, char *prompt),
 	buffer to receive the user's response. It should have a size of at least 256 bytes.
 	The function returns 0L on failure or user cancellation, non-zero on success.
 	*/
+    #ifdef _DEBUG
+        SimpleReq("TODO : xpr_gets() is not implemented yet.");
+    #endif
+
 	return(0);
 }
 

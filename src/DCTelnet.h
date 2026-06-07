@@ -106,6 +106,7 @@ void TextFmt(struct RastPort *rP, char *ctl, ...);
 void LocalPrint(char *data);
 void OpenIcon(void);                                    // inconify the application
 void SavePrefs(void);
+void EZReq(struct Window *win, const char *str);
 void SimpleReq(char *str);
 UWORD Connect_To_Server(char *servername, UWORD port);
 
