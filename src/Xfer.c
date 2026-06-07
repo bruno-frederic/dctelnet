@@ -403,6 +403,9 @@ long __SAVE_DS__ __ASM__ xpr_unlink(__REG__(a0, char *filename))
     This call-back function is intended to communicate a variety of values and strings from the
     external protocol to the communications program for display. Hence, the display format itself
     (requester, text-I/O) is left to the implementer of the communications program.
+
+    DCTelnet updates "Transfer in Progress" window with the values received in the XPR_UPDATE
+    structure passed to this function.
 */
 long __SAVE_DS__ __ASM__ xpr_update(__REG__(a0,
                         struct XPR_UPDATE * updatestruct))
@@ -446,14 +449,34 @@ long __SAVE_DS__ __ASM__ xpr_update(__REG__(a0,
     // xpru_bytes       -- number of transferred bytes
 	if(ud&XPRU_BYTES)
 	{
+        // Update field "Bytes xfer'd"
 		Move(xrp, posX(16), posY(5));
 		TextFmt(xrp, "%-10ld", updatestruct->xpru_bytes);
 
 		if(updatestruct->xpru_filesize > 0)
 		{
+            ULONG bytes = updatestruct->xpru_bytes;
+            ULONG size  = updatestruct->xpru_filesize;
+
+            // Update field "% xfer'd"
 			Move(xrp, posX(45), posY(6));
-			TextFmt(xrp, "%ld%%  ", (updatestruct->xpru_bytes*100)/updatestruct->xpru_filesize);
-			new_xfer_gauge_width = (updatestruct->xpru_bytes*(xferwin->Width-42))/updatestruct->xpru_filesize;
+			TextFmt(xrp, "%ld%%  ", (bytes*100)/size);
+
+
+            if(size > 4096)
+            {
+                bytes >>= 12;   // Divide by 4096 to avoid overflow in the multiplication below.
+                size  >>= 12;   // The progress bar should work up to 36 GB files with this.
+            }
+            new_xfer_gauge_width =  (bytes * (xferwin->Width - 42)) / size;
+
+            #ifdef _DEBUG
+                 if(new_xfer_gauge_width < xfer_gauge_width)
+                 {
+    			    TextFmt(xrp, "%-10ld", new_xfer_gauge_width);
+                    SimpleReq("FIXME : new_xfer_gauge_width < xfer_gauge_width, should not happen");
+                 }
+            #endif
 		}
 		if(new_xfer_gauge_width > xfer_gauge_width)
 		{
