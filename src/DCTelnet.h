@@ -97,7 +97,7 @@ extern char username[42], password[42];
 // Functions exported
 BOOL OpenDisplay(void);
 void CloseDisplay(BOOL manageScreen);
-long TCPSend(char *buf, long len);
+long TCPSend(const char *buf, long len);
 void CloseIcon(void);                                   // Uniconify the application
 void LEDs(void);
 #ifdef __VBCC__

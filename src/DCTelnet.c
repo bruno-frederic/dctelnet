@@ -85,11 +85,20 @@ static struct NewMenu mynewmenu[] =
         {  NM_ITEM, "Use Workbench",	"W", HIGHCOMP|CHECKIT|MENUTOGGLE, 0, 0,},
         {  NM_ITEM, "Disable LEDs",	"I", HIGHCOMP|CHECKIT|MENUTOGGLE, 0, 0,},
         {  NM_ITEM, "Hide TitleBar",	"R", HIGHCOMP|CHECKIT|MENUTOGGLE, 0, 0,},
-        {  NM_ITEM, "CRLF Correction",	"L", HIGHCOMP|CHECKIT|MENUTOGGLE, 0, 0,},
+        #ifdef _LEGACY_RECEIVE
+            {  NM_ITEM, "CRLF Correction",	"L", HIGHCOMP|CHECKIT|MENUTOGGLE, 0, 0,},
+        #else
+            {  NM_ITEM, "(Unused)",	"L", HIGHCOMP|CHECKIT|MENUTOGGLE, 0, 0,},
+        #endif
         {  NM_ITEM, "BS/DEL Swap",	"/", HIGHCOMP|CHECKIT|MENUTOGGLE, 0, 0,},
         {  NM_ITEM, "Disable Scroll-B",	"E", HIGHCOMP|CHECKIT|MENUTOGGLE, 0, 0,},
-        {  NM_ITEM, "Strip Colour",	"J", HIGHCOMP|CHECKIT|MENUTOGGLE, 0, 0,},
-        {  NM_ITEM, "Simple Telnet",	"1", HIGHCOMP|CHECKIT|MENUTOGGLE, 0, 0,},
+        #ifdef _LEGACY_RECEIVE
+            {  NM_ITEM, "Strip Colour",	"J", HIGHCOMP|CHECKIT|MENUTOGGLE, 0, 0,},
+            {  NM_ITEM, "Simple Telnet",	"1", HIGHCOMP|CHECKIT|MENUTOGGLE, 0, 0,},
+        #else
+            {  NM_ITEM, "(Unused)",	"J", HIGHCOMP|CHECKIT|MENUTOGGLE, 0, 0,},
+            {  NM_ITEM, "(Unused)",	"1", HIGHCOMP|CHECKIT|MENUTOGGLE, 0, 0,},
+        #endif
         {  NM_ITEM, "Packet Window",	"2", HIGHCOMP|CHECKIT|MENUTOGGLE, 0, 0,},
         {  NM_ITEM, "Use XEM Library",	"3", HIGHCOMP|CHECKIT|MENUTOGGLE, 0, 0,},
         {  NM_ITEM, "Tool Bar",         "4", HIGHCOMP|CHECKIT|MENUTOGGLE, 0, 0,},
@@ -121,6 +130,9 @@ static struct NewMenu mynewmenu[] =
 
 
 static void GetWindowMsg(struct Window *wwin);
+static void ResetTelnetContext(void);
+static void ResetZmodemContext(void);
+static void SetLocalEchoBack(BOOL wantedState);
 
 extern struct ExecBase *SysBase;
 struct ReqToolsBase *ReqToolsBase;
@@ -177,8 +189,11 @@ UWORD tcpPort = 23;	// current tcp port
 UWORD winTop;		// WinTop topEdge (titlebar height)
 BOOL shouldQuitApp;	// program finished
 static BOOL isConnected;	// tcp connected
-static UBYTE passAll;		// passall telnet negotiation
-static UBYTE passFlag;		// already sent 8bit info
+#ifdef _LEGACY_RECEIVE
+    // Useless with new Telnet state machine:
+    static UBYTE passAll;       // passall telnet negotiation
+    static UBYTE passFlag;      // already sent 8bit info
+#endif
 static BOOL shouldRestart;	// prefs changed, restart
 static BOOL shouldReopenScreen;	// flag
 BOOL isRunningOnWB; // running in wb
@@ -288,7 +303,7 @@ void TextFmt(struct RastPort *rP, char *ctl, ...)
 }
 
 // Wrapper around send() from bsdsocket.library that maintains the nBytesSent counter.
-long TCPSend(char *buf, long len)
+long TCPSend(const char *buf, long len)
 {
 	if(send(tcpSocket, buf, len, 0) < 0) return -1;
 	nBytesSent += len;
@@ -352,8 +367,13 @@ static void DisConnect(char remote, char quiet)
 		CloseSocket(tcpSocket);
 
 		isConnected = FALSE;
-		passAll = FALSE;
-		passFlag = FALSE;
+        #ifdef _LEGACY_RECEIVE
+            passAll = FALSE;
+            passFlag = FALSE;
+        #else
+        ResetTelnetContext();
+        ResetZmodemContext();
+        #endif
 		nBytesReceived = 0;
 		nBytesSent = 0;
 
@@ -554,370 +574,118 @@ add:
 	}
 }
 
+
+#include "DCTelnet-protocol.h"
+
 static void Receive(void)
 {
-	register long length;
+    static UBYTE recvBuffer[2048];
+    static UBYTE outBuffer[sizeof(recvBuffer)];
+    LONG len;
+    LONG i;
+    LONG outLen = 0;
 
-	if(passAll)
-	{
-		if((length = recv(tcpSocket, buf, sizeof buf, 0)) < 1)
-			DisConnect(TRUE, FALSE);
-		else {
-			char upload = FALSE;
-			char download = FALSE;
-			static char zm;
-			UWORD i = 0, j = 0, temp;
-			unsigned char *outbuf = AllocMem(length+256, MEMF_PUBLIC);
-			if(!outbuf) return;
+    len = recv(tcpSocket, recvBuffer, sizeof(recvBuffer), 0);
 
+    #ifdef _DEBUG
+        VPrintf("   --> Receive() => %ld\n", &len);
+    #endif
+
+    if (len <= 0) // Connection closed or error
+    {
+        DisConnect(TRUE, FALSE);
+        return;
+    }
+
+    nBytesReceived += len;
+
+    #ifdef _DEBUG
+        // Generate a capture file of all received data, unprocessed:
+        fileHandle = Open("PROGDIR:capture_in.bin", MODE_READWRITE);
+        if(fileHandle)
+        {
+            Seek(fileHandle, 0, OFFSET_END);
+            Write(fileHandle, recvBuffer, len);
+            Close(fileHandle);
+        }
+    #endif
+
+    if (prefs.flags & FLAG_RAW_CONNECTION)
+    {
+		ConWrite(recvBuffer, len);
+        if(!(prefs.flags & FLAG_DISABLE_SCROLLBACK))   AddBuf(recvBuffer, len);
+
+		for (i = 0; i < len; i++)
+		{
+			if (ZmodemDetect(recvBuffer[i]))
+                break;
+		}
+    }
+    else // Telnet connection
+    {
+        for(i = 0; i < len; i++)
+        {
             #ifdef _DEBUG
-                // Lots of output for debugging telnet command parsing; (un)comment if needed:
-                fileHandle = Open("PROGDIR:capture_in.bin", MODE_READWRITE);
-                if(fileHandle)
+                if (outLen >= sizeof(outBuffer))
                 {
-                    Seek(fileHandle, 0, OFFSET_END);
-                    Write(fileHandle, buf, length);
-                    Close(fileHandle);
+                    EZReq(win, "outBuffer overflow in Receive()!");
+                    return;
                 }
-
-                /*
-                PutStr("   --> recv() =>");
-                for (temp = 0 ; temp < length ; temp++)
-                {
-                    LogByte(buf[temp]);
-                }
-                */
-                PutStr("\n");
             #endif
 
-			if(((prefs.flags&5) == 0)  &&  !isAppIconified) // if bits 0 and 2 are clear
-			{
-				SetAPen(&scr->RastPort, 10);
-				RectFill(&scr->RastPort, scr->Width-70, 3, scr->Width-62, prefs.fontsize-2);
-			}
+            // Optimization as most of the time this will prevent to make a function call to fully
+            // process the received character:
+            if (  telnetCtx.state  == TELNET_STATE_DATA && recvBuffer[i] != IAC
+                && zmodemCtx.state == ZMODEM_IDLE       && recvBuffer[i] != '*')
+            {
+                outBuffer[outLen++] = recvBuffer[i];
+                continue;   // directly jump to the process of next received char
+            }
 
-			while(i < length)
-			{
-				switch(buf[i])
-				{
-				case 0:
-				case 14:
-				case 128:
-					break;
-				case 10:
-					if(!(prefs.flags & FLAG_CRLF_CORRECTION)) goto norm;
-					outbuf[j] = 13;
-					j++;
-					outbuf[j] = 10;
-					j++;
-					break;
-				case 13:
-					if(!(prefs.flags & FLAG_CRLF_CORRECTION)) goto norm;
-					break;
-				case 27: // ESC
-					if(!(prefs.flags & FLAG_STRIP_COLOUR)) goto norm;
-					temp = i;
-					i += 2; // skip ESC and '['
+            // Full process of telnet IAC commands and Zmodem detection:
+            if (TelnetParseByte(recvBuffer[i]))
+            {
+                outBuffer[outLen++] = recvBuffer[i];
 
-					// Advance through digits and semicolons (color codes)
-					// ANSI colors parameters are normally digits separated by ';' (e.g. ESC[31;1m).
-					// Some modern terminals also allow ':' as a separator (e.g. ESC[38:2:255:0:0m).
-					// Using the ASCII range '0'..';' conveniently accepts digits, ':' and ';'.
-					while(i < length && buf[i]>='0' && buf[i]<=';')
-						i++;
+                ZmodemDetect(recvBuffer[i]);
+                // The Zmodem transfer will start later, once the remaining recvBuffer has been
+                // fully processed for any pending IAC Telnet command sequences
+            }
+        }
 
-					// ensure in bounds and ended with 'm', which ends an ANSI color sequence
-					if(i >= length || buf[i] != 'm')
-					{
-						i = temp; // rollback, invalid or incomplete color sequence
-						goto norm;
-					}
-					break;
-				case 255:     // The byte 0xff (255) means that the next byte is a Telnet command
-					if (prefs.flags & FLAG_RAW_CONNECTION)  goto norm;
+        if (outLen > 0)
+        {
+            ConWrite(outBuffer, outLen);
 
-					#ifdef _DEBUG
-						LocalPrint("›36m[recv() => IAC");
-					#endif
+            if(!(prefs.flags & FLAG_DISABLE_SCROLLBACK))
+                AddBuf(outBuffer, outLen);
+        }
 
-					i++;
-					if (i >= length)
-					{
-						#ifdef _DEBUG
-							LocalPrint("TODO: handle cut command sequence that arrives in multiple recv() calls");
-							LocalPrint("]›m");
-						#endif
-						// for now just ignore the IAC if it's incomplete:
-						goto end_of_loop;
-					}
+        // Detect end of the server's initial negotiation sequence. Trigger client-side negotiation
+        // once the threshold is reached.
+        if (!telnetCtx.isClientNegotiationTriggered && telnetCtx.isServerNegotiationSeen
+            && outLen > 80)
+        {
+            TelnetNegotiateRequiredOptions();
+            telnetCtx.isClientNegotiationTriggered = TRUE;
+        }
+    }
 
-					#ifdef _DEBUG
-						LocalPrint(";");
-						if (TELCMD_OK(buf[i]))  LocalPrint(TELCMD(buf[i]));
-						else                       LocalPrintByte(buf[i]);
-					#endif
+    if (   zmodemCtx.state == ZMODEM_DOWNLOAD
+        || zmodemCtx.state == ZMODEM_UPLOAD)
+    {
+		// Some BBSes never respond to Telnet option negotiation; this is for informational purposes
+        // only:
+        if (! (prefs.flags & FLAG_RAW_CONNECTION))
+            IsTelnetSessionReadyForXfer();
 
-					switch(buf[i])
-					{
-						case 255: // Escaped 255 byte, not a command; output a single 255 byte
-							#ifdef _DEBUG
-								LocalPrint("]›m");
-							#endif
-							goto norm;
-							break;
+        if (zmodemCtx.state == ZMODEM_DOWNLOAD) Download(prefs.xferlibrary);
+        if (zmodemCtx.state == ZMODEM_UPLOAD)     Upload(prefs.xferlibrary);
 
-						case 250: // SB : Telnet subnegotiation: IAC SB <option> ... IAC SE
-							// For now we skip the subnegotiation payload.
-							// The payload terminates with the sequence "IAC SE".
-							// We also handle escaped IAC bytes (IAC IAC) inside the payload.
-
-							// GPT version : TODO relire cette boucle un autre jour
-							i++; // move past SB to option byte
-							while (i + 1 < length)
-							{
-								#ifdef _DEBUG
-									LocalPrintByte(buf[i]);
-								#endif
-
-								if (buf[i] == 255) // IAC
-								{
-									if (buf[i+1] == 255) // Escaped IAC
-									{
-										#ifdef _DEBUG
-											LocalPrint(";255");
-										#endif
-										i++;
-									}
-									else if (buf[i+1] == SE) // End of subnegotiation
-									{
-										#ifdef _DEBUG
-											LocalPrint(";SE");
-										#endif
-										i++; // position on SE
-										break;
-									}
-									#ifdef _DEBUG
-									else
-									{
-										LocalPrint(" IAC alone! That is not supposed to happen!!!");
-									}
-									#endif
-								}
-
-								i++;
-							}
-
-							#ifdef _DEBUG
-								if (i < length && buf[i] != SE)
-								{
-									LocalPrint("TODO: handle cut subnegotiation that arrives in multiple recv() calls");
-								}
-								LocalPrint("]›m");
-							#endif
-
-							/* ma version simpliste OK qui ne gère pas les double IAC dans SB SE
-							while(i < length && buf[i] != SE)
-							{
-								#ifdef _DEBUG
-									LocalPrintByte(buf[i]);
-								#endif
-								i++;
-							}
-							#ifdef _DEBUG
-								if (i < length)
-								{
-									LocalPrint(";");
-									if (TELCMD_OK(buf[i]))  LocalPrint(TELCMD(buf[i]));
-									else                       LocalPrintByte(buf[i]);
-								}
-								else
-								{
-									LocalPrint("TODO: handle cut subnegotiation that arrives in multiple recv() calls");
-								}
-
-								LocalPrint("]›m");
-							#endif
-							*/
-
-							goto end_of_loop;
-							break;
-
-						// Option negotiation (command followed by 1 option byte)
-						case 251: // WILL
-						case 252: // WON'T
-						case 253: // DO
-						case 254: // DON'T
-							i++; // skip option byte
-
-							#ifdef _DEBUG
-								// display the option:
-								if (i < length)
-								{
-									LocalPrint(";");
-									if (TELOPT_OK(buf[i]))  LocalPrint(TELOPT(buf[i]));
-									else                    LocalPrintByte(buf[i]);
-								}
-								else
-								{
-									LocalPrint("TODO: handle cut option negotiation that arrives in multiple recv() calls");
-								}
-								LocalPrint("]›m");
-							#endif
-
-							goto end_of_loop;
-							break;
-
-						default:  // Simple Telnet command (no additional bytes)
-							#ifdef _DEBUG
-								LocalPrint("]›m");
-							#endif
-
-							goto end_of_loop;
-							break;
-					}
-					break;
-
-				// Detect ZMODEM auto-start sequence: **\x18B00
-				// Uses a small state machine (zm) to set upload/download flags
-				case '1':
-					if(zm == 5) upload = TRUE;
-					goto pnorm;
-				case '0':
-					if(zm == 5) download = TRUE;
-					if(zm == 4) zm = 5; else zm = 0;
-					goto norm;
-				case 'B':
-					if(zm == 3) zm = 4; else zm = 0;
-					goto norm;
-				case '\030':
-					if(zm == 2) zm = 3; else zm = 0;
-					goto norm;
-				case '*':
-					if(zm < 3) zm++; else zm = 0;
-					goto norm;
-				default:
-pnorm:					zm = 0;
-norm:
-					#ifdef _DEBUG
-						if (i >= length)       EZReq(win, "i out of bounds in Receive()!");
-						if (j >= length + 256) EZReq(win, "j out of bounds in Receive()!");
-					#endif
-					outbuf[j] = buf[i];
-					j++;
-				} // end of switch
-
-end_of_loop:
-				i++;
-			}
-
-			ConWrite(outbuf, j);
-
-			if(!(prefs.flags & FLAG_DISABLE_SCROLLBACK)) AddBuf(outbuf, j);
-
-			/*if(debug)
-			{
-				fh = Open("ram:out.txt", MODE_READWRITE);
-				if(fh)
-				{
-					Seek(fh, 0, OFFSET_END);
-					Write(fh, outbuf, j);
-					Close(fh);
-				}
-			}*/
-
-            // Draw connection activity indicator when Title bar AND LEDs are enabled
-            // AND NOT iconified
-			if(((prefs.flags & (FLAG_HIDE_TITLEBAR | FLAG_HIDE_LEDS)) == 0)  &&  !isAppIconified)
-                EraseRect(&scr->RastPort, scr->Width-72, 2, scr->Width-60, prefs.fontsize-1);
-
-			FreeMem(outbuf, length+256);
-
-			if(download) Download(prefs.xferlibrary);
-			if(upload) Upload(prefs.xferlibrary);
-
-			nBytesReceived += length;
-		}
-	} else {
-
-		if((recv(tcpSocket, buf, 1, 0)) < 1)
-		{
-			DisConnect(TRUE, FALSE);
-			return;
-		}
-
-		// The byte 0xff (255) means that the next byte is a Telnet command. If you want to send
-		// 0xff then you must send it twice to tell telnet that you don't intend to send a command.
-		if(buf[0] == 255  &&  !(prefs.flags & FLAG_RAW_CONNECTION)) // NOT a Raw Connection
-		{
-			if((recv(tcpSocket, &buf[1], 2, 0)) < 1)
-			{
-				DisConnect(TRUE, FALSE);
-				return;
-			}
-			nBytesReceived += 2;
-
-			if(prefs.flags & FLAG_SIMPLE_TELNET) // Very simple telnet negotiation
-			{
-				if(buf[1] == 253)
-				{
-					if(!buf[2])
-						passAll = TRUE;
-					else {
-						buf[1] = 252;
-						TCPSend(buf, 3);
-					}
-				}
-			} else {
-				switch(buf[1])
-				{
-					case 250: //SubNeg
-						recv(tcpSocket, &buf[8], 3, 0);
-						nBytesReceived += 3;
-						if(buf[2] == 24)
-						{
-							//recv(tcpSocket, buf, 3, 0);
-							TCPSend("\377\372\030\000", 4);
-							TCPSend(prefs.displayidstr, strlen(prefs.displayidstr));
-							TCPSend("\377\360", 2);
-						}
-						break;
-					case 253: //DO
-						if(!buf[2])
-							passAll = TRUE;
-						else {
-							if(buf[2] != 24) // !TERMTYPE
-								buf[1] = 252; //WON'T
-							else
-								buf[1] = 251; //WILL
-							TCPSend(buf, 3);
-						}
-						break;
-					case 251: //WILL
-						/*switch(buf[2])
-						{
-						case 0:
-						case 1:
-						case 3:
-							break;
-						default:
-							buf[1] = 254;	// DONT
-							TCPSend(buf, 3);
-						}*/
-						if(buf[2] > 1)
-						{
-							buf[1] = 254; //DON'T
-							TCPSend(buf, 3);
-						}
-						break;
-				}
-			}
-		} else {
-			nBytesReceived++;
-			if(buf[0]) ConWrite(buf, 1);
-			if(nBytesReceived > 128) passAll = TRUE;
-		}
-	}
+        ResetZmodemContext();
+    }
 }
+
 
 static void SendMisc(char *str, long len)
 {
@@ -1461,7 +1229,7 @@ int main(int argc, char *argv[])
 					}
 					else if (i == 0)
 					{
-						PutStr("<-- WaitSelect() => 0 = timeout or signal received\n    sigs=");
+						PutStr("<-- WaitSelect() => 0 (= timeout or signal received)\n    sigs=");
 						LogWaitSelectResult(i, sigmask);
 
 						if (FD_ISSET(tcpSocket, &rd))
@@ -1469,7 +1237,7 @@ int main(int argc, char *argv[])
 					}
 					else
 					{
-						VPrintf("<-- WaitSelect() => %ld = data received in the socket\n", &i);
+						VPrintf("<-- WaitSelect() => %ld (= data received)", &i);
 					}
 				#endif
 
@@ -1479,7 +1247,18 @@ int main(int argc, char *argv[])
 				if(packetWin) GetWindowMsg(packetWin);
 				if (toolBarWin) GetWindowMsg(toolBarWin);
 
-				if(i != 0) Receive();
+				if(i != 0)
+                {
+                    // Draw when Title bar AND LEDs are enabled :
+                    if((prefs.flags & (FLAG_HIDE_TITLEBAR | FLAG_HIDE_LEDS)) == 0)
+                    {
+                        SetAPen(&scr->RastPort, 10);
+                        RectFill(&scr->RastPort, scr->Width-70, 3, scr->Width-62, prefs.fontsize-2);
+                    }
+                    Receive();
+                    if((prefs.flags & (FLAG_HIDE_TITLEBAR | FLAG_HIDE_LEDS)) == 0)
+                        EraseRect(&scr->RastPort, scr->Width-72, 2, scr->Width-60, prefs.fontsize-1);
+                }
 
 			} else {  // not connected
 				ULONG sig;
@@ -1678,6 +1457,50 @@ static void UpdatePrefsFlagFromMenu(struct MenuItem *item, ULONG flag)
 		prefs.flags &= ~flag;
 }
 
+/*
+ Uncheck a menu item and clear the corresponding flag in prefs.flags,
+ or check the menu item and set the flag, depending on the "wantedState" parameter.
+ https://amigadev.elowar.com/read/ADCD_2.1/Includes_and_Autodocs_2._guide/node024A.html
+ https://www.amiga-news.de/en/news/AN-2023-10-00017-EN.html
+*/
+static void SetLocalEchoBack(BOOL wantedState)
+{
+    struct MenuItem *item = NULL;
+
+    BOOL currentState = prefs.flags & FLAG_LOCAL_ECHO;
+
+    #ifdef _DEBUG
+        PutStr("›34m--> SetLocalEchoBack()›m\n");
+    #endif
+
+    if (currentState != wantedState)
+    {
+        #ifdef _DEBUG
+            PutStr("›34mcurrentState != wantedState›m\n");
+        #endif
+        ClearMenuStrip(win);
+
+        // Find the menu item corresponding to the flag:
+        // 12 is the menu item number for "Local Echo" in the "Options" menu
+        item = ItemAddress(menuStrip, FULLMENUNUM(3, 12, NOSUB));
+
+        if (item)
+        {
+            if (wantedState)
+            {
+                item->Flags |= CHECKED;
+                prefs.flags |= FLAG_LOCAL_ECHO;
+            }
+            else
+            {
+                item->Flags &= ~CHECKED;
+                prefs.flags &= ~FLAG_LOCAL_ECHO;
+            }
+        }
+        ResetMenuStrip(win, menuStrip);
+    }
+}
+
 static void OutKey(unsigned char key)
 {
 	if(prefs.flags & FLAG_BS_DEL_SWAP)
@@ -1692,13 +1515,21 @@ static void OutKey(unsigned char key)
 	{
 		TCPSend((void *)&key, 1);
 
-		// If you want to send 0xff then you must double it (0xff, 0xff) to tell telnet that you don't intend to send it a command.
-		if(key==(unsigned char)255) TCPSend((void *)&key, 1);
-		if(!passFlag)
-		{
-			TCPSend("\377\375\000\377\373\000", 6); // 8-bit data path
-			passFlag = TRUE;
-		}
+        // If you want to send 0xff then you must double it (0xff, 0xff) to tell telnet that you
+        // don't intend to send it a command.
+        if(key == (unsigned char) 255)
+            if (! (prefs.flags & FLAG_RAW_CONNECTION))
+                TCPSend((void *)&key, 1);
+
+        #ifdef _LEGACY_RECEIVE
+            // Useless with new Telnet state machine:
+            if(!passFlag)
+            {
+                // IAC DO BINARY   IAC WILL BINARY
+                TCPSend("\377\375\000\377\373\000", 6); // 8-bit data path
+                passFlag = TRUE;
+            }
+        #endif
 		if(prefs.flags & FLAG_LOCAL_ECHO) goto cwrite;
 	} else
 cwrite:		ConWrite(&key, 1);
@@ -2070,7 +1901,9 @@ static void GetWindowMsg(struct Window *wwin)
 						break;
 					case 6:
 						UpdatePrefsFlagFromMenu(item, FLAG_STRIP_COLOUR);
-						if(item->Flags & CHECKED) LocalPrint("›m");
+                        #ifndef _LEGACY_RECEIVE
+                            if(item->Flags & CHECKED) LocalPrint("›m");
+                        #endif
 						break;
 					case 7:
 						UpdatePrefsFlagFromMenu(item, FLAG_SIMPLE_TELNET);
@@ -2457,12 +2290,17 @@ static UWORD EstablishTCPConnection(char *servername, UWORD port)
 
 	LocalPrint("Connected.\r\n");
 
-	if(!(prefs.flags & FLAG_RAW_CONNECTION))
-		TCPSend("\377\375\003", 3);
-	else {
-		passAll = TRUE;
-		passFlag = TRUE;
-	}
+    #ifdef _LEGACY_RECEIVE
+        if(!(prefs.flags & FLAG_RAW_CONNECTION))
+            TCPSend("\377\375\003", 3);    // IAC DO SGA
+        else {
+            passAll = TRUE;
+            passFlag = TRUE;
+        }
+    #else
+    ResetTelnetContext();
+    ResetZmodemContext();
+    #endif
 
 	if (isRunningOnWB) WindowToFront(win); else ScreenToFront(scr);
 
@@ -2700,10 +2538,17 @@ void CreateAppMenus(void)
 	else
 		mynewmenu[26].nm_Flags = HIGHCOMP|CHECKIT|MENUTOGGLE;
 
-	if(prefs.flags & FLAG_CRLF_CORRECTION) // CRLF
-		mynewmenu[27].nm_Flags |= CHECKED;
-	else
-		mynewmenu[27].nm_Flags = HIGHCOMP|CHECKIT|MENUTOGGLE;
+    #ifdef _LEGACY_RECEIVE
+        if(prefs.flags & FLAG_CRLF_CORRECTION) // CRLF
+            mynewmenu[27].nm_Flags |= CHECKED;
+        else
+            mynewmenu[27].nm_Flags = HIGHCOMP|CHECKIT|MENUTOGGLE;
+    #else
+    // Gray out "Unused" menu items:
+    mynewmenu[30].nm_Flags = NM_ITEMDISABLED;
+    mynewmenu[31].nm_Flags = NM_ITEMDISABLED;
+    mynewmenu[27].nm_Flags = NM_ITEMDISABLED;
+    #endif
 
 	if(prefs.flags & FLAG_HIDE_LEDS)
 		mynewmenu[25].nm_Flags |= CHECKED;
