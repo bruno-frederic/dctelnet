@@ -145,7 +145,7 @@ struct MsgPort *iconPort;
 static struct AppIcon *appIconOnWB;
 static struct hostent *hostAddr;
 static struct sockaddr_in inetSocketAddr;
-static struct XEM_IO xemIO;
+static struct XEM_IO *xemIO;
 struct NewWindow newWin;
 
 #define BUFSIZE 250
@@ -214,7 +214,7 @@ static void ConWrite(char *data, long len)
 	if(!isAppIconified)
 	{
 		if(drivertype)
-			XEmulatorWrite(&xemIO, data, len);
+			XEmulatorWrite(xemIO, data, len);
 		else {
 			#ifdef _DEBUG
 			if (!writeConIOReq) DisplayAlert(RECOVERY_ALERT,
@@ -2718,6 +2718,13 @@ cantfind:
 lib:
 						if(drivertype == DRIVER_XEM_LIB)
 						{
+							xemIO = AllocMem(sizeof(struct XEM_IO), MEMF_PUBLIC|MEMF_CLEAR);
+							if (xemIO == NULL)
+							{
+								DisplayAlert(RECOVERY_ALERT, "Not enough memory!", 0);
+								return FALSE;
+							}
+
 							XEmulatorBase = OpenLibrary(prefs.displaydriver, 0);
 							if(!XEmulatorBase)
 							{
@@ -2728,27 +2735,28 @@ lib:
 
 								goto cantfind;
 							}
-							xemIO.xem_window	= win;
-							xemIO.xem_font 		= ansiFont;
-							//xemIO.xem_signal	= 0;
-							xemIO.xem_screendepth	= scr->BitMap.Depth;
-							xemIO.xem_swrite	= (long (* )(UBYTE * , LONG ))xpr_swrite;
-							xemIO.xem_sread		= (long (* )(UBYTE * , LONG , LONG ))xpr_sread;
+
+							xemIO->xem_window	= win;
+							xemIO->xem_font 		= ansiFont;
+							//xemIO->xem_signal	= 0;
+							xemIO->xem_screendepth	= scr->BitMap.Depth;
+							xemIO->xem_swrite	= (long (* )(UBYTE * , LONG ))xpr_swrite;
+							xemIO->xem_sread		= (long (* )(UBYTE * , LONG , LONG ))xpr_sread;
 							// BF : xpr_gets() does nothing. just a return 0. should we put a NULL instead ?
 							// seems to be the usual value for unimplemented callback functions
-							xemIO.xem_sbreak	= (long (* )(void))xpr_gets;
-							xemIO.xem_sstart	= (void (* )(void))xpr_gets;
-							xemIO.xem_sstop		= (long (* )(void))xpr_gets;
-							xemIO.xem_sflush	= (long (* )(void))xpr_sflush;
-							xemIO.xem_toptions	= NULL; 	// (unsigned long (* )(LONG , struct xem_option ** ))xpr_gets;
-							xemIO.xem_tgets		= (long (* )(UBYTE * , UBYTE * , ULONG ))xpr_gets;
-							xemIO.xem_tbeep		= (void (* )(ULONG , ULONG ))xpr_gets;
-							//xemIO.xem_console	= 0;
-							//xemIO.xem_process_macrokeys = 0;
+							xemIO->xem_sbreak	= (long (* )(void))xpr_gets;
+							xemIO->xem_sstart	= (void (* )(void))xpr_gets;
+							xemIO->xem_sstop		= (long (* )(void))xpr_gets;
+							xemIO->xem_sflush	= (long (* )(void))xpr_sflush;
+							xemIO->xem_toptions	= NULL; 	// (unsigned long (* )(LONG , struct xem_option ** ))xpr_gets;
+							xemIO->xem_tgets		= (long (* )(UBYTE * , UBYTE * , ULONG ))xpr_gets;
+							xemIO->xem_tbeep		= (void (* )(ULONG , ULONG ))xpr_gets;
+							//xemIO->xem_console	= 0;
+							//xemIO->xem_process_macrokeys = 0;
 
-							XEmulatorSetup(&xemIO);
-							XEmulatorOpenConsole(&xemIO);
-							XEmulatorMacroKeyFilter(&xemIO, NULL);
+							XEmulatorSetup(xemIO);
+							XEmulatorOpenConsole(xemIO);
+							XEmulatorMacroKeyFilter(xemIO, NULL);
 						}
 
 						isAppIconified = FALSE;
@@ -2829,11 +2837,12 @@ void CloseDisplay(BOOL manageScreen)
 
 	if (XEmulatorBase)
 	{
-		XEmulatorCloseConsole(&xemIO); // gives the emulator the chance to free window-specific data
-		XEmulatorCleanup(&xemIO);      // free internal structure used by the emulator
+		XEmulatorCloseConsole(xemIO); // gives the emulator the chance to free window-specific data
+		XEmulatorCleanup(xemIO);      // free internal structure used by the emulator
 		CloseLibrary(XEmulatorBase);
-		memset(&xemIO, 0, sizeof(xemIO));
 		XEmulatorBase = NULL;
+		FreeMem(xemIO,sizeof(struct XEM_IO));
+		xemIO = NULL;
 	}
 
 	// https://amigadev.elowar.com/read/ADCD_2.1/Devices_Manual_guide/node0190.html
