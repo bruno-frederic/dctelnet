@@ -25,6 +25,6 @@
 #define GD_SAVEE                               11
 #define GD_CANCELL                             12
 
-#define Project2_CNT 13
+#define fKeys_CNT 13
 
 #endif /* FKEY_H */

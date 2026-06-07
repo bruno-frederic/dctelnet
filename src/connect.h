@@ -17,7 +17,7 @@
 #define GDX_ABORT                              3
 #define GDX_STATUS                             4
 
-#define Project8_CNT 5
+#define Connecting_CNT 5
 
 
 void __SAVE_DS__ __ASM__ HandleConnectingWindowTask(void);

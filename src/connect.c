@@ -13,15 +13,15 @@
 #include "DCTelnet.h"
 #include "guis.h"
 
-static struct Window         *Project8Wnd;           // "Connecting..." window
-static struct Gadget         *Project8GList;         // "Connecting..." window GList
-static struct Gadget         *Project8Gadgets[5];    // "Connecting..." window Gadgets
-#define Project8Width 330
-#define Project8Height 105
-#define Project8Wdt "Connecting..."
+static struct Window         *ConnectingWnd;           // "Connecting..." window
+static struct Gadget         *ConnectingGList;         // "Connecting..." window GList
+static struct Gadget         *ConnectingGadgets[5];    // "Connecting..." window Gadgets
+#define ConnectingWidth 330
+#define ConnectingHeight 105
+#define ConnectingWdt "Connecting..."
 
 
-static UBYTE Project8GTypes[] = {
+static UBYTE ConnectingGTypes[] = {
 	TEXT_KIND,
 	TEXT_KIND,
 	TEXT_KIND,
@@ -30,7 +30,7 @@ static UBYTE Project8GTypes[] = {
 };
 
 
-static struct MyNewGadget Project8NGad[] = {
+static struct MyNewGadget ConnectingNGad[] = {
 	126, 6, 157, 14, (UBYTE *)"Connect to:",
 	126, 25, 157, 15, (UBYTE *)"IP Address:",
 	126, 45, 157, 14, (UBYTE *)"Real Host:",
@@ -38,7 +38,7 @@ static struct MyNewGadget Project8NGad[] = {
 	126, 64, 157, 14, (UBYTE *)"Status:",
 };
 
-static ULONG Project8GTags[] = {
+static ULONG ConnectingGTags[] = {
 	(GTTX_Border), TRUE, (TAG_DONE),
 	(GTTX_Border), TRUE, (TAG_DONE),
 	(GTTX_Border), TRUE, (TAG_DONE),
@@ -47,43 +47,43 @@ static ULONG Project8GTags[] = {
 };
 
 
-static int OpenProject8Window( void )
+static int OpenConnectingWindow( void )
 {
 	struct Gadget *g;
 	UWORD ww, wh;
 	UWORD width, height;
 
-	ComputeFont( Project8Width, Project8Height );
+	ComputeFont( ConnectingWidth, ConnectingHeight );
 
-	ww = ComputeX( Project8Width );
-	wh = ComputeY( Project8Height );
+	ww = ComputeX( ConnectingWidth );
+	wh = ComputeY( ConnectingHeight );
 
-	if ( ! ( g = CreateContext( &Project8GList )))
+	if ( ! ( g = CreateContext( &ConnectingGList )))
 		return( 1L );
 
-	MakeGadgets(Project8NGad, Project8Gadgets, Project8GTags, g, Project8GTypes, Project8_CNT);
+	MakeGadgets(ConnectingNGad, ConnectingGadgets, ConnectingGTags, g, ConnectingGTypes, Connecting_CNT);
 
 	width = ww + OffX + scr->WBorRight;
 	height = wh + OffY + scr->WBorBottom;
 
-	if ( ! ( Project8Wnd = OpenWindowTags( NULL,
+	if ( ! ( ConnectingWnd = OpenWindowTags( NULL,
 				WA_Left,	(scr->Width - width) / 2,
 				WA_Top,		(scr->Height - height) / 2,
 				WA_Width,	width,
 				WA_Height,	height,
 				WA_IDCMP,	TEXTIDCMP|BUTTONIDCMP|IDCMP_CLOSEWINDOW|IDCMP_REFRESHWINDOW,
 				WA_Flags,	WFLG_ACTIVATE|WFLG_DRAGBAR|WFLG_DEPTHGADGET|WFLG_SMART_REFRESH,
-				WA_Gadgets,	Project8GList,
-				WA_Title,	Project8Wdt,
+				WA_Gadgets,	ConnectingGList,
+				WA_Title,	ConnectingWdt,
 				WA_PubScreen,	scr,
 				TAG_DONE )))
 	return( 4L );
 
-	GT_RefreshWindow( Project8Wnd, NULL );
+	GT_RefreshWindow( ConnectingWnd, NULL );
 
-	ComputeFont( Project8Width, Project8Height );
+	ComputeFont( ConnectingWidth, ConnectingHeight );
 
-	DrawBevelBox( Project8Wnd->RPort, OffX + ComputeX( 3 ),
+	DrawBevelBox( ConnectingWnd->RPort, OffX + ComputeX( 3 ),
 					OffY + ComputeY( 2 ),
 					ComputeX( 326 ),
 					ComputeY( 101 ),
@@ -92,16 +92,16 @@ static int OpenProject8Window( void )
 	return( 0L );
 }
 
-static void CloseProject8Window( void )
+static void CloseConnectingWindow( void )
 {
-	if ( Project8Wnd        ) {
-		CloseWindow( Project8Wnd );
-		Project8Wnd = NULL;
+	if ( ConnectingWnd        ) {
+		CloseWindow( ConnectingWnd );
+		ConnectingWnd = NULL;
 	}
 
-	if ( Project8GList      ) {
-		FreeGadgets( Project8GList );
-		Project8GList = NULL;
+	if ( ConnectingGList      ) {
+		FreeGadgets( ConnectingGList );
+		ConnectingGList = NULL;
 	}
 }
 
@@ -130,7 +130,7 @@ static void CloseProject8Window( void )
 void __SAVE_DS__ __ASM__ HandleConnectingWindowTask(void)
 {
 	// Open the "Connecting..." window.
-	if( OpenProject8Window() == 0)
+	if( OpenConnectingWindow() == 0)
 	{
         ULONG winsig;                    // Signal mask for window events
         ULONG sig;                       // Signals received by Wait()
@@ -140,14 +140,14 @@ void __SAVE_DS__ __ASM__ HandleConnectingWindowTask(void)
         // Main task loop:
 		while(1)
 		{
-			winsig = 1L << Project8Wnd->UserPort->mp_SigBit;
+			winsig = 1L << ConnectingWnd->UserPort->mp_SigBit;
 
 			sig = Wait( winsig | SIGBREAKF_CTRL_C | SIGBREAKF_CTRL_E );
 
 			// Handle Intuition window events
 			if(sig & winsig)
 			{
-				while (message = GT_GetIMsg(Project8Wnd->UserPort))
+				while (message = GT_GetIMsg(ConnectingWnd->UserPort))
 				{
 					class = message->Class;
 					GT_ReplyIMsg(message);
@@ -163,7 +163,7 @@ void __SAVE_DS__ __ASM__ HandleConnectingWindowTask(void)
 			// and notify the parent task:
 			if(sig & SIGBREAKF_CTRL_C)
 			{
-				CloseProject8Window();
+				CloseConnectingWindow();
 				Signal(parentTask, SIGBREAKF_CTRL_E);
 				return;
 			}
@@ -172,10 +172,10 @@ void __SAVE_DS__ __ASM__ HandleConnectingWindowTask(void)
 			if(sig & SIGBREAKF_CTRL_E)
 			{
 				// Update the text displayed in the "Connecting..." window :
-				GT_SetGadgetAttrs(Project8Gadgets[connectMsgType], Project8Wnd, 0, GTTX_Text, connectString, TAG_END);
+				GT_SetGadgetAttrs(ConnectingGadgets[connectMsgType], ConnectingWnd, 0, GTTX_Text, connectString, TAG_END);
 				Signal(parentTask, SIGBREAKF_CTRL_E);
 			}
 		}
 	}
-	CloseProject8Window();
+	CloseConnectingWindow();
 }

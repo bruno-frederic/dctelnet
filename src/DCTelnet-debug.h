@@ -88,9 +88,9 @@ void LogWindowsSigBit(void)
 		VPrintf("scrollbackWin->UserPort->mp_SigBit = %lu\n", array);
 	}
 
-	if (pwin)
+	if (packetWin)
 	{
-		array[0] = pwin->UserPort->mp_SigBit;
+		array[0] = packetWin->UserPort->mp_SigBit;
 		if (array[0] >= 31)
 		{
 			PutStr("ERROR: anormal mp_SigBit!!!\n");
@@ -99,7 +99,7 @@ void LogWindowsSigBit(void)
 		{
 			PutStr("ERROR: mp_SigBit disapeared from thisTask->tc_SigAlloc!!!\n");
 		}
-		VPrintf("         pwin->UserPort->mp_SigBit = %lu\n", array);
+		VPrintf("         packetWin->UserPort->mp_SigBit = %lu\n", array);
 	}
 
 	if (toolBarWin)
@@ -194,9 +194,9 @@ void LogWaitSelectResult(LONG l, ULONG sigmask)
 		if (sigmask & (1L << scrollbackWin->UserPort->mp_SigBit))
 			PutStr("scrollbackWin signal bit set\n");
 
-	if (pwin)
-		if (sigmask & (1L << pwin->UserPort->mp_SigBit))
-			PutStr("         pwin signal bit set\n");
+	if (packetWin)
+		if (sigmask & (1L << packetWin->UserPort->mp_SigBit))
+			PutStr("    packetWin signal bit set\n");
 
 	if (toolBarWin)
 		if (sigmask & (1L << toolBarWin->UserPort->mp_SigBit))

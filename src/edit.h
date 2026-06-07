@@ -18,6 +18,6 @@
 #define GDX_USERNAME                           6
 #define GDX_PASSWORD                           7
 
-#define Project1_CNT 8
+#define editProfile_CNT 8
 
 #endif /* EDIT_H */

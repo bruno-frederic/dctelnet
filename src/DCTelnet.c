@@ -120,7 +120,7 @@ struct Library *KeymapBase, *XEmulatorBase, *GadToolsBase, *SocketBase;
 struct Library *DiskfontBase, *IconBase, *WorkbenchBase, *UtilityBase;
 
 struct Window *win, *scrollbackWin, *toolBarWin;
-static struct Window *pwin;
+static struct Window *packetWin;
 struct List *scrollbackList;
 struct Screen *scr;
 struct DrawInfo *drawInfo;
@@ -1337,7 +1337,7 @@ restart:
 				sigmask = winsig;
 
 				if(scrollbackWin) sigmask |= 1L << scrollbackWin->UserPort->mp_SigBit;
-				if(pwin) sigmask |= 1L << pwin->UserPort->mp_SigBit;
+				if(packetWin) sigmask |= 1L << packetWin->UserPort->mp_SigBit;
 				if (toolBarWin) sigmask |= 1L << toolBarWin->UserPort->mp_SigBit;
 
 				i = WaitSelect(tcpSocket + 1, &rd, 0, 0, &timer, &sigmask);
@@ -1364,7 +1364,7 @@ restart:
 				GetWindowMsg(win);
 
 				if(scrollbackWin) GetWindowMsg(scrollbackWin);
-				if(pwin) GetWindowMsg(pwin);
+				if(packetWin) GetWindowMsg(packetWin);
 				if (toolBarWin) GetWindowMsg(toolBarWin);
 
 				if(i != 0) Receive();
@@ -1373,7 +1373,7 @@ restart:
 				ULONG sig;
 
 				if(scrollbackWin)  sig = 1L << scrollbackWin->UserPort->mp_SigBit; else sig = 0;
-				if(pwin) sig |= 1L << pwin->UserPort->mp_SigBit;
+				if(packetWin) sig |= 1L << packetWin->UserPort->mp_SigBit;
 				if (toolBarWin) sig |= 1L << toolBarWin->UserPort->mp_SigBit;
 
 				sigmask = Wait( sig | winsig | SIGBREAKF_CTRL_C );
@@ -1382,9 +1382,9 @@ restart:
 				{
 					if(sigmask&(1L << scrollbackWin->UserPort->mp_SigBit)) GetWindowMsg(scrollbackWin);
 				}
-				if(pwin)
+				if(packetWin)
 				{
-					if(sigmask&(1L << pwin->UserPort->mp_SigBit)) GetWindowMsg(pwin);
+					if(sigmask&(1L << packetWin->UserPort->mp_SigBit)) GetWindowMsg(packetWin);
 				}
 				if (toolBarWin)
 				{
@@ -1599,7 +1599,7 @@ static void GetWindowMsg(struct Window *wwin)
 		switch (class)
 		{
 		case IDCMP_GADGETUP:
-			if(wwin == pwin)
+			if(wwin == packetWin)
 			{
 				RemoveGList(wwin, &strGad, 1);
 				if(prefs.flags & FLAG_RETURN_CRLF)
@@ -1612,7 +1612,7 @@ static void GetWindowMsg(struct Window *wwin)
 				((struct StringInfo *)(strGad.SpecialInfo))->DispPos = 0;
 				AddGList(wwin, &strGad, ~0, 1, NULL);
 				RefreshGList(&strGad, wwin, NULL, 1);
-				ActivateGadget(&strGad, pwin, 0);
+				ActivateGadget(&strGad, packetWin, 0);
 			}
 
 			if(wwin == scrollbackWin)
@@ -2510,10 +2510,10 @@ skip_screen_open:
 						WFLG_BORDERLESS |
 						WFLG_BACKDROP;
 
-				pwin = OpenWindow(&newWin);
+				packetWin = OpenWindow(&newWin);
 
-				SetAPen(pwin->RPort, 1);
-				Draw(pwin->RPort, pwin->Width, 0);
+				SetAPen(packetWin->RPort, 1);
+				Draw(packetWin->RPort, packetWin->Width, 0);
 			}
 
 			newWin.TopEdge = top;
@@ -2590,7 +2590,7 @@ skip_screen_open:
 
 				SetMenuStrip(win, menuStrip);
 
-				if(pwin) ResetMenuStrip(pwin, menuStrip);
+				if(packetWin) ResetMenuStrip(packetWin, menuStrip);
 				if (toolBarWin) ResetMenuStrip(toolBarWin, menuStrip);
 
 				if(drivertype == DRIVER_XEM_LIB) goto lib;
@@ -2816,11 +2816,11 @@ void CloseDisplay(BOOL manageScreen)
 		if(WriteConPort) { DeleteMsgPort(WriteConPort); WriteConPort = NULL; }
 	}
 
-	if(pwin)
+	if(packetWin)
 	{
-		ClearMenuStrip(pwin);
-		CloseWindow(pwin);
-		pwin = 0;
+		ClearMenuStrip(packetWin);
+		CloseWindow(packetWin);
+		packetWin = 0;
 	}
 
 	if(win)

@@ -14,6 +14,6 @@
 #define GDX_NEW                                3
 #define GDX_SORT                               4
 
-#define Project0_CNT 6
+#define aBook_CNT 6
 
 #endif /* ABOOK_H */

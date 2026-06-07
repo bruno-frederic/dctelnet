@@ -31,11 +31,11 @@ struct BookStruct
 static BOOL EditProfile(struct BookStruct *book);
 
 
-static struct Window         *Project0Wnd;           // "Address Book" window
-static struct Gadget         *Project0GList;         // "Address Book" window GList
-static struct Gadget         *Project0Gadgets[6];    // "Address Book" window Gadgets
-#define Project0Width 420
-#define Project0Height 132
+static struct Window         *aBookWnd;           // "Address Book" window
+static struct Gadget         *aBookGList;         // "Address Book" window GList
+static struct Gadget         *aBookGadgets[6];    // "Address Book" window Gadgets
+#define aBookWidth 420
+#define aBookHeight 132
 static struct TextAttr		Attr;
 static UWORD                  FontX, FontY;
 UWORD                  OffX, OffY;
@@ -49,7 +49,7 @@ static UBYTE *SORT0Labels[] = {
 	NULL };
 
 
-static UBYTE Project0GTypes[] = {
+static UBYTE aBookGTypes[] = {
 	LISTVIEW_KIND,
 	BUTTON_KIND,
 	BUTTON_KIND,
@@ -59,7 +59,7 @@ static UBYTE Project0GTypes[] = {
 };
 
 
-static struct MyNewGadget Project0NGad[] = {
+static struct MyNewGadget aBookNGad[] = {
 	10, 5, 401, 72, NULL,
 	19, 84, 93, 13, (UBYTE *)"_Connect",
 	115, 84, 93, 13, (UBYTE *)"_Edit",
@@ -68,7 +68,7 @@ static struct MyNewGadget Project0NGad[] = {
 	308, 84, 93, 13, (UBYTE *)"_Delete",
 };
 
-static ULONG Project0GTags[] = {
+static ULONG aBookGTags[] = {
 	GTLV_Labels, 0, (GTLV_ShowSelected), (ULONG)NULL, GTLV_Selected, 0, (TAG_DONE),
 	(GT_Underscore), '_', (TAG_DONE),
 	(GT_Underscore), '_', (TAG_DONE),
@@ -138,21 +138,21 @@ UseTopaz:
 	FontX = FontY = Attr.ta_YSize = 8;
 }
 
-static int OpenProject0Window( void )
+static int OpenABookWindow( void )
 {
 	struct Gadget	*g;
 	UWORD		ww, wh;
 	long	x,y;
 
-	ComputeFont( Project0Width, Project0Height );
+	ComputeFont( aBookWidth, aBookHeight );
 
-	ww = ComputeX( Project0Width );
-	wh = ComputeY( Project0Height );
+	ww = ComputeX( aBookWidth );
+	wh = ComputeY( aBookHeight );
 
-	if ( ! ( g = CreateContext( &Project0GList )))
+	if ( ! ( g = CreateContext( &aBookGList )))
 		return( 1L );
 
-	if(MakeGadgets(Project0NGad, Project0Gadgets, Project0GTags, g, Project0GTypes, Project0_CNT) != 0) return( 2L );
+	if(MakeGadgets(aBookNGad, aBookGadgets, aBookGTags, g, aBookGTypes, aBook_CNT) != 0) return( 2L );
 
 	x = ww + OffX + scr->WBorRight;
 	y = wh + OffY + scr->WBorBottom;
@@ -163,35 +163,35 @@ static int OpenProject0Window( void )
 	newWin.Height = y;
 	newWin.IDCMPFlags = LISTVIEWIDCMP|BUTTONIDCMP|CYCLEIDCMP|IDCMP_CLOSEWINDOW|IDCMP_REFRESHWINDOW|IDCMP_VANILLAKEY;
 	newWin.Flags = WFLG_DRAGBAR|WFLG_DEPTHGADGET|WFLG_CLOSEGADGET|WFLG_SMART_REFRESH|WFLG_ACTIVATE|WFLG_RMBTRAP;
-	newWin.FirstGadget = Project0GList;
+	newWin.FirstGadget = aBookGList;
 	newWin.Title = "DCTelnet: Address Book";
 
-	Project0Wnd = OpenWindow(&newWin);
-	if(!Project0Wnd) return( 4L );
+	aBookWnd = OpenWindow(&newWin);
+	if(!aBookWnd) return( 4L );
 
-/*	if ( ! ( Project0Wnd = OpenWindowTags( NULL,
+/*	if ( ! ( aBookWnd = OpenWindowTags( NULL,
 				WA_Left,	(scr->Width - x) / 2,
 				WA_Top,		(scr->Height - y) / 2,
 				WA_Width,	x,
 				WA_Height,	y,
 				WA_IDCMP,	LISTVIEWIDCMP|BUTTONIDCMP|CYCLEIDCMP|IDCMP_CLOSEWINDOW|IDCMP_REFRESHWINDOW|IDCMP_VANILLAKEY,
 				WA_Flags,	WFLG_DRAGBAR|WFLG_DEPTHGADGET|WFLG_CLOSEGADGET|WFLG_SMART_REFRESH|WFLG_ACTIVATE|WFLG_RMBTRAP,
-				WA_Gadgets,	Project0GList,
+				WA_Gadgets,	aBookGList,
 				WA_Title,	"DCTelnet: Address Book",
 				WA_CustomScreen,scr,
 				TAG_DONE )))
 	return( 4L );*/
 
-	GT_RefreshWindow( Project0Wnd, NULL );
+	GT_RefreshWindow( aBookWnd, NULL );
 
-	ComputeFont( Project0Width, Project0Height );
+	ComputeFont( aBookWidth, aBookHeight );
 
-	DrawBevelBox( Project0Wnd->RPort, OffX + ComputeX( 11 ),
+	DrawBevelBox( aBookWnd->RPort, OffX + ComputeX( 11 ),
 					OffY + ComputeY( 80 ),
 					ComputeX( 399 ),
 					ComputeY( 43 ),
 					GT_VisualInfo, visualInfos, GTBB_Recessed, TRUE, TAG_DONE );
-	DrawBevelBox( Project0Wnd->RPort, OffX + ComputeX( 3 ),
+	DrawBevelBox( aBookWnd->RPort, OffX + ComputeX( 3 ),
 					OffY + ComputeY( 2 ),
 					ComputeX( 415 ),
 					ComputeY( 128 ),
@@ -364,17 +364,17 @@ void AddressBook(void)
 	}
 
 	// Attach the list to the listview gadget
-	Project0GTags[1] = (unsigned long)listviewlist;
+	aBookGTags[1] = (unsigned long)listviewlist;
 
 	// Open the Address Book window
-	if(OpenProject0Window() == 0)
+	if(OpenABookWindow() == 0)
 	{
-		//GT_SetGadgetAttrs(Project0Gadgets[GD_LIST],Project0Wnd,0,GTLV_Labels,listviewlist,TAG_DONE);
+		//GT_SetGadgetAttrs(aBookGadgets[GD_LIST],aBookWnd,0,GTLV_Labels,listviewlist,TAG_DONE);
 		// Main event loop
 		while(!subdone)
 		{
-			WaitPort(Project0Wnd->UserPort);
-			while (message = GT_GetIMsg(Project0Wnd->UserPort))
+			WaitPort(aBookWnd->UserPort);
+			while (message = GT_GetIMsg(aBookWnd->UserPort))
 			{
 			        gad   = (struct Gadget *)message->IAddress;
 				class = message->Class;
@@ -411,7 +411,7 @@ void AddressBook(void)
 						else
 							Sort(listviewlist, code, FALSE);
 
-						GT_SetGadgetAttrs(Project0Gadgets[GD_LIST],Project0Wnd,0,GTLV_Labels,listviewlist,GTLV_Selected,lastcode,TAG_DONE);
+						GT_SetGadgetAttrs(aBookGadgets[GD_LIST],aBookWnd,0,GTLV_Labels,listviewlist,GTLV_Selected,lastcode,TAG_DONE);
 						save = TRUE;
 						break;
 
@@ -452,7 +452,7 @@ delete:
 								lastcode--;
 								// BF: Why this test? lastcode is UWORD, how could it be negative?
 								//if(lastcode < 0) lastcode = 0;
-								GT_SetGadgetAttrs(Project0Gadgets[GD_LIST],Project0Wnd,0,GTLV_Labels,listviewlist,GTLV_Selected,lastcode,TAG_DONE);
+								GT_SetGadgetAttrs(aBookGadgets[GD_LIST],aBookWnd,0,GTLV_Labels,listviewlist,GTLV_Selected,lastcode,TAG_DONE);
 								save = TRUE;
 							}
 						}
@@ -464,7 +464,7 @@ edit:
 						{
 							if(EditProfile((struct BookStruct *)worknode->ln_Name))
 							{
-								GT_SetGadgetAttrs(Project0Gadgets[GD_LIST],Project0Wnd,0,GTLV_Labels,listviewlist,GTLV_Selected,lastcode,TAG_DONE);
+								GT_SetGadgetAttrs(aBookGadgets[GD_LIST],aBookWnd,0,GTLV_Labels,listviewlist,GTLV_Selected,lastcode,TAG_DONE);
 								save = TRUE;
 							}
 						}
@@ -485,7 +485,7 @@ add:
 								{
 									worknode->ln_Name = book->name;
 									AddTail(listviewlist, worknode);
-									GT_SetGadgetAttrs(Project0Gadgets[GD_LIST],Project0Wnd,0,GTLV_Labels,listviewlist,GTLV_Selected,lastcode,TAG_DONE);
+									GT_SetGadgetAttrs(aBookGadgets[GD_LIST],aBookWnd,0,GTLV_Labels,listviewlist,GTLV_Selected,lastcode,TAG_DONE);
 									save = TRUE;
 								} else
 									FreeMem(book, sizeof(struct BookStruct));
@@ -499,9 +499,9 @@ add:
 		}
 	}
 
-	if ( Project0Wnd ) CloseWindow( Project0Wnd );
+	if ( aBookWnd ) CloseWindow( aBookWnd );
 
-	if ( Project0GList ) FreeGadgets( Project0GList );
+	if ( aBookGList ) FreeGadgets( aBookGList );
 
 	// Initiate connection if requested
 	if(ret)
@@ -535,13 +535,13 @@ add:
 }
 
 
-static struct Window         *Project1Wnd;           // "Edit Address Book Profile" window
-static struct Gadget         *Project1GList;         // "Edit Address Book Profile" window GList
-static struct Gadget         *Project1Gadgets[8];    // "Edit Address Book Profile" window gadgets
-#define Project1Width 450
-#define Project1Height 103
+static struct Window         *editProfileWnd;           // "Edit Address Book Profile" window
+static struct Gadget         *editProfileGList;         // "Edit Address Book Profile" window GList
+static struct Gadget         *editProfileGadgets[8];    // "Edit Address Book Profile" window gadgets
+#define editProfileWidth 450
+#define editProfileHeight 103
 
-static UBYTE Project1GTypes[] = {
+static UBYTE editProfileGTypes[] = {
 	STRING_KIND,
 	STRING_KIND,
 	TEXT_KIND,
@@ -552,7 +552,7 @@ static UBYTE Project1GTypes[] = {
 	STRING_KIND
 };
 
-static struct MyNewGadget Project1NGad[] = {
+static struct MyNewGadget editProfileNGad[] = {
 	120, 5, 317, 13, (UBYTE *)"_Site Name:",
 	120, 21, 317, 13, (UBYTE *)"_Address:",
 	121, 37, 177, 13, (UBYTE *)"Last Called:",
@@ -563,7 +563,7 @@ static struct MyNewGadget Project1NGad[] = {
 	120, 68, 317, 13, (UBYTE *)"Pass_word:",
 };
 
-static ULONG Project1GTags[] = {
+static ULONG editProfileGTags[] = {
 	GTST_String, 0, (GTST_MaxChars), 31, (GT_Underscore), '_', (TAG_DONE),
 	GTST_String, 0, (GTST_MaxChars), 51, (GT_Underscore), '_', (TAG_DONE),
 	GTTX_Text, 0, (GTTX_Border), TRUE, (TAG_DONE),
@@ -575,21 +575,21 @@ static ULONG Project1GTags[] = {
 };
 
 // Draw the Edit Address Book Profile window
-static int OpenProject1Window( void )
+static int OpenEditProfileWindow( void )
 {
 	struct Gadget	*g;
 	UWORD		ww, wh;
 	long x,y;
 
-	ComputeFont( Project1Width, Project1Height );
+	ComputeFont( editProfileWidth, editProfileHeight );
 
-	ww = ComputeX( Project1Width );
-	wh = ComputeY( Project1Height );
+	ww = ComputeX( editProfileWidth );
+	wh = ComputeY( editProfileHeight );
 
-	if ( ! ( g = CreateContext( &Project1GList )))
+	if ( ! ( g = CreateContext( &editProfileGList )))
 		return( 1L );
 
-	if(MakeGadgets(Project1NGad, Project1Gadgets, Project1GTags, g, Project1GTypes, Project1_CNT) != 0) return( 2L );
+	if(MakeGadgets(editProfileNGad, editProfileGadgets, editProfileGTags, g, editProfileGTypes, editProfile_CNT) != 0) return( 2L );
 
 	x = ww + OffX + scr->WBorRight;
 	y = wh + OffY + scr->WBorBottom;
@@ -600,30 +600,30 @@ static int OpenProject1Window( void )
 	newWin.Height = y;
 	newWin.IDCMPFlags = STRINGIDCMP|TEXTIDCMP|BUTTONIDCMP|IDCMP_CLOSEWINDOW|IDCMP_REFRESHWINDOW|IDCMP_VANILLAKEY;
 	newWin.Flags = WFLG_DRAGBAR|WFLG_DEPTHGADGET|WFLG_CLOSEGADGET|WFLG_SMART_REFRESH|WFLG_ACTIVATE|WFLG_RMBTRAP;
-	newWin.FirstGadget = Project1GList;
+	newWin.FirstGadget = editProfileGList;
 	newWin.Title = "Edit Address Book Profile";
 
-	Project1Wnd = OpenWindow(&newWin);
-	if(!Project1Wnd) return( 4L );
+	editProfileWnd = OpenWindow(&newWin);
+	if(!editProfileWnd) return( 4L );
 
-	/*if ( ! ( Project1Wnd = OpenWindowTags( NULL,
+	/*if ( ! ( editProfileWnd = OpenWindowTags( NULL,
 				WA_Left,	(scr->Width - x) / 2,
 				WA_Top,		(scr->Height - y) / 2,
 				WA_Width,	x,
 				WA_Height,	y,
 				WA_IDCMP,	STRINGIDCMP|TEXTIDCMP|BUTTONIDCMP|IDCMP_CLOSEWINDOW|IDCMP_REFRESHWINDOW|IDCMP_VANILLAKEY,
 				WA_Flags,	WFLG_DRAGBAR|WFLG_DEPTHGADGET|WFLG_CLOSEGADGET|WFLG_SMART_REFRESH|WFLG_ACTIVATE|WFLG_RMBTRAP,
-				WA_Gadgets,	Project1GList,
+				WA_Gadgets,	editProfileGList,
 				WA_Title,	"Edit Address Book Profile",
 				WA_CustomScreen,	scr,
 				TAG_DONE )))
 	return( 4L );*/
 
-	GT_RefreshWindow( Project1Wnd, NULL );
+	GT_RefreshWindow( editProfileWnd, NULL );
 
-	ComputeFont( Project1Width, Project1Height );
+	ComputeFont( editProfileWidth, editProfileHeight );
 
-	DrawBevelBox( Project1Wnd->RPort, OffX + ComputeX( 3 ),
+	DrawBevelBox( editProfileWnd->RPort, OffX + ComputeX( 3 ),
 					OffY + ComputeY( 1 ),
 					ComputeX( 444 ),
 					ComputeY( 86 ),
@@ -680,29 +680,29 @@ static BOOL EditProfile(struct BookStruct *book)
     BOOL ret = FALSE;
 
     // Initialize gadget fields with current book data
-    Project1GTags[1] = (unsigned long)book->name;
-    Project1GTags[8] = (unsigned long)book->host;
+    editProfileGTags[1] = (unsigned long)book->name;
+    editProfileGTags[8] = (unsigned long)book->host;
     myctime(book->last, lasttime);
-    Project1GTags[15] = (unsigned long)lasttime;
-    Project1GTags[26] = (unsigned long)book->port;
-    Project1GTags[33] = (unsigned long)book->username;
-    Project1GTags[40] = (unsigned long)book->password;
+    editProfileGTags[15] = (unsigned long)lasttime;
+    editProfileGTags[26] = (unsigned long)book->port;
+    editProfileGTags[33] = (unsigned long)book->username;
+    editProfileGTags[40] = (unsigned long)book->password;
 
     // Open the Edit Profile window
-    if(OpenProject1Window() == 0)
+    if(OpenEditProfileWindow() == 0)
     {
-        rtSetWaitPointer(Project0Wnd);  // Set "wait" mouse pointer to indicate modal operation
+        rtSetWaitPointer(aBookWnd);  // Set "wait" mouse pointer to indicate modal operation
 
         // Activate the first gadget (Site Name) to receive keyboard input
-        ActivateGadget(Project1Gadgets[GD_SITE], Project1Wnd, 0);
+        ActivateGadget(editProfileGadgets[GD_SITE], editProfileWnd, 0);
 
         while(!subdone)
         {
             register struct Gadget *vgad = NULL;
 
-            WaitPort(Project1Wnd->UserPort); // Wait for input events
+            WaitPort(editProfileWnd->UserPort); // Wait for input events
 
-            while (message = GT_GetIMsg(Project1Wnd->UserPort))
+            while (message = GT_GetIMsg(editProfileWnd->UserPort))
             {
                 gad   = (struct Gadget *)message->IAddress; // Gadget associated with the message
                 class = message->Class;
@@ -728,13 +728,13 @@ static BOOL EditProfile(struct BookStruct *book)
                             ret = FALSE;
                             break;
                         // Keyboard shortcuts to jump to a specific gadget:
-                        case 'S':  vgad = Project1Gadgets[GD_SITE];        break;
-                        case 'A':  vgad = Project1Gadgets[GD_ADDRESS];     break;
-                        case 'P':  vgad = Project1Gadgets[GD_PORT];        break;
-                        case 'U':  vgad = Project1Gadgets[GD_USERNAME];    break;
-                        case 'W':  vgad = Project1Gadgets[GD_PASSWORD];    break;
+                        case 'S':  vgad = editProfileGadgets[GD_SITE];        break;
+                        case 'A':  vgad = editProfileGadgets[GD_ADDRESS];     break;
+                        case 'P':  vgad = editProfileGadgets[GD_PORT];        break;
+                        case 'U':  vgad = editProfileGadgets[GD_USERNAME];    break;
+                        case 'W':  vgad = editProfileGadgets[GD_PASSWORD];    break;
                     }
-                    if(vgad) ActivateGadget(vgad, Project1Wnd, 0); // Focus gadget
+                    if(vgad) ActivateGadget(vgad, editProfileWnd, 0); // Focus gadget
                     break;
 
                 case IDCMP_GADGETUP:         // Mouse released over a gadget
@@ -758,22 +758,22 @@ static BOOL EditProfile(struct BookStruct *book)
         if (ret)
         {
             strcpy(book->name,
-                    ((struct StringInfo *)Project1Gadgets[GD_SITE]->SpecialInfo)->Buffer);
+                    ((struct StringInfo *)editProfileGadgets[GD_SITE]->SpecialInfo)->Buffer);
             strcpy(book->host,
-                    ((struct StringInfo *)Project1Gadgets[GD_ADDRESS]->SpecialInfo)->Buffer);
-            book->port = ((struct StringInfo *)Project1Gadgets[GD_PORT]->SpecialInfo)->LongInt;
+                    ((struct StringInfo *)editProfileGadgets[GD_ADDRESS]->SpecialInfo)->Buffer);
+            book->port = ((struct StringInfo *)editProfileGadgets[GD_PORT]->SpecialInfo)->LongInt;
             strcpy(book->username,
-                    ((struct StringInfo *)Project1Gadgets[GD_USERNAME]->SpecialInfo)->Buffer);
+                    ((struct StringInfo *)editProfileGadgets[GD_USERNAME]->SpecialInfo)->Buffer);
             strcpy(book->password,
-                    ((struct StringInfo *)Project1Gadgets[GD_PASSWORD]->SpecialInfo)->Buffer);
+                    ((struct StringInfo *)editProfileGadgets[GD_PASSWORD]->SpecialInfo)->Buffer);
         }
 
-        ClearPointer(Project0Wnd); // Restore normal pointer
+        ClearPointer(aBookWnd); // Restore normal pointer
     }
 
     // Close window and free gadgets
-    if ( Project1Wnd ) CloseWindow( Project1Wnd );
-    if ( Project1GList ) FreeGadgets( Project1GList );
+    if ( editProfileWnd ) CloseWindow( editProfileWnd );
+    if ( editProfileGList ) FreeGadgets( editProfileGList );
 
     return ret;
 }
@@ -985,11 +985,11 @@ void OpenScrollBack(UWORD sel)
 
 #include "fkey.h"
 
-static struct Window         *Project2Wnd;           // "Function Keys" settings window
-static struct Gadget         *Project2GList;         // "Function Keys" settings window GList
-static struct Gadget         *Project2Gadgets[13];   // "Function Keys" settings window gadgets
-#define Project2Width 503
-#define Project2Height 199
+static struct Window         *fKeysWnd;           // "Function Keys" settings window
+static struct Gadget         *fKeysGList;         // "Function Keys" settings window GList
+static struct Gadget         *fKeysGadgets[13];   // "Function Keys" settings window gadgets
+#define fKeysWidth 503
+#define fKeysHeight 199
 
 
 static UBYTE *MOD0Labels[] = {
@@ -997,7 +997,7 @@ static UBYTE *MOD0Labels[] = {
 	(UBYTE *)"Shift",
 	NULL };
 
-static UBYTE Project2GTypes[] = {
+static UBYTE fKeysGTypes[] = {
 	STRING_KIND,
 	STRING_KIND,
 	STRING_KIND,
@@ -1014,7 +1014,7 @@ static UBYTE Project2GTypes[] = {
 };
 
 
-static struct MyNewGadget Project2NGad[] = {
+static struct MyNewGadget fKeysNGad[] = {
 	43, 21, 443, 15, (UBYTE *)"F1:",
 	43, 37, 443, 15, (UBYTE *)"F2:",
 	43, 53, 443, 15, (UBYTE *)"F3:",
@@ -1030,7 +1030,7 @@ static struct MyNewGadget Project2NGad[] = {
 	394, 183, 101, 14, (UBYTE *)"_Cancel",
 };
 
-static ULONG Project2GTags[] = {
+static ULONG fKeysGTags[] = {
 	GTST_String, 0, (GTST_MaxChars), 151, (TAG_DONE),
 	GTST_String, 0, (GTST_MaxChars), 151, (TAG_DONE),
 	GTST_String, 0, (GTST_MaxChars), 151, (TAG_DONE),
@@ -1046,21 +1046,21 @@ static ULONG Project2GTags[] = {
 	(GT_Underscore), '_', (TAG_DONE)
 };
 
-static int OpenProject2Window( void )
+static int OpenFKeysWindow( void )
 {
 	struct Gadget	*g;
 	UWORD		ww, wh;
 	long x, y;
 
-	ComputeFont( Project2Width, Project2Height );
+	ComputeFont( fKeysWidth, fKeysHeight );
 
-	ww = ComputeX( Project2Width );
-	wh = ComputeY( Project2Height );
+	ww = ComputeX( fKeysWidth );
+	wh = ComputeY( fKeysHeight );
 
-	if ( ! ( g = CreateContext( &Project2GList )))
+	if ( ! ( g = CreateContext( &fKeysGList )))
 		return( 1L );
 
-	if(MakeGadgets(Project2NGad, Project2Gadgets, Project2GTags, g, Project2GTypes, Project2_CNT) != 0) return( 2L );
+	if(MakeGadgets(fKeysNGad, fKeysGadgets, fKeysGTags, g, fKeysGTypes, fKeys_CNT) != 0) return( 2L );
 
 	x = ww + OffX + scr->WBorRight;
 	y = wh + OffY + scr->WBorBottom;
@@ -1071,28 +1071,28 @@ static int OpenProject2Window( void )
 	newWin.Height = y;
 	newWin.IDCMPFlags = CYCLEIDCMP|STRINGIDCMP|BUTTONIDCMP|IDCMP_CLOSEWINDOW|IDCMP_REFRESHWINDOW|IDCMP_VANILLAKEY;
 	newWin.Flags = WFLG_DRAGBAR|WFLG_DEPTHGADGET|WFLG_CLOSEGADGET|WFLG_SMART_REFRESH|WFLG_ACTIVATE|WFLG_RMBTRAP;
-	newWin.FirstGadget = Project2GList;
+	newWin.FirstGadget = fKeysGList;
 	newWin.Title = "Function Keys";
 
 	CheckDimensions(&newWin);
 
-	Project2Wnd = OpenWindow(&newWin);
-	if(!Project2Wnd) return( 4L );*/
+	fKeysWnd = OpenWindow(&newWin);
+	if(!fKeysWnd) return( 4L );*/
 
-	if ( ! ( Project2Wnd = OpenWindowTags( NULL,
+	if ( ! ( fKeysWnd = OpenWindowTags( NULL,
 				WA_Left,	(scr->Width - x) / 2,
 				WA_Top,		(scr->Height - y) / 2,
 				WA_Width,	x,
 				WA_Height,	y,
 				WA_IDCMP,	CYCLEIDCMP|STRINGIDCMP|BUTTONIDCMP|IDCMP_CLOSEWINDOW|IDCMP_REFRESHWINDOW|IDCMP_VANILLAKEY,
 				WA_Flags,	WFLG_DRAGBAR|WFLG_DEPTHGADGET|WFLG_CLOSEGADGET|WFLG_SMART_REFRESH|WFLG_ACTIVATE|WFLG_RMBTRAP,
-				WA_Gadgets,	Project2GList,
+				WA_Gadgets,	fKeysGList,
 				WA_Title,	"Function Keys",
 				WA_CustomScreen,scr,
 				TAG_DONE )))
 	return( 4L );
 
-	GT_RefreshWindow( Project2Wnd, NULL );
+	GT_RefreshWindow( fKeysWnd, NULL );
 
 	return( 0L );
 }
@@ -1115,23 +1115,23 @@ void FunctionKeys(void)
 
 	memcpy(buf, keys, 1520);
 
-	Project2GTags[1] = (ULONG)buf;
-	Project2GTags[6] = (ULONG)&buf[152];
-	Project2GTags[11] = (ULONG)&buf[152*2];
-	Project2GTags[16] = (ULONG)&buf[152*3];
-	Project2GTags[21] = (ULONG)&buf[152*4];
-	Project2GTags[26] = (ULONG)&buf[152*5];
-	Project2GTags[31] = (ULONG)&buf[152*6];
-	Project2GTags[36] = (ULONG)&buf[152*7];
-	Project2GTags[41] = (ULONG)&buf[152*8];
-	Project2GTags[46] = (ULONG)&buf[152*9];
+	fKeysGTags[1] = (ULONG)buf;
+	fKeysGTags[6] = (ULONG)&buf[152];
+	fKeysGTags[11] = (ULONG)&buf[152*2];
+	fKeysGTags[16] = (ULONG)&buf[152*3];
+	fKeysGTags[21] = (ULONG)&buf[152*4];
+	fKeysGTags[26] = (ULONG)&buf[152*5];
+	fKeysGTags[31] = (ULONG)&buf[152*6];
+	fKeysGTags[36] = (ULONG)&buf[152*7];
+	fKeysGTags[41] = (ULONG)&buf[152*8];
+	fKeysGTags[46] = (ULONG)&buf[152*9];
 
-	if(OpenProject2Window() == 0)
+	if(OpenFKeysWindow() == 0)
 	{
 		while(!subdone)
 		{
-			WaitPort(Project2Wnd->UserPort);
-			while (message = GT_GetIMsg(Project2Wnd->UserPort))
+			WaitPort(fKeysWnd->UserPort);
+			while (message = GT_GetIMsg(fKeysWnd->UserPort))
 			{
 			        gad   = (struct Gadget *)message->IAddress;
 				class = message->Class;
@@ -1171,9 +1171,9 @@ void FunctionKeys(void)
 		}
 	}
 
-	if ( Project2Wnd ) CloseWindow( Project2Wnd );
+	if ( fKeysWnd ) CloseWindow( fKeysWnd );
 
-	if ( Project2GList ) FreeGadgets( Project2GList );
+	if ( fKeysGList ) FreeGadgets( fKeysGList );
 
 	if(save)
 	{
