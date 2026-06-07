@@ -2388,6 +2388,309 @@ static UWORD Connect_To_ServerA(char *servername, UWORD port)
 }
 
 
+struct Screen* OpenAppScreen(void)
+{
+	struct Screen *scr;
+
+	if(prefs.flags & FLAG_USE_WORKBENCH) isRunningOnWB = TRUE;
+	else isRunningOnWB = FALSE;
+
+	fontAttr.ta_Name = prefs.fontname;
+	fontAttr.ta_YSize = prefs.fontsize;
+	ansiFont = OpenDiskFont(&fontAttr);
+	if(!ansiFont)
+	{
+		fontAttr.ta_Name = "topaz.font";
+		fontAttr.ta_YSize = 8;
+		ansiFont = OpenFont(&fontAttr);
+	}
+
+	if (isRunningOnWB)
+	{
+		prefs.flags |= FLAG_HIDE_LEDS;
+		prefs.flags &= ~FLAG_PACKET_WINDOW;		   // Not Packet Window
+		scr = LockPubScreen(0L);
+	}
+	else
+	{
+		register UWORD *pens;
+		static struct NewScreen newscr;
+
+		if(prefs.DisplayDepth < 3) pens = &colorPens[12]; else pens = colorPens;
+
+		memcpy(&newscr.Width, &prefs.DisplayWidth, 6);
+		newscr.BlockPen = 1;
+		newscr.Type = CUSTOMSCREEN;
+		newscr.Font = &fontAttr;
+		// Main window title in full screen mode:
+		newscr.DefaultTitle = MainWindowTitle;
+
+		scr = OpenScreenTags(&newscr,
+			SA_DisplayID,	prefs.DisplayID,
+			SA_Pens,		(ULONG)pens,
+			SA_ShowTitle,	!(prefs.flags & FLAG_HIDE_TITLEBAR),
+			SA_AutoScroll,	TRUE,
+			SA_Interleaved,	TRUE,
+			TAG_END);
+		/*
+		scr = OpenScreenTags(NULL,
+			SA_Title,	"DCTelnet 1.5 © "__DATE__" By ZED^DC",
+			SA_Width,	prefs.DisplayWidth,
+			SA_Height,	prefs.DisplayHeight,
+			SA_DisplayID,	prefs.DisplayID,
+						SA_Depth,	prefs.DisplayDepth,
+			SA_ShowTitle,	!prefs.flags&1,
+			SA_Type,	CUSTOMSCREEN,
+						SA_Pens,	(ULONG)pens,
+			SA_Font,	&fontAttr,
+			SA_AutoScroll,	TRUE,
+			SA_Interleaved,	TRUE,
+						TAG_END);*/
+	}
+
+	return scr;
+}
+
+
+/*
+ * Opens the main application window. In Workbench mode, it opens a window on the public screen.
+ In full screen mode, it creates a backdrop window that covers the entire screen
+ (except for the title bar if enabled).
+
+ The global variable 'win" is set to the opened window
+ */
+void OpenAppWindow(void)
+{
+	winTop = (scr->WBorTop)+(scr->Font->ta_YSize)+1;
+	newWin.Screen = scr;
+	newWin.Type = PUBLICSCREEN;
+	newWin.DetailPen = 255;
+	newWin.BlockPen = 255;
+
+	if (isRunningOnWB)
+	{
+		static UWORD sizes[4] = { 200, 50, 1600, 1200 };
+
+		mynewmenu[24].nm_Flags |= CHECKED;	   // WB
+		//mynewmenu[38].nm_Flags = NM_ITEMDISABLED;  // Jump Scroll
+		mynewmenu[40].nm_Flags = NM_ITEMDISABLED;  // ScreenMode
+		mynewmenu[42].nm_Flags = NM_ITEMDISABLED;  // ScreenPalette
+
+		memcpy(&newWin, &prefs.win_left, 8);
+		memcpy(&newWin.MinWidth, &sizes, 8);
+		newWin.IDCMPFlags = IDCMP_RAWKEY | IDCMP_CLOSEWINDOW | IDCMP_MENUPICK;
+		//newWin.Flags = WFLG_GIMMEZEROZERO|WFLG_NEWLOOKMENUS|WFLG_SIMPLE_REFRESH|WFLG_ACTIVATE|WFLG_CLOSEGADGET|WFLG_DRAGBAR|WFLG_DEPTHGADGET|WFLG_SIZEGADGET;
+		newWin.Flags = WFLG_GIMMEZEROZERO|WFLG_NEWLOOKMENUS|WFLG_SMART_REFRESH|WFLG_ACTIVATE|WFLG_CLOSEGADGET|WFLG_DRAGBAR|WFLG_DEPTHGADGET|WFLG_SIZEGADGET;
+		// Main window title in windowed workbench mode:
+		newWin.Title = MainWindowTitle;
+		newWin.FirstGadget = 0;
+
+		CheckDimensions(&newWin);
+
+		win = OpenWindow(&newWin);
+
+        // Be sure to unlock the public screen when done with it.  Note that once a window is open
+        // on the screen the program does not need to hold the screen lock, as the window acts as a
+        // lock on the screen.  The pointer to the screen structure is valid as long as a lock on
+        // the screen is held by the application, or the application has a window open on the
+        // screen (Amiga ROM Kernel Reference Manual, § Accessing a public screen by name)
+		UnlockPubScreen(0L, scr);
+
+		if(prefs.flags & FLAG_TOOL_BAR) OpenToolBarWindow(FALSE);
+	} else { // running in full screen
+		struct Gadget *backgad;
+		UWORD top, height;
+
+		mynewmenu[24].nm_Flags = HIGHCOMP|CHECKIT|MENUTOGGLE;	// WB
+		//mynewmenu[38].nm_Flags = HIGHCOMP|CHECKIT|MENUTOGGLE;	// Jump Scroll
+		mynewmenu[40].nm_Flags = 0;	// ScreenMode
+		mynewmenu[42].nm_Flags = 0;	// ScreenPalette
+
+		LoadRGB4(&scr->ViewPort, (UWORD *)&prefs.color, 16);
+
+		if(prefs.flags & FLAG_TOOL_BAR) OpenToolBarWindow(FALSE);
+
+		if(prefs.flags&1) // HIDE TITLE
+		{
+			top = 0;
+			height = scr->Height;
+			backgad = &screenToBackGadget;
+			screenToBackGadget.Width = 20;
+			screenToBackGadget.Height = 9;
+			screenToBackGadget.Activation = RELVERIFY;
+			screenToBackGadget.GadgetType = BOOLGADGET;
+			screenToBackGadget.LeftEdge = scr->Width - 20;
+			screenToBackGadget.GadgetID = 20;
+		} else {
+			top = prefs.fontsize + 3;
+			height = scr->Height - (prefs.fontsize + 3);
+			backgad = 0;
+		}
+
+		if (toolBarWin)	// Tool Window
+		{
+			top = toolBarWin->TopEdge + toolBarWin->Height + 1;
+			height = scr->Height - top;
+			if(backgad)
+			{
+				AddGadget(toolBarWin, backgad, -1);
+				backgad = 0;
+			}
+		}
+
+		newWin.LeftEdge = 0;
+		newWin.Title = 0;
+		newWin.Width = scr->Width;
+
+		if(prefs.flags & FLAG_PACKET_WINDOW)	// Packet
+		{
+			height -= (prefs.fontsize + 2);
+			strInfo.Buffer = strBuffer;
+			strInfo.MaxChars = BUFSIZE;
+			strGad.TopEdge = 2;
+			strGad.Activation = GACT_RELVERIFY | GACT_STRINGLEFT;
+			strGad.GadgetType = GTYP_STRGADGET;
+			strGad.SpecialInfo = &strInfo;
+			strGad.Width = scr->Width;
+			strGad.Height = prefs.fontsize;
+
+			newWin.TopEdge = top+height;
+			newWin.Height = prefs.fontsize+2,
+			newWin.FirstGadget = &strGad;
+			newWin.IDCMPFlags =	IDCMP_MENUPICK |
+						IDCMP_GADGETUP;
+			newWin.Flags =	WFLG_NEWLOOKMENUS |
+					WFLG_BORDERLESS |
+					WFLG_BACKDROP;
+
+			packetWin = OpenWindow(&newWin);
+
+			SetAPen(packetWin->RPort, 1);
+			Draw(packetWin->RPort, packetWin->Width, 0);
+		}
+
+		newWin.TopEdge = top;
+		newWin.Height = height;
+		newWin.FirstGadget = backgad;
+		newWin.IDCMPFlags =	IDCMP_GADGETUP |
+					IDCMP_RAWKEY |
+					IDCMP_CLOSEWINDOW |
+					IDCMP_MENUPICK;
+		newWin.Flags =	WFLG_SMART_REFRESH |
+				WFLG_NEWLOOKMENUS |
+				WFLG_BORDERLESS |
+				WFLG_ACTIVATE |
+				WFLG_BACKDROP;
+
+		win = OpenWindow(&newWin);
+	}
+
+	SetFont(win->RPort, ansiFont);
+}
+
+void CreateAppMenus(void)
+{
+	int i;
+	register struct MenuItem *item;
+	static ULONG ltags[] = { GTMN_NewLookMenus, TRUE, TAG_END };
+
+	// Check options in menu as set in DCTelnet.prefs file:
+	if((prefs.flags & FLAG_USE_XEM_LIBRARY) && prefs.displaydriver[0])
+	{
+		drivertype = DRIVER_XEM_LIB;
+		mynewmenu[38].nm_Flags = NM_ITEMDISABLED;
+	} else {
+		drivertype = DRIVER_NORMAL;
+		mynewmenu[38].nm_Flags = HIGHCOMP|CHECKIT|MENUTOGGLE;
+		prefs.flags &= ~FLAG_USE_XEM_LIBRARY;
+	}
+
+	if(prefs.flags & FLAG_HIDE_TITLEBAR)
+		mynewmenu[26].nm_Flags |= CHECKED;
+	else
+		mynewmenu[26].nm_Flags = HIGHCOMP|CHECKIT|MENUTOGGLE;
+
+	if(prefs.flags & FLAG_CRLF_CORRECTION) // CRLF
+		mynewmenu[27].nm_Flags |= CHECKED;
+	else
+		mynewmenu[27].nm_Flags = HIGHCOMP|CHECKIT|MENUTOGGLE;
+
+	if(prefs.flags & FLAG_HIDE_LEDS)
+		mynewmenu[25].nm_Flags |= CHECKED;
+	else
+		mynewmenu[25].nm_Flags = HIGHCOMP|CHECKIT|MENUTOGGLE;
+
+	for(i=4; i<15; i++)
+	{
+		if(prefs.flags & (1<<i))
+			mynewmenu[i+24].nm_Flags |= CHECKED;
+		else
+			mynewmenu[i+24].nm_Flags &= ~CHECKED;
+			//mynewmenu[i+24].nm_Flags = HIGHCOMP|CHECKIT|MENUTOGGLE;
+	}
+
+	menuStrip = CreateMenusA(mynewmenu, 0);
+	if (menuStrip == NULL) return;
+
+	item = menuStrip->FirstItem->NextItem->NextItem->NextItem->NextItem->NextItem->NextItem->NextItem;
+	if(prefs.DisplayDepth > 1) ((struct IntuiText *)item->ItemFill)->FrontPen = 15;
+	//item->Flags |= HIGHBOX;
+	//item->Flags &= ~HIGHCOMP;
+	item->Flags = 150;
+
+	ltags[1] = isRunningOnWB;
+	LayoutMenusA(menuStrip, visualInfos, (struct TagItem *)&ltags);
+
+	SetMenuStrip(win, menuStrip);
+
+	if (packetWin)  ResetMenuStrip(packetWin,  menuStrip);
+	if (toolBarWin) ResetMenuStrip(toolBarWin, menuStrip);
+}
+
+
+BOOL InitializeXemLibrary(void)
+{
+	xemIO = AllocMem(sizeof(struct XEM_IO), MEMF_PUBLIC|MEMF_CLEAR);
+	if (xemIO == NULL)
+	{
+		DisplayAlert(RECOVERY_ALERT, "Not enough memory!", 0);
+		return FALSE;
+	}
+
+	XEmulatorBase = OpenLibrary(prefs.displaydriver, 0);
+	if(!XEmulatorBase)
+	{
+		mysprintf(buf,	"Failed to open XEM library: %s", prefs.displaydriver);
+		EZReq(win, buf);
+
+		return FALSE;
+	}
+
+	xemIO->xem_window	= win;
+	xemIO->xem_font 		= ansiFont;
+	//xemIO->xem_signal	= 0;
+	xemIO->xem_screendepth	= scr->BitMap.Depth;
+	xemIO->xem_swrite	= (long (* )(UBYTE * , LONG ))xpr_swrite;
+	xemIO->xem_sread		= (long (* )(UBYTE * , LONG , LONG ))xpr_sread;
+	// BF : xpr_gets() does nothing. just a return 0. should we put a NULL instead ?
+	// seems to be the usual value for unimplemented callback functions
+	xemIO->xem_sbreak	= (long (* )(void))xpr_gets;
+	xemIO->xem_sstart	= (void (* )(void))xpr_gets;
+	xemIO->xem_sstop		= (long (* )(void))xpr_gets;
+	xemIO->xem_sflush	= (long (* )(void))xpr_sflush;
+	xemIO->xem_toptions	= NULL; 	// (unsigned long (* )(LONG , struct xem_option ** ))xpr_gets;
+	xemIO->xem_tgets		= (long (* )(UBYTE * , UBYTE * , ULONG ))xpr_gets;
+	xemIO->xem_tbeep		= (void (* )(ULONG , ULONG ))xpr_gets;
+	//xemIO->xem_console	= 0;
+	//xemIO->xem_process_macrokeys = 0;
+
+	XEmulatorSetup(xemIO);
+	XEmulatorOpenConsole(xemIO);
+	XEmulatorMacroKeyFilter(xemIO, NULL);
+
+    return TRUE;
+}
+
  /**
  * @brief Open or reopen the application's display environment.
  *
@@ -2404,7 +2707,6 @@ static UWORD Connect_To_ServerA(char *servername, UWORD port)
  */
 BOOL OpenDisplay(void)
 {
-	long i;
 	#ifdef _DEBUG
 		ULONG beforeSigAlloc;
 		ULONG afterSigAlloc;
@@ -2413,399 +2715,152 @@ BOOL OpenDisplay(void)
 		PutStr("--> OpenDisplay()\n");
 	#endif
 
-	//if(!manageScreen) goto skip_screen_open;
+	if (scr == NULL)  // We need to (re)open completely the screen
+		scr = OpenAppScreen();
 
-	if (! scr)  // We need to (re)open completely the screen
+	if (scr == NULL) { EZReq(NULL,"Unable to open screen!"); goto clean_and_return; }
+
+	if (visualInfos == NULL) visualInfos = GetVisualInfoA(scr, NULL);
+	if (drawInfo == NULL)    drawInfo    = GetScreenDrawInfo(scr);
+
+	OpenAppWindow();
+	if(win == NULL) { EZReq(NULL,"Unable to open main window!"); goto clean_and_return; }
+
+	CreateAppMenus();
+	if (menuStrip == NULL) { EZReq(NULL,"Unable to create menus!"); goto clean_and_return; }
+
+	reqtoolsTags[0] = RT_Window;
+	reqtoolsTags[1] = (ULONG)win;
+	reqtoolsTags[2] = RT_WaitPointer;
+	reqtoolsTags[3] = TRUE;
+
+
+    // Try to initialize the XEM library if the user enabled it.
+    // If it fails fallback to ibmcon/console device.
+	if(drivertype == DRIVER_XEM_LIB)
+		if (! InitializeXemLibrary())
+			drivertype = DRIVER_NORMAL; // Xem lib failed to load so we’ll try with ibmcon.device
+
+
+	// The console device :
+	// https://amigadev.elowar.com/read/ADCD_2.1/Devices_Manual_guide/node0080.html
+
+	// Doc about OpenDevice() to open a console device :
+	// https://amigadev.elowar.com/read/ADCD_2.1/Libraries_Manual_guide/node029E.html
+	// https://amigadev.elowar.com/read/ADCD_2.1/Includes_and_Autodocs_2._guide/node0509.html
+	if(drivertype == DRIVER_NORMAL)
 	{
-		if(prefs.flags & FLAG_USE_WORKBENCH) isRunningOnWB = TRUE; else isRunningOnWB = FALSE;
+		UWORD unitNumber;
+		char *devName = isRunningOnWB ? "console.device" : "ibmcon.device";
+		BOOL b;
 
-		fontAttr.ta_Name = prefs.fontname;
-		fontAttr.ta_YSize = prefs.fontsize;
-		ansiFont = OpenDiskFont(&fontAttr);
-		if(!ansiFont)
-		{
-			fontAttr.ta_Name = "topaz.font";
-			fontAttr.ta_YSize = 8;
-			ansiFont = OpenFont(&fontAttr);
-		}
+		// Exec Device I/O Functions docs:
+		// https://amigadev.elowar.com/read/ADCD_2.1/Libraries_Manual_guide/node02A5.html
 
+		// CreateIORequest() requires a message port.
+		writeConPort = CreateMsgPort();
+		if (!writeConPort) { EZReq(NULL,"Unable to create message port for console device!"); goto clean_and_return; }
+
+		// https://amigadev.elowar.com/read/ADCD_2.1/Includes_and_Autodocs_2._guide/node0344.html
+		writeConIOReq = CreateIORequest(writeConPort, sizeof(struct IOStdReq));
+
+		// The unit number that is a standard parameter for an open call is used
+		// specially by this device.
 		if (isRunningOnWB)
 		{
-			prefs.flags |= FLAG_HIDE_LEDS;
-			prefs.flags &= ~FLAG_PACKET_WINDOW;		   // Not Packet Window
-			scr = LockPubScreen(0L);
+			unitNumber = CONU_SNIPMAP;
 		} else {
-			register UWORD *pens;
-			static struct NewScreen newscr;
+			if(prefs.flags & FLAG_JUMP_SCROLL)
+				unitNumber = 2; // unit 2 is undocumented in the NDK and AmigaOS docs
+			else
+				unitNumber = CONU_CHARMAP;
+		}
 
-			if(prefs.DisplayDepth < 3) pens = &colorPens[12]; else pens = colorPens;
+		//the window that is used by the console device for output:
+		writeConIOReq->io_Data = win;
+		writeConIOReq->io_Length = sizeof(struct Window);
 
-			memcpy(&newscr.Width, &prefs.DisplayWidth, 6);
-			newscr.BlockPen = 1;
-			newscr.Type = CUSTOMSCREEN;
-			newscr.Font = &fontAttr;
-			// Main window title in full screen mode:
-			newscr.DefaultTitle = MainWindowTitle;
+		#ifdef _DEBUG
+			PutStr("   --> OpenDevice()\n");
+			beforeSigAlloc = thisTask->tc_SigAlloc;
+			PutStr("SigAlloc:"); PrintBitsULONG(thisTask->tc_SigAlloc);
+			LogWindowsSigBit();
+		#endif
 
-			scr = OpenScreenTags(&newscr,
-				SA_DisplayID,	prefs.DisplayID,
-							SA_Pens,	(ULONG)pens,
-				SA_ShowTitle,	!(prefs.flags & FLAG_HIDE_TITLEBAR),
-				SA_AutoScroll,	TRUE,
-				SA_Interleaved,	TRUE,
-				TAG_END);
-			/*
-			scr = OpenScreenTags(NULL,
-				SA_Title,	"DCTelnet 1.5 © "__DATE__" By ZED^DC",
-				SA_Width,	prefs.DisplayWidth,
-				SA_Height,	prefs.DisplayHeight,
-				SA_DisplayID,	prefs.DisplayID,
-							SA_Depth,	prefs.DisplayDepth,
-				SA_ShowTitle,	!prefs.flags&1,
-				SA_Type,	CUSTOMSCREEN,
-							SA_Pens,	(ULONG)pens,
-				SA_Font,	&fontAttr,
-				SA_AutoScroll,	TRUE,
-				SA_Interleaved,	TRUE,
-							TAG_END);*/
+		b = OpenDevice(devName, unitNumber, (struct IORequest *)writeConIOReq, CONFLAG_DEFAULT);
+
+		#ifdef _DEBUG
+			PutStr("   <-- OpenDevice()\n");
+			PutStr("SigAlloc:"); PrintBitsULONG(thisTask->tc_SigAlloc);
+			afterSigAlloc = thisTask->tc_SigAlloc;
+			conDeviceSigBit = BitPosition(beforeSigAlloc ^ afterSigAlloc); // XOR help detect the difference
+			argArray[0] = conDeviceSigBit;
+			VPrintf("                   conDeviceSigBit = %lu\n", argArray);
+			LogWindowsSigBit();
+		#endif
+
+		if(b == RETURN_OK)
+		{
+			isConDeviceOpened = TRUE;
+		}
+		else
+		{
+			isConDeviceOpened = FALSE;
+			mysprintf(buf,	"Failed to open device: %s", devName);
+			EZReq(NULL, buf);
+			goto clean_and_return;
 		}
 	}
 
+	isAppIconified = FALSE;
 
-	if(scr)
+	LEDs();
+
+	if(!isConnected)
 	{
-		if (! visualInfos) visualInfos = GetVisualInfoA(scr, NULL);
-		if (! drawInfo)    drawInfo    = GetScreenDrawInfo(scr);
-		winTop = (scr->WBorTop)+(scr->Font->ta_YSize)+1;
-//skip_screen_open:
-		newWin.Screen = scr;
-		newWin.Type = PUBLICSCREEN;
-		newWin.DetailPen = 255;
-		newWin.BlockPen = 255;
+		register UWORD flags;
+		register char cpu;
 
-		if (isRunningOnWB)
+		flags = SysBase->AttnFlags;
+		cpu = '0';
+		if(flags & AFF_68010) cpu = '1';
+		if(flags & AFF_68020) cpu = '2';
+		if(flags & AFF_68030) cpu = '3';
+		if(flags & AFF_68040) cpu = '4';
+		if(flags & AFF_68060) cpu = '6';
+
+		LocalFmt("›0;1;36m\014\r\n\r\n"
+				"Processor: ›37m680%lc0\r\n\r\n›36m"
+				"Kickstart: ›37m%ld.%ld\r\n\r\n›36m"
+				"TCP Stack: ›37m",
+				cpu,
+				((struct Library *)SysBase)->lib_Version,
+				SysBase->SoftVer);
+
+		if(SocketBase)
 		{
-			static UWORD sizes[4] = { 200, 50, 1600, 1200 };
+			register char *po;
+			strcpy(buf, SocketBase->lib_IdString);
+			// truncate the string at the first line feed:
+			po = strchr(buf, '\n');
+			if(po) po[0] = '\0';
 
-			mynewmenu[24].nm_Flags |= CHECKED;	   // WB
-			//mynewmenu[38].nm_Flags = NM_ITEMDISABLED;  // Jump Scroll
-			mynewmenu[40].nm_Flags = NM_ITEMDISABLED;  // ScreenMode
-			mynewmenu[42].nm_Flags = NM_ITEMDISABLED;  // ScreenPalette
-
-			memcpy(&newWin, &prefs.win_left, 8);
-			memcpy(&newWin.MinWidth, &sizes, 8);
-			newWin.IDCMPFlags = IDCMP_RAWKEY | IDCMP_CLOSEWINDOW | IDCMP_MENUPICK;
-			//newWin.Flags = WFLG_GIMMEZEROZERO|WFLG_NEWLOOKMENUS|WFLG_SIMPLE_REFRESH|WFLG_ACTIVATE|WFLG_CLOSEGADGET|WFLG_DRAGBAR|WFLG_DEPTHGADGET|WFLG_SIZEGADGET;
-			newWin.Flags = WFLG_GIMMEZEROZERO|WFLG_NEWLOOKMENUS|WFLG_SMART_REFRESH|WFLG_ACTIVATE|WFLG_CLOSEGADGET|WFLG_DRAGBAR|WFLG_DEPTHGADGET|WFLG_SIZEGADGET;
-			// Main window title in windowed workbench mode:
-			newWin.Title = MainWindowTitle;
-			newWin.FirstGadget = 0;
-
-			CheckDimensions(&newWin);
-
-			win = OpenWindow(&newWin);
-			UnlockPubScreen(0L, scr);
-			if(prefs.flags & FLAG_TOOL_BAR) OpenToolBarWindow(FALSE);
-		} else { // running in full screen
-			struct Gadget *backgad;
-			UWORD top, height;
-
-			mynewmenu[24].nm_Flags = HIGHCOMP|CHECKIT|MENUTOGGLE;	// WB
-			//mynewmenu[38].nm_Flags = HIGHCOMP|CHECKIT|MENUTOGGLE;	// Jump Scroll
-			mynewmenu[40].nm_Flags = 0;	// ScreenMode
-			mynewmenu[42].nm_Flags = 0;	// ScreenPalette
-
-			LoadRGB4(&scr->ViewPort, (UWORD *)&prefs.color, 16);
-
-			if(prefs.flags & FLAG_TOOL_BAR) OpenToolBarWindow(FALSE);
-
-			if(prefs.flags&1) // HIDE TITLE
-			{
-				top = 0;
-				height = scr->Height;
-				backgad = &screenToBackGadget;
-				screenToBackGadget.Width = 20;
-				screenToBackGadget.Height = 9;
-				screenToBackGadget.Activation = RELVERIFY;
-				screenToBackGadget.GadgetType = BOOLGADGET;
-				screenToBackGadget.LeftEdge = scr->Width - 20;
-				screenToBackGadget.GadgetID = 20;
-			} else {
-				top = prefs.fontsize + 3;
-				height = scr->Height - (prefs.fontsize + 3);
-				backgad = 0;
-			}
-
-			if (toolBarWin)	// Tool Window
-			{
-				top = toolBarWin->TopEdge + toolBarWin->Height + 1;
-				height = scr->Height - top;
-				if(backgad)
-				{
-					AddGadget(toolBarWin, backgad, -1);
-					backgad = 0;
-				}
-			}
-
-			newWin.LeftEdge = 0;
-			newWin.Title = 0;
-			newWin.Width = scr->Width;
-
-			if(prefs.flags & FLAG_PACKET_WINDOW)	// Packet
-			{
-				height -= (prefs.fontsize + 2);
-				strInfo.Buffer = strBuffer;
-				strInfo.MaxChars = BUFSIZE;
-				strGad.TopEdge = 2;
-				strGad.Activation = GACT_RELVERIFY | GACT_STRINGLEFT;
-				strGad.GadgetType = GTYP_STRGADGET;
-				strGad.SpecialInfo = &strInfo;
-				strGad.Width = scr->Width;
-				strGad.Height = prefs.fontsize;
-
-				newWin.TopEdge = top+height;
-				newWin.Height = prefs.fontsize+2,
-				newWin.FirstGadget = &strGad;
-				newWin.IDCMPFlags =	IDCMP_MENUPICK |
-							IDCMP_GADGETUP;
-				newWin.Flags =	WFLG_NEWLOOKMENUS |
-						WFLG_BORDERLESS |
-						WFLG_BACKDROP;
-
-				packetWin = OpenWindow(&newWin);
-
-				SetAPen(packetWin->RPort, 1);
-				Draw(packetWin->RPort, packetWin->Width, 0);
-			}
-
-			newWin.TopEdge = top;
-			newWin.Height = height;
-			newWin.FirstGadget = backgad;
-			newWin.IDCMPFlags =	IDCMP_GADGETUP |
-						IDCMP_RAWKEY |
-						IDCMP_CLOSEWINDOW |
-						IDCMP_MENUPICK;
-			newWin.Flags =	WFLG_SMART_REFRESH |
-					WFLG_NEWLOOKMENUS |
-					WFLG_BORDERLESS |
-					WFLG_ACTIVATE |
-					WFLG_BACKDROP;
-
-			win = OpenWindow(&newWin);
+			LocalPrint(buf);
+			LocalPrint("›m\r\n\r\n");
 		}
-
-		if(win)
-		{
-			if((prefs.flags & FLAG_USE_XEM_LIBRARY) && prefs.displaydriver[0])
-			{
-				drivertype = DRIVER_XEM_LIB;
-				mynewmenu[38].nm_Flags = NM_ITEMDISABLED;
-			} else {
-				drivertype = DRIVER_NORMAL;
-				mynewmenu[38].nm_Flags = HIGHCOMP|CHECKIT|MENUTOGGLE;
-				prefs.flags &= ~FLAG_USE_XEM_LIBRARY;
-			}
-
-			if(prefs.flags & FLAG_HIDE_TITLEBAR)
-				mynewmenu[26].nm_Flags |= CHECKED;
-			else
-				mynewmenu[26].nm_Flags = HIGHCOMP|CHECKIT|MENUTOGGLE;
-
-			if(prefs.flags & FLAG_CRLF_CORRECTION) // CRLF
-				mynewmenu[27].nm_Flags |= CHECKED;
-			else
-				mynewmenu[27].nm_Flags = HIGHCOMP|CHECKIT|MENUTOGGLE;
-
-			if(prefs.flags & FLAG_HIDE_LEDS)
-				mynewmenu[25].nm_Flags |= CHECKED;
-			else
-				mynewmenu[25].nm_Flags = HIGHCOMP|CHECKIT|MENUTOGGLE;
-
-			for(i=4; i<15; i++)
-			{
-				if(prefs.flags & (1<<i))
-					mynewmenu[i+24].nm_Flags |= CHECKED;
-				else
-					mynewmenu[i+24].nm_Flags &= ~CHECKED;
-					//mynewmenu[i+24].nm_Flags = HIGHCOMP|CHECKIT|MENUTOGGLE;
-			}
-
-			reqtoolsTags[0] = RT_Window;
-			reqtoolsTags[1] = (ULONG)win;
-			reqtoolsTags[2] = RT_WaitPointer;
-			reqtoolsTags[3] = TRUE;
-
-			SetFont(win->RPort, ansiFont);
-
-			if(menuStrip = CreateMenusA(mynewmenu, 0))
-			{
-				static ULONG ltags[] = { GTMN_NewLookMenus, TRUE, TAG_END };
-
-				register struct MenuItem *item = menuStrip->FirstItem->NextItem->NextItem->NextItem->NextItem->NextItem->NextItem->NextItem;
-				if(prefs.DisplayDepth > 1) ((struct IntuiText *)item->ItemFill)->FrontPen = 15;
-				//item->Flags |= HIGHBOX;
-				//item->Flags &= ~HIGHCOMP;
-				item->Flags = 150;
-
-				ltags[1] = isRunningOnWB;
- 				LayoutMenusA(menuStrip, visualInfos, (struct TagItem *)&ltags);
-
-				SetMenuStrip(win, menuStrip);
-
-				if(packetWin) ResetMenuStrip(packetWin, menuStrip);
-				if (toolBarWin) ResetMenuStrip(toolBarWin, menuStrip);
-
-				if(drivertype == DRIVER_XEM_LIB) goto lib;
-cantfind:
-                // Exec Device I/O Functions docs:
-                // https://amigadev.elowar.com/read/ADCD_2.1/Libraries_Manual_guide/node02A5.html
-
-				// needed for async IO replies, but we will do sync IO anyway, so unused:
-				writeConPort = CreateMsgPort();
-				if(writeConPort)
-				{
-					UWORD unitNumber;
-					char *devName = isRunningOnWB ? "console.device" : "ibmcon.device";
-
-					// https://amigadev.elowar.com/read/ADCD_2.1/Includes_and_Autodocs_2._guide/node0344.html
-					writeConIOReq = CreateIORequest(writeConPort, sizeof(struct IOStdReq));
+		else
+			LocalPrint("›31mNot active›m\r\n\r\n");
+	}
 
 
-					// The unit number that is a standard parameter for an open call is used
-					// specially by this device.
-					if (isRunningOnWB)
-					{
-						unitNumber = CONU_SNIPMAP;
-					} else {
-						if(prefs.flags & FLAG_JUMP_SCROLL)
-							unitNumber = 2; // unit 2 is undocumented in the NDK and AmigaOS docs
-						else
-							unitNumber = CONU_CHARMAP;
-					}
+	// everything alright:
+	return TRUE;
 
-					#ifdef _DEBUG
-						PutStr("   --> OpenDevice()\n");
-						beforeSigAlloc = thisTask->tc_SigAlloc;
-						PutStr("SigAlloc:"); PrintBitsULONG(thisTask->tc_SigAlloc);
-						LogWindowsSigBit();
-					#endif
-				    // Doc about OpenDevice() to open a console device :
-		   // https://amigadev.elowar.com/read/ADCD_2.1/Libraries_Manual_guide/node029E.html
-           // https://amigadev.elowar.com/read/ADCD_2.1/Includes_and_Autodocs_2._guide/node0509.html
 
-		            // The console device :
-		            // https://amigadev.elowar.com/read/ADCD_2.1/Devices_Manual_guide/node0080.html
-
-                    //the window that is used by the console device for output:
-					writeConIOReq->io_Data = win;
-					writeConIOReq->io_Length = sizeof(struct Window);
-
-					i = OpenDevice(devName, unitNumber, (struct IORequest *)writeConIOReq, CONFLAG_DEFAULT);
-
-					#ifdef _DEBUG
-						PutStr("   <-- OpenDevice()\n");
-						PutStr("SigAlloc:"); PrintBitsULONG(thisTask->tc_SigAlloc);
-						afterSigAlloc = thisTask->tc_SigAlloc;
-						conDeviceSigBit = BitPosition(beforeSigAlloc ^ afterSigAlloc); // XOR help detect the difference
-						argArray[0] = conDeviceSigBit;
-						VPrintf("                   conDeviceSigBit = %lu\n", argArray);
-						LogWindowsSigBit();
-					#endif
-
-					if(i == RETURN_OK)
-					{
-						isConDeviceOpened = TRUE;
-lib:
-						if(drivertype == DRIVER_XEM_LIB)
-						{
-							xemIO = AllocMem(sizeof(struct XEM_IO), MEMF_PUBLIC|MEMF_CLEAR);
-							if (xemIO == NULL)
-							{
-								DisplayAlert(RECOVERY_ALERT, "Not enough memory!", 0);
-								return FALSE;
-							}
-
-							XEmulatorBase = OpenLibrary(prefs.displaydriver, 0);
-							if(!XEmulatorBase)
-							{
-								drivertype = DRIVER_NORMAL;
-								mysprintf(buf,	"Failed to open XEM library: %s",
-												prefs.displaydriver);
-								SimpleReq(buf);
-
-								goto cantfind;
-							}
-
-							xemIO->xem_window	= win;
-							xemIO->xem_font 		= ansiFont;
-							//xemIO->xem_signal	= 0;
-							xemIO->xem_screendepth	= scr->BitMap.Depth;
-							xemIO->xem_swrite	= (long (* )(UBYTE * , LONG ))xpr_swrite;
-							xemIO->xem_sread		= (long (* )(UBYTE * , LONG , LONG ))xpr_sread;
-							// BF : xpr_gets() does nothing. just a return 0. should we put a NULL instead ?
-							// seems to be the usual value for unimplemented callback functions
-							xemIO->xem_sbreak	= (long (* )(void))xpr_gets;
-							xemIO->xem_sstart	= (void (* )(void))xpr_gets;
-							xemIO->xem_sstop		= (long (* )(void))xpr_gets;
-							xemIO->xem_sflush	= (long (* )(void))xpr_sflush;
-							xemIO->xem_toptions	= NULL; 	// (unsigned long (* )(LONG , struct xem_option ** ))xpr_gets;
-							xemIO->xem_tgets		= (long (* )(UBYTE * , UBYTE * , ULONG ))xpr_gets;
-							xemIO->xem_tbeep		= (void (* )(ULONG , ULONG ))xpr_gets;
-							//xemIO->xem_console	= 0;
-							//xemIO->xem_process_macrokeys = 0;
-
-							XEmulatorSetup(xemIO);
-							XEmulatorOpenConsole(xemIO);
-							XEmulatorMacroKeyFilter(xemIO, NULL);
-						}
-
-						isAppIconified = FALSE;
-
-						LEDs();
-
-						if(!isConnected)
-						{
-							register UWORD flags;
-							register char cpu;
-
-							flags = SysBase->AttnFlags;
-							cpu = '0';
-							if(flags & AFF_68010) cpu = '1';
-							if(flags & AFF_68020) cpu = '2';
-							if(flags & AFF_68030) cpu = '3';
-							if(flags & AFF_68040) cpu = '4';
-							if(flags & AFF_68060) cpu = '6';
-
-							LocalFmt(
-	"›0;1;36m\014\r\n\r\n"
-	"Processor: ›37m680%lc0\r\n\r\n›36m"
-	"Kickstart: ›37m%ld.%ld\r\n\r\n›36m"
-	"TCP Stack: ›37m", cpu, ((struct Library *)SysBase)->lib_Version, SysBase->SoftVer);
-
-							if(SocketBase)
-							{
-								register char *po;
-								strcpy(buf, SocketBase->lib_IdString);
-								po = strchr(buf, '\n');
-								if(po) po[0] = 0;
-								LocalPrint(buf);
-								LocalPrint("›m\r\n\r\n");
-							} else
-								LocalPrint("›31mNot active›m\r\n\r\n");
-						}
-
-						return(TRUE);
-					} else
-						SimpleReq("I need ibmcon.device");
-				}
-			}
-		}
-	} else
-		rtEZRequestA("Screen failed to open.", "OK", NULL, NULL, 0);
-
+clean_and_return:
 	CloseDisplay(TRUE);
 
-	return(FALSE);
+	return FALSE;
 }
 
 /**
