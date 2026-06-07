@@ -95,7 +95,7 @@ extern char username[42], password[42];
 
 
 // Functions exported
-BOOL OpenDisplay(BOOL manageScreen);
+BOOL OpenDisplay(void);
 void CloseDisplay(BOOL manageScreen);
 long TCPSend(char *buf, long len);
 void CloseIcon(void);                                   // Uniconify the application

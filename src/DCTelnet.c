@@ -136,8 +136,9 @@ static struct Gadget screenToBackGadget; // In top right corner when title bar i
 struct NewGadget newGadget;
 static struct TextAttr fontAttr;
 struct TextFont *ansiFont;
+static BOOL isConDeviceOpened = FALSE;
 static struct IOStdReq writeIOReq;
-static struct MsgPort *WriteConPort;
+static struct MsgPort *WriteConPort = NULL;
 struct Menu *menuStrip;
 static struct DiskObject *diskObj;
 struct MsgPort *iconPort;
@@ -215,6 +216,12 @@ static void ConWrite(char *data, long len)
 		if(drivertype)
 			XEmulatorWrite(&xemIO, data, len);
 		else {
+			#ifdef _DEBUG
+			if (!isConDeviceOpened) DisplayAlert(RECOVERY_ALERT,
+				"Error writing to console: console device is unavailable.",
+				0);
+			#endif
+
 			// Doc about passing requests to I/O device:
 			// https://amigadev.elowar.com/read/ADCD_2.1/Devices_Manual_guide/node0006.html
 
@@ -1036,6 +1043,8 @@ static void ClearScrollBack(void)
 {
 	struct Scroll *worknode, *nextnode;
 
+	if (scrollbackList == NULL) return;
+
 	worknode = (struct Scroll *)scrollbackList->lh_Head;
 	while(worknode)
 	{
@@ -1077,86 +1086,23 @@ static void Finger(void)
 	}
 }
 
-int main(int argc, char *argv[])
+/**
+@brief Load application preferences from the prefs file.
+
+Loads preferences from the configured prefs file. If the file does not exist, it is created and
+initialized with default values.
+
+Calling code must ensure that ReqTools.library is opened before invoking this function.
+
+@return TRUE on success, non-zero error code on failure.
+*/
+BOOL LoadPrefs(void)
 {
-	ULONG iconsig = 0, sigmask, winsig;
-	LONG i;
-	struct timeval timer;
-	fd_set rd;
-	#ifdef _DEBUG
-		ULONG beforeSigAlloc;
-		ULONG afterSigAlloc;
-		ULONG argArray[1];
-	#endif
-    thisTask = FindTask(NULL);
+	BPTR fh = Open(prefsFilename, MODE_OLDFILE);
 
-
-	if(argc == 0) // Launched from Workbench (icon click)
+	if(fh)
 	{
-		if (thisTask != NULL)
-			programName = thisTask->tc_Node.ln_Name;
-	}
-	else if(argc > 1) // Launched from Shell/CLI
-	{
-		programName=argv[0];
-
-		if(strcmp(argv[1], "?") == 0 || strcmp(argv[1], "/?") == 0 || strcmp(argv[1], "-?") == 0 ||
-		   strcmp(argv[1], "-h")  == 0 || strcmp(argv[1], "--help")  == 0)
-		{
-			PutStr(
-                "DCTelnet "DCTELNET_VERSION " (build " STR(BUILD_HASH) ") ("__DATE__
-                                               ") - A classic Amiga Telnet/BBS client with Zmodem\n"
-                "compiled with: " STR(COMPILER_STRING) "\n"
-                "\n"
-                "Usage: DCTelnet <host> [<port>]\n"
-    		);
-			return RETURN_OK;
-		}
-
-		strcpy(server, argv[1]);
-
-		if(argc > 2) tcpPort = atoi(argv[2]);
-
-		/*if(argc > 3)
-		{
-			if(stricmp(argv[3], "debug")==0) debug = TRUE;
-		}*/
-	}
-
-    // Needed right now for EZReq
-    IntuitionBase = (struct IntuitionBase *) OpenLibrary("intuition.library", 0);
-
-	if (thisTask == NULL)
-	{
-		const char msg[] = "ERROR: cannot FindTask()!";
-		PutStr(msg);
-		EZReq(NULL, msg);
-		goto clean_exit;
-	}
-
-    // Workaround for connection freeze after changing display settings: ibmcon.device improperly
-    // frees signal bit 31 when being closed. We explicitly allocate signal 31 here to prevent it
-    // from being assigned elsewhere and accidentally released.
-    dontUseSig31 = AllocSignal(31L);
-    if (dontUseSig31 != 31)
-        EZReq(NULL, "ERROR: cannot allocate sigbit 31!");
-
-	if (!(ReqToolsBase = (struct ReqToolsBase *)OpenLibrary (REQTOOLSNAME, 0)))
-	{
-		const char msg[] = "DCTelnet - Requirement Warning\n\n"
-							"reqtools.library can not be loaded.\n"
-							"DCTelnet requires ReqTools library to run.\n"
-							"It is available on Aminet: util/libs/ReqToolsUsr\n"
-							"Please install it and try again.";
-		PutStr(msg);
-		EZReq(NULL, msg);
-		goto clean_exit;
-	}
-
-	fileHandle = Open(prefsFilename, MODE_OLDFILE);
-	if(fileHandle)
-	{
-		if(Read(fileHandle, &prefs, sizeof(struct PrefsStruct)) < 252) // IF OLD CONFIG FILE
+		if(Read(fh, &prefs, sizeof(struct PrefsStruct)) < 252) // IF OLD CONFIG FILE
 		{
 			/*//prefs.win_left = 0;
 			prefs.win_top = 11;
@@ -1167,10 +1113,10 @@ int main(int argc, char *argv[])
 			prefs.sb_width = 640;
 			prefs.sb_height = (prefs.DisplayHeight / 2) - 4;*/
 
-			Close(fileHandle);
+			Close(fh);
 			goto fixprefs;
 		}
-		Close(fileHandle);
+		Close(fh);
 	} else {
 
 		isAppIconified = TRUE;
@@ -1204,19 +1150,109 @@ fixprefs:		//prefs.win_left = 0;
 			prefs.sb_width = 640;
 			prefs.sb_height = (prefs.DisplayHeight / 2) - 4;
 			SavePrefs();
-		} else
-			goto clean_exit;
+		}
+		else
+		{
+			return FALSE;
+		}
 	}
 
 	if(prefs.sb_lines == 0) prefs.sb_lines = 300;
 	if(prefs.displayidstr[0] == 0) strcpy(prefs.displayidstr, "VT102");
 
-	fileHandle = Open(keysFilename, MODE_OLDFILE);
-	if(fileHandle)
+	// Loads the macro function keys config file if present:
+	fh = Open(keysFilename, MODE_OLDFILE);
+	if(fh)
 	{
-		Read(fileHandle, keys, 1520);
-		Close(fileHandle);
+		Read(fh, keys, 1520);
+		Close(fh);
 	}
+
+	return TRUE;
+}
+
+
+int main(int argc, char *argv[])
+{
+	ULONG iconsig = 0, sigmask, winsig;
+	LONG i;
+	struct timeval timeout;
+	fd_set rd;
+	int returnCode = RETURN_FAIL;
+	#ifdef _DEBUG
+		ULONG beforeSigAlloc;
+		ULONG afterSigAlloc;
+		ULONG argArray[1];
+	#endif
+	thisTask = FindTask(NULL);
+
+	if(argc == 0) // Launched from Workbench (icon click)
+	{
+		if (thisTask != NULL)
+			programName = thisTask->tc_Node.ln_Name;
+	}
+	else if(argc > 1) // Launched from Shell/CLI
+	{
+		programName=argv[0];
+
+		if(strcmp(argv[1], "?") == 0 || strcmp(argv[1], "/?") == 0 || strcmp(argv[1], "-?") == 0 ||
+		   strcmp(argv[1], "-h")  == 0 || strcmp(argv[1], "--help")  == 0)
+		{
+			PutStr(
+                "DCTelnet "DCTELNET_VERSION " (build " STR(BUILD_HASH) ") ("__DATE__
+                                               ") - A classic Amiga Telnet/BBS client with Zmodem\n"
+                "compiled with: " STR(COMPILER_STRING) "\n"
+                "\n"
+                "Usage: DCTelnet <host> [<port>]\n"
+            );
+
+			returnCode = RETURN_OK;
+			goto clean_exit;
+		}
+
+		strcpy(server, argv[1]);
+
+		if(argc > 2) tcpPort = atoi(argv[2]);
+
+		//if(argc > 3) if(stricmp(argv[3], "debug")==0) debug = TRUE;
+	}
+
+	// Needed right now for EZReq
+    IntuitionBase = (struct IntuitionBase *) OpenLibrary("intuition.library", 36);
+    if (IntuitionBase == NULL) {
+		PutStr("Unable to open intuition.library v36!");
+		goto clean_exit;
+	}
+
+	if (thisTask == NULL)
+	{
+		const char msg[] = "ERROR: cannot FindTask()!";
+		PutStr(msg);
+		EZReq(NULL, msg);
+		goto clean_exit;
+	}
+
+    // Workaround for connection freeze after changing display settings: ibmcon.device improperly
+    // frees signal bit 31 when being closed. We explicitly allocate signal 31 here to prevent it
+    // from being assigned elsewhere and accidentally released.
+    dontUseSig31 = AllocSignal(31L);
+    if (dontUseSig31 != 31)
+        EZReq(NULL, "ERROR: cannot allocate sigbit 31!");
+
+	if (!(ReqToolsBase = (struct ReqToolsBase *)OpenLibrary (REQTOOLSNAME, 0)))
+	{
+		const char msg[] = "DCTelnet - Requirement Warning\n\n"
+							"reqtools.library can not be loaded.\n"
+							"DCTelnet requires ReqTools library to run.\n"
+							"It is available on Aminet: util/libs/ReqToolsUsr\n"
+							"Please install it and try again.";
+		PutStr(msg);
+		EZReq(NULL, msg);
+
+		goto clean_exit;
+	}
+
+	if (! LoadPrefs()) goto clean_exit;
 
 	scrollbackList = AllocMem(sizeof(struct List), MEMF_CLEAR|MEMF_PUBLIC);
 	if(!scrollbackList) goto clean_exit;
@@ -1229,17 +1265,22 @@ fixprefs:		//prefs.win_left = 0;
 	UtilityBase = ReqToolsBase -> UtilityBase;
 
 	WorkbenchBase = OpenLibrary("workbench.library", 0);
+	if (WorkbenchBase == NULL) { EZReq(NULL,"Unable to open workbench.library"); goto clean_exit; }
+
 	DiskfontBase = OpenLibrary("diskfont.library", 0);
+	if (DiskfontBase == NULL) { EZReq(NULL,"Unable to open diskfont.library"); goto clean_exit; }
+
 	KeymapBase = OpenLibrary("keymap.library", 0);
+	if (KeymapBase == NULL) { EZReq(NULL,"Unable to open keymap.library"); goto clean_exit; }
+
 	IconBase = OpenLibrary("icon.library", 0);
+	if (IconBase == NULL) { EZReq(NULL,"Unable to open icon.library"); goto clean_exit; }
 
 	#ifdef _DEBUG
 		PutStr("--> OpenLibrary(bsdsocket.library, 0)\n");
 		beforeSigAlloc = thisTask->tc_SigAlloc;
 	#endif
-
 	SocketBase = OpenLibrary("bsdsocket.library", 0);
-
 	#ifdef _DEBUG
 		PutStr("<-- OpenLibrary(bsdsocket.library, 0)\n");
 		afterSigAlloc = thisTask->tc_SigAlloc;
@@ -1247,35 +1288,34 @@ fixprefs:		//prefs.win_left = 0;
 		argArray[0] = socketLibSigBit;
 		VPrintf("                  socketLibSigBit = %lu\n", argArray);
 	#endif
-
-	shouldReopenScreen = TRUE;
-restart:
-	if(OpenDisplay(shouldReopenScreen))
-	{
-		#ifdef _DEBUG
-			PutStr("<-- OpenDisplay()\n");
-			PutStr("SigAlloc:"); PrintBitsULONG(thisTask->tc_SigAlloc);
-			LogWindowsSigBit();
-		#endif
+	// We retry opening the bsdsocket.library later as user might load a TCP/IP stack later.
 
 
-		if(!shouldRestart && server[0] != 0 && !isConnected) Connect_To_Server(server, tcpPort);
-		shouldRestart = FALSE;
-		shouldReopenScreen = FALSE;
+	if (! OpenDisplay())
+		goto clean_exit;
 
-		timer.tv_sec = 30;
-		timer.tv_usec = 0;
+	#ifdef _DEBUG
+		PutStr("<-- OpenDisplay()\n");
+		PutStr("SigAlloc:"); PrintBitsULONG(thisTask->tc_SigAlloc);
+		LogWindowsSigBit();
+	#endif
 
+	// Connect to server if it was specified in the command line. It needs an opened display.
+	if (server[0] != '\0')
+		Connect_To_Server(server, tcpPort);
+
+	shouldRestart = FALSE;
+	shouldReopenScreen = FALSE;
 
 /* ------ main loop ------ */
-
-// BF: useless label, it is nevered used in function "main".
-//startloop:
-	while(!shouldQuitApp)
+	shouldQuitApp = FALSE;
+	while(! shouldQuitApp)
 	{
-
 		if(shouldIconify)
 		{
+			#ifdef _DEBUG
+			if (!win) DisplayAlert(RECOVERY_ALERT, "Error: no window to iconify!", 0);
+			#endif
 			CloseDisplay(TRUE);
 			// inconify the application:
 			OpenIcon();
@@ -1284,8 +1324,11 @@ restart:
 
 		if(shouldUniconify)
 		{
+			#ifdef _DEBUG
+			if (!appIconOnWB) DisplayAlert(RECOVERY_ALERT, "Error: no icon on WB!", 0);
+			#endif
 			CloseIcon();
-			OpenDisplay(TRUE);
+			OpenDisplay();
 
 			#ifdef _DEBUG
 				PutStr("<-- OpenDisplay()\n");
@@ -1306,7 +1349,19 @@ restart:
 				FD_SET(tcpSocket, &rd);
 				sigmask = SIGBREAKF_CTRL_C | SIGBREAKF_CTRL_F | iconsig;
 
-				i = WaitSelect(tcpSocket + 1, &rd, 0, 0, &timer, &sigmask);
+				// https://wiki.amigaos.net/amiga/autodocs/bsdsocket.doc.txt (tout à la fin)
+				// WaitSelect() should probably return the time remaining from the original timeout,
+				// if any, by modifying the time value in place. This may be implemented in future
+				// versions of the system. Thus, it is unwise to assume that the timeout value will
+				// be unmodified by the WaitSelect() call.
+				// WaitSelect() returns the number of ready descriptors that are contained in the
+				// descriptor sets,
+				// or -1 if an error occurred.
+				// If the time limit expires, WaitSelect() returns 0.
+				// Reception of a user signal with no socket ready will cause WaitSelect() to stop
+				// and to return 0.
+				timeout.tv_sec = 30; timeout.tv_usec = 0;
+				i = WaitSelect(tcpSocket + 1, &rd, 0, 0, &timeout, &sigmask);
 
 				#ifdef _DEBUG
 					if (i <  0)  EZReq(win, "WaitSelect() returns < 0 (error) ! Why???");
@@ -1317,7 +1372,7 @@ restart:
 				sigmask = Wait( SIGBREAKF_CTRL_C | SIGBREAKF_CTRL_F | iconsig );
 			}
 
-	 		if(sigmask&SIGBREAKF_CTRL_F) shouldUniconify = TRUE;
+			if(sigmask&SIGBREAKF_CTRL_F) shouldUniconify = TRUE;
 
 			if(sigmask&SIGBREAKF_CTRL_C) shouldQuitApp = TRUE;
 
@@ -1349,7 +1404,8 @@ restart:
 				if(packetWin) sigmask |= 1L << packetWin->UserPort->mp_SigBit;
 				if (toolBarWin) sigmask |= 1L << toolBarWin->UserPort->mp_SigBit;
 
-				i = WaitSelect(tcpSocket + 1, &rd, 0, 0, &timer, &sigmask);
+				timeout.tv_sec = 30; timeout.tv_usec = 0;
+				i = WaitSelect(tcpSocket + 1, &rd, 0, 0, &timeout, &sigmask);
 
 				#ifdef _DEBUG
 					if      (i <  0)
@@ -1403,36 +1459,39 @@ restart:
 				if(sigmask&winsig) GetWindowMsg(win);
 				if(sigmask&SIGBREAKF_CTRL_C) shouldQuitApp = TRUE;
 			}
+
 			if(shouldRestart)
 			{
 				CloseDisplay(shouldReopenScreen);
-				goto restart;
+				if (! OpenDisplay())
+					goto clean_exit;
+
+				shouldRestart = FALSE;
+				shouldReopenScreen = FALSE;
 			}
-
 		}
+	} /* -- end of main loop -- */
 
-	}
+	SavePrefs();
 
-/* -- end of main loop -- */
+	prefs.flags = FLAG_HIDE_TITLEBAR;
 
-		CloseDisplay(TRUE);
-		SavePrefs();
+	returnCode = RETURN_OK;
 
-		prefs.flags = FLAG_HIDE_TITLEBAR;
-		DisConnect(FALSE, TRUE);
-	}
-
-	CloseLibrary(WorkbenchBase);
-	CloseLibrary(IconBase);
-	CloseLibrary(DiskfontBase);
-	CloseLibrary(KeymapBase);
-	CloseLibrary(SocketBase);
+clean_exit:
+	DisConnect(FALSE, TRUE);
+	CloseDisplay(TRUE);
 
 	ClearScrollBack();
 	FreeMem(scrollbackList, sizeof(struct List));
-clean_exit:
-	if (ReqToolsBase)  CloseLibrary((struct Library *)ReqToolsBase);
-	if (IntuitionBase) CloseLibrary((struct Library *)IntuitionBase);
+
+	if (SocketBase)    CloseLibrary(SocketBase);
+	if (IconBase)      CloseLibrary(IconBase);
+	if (KeymapBase)    CloseLibrary(KeymapBase);
+	if (DiskfontBase)  CloseLibrary(DiskfontBase);
+	if (WorkbenchBase) CloseLibrary(WorkbenchBase);
+	if (ReqToolsBase)  CloseLibrary((struct Library *) ReqToolsBase);
+	if (IntuitionBase) CloseLibrary((struct Library *) IntuitionBase);
 
 	if (dontUseSig31 != -1) FreeSignal(dontUseSig31);
 
@@ -1445,7 +1504,7 @@ clean_exit:
 		}
 	#endif
 
-	return RETURN_OK;
+	return returnCode;
 }
 
 static void SaveScrollBack(char *fname)
@@ -2332,28 +2391,18 @@ static UWORD Connect_To_ServerA(char *servername, UWORD port)
  /**
  * @brief Open or reopen the application's display environment.
  *
+ * Screen might already be open if the function is called to restart the UI without changing the
+ * screen (Only recreate windows, menus and console bindings)
  *
-  * The @p manageScreen parameter controls whether the screen-level resources
- * (screen, font, GadTools visual info, Intuition DrawInfo) must be (re)opened.
-
- * When @p manageScreen is TRUE, the function:
+ * When screen is completely (re)open, the function:
  * - Opens or locks the screen (custom screen or Workbench screen)
  * - Loads the screen font
  * - Allocates visual and drawing resources
  * - Used at program startup, after a screen mode change,
  *
- * When @p manageScreen is FALSE, the function:
- * - Assumes the screen is already available
- * - Only recreate windows, menus and console bindings
- * - Used when restarting the UI without changing the screen
- *
- * @param manageScreen
- *        TRUE  to (re)open and initialize the screen and all related resources
- *        FALSE to reuse the existing screen and only recreate windows
- *
  * @return TRUE on success, FALSE if the display could not be opened.
  */
-BOOL OpenDisplay(BOOL manageScreen)
+BOOL OpenDisplay(void)
 {
 	long i;
 	#ifdef _DEBUG
@@ -2364,67 +2413,71 @@ BOOL OpenDisplay(BOOL manageScreen)
 		PutStr("--> OpenDisplay()\n");
 	#endif
 
-	if(!manageScreen) goto skip_screen_open;
+	//if(!manageScreen) goto skip_screen_open;
 
-	if(prefs.flags & FLAG_USE_WORKBENCH) isRunningOnWB = TRUE; else isRunningOnWB = FALSE;
-
-	fontAttr.ta_Name = prefs.fontname;
-	fontAttr.ta_YSize = prefs.fontsize;
-	ansiFont = OpenDiskFont(&fontAttr);
-	if(!ansiFont)
+	if (! scr)  // We need to (re)open completely the screen
 	{
-		fontAttr.ta_Name = "topaz.font";
-		fontAttr.ta_YSize = 8;
-		ansiFont = OpenFont(&fontAttr);
+		if(prefs.flags & FLAG_USE_WORKBENCH) isRunningOnWB = TRUE; else isRunningOnWB = FALSE;
+
+		fontAttr.ta_Name = prefs.fontname;
+		fontAttr.ta_YSize = prefs.fontsize;
+		ansiFont = OpenDiskFont(&fontAttr);
+		if(!ansiFont)
+		{
+			fontAttr.ta_Name = "topaz.font";
+			fontAttr.ta_YSize = 8;
+			ansiFont = OpenFont(&fontAttr);
+		}
+
+		if (isRunningOnWB)
+		{
+			prefs.flags |= FLAG_HIDE_LEDS;
+			prefs.flags &= ~FLAG_PACKET_WINDOW;		   // Not Packet Window
+			scr = LockPubScreen(0L);
+		} else {
+			register UWORD *pens;
+			static struct NewScreen newscr;
+
+			if(prefs.DisplayDepth < 3) pens = &colorPens[12]; else pens = colorPens;
+
+			memcpy(&newscr.Width, &prefs.DisplayWidth, 6);
+			newscr.BlockPen = 1;
+			newscr.Type = CUSTOMSCREEN;
+			newscr.Font = &fontAttr;
+			// Main window title in full screen mode:
+			newscr.DefaultTitle = MainWindowTitle;
+
+			scr = OpenScreenTags(&newscr,
+				SA_DisplayID,	prefs.DisplayID,
+							SA_Pens,	(ULONG)pens,
+				SA_ShowTitle,	!(prefs.flags & FLAG_HIDE_TITLEBAR),
+				SA_AutoScroll,	TRUE,
+				SA_Interleaved,	TRUE,
+				TAG_END);
+			/*
+			scr = OpenScreenTags(NULL,
+				SA_Title,	"DCTelnet 1.5 © "__DATE__" By ZED^DC",
+				SA_Width,	prefs.DisplayWidth,
+				SA_Height,	prefs.DisplayHeight,
+				SA_DisplayID,	prefs.DisplayID,
+							SA_Depth,	prefs.DisplayDepth,
+				SA_ShowTitle,	!prefs.flags&1,
+				SA_Type,	CUSTOMSCREEN,
+							SA_Pens,	(ULONG)pens,
+				SA_Font,	&fontAttr,
+				SA_AutoScroll,	TRUE,
+				SA_Interleaved,	TRUE,
+							TAG_END);*/
+		}
 	}
 
-	if (isRunningOnWB)
-	{
-		prefs.flags |= FLAG_HIDE_LEDS;
-		prefs.flags &= ~FLAG_PACKET_WINDOW;		   // Not Packet Window
-		scr = LockPubScreen(0L);
-	} else {
-		register UWORD *pens;
-		static struct NewScreen newscr;
-
-		if(prefs.DisplayDepth < 3) pens = &colorPens[12]; else pens = colorPens;
-
-		memcpy(&newscr.Width, &prefs.DisplayWidth, 6);
-		newscr.BlockPen = 1;
-		newscr.Type = CUSTOMSCREEN;
-		newscr.Font = &fontAttr;
-		// Main window title in full screen mode:
-		newscr.DefaultTitle = MainWindowTitle;
-
-		scr = OpenScreenTags(&newscr,
-			SA_DisplayID,	prefs.DisplayID,
-       	       	        SA_Pens,	(ULONG)pens,
-			SA_ShowTitle,	!(prefs.flags & FLAG_HIDE_TITLEBAR),
-			SA_AutoScroll,	TRUE,
-			SA_Interleaved,	TRUE,
-			TAG_END);
-/*
-		scr = OpenScreenTags(NULL,
-			SA_Title,	"DCTelnet 1.5 © "__DATE__" By ZED^DC",
-			SA_Width,	prefs.DisplayWidth,
-			SA_Height,	prefs.DisplayHeight,
-			SA_DisplayID,	prefs.DisplayID,
-       	       	        SA_Depth,	prefs.DisplayDepth,
-			SA_ShowTitle,	!prefs.flags&1,
-			SA_Type,	CUSTOMSCREEN,
-       	       	        SA_Pens,	(ULONG)pens,
-			SA_Font,	&fontAttr,
-			SA_AutoScroll,	TRUE,
-			SA_Interleaved,	TRUE,
-       	       	        TAG_END);*/
-	}
 
 	if(scr)
 	{
+		if (! visualInfos) visualInfos = GetVisualInfoA(scr, NULL);
+		if (! drawInfo)    drawInfo    = GetScreenDrawInfo(scr);
 		winTop = (scr->WBorTop)+(scr->Font->ta_YSize)+1;
-		visualInfos = GetVisualInfoA(scr, 0);
-		drawInfo = GetScreenDrawInfo(scr);
-skip_screen_open:
+//skip_screen_open:
 		newWin.Screen = scr;
 		newWin.Type = PUBLICSCREEN;
 		newWin.DetailPen = 255;
@@ -2663,6 +2716,7 @@ cantfind:
 
 					if(i == RETURN_OK)
 					{
+						isConDeviceOpened = TRUE;
 lib:
 						if(drivertype == DRIVER_XEM_LIB)
 						{
@@ -2775,16 +2829,18 @@ void CloseDisplay(BOOL manageScreen)
 		PutStr("--> CloseDisplay()\n");
 	#endif
 
-	if(drivertype == DRIVER_XEM_LIB)
+	if (XEmulatorBase)
 	{
-		if(win)
-		{
-			XEmulatorCloseConsole(&xemIO);
-			XEmulatorCleanup(&xemIO);
-			CloseLibrary(XEmulatorBase);
-		}
-	} else {
-		// https://amigadev.elowar.com/read/ADCD_2.1/Devices_Manual_guide/node0190.html
+		XEmulatorCloseConsole(&xemIO); // gives the emulator the chance to free window-specific data
+		XEmulatorCleanup(&xemIO);      // free internal structure used by the emulator
+		CloseLibrary(XEmulatorBase);
+		memset(&xemIO, 0, sizeof(xemIO));
+		XEmulatorBase = NULL;
+	}
+
+	// https://amigadev.elowar.com/read/ADCD_2.1/Devices_Manual_guide/node0190.html
+	if(isConDeviceOpened)
+	{
 		#ifdef _DEBUG
 			PutStr("   --> CloseDevice(&writeIOReq)\n");
 			PutStr("SigAlloc:"); PrintBitsULONG(thisTask->tc_SigAlloc);
@@ -2796,7 +2852,7 @@ void CloseDisplay(BOOL manageScreen)
 			}
 		#endif
 
-		if(writeIOReq.io_Error == 0) CloseDevice((struct IORequest *)&writeIOReq);
+		CloseDevice((struct IORequest *)&writeIOReq);
 
 		if (thisTask->tc_SigAlloc & (1L << 31))
 		{
@@ -2822,14 +2878,21 @@ void CloseDisplay(BOOL manageScreen)
 			#endif
 		}
 
-		if(WriteConPort) { DeleteMsgPort(WriteConPort); WriteConPort = NULL; }
+		isConDeviceOpened = FALSE;
+		memset(&writeIOReq, 0, sizeof(writeIOReq));
+	}
+
+	if (WriteConPort)
+	{
+		DeleteMsgPort(WriteConPort);
+		WriteConPort = NULL;
 	}
 
 	if(packetWin)
 	{
 		ClearMenuStrip(packetWin);
 		CloseWindow(packetWin);
-		packetWin = 0;
+		packetWin = NULL;
 	}
 
 	if(win)
@@ -2842,14 +2905,30 @@ void CloseDisplay(BOOL manageScreen)
 	CloseScrollBack();
 	CloseToolBarWindow();
 
-	if(menuStrip)	FreeMenus(menuStrip);
+	if(menuStrip)	{ FreeMenus(menuStrip); menuStrip = NULL; }
 
 	if(manageScreen)
 	{
-		if(visualInfos)		FreeVisualInfo(visualInfos);
-		if(drawInfo)	FreeScreenDrawInfo(scr, drawInfo);
-		if(!isRunningOnWB && scr)	CloseScreen(scr);
-		if(ansiFont)	CloseFont(ansiFont);
+		if(visualInfos)           { FreeVisualInfo(visualInfos);        visualInfos = NULL; }
+		if(drawInfo)              { FreeScreenDrawInfo(scr, drawInfo);  drawInfo = NULL; }
+		if(scr != NULL)
+        {
+            if (! isRunningOnWB)
+            {
+                #ifdef _DEBUG
+                    BOOL result =
+                #endif
+                CloseScreen(scr);
+
+                #ifdef _DEBUG
+                    PutStr("   <-- CloseScreen()\n");
+                    if (! result)  EZReq(NULL, "ERROR: Failed to close screen!");
+                #endif
+            }
+
+            scr = NULL;
+        }
+		if(ansiFont)              { CloseFont(ansiFont);                ansiFont = NULL; }
 	}
 
 	isAppIconified = TRUE;
@@ -2861,6 +2940,7 @@ void CloseDisplay(BOOL manageScreen)
 }
 
 // inconify the application
+// http://amigadev.elowar.com/read/ADCD_2.1/Libraries_Manual_guide/node024A.html
 void OpenIcon(void)
 {
 	if(iconPort = CreateMsgPort())
@@ -2872,23 +2952,36 @@ void OpenIcon(void)
 		if(diskObj)
 		{
 			// Add an icon on Workbench backdrop to inconify the application:
-			// Return immediately if AddAppIconA() succeeds.
-			if(appIconOnWB = AddAppIconA(0, 0, "DCTelnet", iconPort, 0, diskObj, 0)) return;
+			appIconOnWB = AddAppIconA(0, 0, "DCTelnet", iconPort, 0, diskObj, 0);
+			if (appIconOnWB == NULL)
+			{
+				FreeDiskObject(diskObj);  diskObj  = NULL;
 
-			FreeDiskObject(diskObj);
+				DeleteMsgPort(iconPort);  iconPort = NULL;
+			}
 		}
-		DeleteMsgPort(iconPort);
 	}
-	iconPort = 0;
+
+    #ifdef _DEBUG
+        PutStr("  <-- OpenIcon()\n");
+        PutStr("SigAlloc:"); PrintBitsULONG(thisTask->tc_SigAlloc);
+    #endif
 }
 
 // shouldUniconifyify the application
+// http://amigadev.elowar.com/read/ADCD_2.1/Libraries_Manual_guide/node024A.html
 void CloseIcon(void)
 {
-	if(iconPort)
-	{
-		RemoveAppIcon(appIconOnWB);
-		FreeDiskObject(diskObj);
-		DeleteMsgPort(iconPort);
-	}
+	RemoveAppIcon(appIconOnWB);             appIconOnWB = NULL;
+	FreeDiskObject(diskObj);                diskObj  = NULL;
+	if (iconPort)
+    {
+        // Clear away any messages that arrived at the last moment and let Workbench know we're done
+        // with the messages (cf. Amiga ROM Kernel Reference Manual v2.04 - Libraries)
+        struct Message *msg = NULL;
+        while (msg=GetMsg(iconPort))  ReplyMsg(msg);
+
+        DeleteMsgPort(iconPort);
+        iconPort = NULL;
+    }
 }

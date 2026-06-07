@@ -100,6 +100,7 @@ static void ProtoClean(void)
 
 	XProtocolCleanup(&xio);
 	CloseLibrary(XProtocolBase);
+	XProtocolBase = NULL;
 	xpr_sflush();
 	//ConWrite("", 1);
 }
@@ -647,7 +648,7 @@ long __SAVE_DS__ xpr_chkabort(void)
 		if(shouldUniconify)
 		{
 			CloseIcon();             // Close the icon on the Workbench screen
-			OpenDisplay(TRUE);       // Reopen the complete DCTelnet Window
+			OpenDisplay();           // Reopen the complete DCTelnet Window
 			XferWindow();            // Recreate the transfer window
 			xfer_gauge_width = 0;
 			shouldUniconify = FALSE;
@@ -765,6 +766,7 @@ static char XferWindow(void)
 	if(!xferwin)
 	{
 		CloseLibrary(XProtocolBase);
+		XProtocolBase = NULL;
 		return(0);
 	}
 

@@ -797,13 +797,12 @@ void CloseScrollBack(void)
 	if(scrollbackWin)
 	{
 		ClearMenuStrip(scrollbackWin);
-		CloseWindow(scrollbackWin);
-		DisposeObject(Scroller);
-		DisposeObject(UpArrow);
-		DisposeObject(DownArrow);
-		DisposeObject(UpImage);
-		DisposeObject(DownImage);
-		scrollbackWin = 0;
+		CloseWindow(scrollbackWin);    scrollbackWin = NULL;
+		DisposeObject(Scroller);       Scroller=NULL;
+		DisposeObject(UpArrow);        UpArrow = NULL;
+		DisposeObject(DownArrow);      DownArrow = NULL;
+		DisposeObject(UpImage);        UpImage = NULL;
+		DisposeObject(DownImage);      DownImage = NULL;
 	}
 }
 
@@ -1220,11 +1219,11 @@ void CloseToolBarWindow(void)
 
 		ClearMenuStrip(toolBarWin);
 		CloseWindow(toolBarWin);
-		toolBarWin = 0;
+		toolBarWin = NULL;
 
 		for(i=0; i<BUTTONS; i++)
 		{
-			if(dob[i]) FreeDiskObject(dob[i]);
+			if(dob[i]) { FreeDiskObject(dob[i]);  dob[i]= NULL; }
 		}
 
 		item = ItemAddress(menuStrip, FULLMENUNUM(3, 10, 0));

@@ -129,6 +129,20 @@ void LogWindowsSigBit(void)
 		}
 		VPrintf("           WriteConPort->mp_SigBit = %lu\n", array);
 	}
+
+	if (iconPort)
+	{
+		array[0] = iconPort->mp_SigBit;
+		if (array[0] >= 31)
+		{
+			PutStr("ERROR: anormal mp_SigBit!!!\n");
+		}
+		if (! (thisTask->tc_SigAlloc & (1L << array[0])))
+		{
+			PutStr("ERROR: mp_SigBit disapeared from thisTask->tc_SigAlloc!!!\n");
+		}
+		VPrintf("           iconPort->mp_SigBit = %lu\n", array);
+	}
 }
 
 
