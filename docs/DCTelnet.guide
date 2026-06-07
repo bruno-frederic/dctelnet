@@ -354,7 +354,7 @@ library to use for uploading or downloading files from a connected site.
 
                   Any standard XPR protocol can be used.
 
-                             @{b}@{u} PROTOCOL INIT.. @{ub}@{uu}
+                             @{b}@{u} PROTOCOL OPTIONS.. @{ub}@{uu}
                               ~~~~~~~~~~~~~~~
   Allows you to customize the initialization of the protocol you wish to
 use.  You will have to consult the manual of the XPR protocol for the
@@ -381,6 +381,11 @@ emulations.  See XEM library for further documentation.
 
   NOTE: Using a XEM library will trash your window border, if the
         USE WORKBENCH option is enabled.
+
+                            @{b}@{u} XEM LIB OPTIONS.. @{ub}@{uu}
+                              ~~~~~~~~~~~~~~~
+  Allows you to customize the initialization of the Xem library. You will
+have to consult the manual of the Xem library for the options you wish to use.
 
                             @{b}@{u} Telnet Display ID @{ub}@{uu}
                              ~~~~~~~~~~~~~~~~~

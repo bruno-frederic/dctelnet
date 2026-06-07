@@ -14,7 +14,7 @@
 #include <proto/reqtools.h>           // rtAllocRequestA(), rtGetStringA(), rtFreeRequest()...
 #include "Xem_wrapper.h"
 #include "DCTelnet.h"                 // win, scr, ansiFont, prefs.displaydriver, buf
-#include "Xfer.h"                     // xpr_sread(), xpr_swrite(), xpr_sflush()
+#include "Xfer.h"                     // xpr_sread(), xpr_swrite(), xpr_sflush(), xpr_options()
 
 struct Library *XEmulatorBase;
 struct XEM_IO *xemIO;
@@ -66,16 +66,6 @@ struct XEM_IO *xemIO;
         EZReq(win, "xem_process_macrokeys() is not implemented.");
         return -1L; // What is the meaning of return value?
     }
-
-    /* Provide a polished user interface to set the emulator options.
-       Called by XEmulatorOptions()
-    */
-    ULONG __SAVE_DS__ __ASM__ xem_toptions(__REG__(d0, LONG n), __REG__(a0, struct xem_option *opt[]))
-    {
-        EZReq(win, "TODO : xem_toptions() is not implemented yet.");
-        return -1L; // an error occurred
-    }
-
 #endif // _DEBUG
 
 
@@ -152,12 +142,14 @@ BOOL InitializeXemLibrary(void)
         xemIO->xem_squery            = xem_squery;
         xemIO->xem_sstart            = xem_sstart;
         xemIO->xem_sstop             = xem_sstop;
-        xemIO->xem_toptions          = xem_toptions;
         xemIO->xem_process_macrokeys = xem_process_macrokeys;
     #endif
 
     xemIO->xem_tgets             = xem_tgets;
     // XEM_IO->xem_options is 100% compatible to XPR_IO->xpr_options
+    xemIO->xem_toptions =
+    (ULONG (* __ASM__ )(__REG__(d0, LONG n), __REG__(a0, struct xem_option *opt[])))xpr_options;
+
     xemIO->xem_tbeep             = xem_tbeep;
 
     // allocates and initializes emulator-private data :

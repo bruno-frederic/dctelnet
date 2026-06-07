@@ -100,6 +100,9 @@ void CloseDisplay(BOOL manageScreen);
 long TCPSend(char *buf, long len);
 void CloseIcon(void);                                   // Uniconify the application
 void LEDs(void);
+#ifdef __VBCC__
+int stricmp(const char *a, const char *b);
+#endif
 void mysprintf(char *Buffer,char *ctl, ...);
 void LocalFmt(char *ctl, ...);
 void TextFmt(struct RastPort *rP, char *ctl, ...);

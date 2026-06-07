@@ -51,31 +51,33 @@ static char MainWindowTitle[] =
 #include "Xem_wrapper.h"
 
 
+// Adding or removing items in this structure changes their index numbers,
+// which will break hard?coded references such as mynewmenu[40].nm_Flags = NM_ITEMDISABLED
 static struct NewMenu mynewmenu[] =
     {
-        { NM_TITLE, "DC Telnet",	 0 , 0, 0, 0,},
+        { NM_TITLE, "DC Telnet",	 0 , 0, 0, 0,},             // item #0
         {  NM_ITEM, "About",		"A", 0, 0, 0,},
         {  NM_ITEM, NM_BARLABEL,	 0 , 0, 0, 0,},
         {  NM_ITEM, "Scroll Back",	"X", 0, 0, 0,},
         {  NM_ITEM, "Iconify",	 	"&", 0, 0, 0,},
-        {  NM_ITEM, "Speed Test",	"Y", 0, 0, 0,},
+        {  NM_ITEM, "Speed Test",	"Y", 0, 0, 0,},             // item #5
         {  NM_ITEM, "Finger",		"@", 0, 0, 0,},
         {  NM_ITEM, NM_BARLABEL,	 0 , 0, 0, 0,},
         {  NM_ITEM, "Quit",		"Q", 0, 0, 0,},
 
         { NM_TITLE, "Transfer",		 0 , 0, 0, 0,},
-        {  NM_ITEM, "Upload",       	"U", 0, 0, 0,},
+        {  NM_ITEM, "Upload",       	"U", 0, 0, 0,},         // item #10
         {  NM_ITEM, NM_BARLABEL,	 0 , 0, 0, 0,},
         {  NM_ITEM, "Download",		"D", 0, 0, 0,},
         {  NM_ITEM, NM_BARLABEL,	 0 , 0, 0, 0,},
         {  NM_ITEM, "ASCII Send",	"%", 0, 0, 0,},
 
-        { NM_TITLE, "Connection",	 0 , 0, 0, 0,},
+        { NM_TITLE, "Connection",	 0 , 0, 0, 0,},             // item #15
         {  NM_ITEM, "Connect",		"M", 0, 0, 0,},
         {  NM_ITEM, "Connect (New instance)",	"G", 0, 0, 0,},
         {  NM_ITEM, "Disconnect",	"H", 0, 0, 0,},
         {  NM_ITEM, NM_BARLABEL,	 0 , 0, 0, 0,},
-        {  NM_ITEM, "Address Book",	"B", 0, 0, 0,},
+        {  NM_ITEM, "Address Book",	"B", 0, 0, 0,},             // item #20
         {  NM_ITEM, NM_BARLABEL,	 0 , 0, 0, 0,},
         {  NM_ITEM, "Information",	"^", 0, 0, 0,},
 
@@ -97,23 +99,24 @@ static struct NewMenu mynewmenu[] =
         {  NM_ITEM, "Jump Scroll",	"8", HIGHCOMP|CHECKIT|MENUTOGGLE, 0, 0,},
 
         { NM_TITLE, "Settings",		 0 , 0, 0, 0,},
-        {  NM_ITEM, "Screen Mode..",	"S", 0, 0, 0,},
+        {  NM_ITEM, "Screen Mode..",	"S", 0, 0, 0,},         // item #40
         {  NM_ITEM, "Screen Font..",	"F", 0, 0, 0,},
         {  NM_ITEM, "Screen Palette..",	"-", 0, 0, 0,},
         {  NM_ITEM, "Download Path..",	"O", 0, 0, 0,},
         {  NM_ITEM, "Transfer Protocol..","T", 0, 0, 0,},
-        {  NM_ITEM, "Protocol Init..",	"*", 0, 0, 0,},
+        {  NM_ITEM, "Protocol Options..",	"*", 0, 0, 0,},     // item #45
         {  NM_ITEM, "Function Keys..",	"K", 0, 0, 0,},
         {  NM_ITEM, "XEM Library..",	"#", 0, 0, 0,},
+        {  NM_ITEM, "XEM Lib Options..", "+", 0, 0, 0,},
         {  NM_ITEM, "Telnet Display ID..","9", 0, 0, 0,},
-        {  NM_ITEM, "ScrollBack Lines..","0", 0, 0, 0,},
+        {  NM_ITEM, "ScrollBack Lines..","0", 0, 0, 0,},        // item #50
         {  NM_ITEM, "Snapshot Windows",	"$", 0, 0, 0,},
 
         { NM_TITLE, "Login",		 0 , 0, 0, 0,},
         {  NM_ITEM, "Send Username",	"N", 0, 0, 0,},
         {  NM_ITEM, "Send Password",	"P", 0, 0, 0,},
 
-        {   NM_END, NULL,		 0 , 0, 0, 0,},
+        {   NM_END, NULL,		 0 , 0, 0, 0,},                 // item #55
     };
 
 
@@ -200,6 +203,38 @@ struct Task *mainTask = NULL;
 BYTE dontUseSig31 = -1; // don't use it, ibmcon.device will destroy it.
 
 #include "DCTelnet-debug.h"
+
+#ifdef __VBCC__
+#include <ctype.h>	                  // tolower()
+
+/**
+ * @brief Case-insensitive string comparison implementation for VBCC.
+ *
+ * stricmp() is not a standard C function.
+ * It is used in the AddressBook sorting algorithm when clicking the List Sorted By button.
+ * SAS/C provides a vendor-specific stricmp() implementation in string.h.
+ *
+ * AmigaOS provides Stricmp() but starting in 2.04, so this implementation is used
+ * to keep AmigaOS 2.00 compatibility with VBCC.
+ *
+ * @param a Pointer to the first NUL-terminated string.
+ * @param b Pointer to the second NUL-terminated string.
+ * @return Negative value if a < b, zero if a == b, positive value if a > b.
+ */
+int stricmp(const char *a, const char *b)
+{
+    unsigned char ca, cb;
+
+    while (*a && *b)// donc pointeur pas NULL
+    {
+        ca = (unsigned char)tolower((unsigned char)*a++);
+        cb = (unsigned char)tolower((unsigned char)*b++);
+        if (ca != cb)
+            return ca - cb;
+    }
+    return (unsigned char)*a - (unsigned char)*b;
+}
+#endif
 
 void mysprintf(char *Buffer, char *ctl, ...)
 {
@@ -2148,7 +2183,8 @@ static void GetWindowMsg(struct Window *wwin)
 						break;
 
 					case 5:
-						rtGetStringA(prefs.xferinit, 51, "Protocol Init..", 0, (struct TagItem *)&reqtoolsTags);
+						rtGetStringA(prefs.xferinit, 51, "Protocol Options..", 0, (struct TagItem *)&reqtoolsTags);
+                        // TODO Open XPR options Dialog : XferOptions(prefs.xferlibrary);
 						break;
 
 					case 6:
@@ -2163,14 +2199,21 @@ static void GetWindowMsg(struct Window *wwin)
 						break;
 
 					case 8:
-						rtGetStringA(prefs.displayidstr, 31, "Telnet Display ID..", 0, (struct TagItem *)&reqtoolsTags);
+						if (xemIO)
+                            XEmulatorOptions(xemIO);
+                        else
+                            EZReq(win, "The XEM library is currently disabled, so related functionality is unavailable.");
 						break;
 
 					case 9:
+						rtGetStringA(prefs.displayidstr, 31, "Telnet Display ID..", 0, (struct TagItem *)&reqtoolsTags);
+						break;
+
+					case 10:
 						rtGetLongA(&prefs.sb_lines, "ScrollBack Lines..", NULL, (struct TagItem *)&reqtoolsTags);
 						break;
 
-					case 10: // Snapshot Windows
+					case 11: // Snapshot Windows
 						prefs.win_top = win->TopEdge;
 						prefs.win_left = win->LeftEdge;
 						prefs.win_height = win->Height;
@@ -2643,10 +2686,12 @@ void CreateAppMenus(void)
 	if((prefs.flags & FLAG_USE_XEM_LIBRARY) && prefs.displaydriver[0])
 	{
 		drivertype = DRIVER_XEM_LIB;
-		mynewmenu[38].nm_Flags = NM_ITEMDISABLED;
+        mynewmenu[48].nm_Flags = 0;                 // Enable "XEM Lib Options" (state not saved in prefs)
+        mynewmenu[38].nm_Flags = NM_ITEMDISABLED;   // Gray out "Jump Scroll"
 	} else {
 		drivertype = DRIVER_NORMAL;
 		mynewmenu[38].nm_Flags = HIGHCOMP|CHECKIT|MENUTOGGLE;
+        mynewmenu[48].nm_Flags = NM_ITEMDISABLED;   // Gray out "XEM Lib Options"
 		prefs.flags &= ~FLAG_USE_XEM_LIBRARY;
 	}
 

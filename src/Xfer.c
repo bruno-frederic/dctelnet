@@ -726,6 +726,7 @@ static char ProtoStart(char *library, char *firstfile)
 	xio.xpr_finfo     = xpr_finfo;
 	xio.xpr_fseek     = xpr_fseek;
 	xio.xpr_gets      = xpr_gets;
+    xio.xpr_options   = xpr_options;
 	xio.xpr_unlink    = xpr_unlink;
 	xio.xpr_squery    = xpr_squery;
 	xio.xpr_extension = 1L;
@@ -735,6 +736,38 @@ static char ProtoStart(char *library, char *firstfile)
 	xio.xpr_filename = firstfile;
 
 	if(isAppIconified) return(TRUE); else return(XferWindow());
+}
+
+/* TODO MAKE A CLEAN FUNCTION NOT REDUNDANT WITH ProtoStart() */
+void XferOptions(char *library)
+{
+    XProtocolBase = OpenLibrary(library, 0);
+    if(!XProtocolBase)
+    {
+        LocalFmt("\r\n›0;31mERROR: ›mCould not open transfer library: %s\r\n", library);
+    }
+
+    xio.xpr_fopen     = xpr_fopen;
+    xio.xpr_fclose    = xpr_fclose;
+    xio.xpr_fread     = xpr_fread;
+    xio.xpr_fwrite    = xpr_fwrite;
+    xio.xpr_sread     = xpr_sread;
+    xio.xpr_swrite    = xpr_swrite;
+    xio.xpr_sflush    = xpr_sflush;
+    xio.xpr_update    = xpr_update;
+    xio.xpr_chkabort  = xpr_chkabort;
+    xio.xpr_ffirst    = xpr_ffirst;
+    xio.xpr_fnext     = xpr_fnext;
+    xio.xpr_finfo     = xpr_finfo;
+    xio.xpr_fseek     = xpr_fseek;
+    xio.xpr_gets      = xpr_gets;
+    xio.xpr_options   = xpr_options;
+    xio.xpr_unlink    = xpr_unlink;
+    xio.xpr_squery    = xpr_squery;
+    xio.xpr_extension = 1L;
+
+    xio.xpr_filename = NULL; // This provoke the opening of XPR Options dialog box
+    XProtocolSetup(&xio);
 }
 
 static char XferWindow(void)
@@ -921,3 +954,446 @@ void Download(char *library)
 		xpr_sflush();
 	}
 }
+
+
+ /*************************************************************************************************
+ *
+ * This section contains the implementation of xpr_options() implementation and helper functions :
+ * CreateOptionGadgets() and GetOptionMode().
+ *
+ * Inspired from XEm_SampleCode.c (Xem 2.0 source code)
+ *
+ **************************************************************************************************/
+
+/**
+ * @brief Determines the boolean value of an option based on its string value.
+ *
+ * Checks the value of the given xpr_option and returns TRUE if it represents an enabled/true state
+ * ("ON", "TRUE", "YES", etc.), or FALSE otherwise.
+ *
+ * @param Option Pointer to the xpr_option structure to evaluate.
+ * @return BOOL TRUE if the option is enabled, FALSE if disabled.
+ */
+static BOOL GetOptionMode(struct xpr_option *Option)
+{
+	if(!stricmp(Option->xpro_value, "OFF"))
+		return(0);
+
+	if(!stricmp(Option->xpro_value, "FALSE"))
+		return(0);
+
+	if(!stricmp(Option->xpro_value, "F"))
+		return(0);
+
+	if(!stricmp(Option->xpro_value, "NO"))
+		return(0);
+
+	if(!stricmp(Option->xpro_value, "N"))
+		return(0);
+
+
+	if(!stricmp(Option->xpro_value, "ON"))
+		return(1);
+
+	if(!stricmp(Option->xpro_value, "TRUE"))
+		return(1);
+
+	if(!stricmp(Option->xpro_value, "T"))
+		return(1);
+
+	if(!stricmp(Option->xpro_value, "YES"))
+		return(1);
+
+	if(!stricmp(Option->xpro_value, "Y"))
+		return(1);
+
+	return(0);
+}
+
+/*
+*
+*/
+/**
+ * @brief Create a set of Gadtools gadgets for xpr_options()
+ *
+ * This function builds a context of gadgets based on the xpr_option array provided by the Xpr/Xem
+ * library.
+ * It computes layout metrics for either a single or two-column presentation, creates appropriate
+ * gadget types (checkbox, integer, string, text, button) and appends them to the provided gadget
+ * list.
+ *
+ * @param[out] count   Receives the number of gadgets created.
+ * @param[out] width   Receives the computed window width required.
+ * @param[out] height  Receives the computed window height required.
+ * @param[in]  numopts Number of options in opts[].
+ * @param[in]  opts    Array of pointers to xpr_option describing each option.
+ * @param[out] gadgetarray Array to receive pointers to created gadgets (indexed by option).
+ * @param[in,out] gadgetlist Pointer to gadget context/list to append to.
+ * @param[in]  topedge Starting top edge Y coordinate for placement.
+ *
+ * @return Pointer to the last created gadget on success, or NULL on failure.
+ */
+static struct Gadget *CreateOptionGadgets(LONG *count, UWORD *width, UWORD *height, LONG numopts, struct xpr_option *opts[], struct Gadget *gadgetarray[], struct Gadget **gadgetlist, UWORD topedge)
+{
+	//IMPORT APTR VisualInfo;   -> visualInfos dans DCTelnet
+	//IMPORT struct TextAttr DefaultAttr; -> fontAttr dans DCTelnet
+
+	struct Gadget *gadget;
+	struct NewGadget newgad = {0};
+	LONG i;
+	UWORD leftedge;
+	UWORD command_len, leftstring_len, rightstring_len, header_len;
+	UWORD leftgadget_width, rightgadget_width;
+	BOOL split, right;
+
+	if(numopts == 0)		/* AETSCH..!! */
+		return(NULL);
+
+	*count = 0;
+
+	//memset(&newgad, 0, sizeof(struct NewGadget));
+	if(gadget = CreateContext(gadgetlist))
+	{
+		newgad.ng_Height		= 12;
+		newgad.ng_TextAttr	=   scr->Font;
+		newgad.ng_VisualInfo	= visualInfos;
+		newgad.ng_Flags		= NG_HIGHLABEL;
+
+	/* is there a 2 column display? */
+		split = (numopts > 11);
+
+		header_len = 0;
+		command_len = 0;
+		leftstring_len = 0;
+		rightstring_len = 0;
+
+		leftgadget_width = 20;	/* BOOL-Gadgets first! */
+		rightgadget_width = 20;
+
+		right = FALSE;	/* we start at the left side.. */
+		for(i=0; i<numopts; i++)
+		{
+			UWORD len = (strlen(opts[i]->xpro_description) + 1) << 3;
+
+			switch(opts[i]->xpro_type)
+			{
+				case XPRO_HEADER:
+					if(header_len < len)
+						header_len = len;
+
+					right = TRUE;		/* we need the right column, too */
+				break;
+
+				case XPRO_COMMAND:
+					if(command_len < len)
+						command_len = len + 50;
+
+					right = TRUE;		/* we need the right column, too */
+				break;
+
+				case XPRO_STRING:
+				case XPRO_LONG:
+				case XPRO_COMMPAR:
+					if(split  &&  right)
+						rightgadget_width = 68;
+					else
+						leftgadget_width = 68;
+
+				/* break thru */
+
+				case XPRO_BOOLEAN:
+					if(split  &&  right)
+					{
+						if(rightstring_len < len)
+							rightstring_len = len;
+					}
+					else
+					{
+						if(leftstring_len < len)
+							leftstring_len = len;
+					}
+				break;
+
+			}
+
+			right = !right;	/* swap it.. */
+		}
+
+#define LEFTEDGE 15
+#define ROW 14
+
+
+		right = FALSE;	/* we start at the left side of life  ;-) */
+		for(i=0; i<numopts; i++)
+		{
+			leftedge = LEFTEDGE + leftstring_len;
+			newgad.ng_Width = leftgadget_width;
+
+			if(split  &&  right)
+			{
+				leftedge += leftgadget_width;
+				leftedge += (LEFTEDGE + rightstring_len);
+				newgad.ng_Width = rightgadget_width;
+			}
+			else
+				topedge += ROW;
+
+
+			newgad.ng_GadgetText	= opts[i]->xpro_description;
+			newgad.ng_GadgetID	= i;
+			newgad.ng_LeftEdge	= leftedge;
+			newgad.ng_TopEdge		= topedge;
+
+			switch(opts[i]->xpro_type)
+			{
+				case XPRO_BOOLEAN:
+					gadgetarray[i] = gadget = CreateGadget(CHECKBOX_KIND,gadget,&newgad,
+						GTCB_Checked,	GetOptionMode(opts[i]),
+					TAG_DONE);
+				break;
+
+				case XPRO_LONG:
+					gadgetarray[i] = gadget = CreateGadget(INTEGER_KIND,gadget,&newgad,
+						GTIN_Number,	atol(opts[i]->xpro_value),
+					TAG_DONE);
+				break;
+
+				case XPRO_STRING:
+					gadgetarray[i] = gadget = CreateGadget(STRING_KIND,gadget,&newgad,
+						GTST_String,	opts[i]->xpro_value,
+						GTST_MaxChars,	opts[i]->xpro_length,
+					TAG_DONE);
+				break;
+
+				case XPRO_COMMPAR:
+					newgad.ng_Width = LEFTEDGE + command_len - leftedge;
+
+					gadgetarray[i] = gadget = CreateGadget(STRING_KIND,gadget,&newgad,
+						GTST_String,	opts[i]->xpro_value,
+						GTST_MaxChars,	opts[i]->xpro_length,
+					TAG_DONE);
+				break;
+
+				case XPRO_HEADER:
+					if(split  &&  right)
+						topedge += ROW;
+
+					newgad.ng_GadgetText	= NULL;
+					newgad.ng_Width		= header_len;
+					newgad.ng_LeftEdge	= LEFTEDGE;
+					newgad.ng_TopEdge		= topedge;
+
+					right = TRUE;	/* we need the right column, too */
+
+					gadgetarray[i] = gadget = CreateGadget(TEXT_KIND,gadget,&newgad,
+						GTTX_Text,	opts[i]->xpro_description,
+					TAG_DONE);
+				break;
+
+				case XPRO_COMMAND:
+					leftedge = LEFTEDGE;
+
+					if(split  &&  right)
+					{
+						leftedge += command_len;
+						leftedge <<= 1;
+					}
+					newgad.ng_Width	 = command_len;
+					newgad.ng_LeftEdge = leftedge;
+
+					gadgetarray[i] = gadget = CreateGadget(BUTTON_KIND,gadget,&newgad,
+					TAG_DONE);
+				break;
+
+				default:
+					;
+				break;
+			}
+
+			right = !right;	/* swap it.. */
+		}
+
+
+		*width = leftstring_len + leftgadget_width;
+		if(split)
+			*width += (LEFTEDGE + rightstring_len + rightgadget_width);
+
+		if(split)
+		{
+			UWORD cw;
+
+			cw = (command_len << 1) + LEFTEDGE;
+			if(*width < cw)
+				*width = cw;
+		}
+		else
+		{
+			if(*width < command_len)
+				*width = command_len;
+		}
+
+		if(*width < header_len)
+			*width = header_len;
+
+		*width += (LEFTEDGE << 1);	/* left + right distance.. */
+
+		newgad.ng_GadgetText	= "Continue";
+		newgad.ng_Width		= 88;
+		newgad.ng_LeftEdge	= (*width >> 1) - 44;
+		newgad.ng_TopEdge		= gadget->TopEdge + gadget->Height + 9;
+		newgad.ng_GadgetID	= numopts;
+		newgad.ng_Flags		= NG_HIGHLABEL | PLACETEXT_IN;
+
+		gadget = CreateGadget(BUTTON_KIND,gadget,&newgad,
+			TAG_DONE);
+
+		*height= gadget->TopEdge + gadget->Height + 5;
+		*count = i;
+	}
+
+	return(gadget);
+}
+
+/**
+ * @brief Display and manage the XPR and Xem libraries options dialog.
+ *
+ * Open a window containing interactive option gadgets, allows the user to modify option values,
+ * processes input events, updates the options state, and returns a flag indicating which options
+ * were modified.
+ *
+ * This function was `coded' for xpr usage, but it works well with xem, too
+ * Called by XProtocolSetup() from XPR lib and XEmulatorOptions() from XEM lib.
+ *
+ * @param numopts Number of options.
+ * @param opts Pointer to an array of option structures.
+ * @return Bitmask of modified option flags.
+  */
+long __SAVE_DS__ __ASM__ xpr_options(__REG__(d0, LONG numopts), __REG__(a0, struct xpr_option **opts))
+{
+	struct Gadget	*gadgetlist;
+	struct Gadget	*gadgetarray[33];
+	struct Window	*window;
+	ULONG flags = 0;
+	UWORD left, top, width, height;
+	LONG	i, count;
+
+	if(CreateOptionGadgets(&count,&width,&height,numopts,opts,&gadgetarray[0],&gadgetlist,1))
+	{
+        // FIXME : implement GetWindowPosition()
+        //GetWindowPosition(&left, &top, width, height);
+        left = 50; top = 50;
+
+		if(window = OpenWindowTags(NULL,
+			WA_Width,			width,
+			WA_Height,			height,
+			WA_Left,			left,
+			WA_Top,				top,
+			WA_Activate,		TRUE,
+			WA_DragBar,			TRUE,
+			WA_DepthGadget,	TRUE,
+			WA_RMBTrap,			TRUE,
+			WA_CustomScreen,	scr,
+			WA_IDCMP,			IDCMP_GADGETUP | CHECKBOXIDCMP | IDCMP_RAWKEY,
+			WA_Title,			"Options",
+		TAG_DONE))
+		{
+			struct IntuiMessage	*imsg;
+			struct Gadget		*gadget;
+			ULONG class, code;
+			BOOL quit;
+
+			AddGList(window,gadgetlist,(UWORD)-1,(UWORD)-1,NULL);
+			RefreshGList(gadgetlist,window,NULL,(UWORD)-1);
+			GT_RefreshWindow(window,NULL);
+
+			for(quit=FALSE; quit==FALSE; )
+			{
+				WaitPort(window->UserPort);
+
+				while(imsg = (struct IntuiMessage *)GT_GetIMsg(window->UserPort))
+				{
+					class	= imsg->Class;
+					code	= imsg->Code;
+					gadget	= (struct Gadget *)imsg->IAddress;
+
+					GT_ReplyIMsg(imsg);
+
+
+					if(class == IDCMP_RAWKEY)
+					{
+						//FIXME: implement CheckAbort()
+                        //if(CheckAbort(code))
+						//	class = IDCMP_CLOSEWINDOW;
+					}
+
+					if(class == IDCMP_GADGETUP)
+					{
+						UWORD id;
+
+						if((id = gadget->GadgetID) >= numopts)
+							class = IDCMP_CLOSEWINDOW;
+
+						if(opts[id]->xpro_type == XPRO_COMMAND)
+						{
+							flags |= (1 << id);
+							quit = TRUE;
+						}
+						else
+						{
+							if(opts[id]->xpro_type == XPRO_COMMPAR)
+							{
+								if(strcmp(opts[id]->xpro_value, ((struct StringInfo *)gadget->SpecialInfo)->Buffer))
+								{
+									flags |= (1 << id);
+									strcpy(opts[id]->xpro_value,((struct StringInfo *)gadget->SpecialInfo)->Buffer);
+								}
+								quit = TRUE;
+							}
+						}
+					}
+
+
+					if(class == IDCMP_CLOSEWINDOW)
+					{
+						for(i=0 ; i<numopts ; i++)
+						{
+							switch(opts[i]->xpro_type)
+							{
+								case XPRO_BOOLEAN:
+									if(((gadgetarray[i]->Flags & SELECTED)  &&  !GetOptionMode(opts[i])) || (!(gadgetarray[i]->Flags & SELECTED)  &&  GetOptionMode(opts[i])))
+									{
+										flags |= (1 << i);
+
+										if(gadgetarray[i]->Flags & SELECTED)
+											strcpy(opts[i]->xpro_value, "yes");
+										else
+											strcpy(opts[i]->xpro_value, "no");
+									}
+								break;
+
+								case XPRO_LONG:
+								case XPRO_STRING:
+									if(strcmp(opts[i]->xpro_value, ((struct StringInfo *)gadgetarray[i]->SpecialInfo)->Buffer))
+									{
+										flags |= (1 << i);
+										strcpy(opts[i]->xpro_value,((struct StringInfo *)gadgetarray[i]->SpecialInfo)->Buffer);
+									}
+								break;
+							}
+						}
+						quit = TRUE;
+					}
+				}
+			}
+
+			RemoveGList(window, gadgetlist, (UWORD)-1);
+			CloseWindow(window);
+		}
+		FreeGadgets(gadgetlist);
+	}
+
+	return (long) flags;
+}
+
+/************************************************************************/
+
