@@ -68,7 +68,6 @@ extern struct List *scrollbackList;
 extern struct Screen *scr;
 extern struct TextFont *ansiFont;
 extern struct Window *win, *scrollbackWin, *toolBarWin;
-extern ULONG reqtoolsTags[5];
 
 extern struct NewGadget newGadget;
 extern BOOL shouldQuitApp;          // program finished

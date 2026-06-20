@@ -136,7 +136,7 @@ static void ResetZmodemContext(void);
 static void SetLocalEchoBack(BOOL wantedState);
 
 extern struct ExecBase *SysBase;
-struct ReqToolsBase *ReqToolsBase;
+struct ReqToolsBase *ReqToolsBase = NULL;
 struct IntuitionBase *IntuitionBase;
 struct GfxBase *GfxBase;
 struct Library *KeymapBase, *GadToolsBase, *AslBase, *SocketBase;
@@ -174,7 +174,6 @@ enum	{	GAD_SCROLLER,
 
 struct PrefsStruct prefs;
 
-ULONG reqtoolsTags[5];
 static BPTR fileHandle;
 long nScrollbackLines;
 static long indexInScrollBuffer;
@@ -491,6 +490,60 @@ void SavePrefs(void)
 	}
 }
 
+
+// Ensures reqtools.library is available and initializes a requester TagList.
+// Returns FALSE if reqtools.library cannot be opened or if reqtoolsTags is NULL.
+static BOOL InitializeReqToolsLib(ULONG reqtoolsTags[5])
+{
+    BOOL result = FALSE;
+
+    if (ReqToolsBase)
+    {
+        result=TRUE;    // ReqTools was already loaded.
+    }
+    else // ReqTools needs to be loaded now.
+    {
+        ReqToolsBase = (struct ReqToolsBase *)OpenLibrary (REQTOOLSNAME, 0);
+
+        if (ReqToolsBase)
+        {
+            result=TRUE;
+            #ifdef _DEBUG
+                PutStr("InitializeReqToolsLib() : ReqTools library loaded\n");
+            #endif
+        }
+        else
+        {
+            InfoReq(isRunningOnWB ? NULL : win,
+                    "DCTelnet - Missing Library\n\n"
+                    "Unable to open reqtools.library.\n"
+                    "This feature requires ReqTools.\n\n"
+                    "Available from Aminet:\n"
+                    "util/libs/ReqToolsUsr");
+        }
+    }
+
+
+    if (reqtoolsTags)
+    {
+        reqtoolsTags[0] = RT_Window;
+        reqtoolsTags[1] = (ULONG)win;
+        reqtoolsTags[2] = RT_WaitPointer;
+        reqtoolsTags[3] = TRUE;
+        reqtoolsTags[4] = TAG_DONE;
+    }
+    else
+    {
+        result=FALSE;
+        #ifdef _DEBUG
+            InfoReq(isRunningOnWB ? NULL : win,
+                    "InitializeReqToolsLib() called with a NULL argument!");
+        #endif
+    }
+
+    return result;
+}
+
 static BOOL ChooseScreen(char firsttime)
 {
     BOOL result = FALSE;
@@ -511,6 +564,9 @@ static BOOL ChooseScreen(char firsttime)
     else    // fallback to legacy ReqTools library
     {
         struct rtScreenModeRequester *scrmodereq;
+        ULONG reqtoolsTags[5];
+
+        InitializeReqToolsLib(reqtoolsTags);
 
         if(scrmodereq = rtAllocRequestA (RT_SCREENMODEREQ, NULL))
         {
@@ -544,6 +600,31 @@ static BOOL ChooseScreen(char firsttime)
 
     // On first time init, returning FALSE prevents the preferences from being written to disk.
     return result;
+}
+
+static void ChoosePalette(void)
+{
+    APTR reqinfo;
+    ULONG reqtoolsTags[5];
+
+    InitializeReqToolsLib(reqtoolsTags);
+
+    reqinfo = rtAllocRequestA(RT_REQINFO, NULL);
+    if(reqinfo)
+    {
+        if(rtPaletteRequestA("Screen Palette..", reqinfo, (struct TagItem *)&reqtoolsTags) != -1)
+        {
+            UWORD i = 0;
+
+            while(i < 16)
+            {
+                prefs.color[i] = GetRGB4(scr->ViewPort.ColorMap, i);
+                i++;
+            }
+        }
+        rtFreeRequest(reqinfo);
+    }
+
 }
 
 
@@ -1158,18 +1239,22 @@ int main(int argc, char *argv[])
         goto clean_exit;
     }
 
-	if (!(ReqToolsBase = (struct ReqToolsBase *)OpenLibrary (REQTOOLSNAME, 0)))
-	{
-		const char msg[] = "DCTelnet - Requirement Warning\n\n"
-							"reqtools.library can not be loaded.\n"
-							"DCTelnet requires ReqTools library to run.\n"
-							"It is available on Aminet: util/libs/ReqToolsUsr\n"
-							"Please install it and try again.";
-		PutStr(msg);
-		InfoReq(NULL, msg);
+    GadToolsBase = OpenLibrary("gadtools.library", 0);
+    if (GadToolsBase == NULL)
+    {
+        InfoReq(NULL, "GadTools library could not be opened.\n"
+                "DCTelnet requires gadtools.library, which is available in AmigaOS 2.0 and later.");
+        goto clean_exit;
+    }
 
-		goto clean_exit;
-	}
+    UtilityBase = OpenLibrary("utility.library", 0);
+    if (UtilityBase == NULL)
+    {
+        InfoReq(NULL, "utility library could not be opened.\n"
+                "DCTelnet requires utility.library.");
+        goto clean_exit;
+    }
+
 
 	if (! LoadPrefs()) goto clean_exit;
 
@@ -1178,9 +1263,6 @@ int main(int argc, char *argv[])
 
 	scrollbackList->lh_TailPred = (struct Node *)scrollbackList;
 	scrollbackList->lh_Head = (struct Node *)&scrollbackList->lh_Tail;
-
-	GadToolsBase = ReqToolsBase -> GadToolsBase;
-	UtilityBase = ReqToolsBase -> UtilityBase;
 
 
 	WorkbenchBase = OpenLibrary("workbench.library", 0);
@@ -1423,7 +1505,9 @@ clean_exit:
 	if (KeymapBase)    CloseLibrary(KeymapBase);
 	if (DiskfontBase)  CloseLibrary(DiskfontBase);
 	if (WorkbenchBase) CloseLibrary(WorkbenchBase);
-	if (ReqToolsBase)  CloseLibrary((struct Library *) ReqToolsBase);
+    if (UtilityBase)   CloseLibrary(UtilityBase);
+    if (GadToolsBase)  CloseLibrary(GadToolsBase);
+    if (ReqToolsBase)  CloseLibrary((struct Library *) ReqToolsBase);
     if (AslBase)       CloseLibrary(AslBase);
     if (GfxBase)       CloseLibrary((struct Library *) GfxBase);
 	if (IntuitionBase) CloseLibrary((struct Library *) IntuitionBase);
@@ -1672,7 +1756,6 @@ static void GetWindowMsg(struct Window *wwin)
 	struct MenuItem *item;
 	struct IntuiMessage *message;
 	UWORD menuNumber, menuNum, itemNum;
-	APTR reqinfo;
 	struct Gadget *gad;
 	ULONG class;
 	UWORD code;
@@ -2104,6 +2187,7 @@ static void GetWindowMsg(struct Window *wwin)
 					{
                         UWORD oldDepth;
                         ULONG oldDispID;
+                        ULONG reqtoolsTags[5]; // for rtGetLongA()
 
 					case 0: // Screen Mode...
                         oldDispID = prefs.DisplayID;
@@ -2145,23 +2229,9 @@ static void GetWindowMsg(struct Window *wwin)
                         //     rtFreeRequest(fontreq);
                         // }
 						break;
-					case 2:
-						reqinfo = rtAllocRequestA(RT_REQINFO, NULL);
-						if(reqinfo)
-						{
-							if(rtPaletteRequestA("Screen Palette..", reqinfo, (struct TagItem *)&reqtoolsTags) != -1)
-							{
-								UWORD i = 0;
-
-								while(i < 16)
-								{
-									prefs.color[i] = GetRGB4(scr->ViewPort.ColorMap, i);
-									i++;
-								}
-							}
-							rtFreeRequest(reqinfo);
-						}
-						break;
+                    case 2:
+                        ChoosePalette();
+                    break;
 
 					case 3:
                         DirectoryRequester(isRunningOnWB ? NULL : win,
@@ -2224,9 +2294,10 @@ static void GetWindowMsg(struct Window *wwin)
                         //rtGetStringA(prefs.displayidstr, 31, "Telnet Display ID..", 0, (struct TagItem *)&reqtoolsTags);
                     break;
 
-					case 10:
-						rtGetLongA(&prefs.sb_lines, "ScrollBack Lines..", NULL, (struct TagItem *)&reqtoolsTags);
-						break;
+                    case 10:
+                        InitializeReqToolsLib(reqtoolsTags);
+                        rtGetLongA(&prefs.sb_lines, "ScrollBack Lines..", NULL, (struct TagItem *)&reqtoolsTags);
+                    break;
 
 					case 11: // Snapshot Windows
 						prefs.win_top = win->TopEdge;
@@ -2810,11 +2881,6 @@ BOOL OpenDisplay(void)
 	CreateAppMenus();
 	if (menuStrip == NULL) { InfoReq(isRunningOnWB ? NULL : win, "Unable to create menus!");
                              goto clean_and_return; }
-
-	reqtoolsTags[0] = RT_Window;
-	reqtoolsTags[1] = (ULONG)win;
-	reqtoolsTags[2] = RT_WaitPointer;
-	reqtoolsTags[3] = TRUE;
 
 
     // Try to initialize the XEM library if the user enabled it.
