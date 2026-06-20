@@ -475,47 +475,6 @@ static char ChooseScreen(char firsttime)
 	return(FALSE);
 }
 
-static char FileReq(char *dir, char *pat, char *file, char *title, char dodir, ULONG flags)
-{
-	struct rtFileRequester *filereq;
-	char fbuf[128];
-
-	if (filereq = rtAllocRequestA (RT_FILEREQ, NULL))
-	{
-		strcpy(fbuf, file);
-		rtChangeReqAttr(filereq,
-			RTFI_MatchPat,	pat,
-			RTFI_Dir,	dir,
-			TAG_END);
-		if (rtFileRequest (filereq, fbuf, title,
-			RT_Window,	win,
-			RT_LeftOffset,	20,
-			RT_TopOffset,	0,
-			RTFI_Height,	600,
-			RTFI_Flags,	flags,
-			TAG_END))
-		{
-			strcpy(file, fbuf);
-			if(dodir)
-			{
-				WORD l;
-				strcpy(dir, filereq->Dir);
-				l = strlen(dir) - 1;
-				if(l!=-1 && dir[l] != '/' && dir[l] != ':')
-				{
-					l++;
-					dir[l] = '/';
-					l++;
-					dir[l] = 0;
-				}
-			}
-			rtFreeRequest(filereq);
-			return(TRUE);
-		}
-		rtFreeRequest(filereq);
-	}
-	return(FALSE);
-}
 
 // Application-defined Exec List with Node-specific data
 // https://wiki.amigaos.net/wiki/Exec_Lists_and_Queues#Finding_the_List_of_a_Node
@@ -1727,11 +1686,17 @@ static void GetWindowMsg(struct Window *wwin)
 				case 77:
 					goto down;
 				case 84:
-					buf[0] = 0;
+					buf[0] = '\0';
 					strcpy(fbuf, "DCTelnet.Cap");
-					if(FileReq(buf, "#?", fbuf, "Save Scroll Back", TRUE, 0))
-					{
-						strcat(buf, fbuf);
+                    if (FileRequester(isRunningOnWB ? NULL : win,
+                                      buf,  sizeof(buf),
+                                      fbuf, sizeof(fbuf),
+                                      "#?",
+                                      FILEREQ_SAVE))
+                    //if(FileReq(buf, "#?", fbuf, "Save Scroll Back", TRUE, 0))
+                    {
+                        AddPart(buf, fbuf, sizeof(buf));
+						//strcat(buf, fbuf);
 						SaveScrollBack(buf);
 					}
 					break;
@@ -1893,12 +1858,20 @@ static void GetWindowMsg(struct Window *wwin)
 							break;
 
 						case 4:
-							fbuf[0] = 0;
-							strcpy(buf, prefs.uploadpath);
-							if(FileReq(buf, "#?", fbuf, "ASCII Send", TRUE, 0))
-							{
-								register long r;
-								strcat(buf, fbuf);
+                            fbuf[0] = '\0';
+                            // strcpy(buf, prefs.uploadpath);
+                            if (FileRequester(isRunningOnWB ? NULL : win,
+                                              prefs.uploadpath, sizeof(prefs.uploadpath),
+                                              fbuf, sizeof(fbuf),
+                                              "#?",
+                                              FILEREQ_LOAD))
+                            // if(FileReq(buf, "#?", fbuf, "ASCII Send", TRUE, 0))
+                            {
+                                register long r;
+                                strcpy(buf, prefs.uploadpath);
+                                AddPart(buf, fbuf, sizeof(buf));
+                                //strcat(buf, fbuf);
+                                SimpleReq(buf);
 								fileHandle = Open(buf, MODE_OLDFILE);
 								if(fileHandle)
 								{
@@ -2093,16 +2066,23 @@ static void GetWindowMsg(struct Window *wwin)
 						break;
 
 					case 3:
-						fbuf[0] = 0;
-						strcpy(buf, prefs.downloadpath);
-						if(FileReq(buf, "#?", fbuf, "Download Path..", TRUE, FREQF_NOFILES))
-						{
-							strcpy(prefs.downloadpath, buf);
-						}
+                        DirectoryRequester(isRunningOnWB ? NULL : win,
+                                           prefs.downloadpath, sizeof(prefs.downloadpath));
+                        // fbuf[0] = 0;
+                        // strcpy(buf, prefs.downloadpath);
+                        // if(FileReq(buf, "#?", fbuf, "Download Path..", TRUE, FREQF_NOFILES))
+                        // {
+                        //     strcpy(prefs.downloadpath, buf);
+                        // }
 						break;
 
 					case 4:
-						FileReq("LIBS:", "xpr#?.library", prefs.xferlibrary, "Transfer Protocol..", FALSE, FREQF_PATGAD);
+                        FileRequester(isRunningOnWB ? NULL : win,
+                                      "LIBS:", 0, // 0 because we don't want to get the dirname
+                                      prefs.xferlibrary, sizeof(prefs.xferlibrary),
+                                      "xpr#?.library",
+                                      FILEREQ_LOAD);
+                        //FileReq("LIBS:", "xpr#?.library", prefs.xferlibrary, "Transfer Protocol..", FALSE, FREQF_PATGAD);
 						break;
 
 					case 5:
@@ -2119,7 +2099,12 @@ static void GetWindowMsg(struct Window *wwin)
 						break;
 
 					case 7:
-						if(FileReq("LIBS:", "xem#?.library", prefs.displaydriver, "XEM Library..", FALSE, FREQF_PATGAD))
+                        if (FileRequester(isRunningOnWB ? NULL : win,
+                                          "LIBS:", 0, // 0 because we don't want to get the dirname
+                                          prefs.displaydriver, sizeof(prefs.displaydriver),
+                                          "xem#?.library",
+                                          FILEREQ_LOAD))
+                        //if(FileReq("LIBS:", "xem#?.library", prefs.displaydriver, "XEM Library..", FALSE, FREQF_PATGAD))
 						{
 							if(prefs.flags & FLAG_USE_XEM_LIBRARY) shouldRestart = TRUE;
 						}
