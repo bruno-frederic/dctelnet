@@ -9,12 +9,13 @@
 
 #include <proto/exec.h>               // OpenLibrary(), AllocMem()...
 #include <proto/dos.h>                // RETURN_OK, VPrintf()
-#include <proto/intuition.h>          // DisplayAlert()
+#include <proto/intuition.h>          // DisplayBeep()
 #include <libraries/reqtools.h>       // RT_REQINFO
 #include <proto/reqtools.h>           // rtAllocRequestA(), rtGetStringA(), rtFreeRequest()...
 #include "Xem_wrapper.h"
 #include "DCTelnet.h"                 // win, scr, ansiFont, prefs.displaydriver, buf
 #include "Xfer.h"                     // xpr_sread(), xpr_swrite(), xpr_sflush(), xpr_options()
+#include "requesters.h"
 
 struct Library *XEmulatorBase;
 struct XEM_IO *xemIO;
@@ -112,7 +113,7 @@ BOOL InitializeXemLibrary(void)
 	xemIO = AllocMem(sizeof(struct XEM_IO), MEMF_PUBLIC|MEMF_CLEAR);
 	if (xemIO == NULL)
 	{
-		DisplayAlert(RECOVERY_ALERT, "Not enough memory!", 0);
+        RecoveryAlert("Not enough memory!");
 		goto clean_and_return;
 	}
 

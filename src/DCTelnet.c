@@ -49,6 +49,7 @@ static char MainWindowTitle[] =
 #include "connect.h"
 #include "Xfer.h"
 #include "Xem_wrapper.h"
+#include "requesters.h"
 
 
 // Adding or removing items in this structure changes their index numbers,
@@ -323,9 +324,8 @@ static void ConWrite(char *data, long len)
 			XemWrite(data, len);
 		else {
 			#ifdef _DEBUG
-			if (!writeConIOReq) DisplayAlert(RECOVERY_ALERT,
-				"Error writing to console: console device is unavailable.",
-				0);
+                if (!writeConIOReq) RecoveryAlert(
+                                       "Error writing to console: console device is unavailable.");
 			#endif
 
 			// Doc about passing requests to I/O device:
@@ -1081,12 +1081,13 @@ int main(int argc, char *argv[])
 		//if(argc > 3) if(stricmp(argv[3], "debug")==0) debug = TRUE;
 	}
 
-	// Needed right now for EZReq
+    // Needed right now for InfoReq() information requesters:
     IntuitionBase = (struct IntuitionBase *) OpenLibrary("intuition.library", 36);
     if (IntuitionBase == NULL) {
-		PutStr("Unable to open intuition.library v36!");
-		goto clean_exit;
-	}
+        RecoveryAlert(
+                   "DCTel requires Intuition lib v36 which is available in AmigaOS 2.0 and later.");
+        goto clean_exit;
+    }
 
 	if (mainTask == NULL)
 	{
@@ -1187,7 +1188,7 @@ int main(int argc, char *argv[])
 		if(shouldIconify)
 		{
 			#ifdef _DEBUG
-			if (!win) DisplayAlert(RECOVERY_ALERT, "Error: no window to iconify!", 0);
+            if (!win) RecoveryAlert("Error: no window to iconify!");
 			#endif
 			CloseDisplay(TRUE);
 			// inconify the application:
@@ -1198,7 +1199,7 @@ int main(int argc, char *argv[])
 		if(shouldUniconify)
 		{
 			#ifdef _DEBUG
-			if (!appIconOnWB) DisplayAlert(RECOVERY_ALERT, "Error: no icon on WB!", 0);
+            if (!appIconOnWB) RecoveryAlert("Error: no icon on WB!");
 			#endif
 			CloseIcon();
 			OpenDisplay();
