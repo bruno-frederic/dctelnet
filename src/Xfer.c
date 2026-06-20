@@ -7,20 +7,26 @@
 #include <proto/intuition.h>          // OpenWindow(),CloseWindow(), OnMenu(), OffMenu()...
 #include <proto/graphics.h>           // Move(), SetAPen(), Text(), SetFont(), Draw()
 #include <proto/gadtools.h>           // GT_GetIMsg(), GT_ReplyIMsg()
+#include <proto/asl.h>                // FileRequester
 #include <workbench/workbench.h>      // struct AppMessage
-#include <libraries/reqtools.h>       // struct rtFileList, RT_FILEREQ, RT_Window
-#include <proto/reqtools.h>           // rtAllocRequestA (RT_FILEREQ) in Upload()
 #include <proto/Xpr.h>                // XProtocolSetup(), XProtocolSend(), XProtocolReceive(), ...
 #include <proto/bsdsocket.h>          // WaitSelect(), recv(), IoctlSocket(), Errno()
 #include <sys/ioctl.h>                // FIONBIO
 #include "Xfer.h"
 #include "DCTelnet.h"
 #include "guis.h"
+#include "requesters.h"
+
+#define PATHLEN 256     // From third_party\Xpr\XprZmodem.h
+
 
 static struct RastPort *xrp;
 struct Library *XProtocolBase;
 static struct Window *xferwin;
-static struct rtFileList *uplist, *upfirst;
+// An array of files to upload in batch when user select multiple file to upload:
+static struct WBArg *uploadArray = NULL;
+static LONG uploadArraySize = 0;
+//static struct rtFileList *uplist, *upfirst;
 static struct XPR_IO xio;
 
 static UWORD xfer_gauge_width;
@@ -330,28 +336,50 @@ long __SAVE_DS__ xpr_sflush(void)
     return 0; // The returned long value seems to be unused
 }
 
-/* Find first file name */
+/* Find first file name to upload */
 long __SAVE_DS__ __ASM__ xpr_ffirst(__REG__(a0, char *buffer),
                         __REG__(a1, char *pattern))
 {
-	strcpy(buffer, prefs.uploadpath);
-	strcat(buffer, upfirst->Name);
-	return(1);
+    #ifdef _DEBUG
+        APTR argArray[1];
+        argArray[0] = pattern;
+        VPrintf("›32m--> xpr_ffirst(buffer = ..., pattern = %s)›m\n", argArray);
+    #endif
+
+    if (uploadArray == NULL || uploadArraySize < 1)
+        return 0L;
+
+    strlcpy(buffer, prefs.uploadpath, PATHLEN);
+    AddPart(buffer, uploadArray[0].wa_Name, PATHLEN);
+
+    // Return index number of the next element:
+    return 1L;
 }
 
-/* Find next file name */
+/* Find next file name to upload */
 long __SAVE_DS__ __ASM__ xpr_fnext(__REG__(d0, long oldstate),
 				__REG__(a0, char *buffer),
 				__REG__(a1, char *pattern))
 {
-	uplist = uplist->Next;
-	if(uplist)
-	{
-		strcpy(buffer, prefs.uploadpath);
-		strcat(buffer, uplist->Name);
-		return(oldstate);
-	}
-	return(0);
+    #ifdef _DEBUG
+        APTR argArray[2];
+        argArray[0] = (APTR) oldstate;
+        argArray[1] = (APTR) pattern;
+        VPrintf("›32m--> xpr_fnext(oldstate = %ld, buffer = ..., pattern = %s)›m\n", argArray);
+    #endif
+
+    if (oldstate < uploadArraySize && uploadArray != NULL)
+    {
+        strlcpy(buffer, prefs.uploadpath, PATHLEN);
+        AddPart(buffer, uploadArray[oldstate].wa_Name, PATHLEN);
+
+        // Return index number of the next element:
+        return oldstate+1;
+    }
+    else
+    {
+        return 0L; // No more file
+    }
 }
 
 /* Get string interactively */
@@ -950,69 +978,83 @@ static char XferWindow(void)
 
 void Upload(char *library)
 {
-	struct rtFileRequester *filereq;
-	struct rtFileList *flist;
+    struct FileRequester *fr;
 
-	if(isAppIconified) return;
+    if(isAppIconified) return;
 
-	ff_escape_pending = FALSE;
-	xfertype = XFER_UPLOAD;
+    ff_escape_pending = FALSE;
+    xfertype = XFER_UPLOAD;
 
-	if (filereq = rtAllocRequestA (RT_FILEREQ, NULL))
-	{
-		buf[0] = 0;
-		rtChangeReqAttr(filereq, RTFI_Dir, prefs.uploadpath, TAG_END);
-		flist = rtFileRequest (filereq, buf, "Files to send...",
-			RT_Window,	win,
-			RT_LeftOffset,	20,
-			RT_TopOffset,	11,
-			RTFI_Height,	300,
-			RTFI_OkText,	"Send",
-			RTFI_Flags,	FREQF_MULTISELECT,
-			TAG_END);
-		if(flist)
-		{
-			WORD l;
+    fr = (struct FileRequester *) AllocAslRequestTags(ASL_FileRequest,    // type of requester
+                                        ASL_Window, isRunningOnWB ? NULL : win,
+                                        ASL_Hail,  "Select one or more files",
 
-			strcpy(buf, filereq->Dir);
-			l = strlen(buf)-1;
-			if(l != -1 && buf[l]!='/' && buf[l]!=':')
-			{
-				l++;
-				buf[l] = '/';
-				l++;
-				buf[l] = 0;
-			}
+                                        // Supply initial values for requester:
+                                        ASL_Dir,     prefs.uploadpath,
+                                        ASL_Pattern, "#?",
 
-			uplist = flist;
-			upfirst = flist;
+                                        ASL_FuncFlags, FILF_PATGAD  // Enable pattern match gadget
+                                                       | FILF_MULTISELECT,
+                                        TAG_DONE);
 
-			strcpy(prefs.uploadpath, buf);
-			strcat(buf, flist->Name);
-			SavePrefs();
+    if (fr == NULL)
+    {
+        InfoReq(isRunningOnWB ? NULL : win, "AllocAslRequestTags() => NULL (failed)");
+        goto clean_and_return;
+    }
 
-			if(ProtoStart(library, buf))
-			{
-				if (XProtocolSend(&xio) != XPRS_SUCCESS)
-                {
-                    SendZmodemCancelSequence();
+    if (! AslRequest(fr, NULL))
+    {
+        // The file dialog was closed by the user with no file selected
+        SendZmodemCancelSequence();
+        goto clean_and_return;
+    }
 
-                    // Pause to let the user read the Xfer window error (~3s on PAL systems)
-                    // and to allow the cancel sequence to be transmitted to the server
-                    Delay(150);
+    // Save the directory in which files where selected to be uploaded:
+    strlcpy(prefs.uploadpath, fr->rf_Dir, sizeof(prefs.uploadpath));
+    SavePrefs();
 
-                    xpr_sflush();   // remove garbage received which prevent them to be displayed.
-                }
+    strlcpy(buf, fr->rf_Dir,  sizeof(buf));
+    AddPart(buf, fr->rf_File, sizeof(buf));
 
-				ProtoClean();
-			}
-			rtFreeFileList(flist);
-		} else {
-            // The file dialog was closed by the user with no file selected
-			SendZmodemCancelSequence();
-		}
-		rtFreeRequest(filereq);
-	}
+    uploadArray     = fr->rf_ArgList;
+    uploadArraySize = fr->rf_NumArgs;
+
+
+    #ifdef _DEBUG
+        PutStr("›32m--> ProtoStart()›m\n");
+    #endif
+    if(ProtoStart(library, buf))
+    {
+        if (XProtocolSend(&xio) != XPRS_SUCCESS)
+        {
+            #ifdef _DEBUG
+                PutStr("›32m<-- XProtocolSend() => FAIL ›m\n");
+            #endif
+            SendZmodemCancelSequence();
+
+            // Pause to let the user read the Xfer window error (~3s on PAL systems)
+            // and to allow the cancel sequence to be transmitted to the server
+            Delay(150);
+
+            xpr_sflush();   // remove garbage received which prevent them to be displayed.
+        }
+
+        #ifdef _DEBUG
+            PutStr("›32m--> ProtoClean()›m\n");
+        #endif
+
+        ProtoClean();
+    }
+
+
+clean_and_return:
+    if (fr != NULL)
+    {
+        uploadArray     = NULL;
+        uploadArraySize = 0L;
+        FreeAslRequest(fr);
+    }
 }
 
 void Download(char *library)
