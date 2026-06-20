@@ -369,11 +369,65 @@ long TCPSend(const char *buf, long len)
 	return len;
 }
 
+
+/**
+ * @brief Display a busy/wait mouse pointer in the specified window.
+ *
+ * Replaces the window's current pointer with a custom 16×16 "wait" pointer to indicate that a modal
+ * operation or lengthy processing is in progress.
+ *
+ * The pointer remains active until removed with ClearPointer().
+ *
+  * @note The pointer bitmap is stored in Chip RAM because it is accessed directly by the Amiga
+ *       custom hardware.
+ *
+ * @note This function only affects the specified window and does not modify the global Workbench
+ *       pointer.
+ *
+ * @see ClearPointer()
+ *
+ * @see Amiga ROM Kernel Reference Manual: Libraries, 2nd Edition (v2.04),
+ *      Chapter "Intuition Gadgets and Mouse Pointers",
+ *      section "Pointer Example".
+ */
+void SetWaitPointer(struct Window *window)
+{
+    // VBCC requires static storage duration for __chip data.
+    // This does not work when the array is declared const (reason unknown).
+    static UWORD __chip waitPointerImage[] =
+    {
+        0x0000, 0x0000, // reserved, must be NULL
+        0x0400, 0x07C0, // 1st line of the sprite image
+        0x0000, 0x07C0,
+        0x0100, 0x0380,
+        0x0000, 0x07E0,
+        0x07C0, 0x1FF8,
+        0x1FF0, 0x3FEC,
+        0x3FF8, 0x7FDE,
+        0x3FF8, 0x7FBE,
+        0x7FFC, 0xFF7F,
+        0x7EFC, 0xFFFF,
+        0x7FFC, 0xFFFF,
+        0x3FF8, 0x7FFE,
+        0x3FF8, 0x7FFE,
+        0x1FF0, 0x3FFC,
+        0x07C0, 0x1FF8,
+        0x0000, 0x07E0, // last line of the sprite image
+        0x0000, 0x0000, // reserved, must be NULL
+    };
+
+    if (window == NULL)
+        return;
+
+    SetPointer(window, waitPointerImage, 16, 16, -6, 0);
+}
+
+
 static void WindowSub(void (*Sub)(void))
 {
-	if(scrollbackWin) rtSetWaitPointer(scrollbackWin);
-	if (toolBarWin) rtSetWaitPointer(toolBarWin);
-	rtSetWaitPointer(win);
+    if(scrollbackWin) SetWaitPointer(scrollbackWin);
+    if (toolBarWin)   SetWaitPointer(toolBarWin);
+    SetWaitPointer(win);
 	Sub();
 	if(scrollbackWin) ClearPointer(scrollbackWin);
 	if (toolBarWin) ClearPointer(toolBarWin);

@@ -114,6 +114,7 @@ void LocalPrint(char *data);
 void OpenIcon(void);                                    // inconify the application
 void SavePrefs(void);
 void SimpleReq(char *str);
+void SetWaitPointer(struct Window * window);
 UWORD BeginServerConnection(char *servername, UWORD port);
 
 #endif /* DCTELNET_H */

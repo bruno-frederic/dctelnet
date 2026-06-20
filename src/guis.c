@@ -9,7 +9,6 @@
 #include <proto/graphics.h>           // Move(), SetAPen(), Text(), SetFont(), Draw()
 #include <proto/gadtools.h>           // LISTVIEW_KIND, BUTTON_KIND, GTLV_Labels...
 #include <proto/icon.h>               // GetDiskObjectNew(), FreeDiskObject()
-#include <proto/reqtools.h>           // rtEZRequestA(), rtSetWaitPointer()
 #include <string.h>                   // memcpy(), strcpy(), strcat(), strlen()
 #include <ctype.h>	                  // tolower(), toupper()
 #include "abook.h"                    // required
@@ -669,7 +668,7 @@ static BOOL EditProfile(struct BookStruct *book)
     // Open the Edit Profile window
     if(OpenEditProfileWindow() == RETURN_OK)
     {
-        rtSetWaitPointer(aBookWnd);  // Set "wait" mouse pointer to indicate modal operation
+        SetWaitPointer(aBookWnd);  // Set "wait" mouse pointer to indicate modal operation
 
         // Activate the first gadget (Site Name) to receive keyboard input
         ActivateGadget(editProfileGadgets[GD_SITE], editProfileWnd, 0);
