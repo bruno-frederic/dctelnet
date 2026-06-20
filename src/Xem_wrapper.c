@@ -103,20 +103,20 @@ LONG __SAVE_DS__ __ASM__ xem_tgets(__REG__(a0, UBYTE *prompt),
 
 BOOL InitializeXemLibrary(void)
 {
-	xemIO = AllocMem(sizeof(struct XEM_IO), MEMF_PUBLIC|MEMF_CLEAR);
-	if (xemIO == NULL)
-	{
+    xemIO = AllocMem(sizeof(struct XEM_IO), MEMF_PUBLIC|MEMF_CLEAR);
+    if (xemIO == NULL)
+    {
         RecoveryAlert("Not enough memory!");
-		goto clean_and_return;
-	}
+        goto clean_and_return;
+    }
 
-	XEmulatorBase = OpenLibrary(prefs.displaydriver, 0);
-	if (XEmulatorBase == NULL)
-	{
-		InfoReq(isRunningOnWB ? NULL : win, "Failed to open XEM library: %s", prefs.displaydriver);
+    XEmulatorBase = OpenLibrary(prefs.displaydriver, 0);
+    if (XEmulatorBase == NULL)
+    {
+        InfoReq(isRunningOnWB ? NULL : win, "Failed to open XEM library: %s", prefs.displaydriver);
 
-		goto clean_and_return;
-	}
+        goto clean_and_return;
+    }
 
     xemIO->xem_window      = win;
     xemIO->xem_font        = ansiFont;

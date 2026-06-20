@@ -7,8 +7,8 @@
 ;---[ Start installation ]----------------------------------------------------
 
 (message "\n\n--××·· -÷- ··××---÷---××·· -÷- ··××---÷---××·· -÷- ··××-- -÷-\n\n"
-		 "DCTelnet - A classic Amiga Telnet/BBS client with Zmodem\n\n"
-		 "--××·· -÷- ··××---÷---××·· -÷- ··××---÷---××·· -÷- ··××-- -÷-")
+         "DCTelnet - A classic Amiga Telnet/BBS client with Zmodem\n\n"
+         "--××·· -÷- ··××---÷---××·· -÷- ··××---÷---××·· -÷- ··××-- -÷-")
 
 
 (set #os-vernum (getversion "libs:version.library"))
@@ -17,21 +17,21 @@
 (transcript "Running on OS v" #os-ver)
 
 (if (< #os-ver 36)
-	(
-		(message "Please note that this program requires AmigaOS 2.00+!\n\n"
-					"It will NOT work on 1.x.")
-	)
+    (
+        (message "Please note that this program requires AmigaOS 2.00+!\n\n"
+                    "It will NOT work on 1.x.")
+    )
 )
 
 
 (if (< #os-ver 37)
-	(
-		(SET #SrcLibsDir	"Libs-r36")
-	)
-	; else
-	(
-		(SET #SrcLibsDir	"Libs")
-	)
+    (
+        (SET #SrcLibsDir    "Libs-r36")
+    )
+    ; else
+    (
+        (SET #SrcLibsDir    "Libs")
+    )
 )
 
 
@@ -39,69 +39,69 @@
 
 
 (SET DestDir
-	(ASKDIR	(prompt "Please select where you would like DCTelnet to be installed\n"
-					"a drawer will be created")
-		(help @askdir-help)
-		(default @default-dest)
-		(disk)
+    (ASKDIR    (prompt "Please select where you would like DCTelnet to be installed\n"
+                    "a drawer will be created")
+        (help @askdir-help)
+        (default @default-dest)
+        (disk)
      )
 )
 
-(SET DestDir	(TACKON DestDir "DCTelnet"))
+(SET DestDir    (TACKON DestDir "DCTelnet"))
 (SET @default-dest DestDir)
-(SET DocsDir	(TACKON DestDir "Docs"))
-(SET SCDir	(TACKON DestDir "SCIcons"))
-(SET WBDir	(TACKON DestDir "WBIcons"))
+(SET DocsDir    (TACKON DestDir "Docs"))
+(SET SCDir    (TACKON DestDir "SCIcons"))
+(SET WBDir    (TACKON DestDir "WBIcons"))
 
-	(COPYFILES
-		(prompt	"\n\nInstalling DCTelnet executable for 68 000.\n")
-		(help @copyfiles-help)
-		(source "DCTelnet")
-		(dest	 DestDir)
-		(infos)
-		(confirm)  ; if the "confirm" option is present, user will be prompted to indicate which
-		           ; files are to be copied, else the files will be copied silently.
-	)
-	(COPYFILES
-		(prompt	"\n\nInstalling DCTelnet executable for 68 020 CPU.\n")
-		(help @copyfiles-help)
-		(source "DCTelnet.020")
-		(dest	DestDir)
-		(infos)
-		(confirm)
-	)
+    (COPYFILES
+        (prompt    "\n\nInstalling DCTelnet executable for 68 000.\n")
+        (help @copyfiles-help)
+        (source "DCTelnet")
+        (dest     DestDir)
+        (infos)
+        (confirm)  ; if the "confirm" option is present, user will be prompted to indicate which
+                   ; files are to be copied, else the files will be copied silently.
+    )
+    (COPYFILES
+        (prompt    "\n\nInstalling DCTelnet executable for 68 020 CPU.\n")
+        (help @copyfiles-help)
+        (source "DCTelnet.020")
+        (dest    DestDir)
+        (infos)
+        (confirm)
+    )
 
-	(COPYFILES
-		(prompt	"Installing the DCTelnet documentation.")
-		(help @copyfiles-help)
-		(source "docs")
-		(dest	 DocsDir)
-		(infos)
-		(confirm)
-		(all)			; needed to copy whole directory
-	)
+    (COPYFILES
+        (prompt    "Installing the DCTelnet documentation.")
+        (help @copyfiles-help)
+        (source "docs")
+        (dest     DocsDir)
+        (infos)
+        (confirm)
+        (all)            ; needed to copy whole directory
+    )
 
-(SET #address-book-path	(TACKON DestDir "DCTelnet.book"))
+(SET #address-book-path    (TACKON DestDir "DCTelnet.book"))
 (if (= (exists #address-book-path) 0)
-	(
+    (
         (COPYFILES
-            (prompt	"Installing starter address book.")
+            (prompt    "Installing starter address book.")
             (help @copyfiles-help)
             (source "DCTelnet.Book")
-            (dest	 DestDir)
+            (dest     DestDir)
             (infos)
         )
-	)
+    )
     ; else
     (
-		(message "\nWARNING: An address book already exists at the destination.\n\n"
-				"The new starter book will be installed as 'DCTelnet-New.Book'.\n")
+        (message "\nWARNING: An address book already exists at the destination.\n\n"
+                "The new starter book will be installed as 'DCTelnet-New.Book'.\n")
 
         (COPYFILES
-            (prompt	"Installing starter address book.")
+            (prompt    "Installing starter address book.")
             (help @copyfiles-help)
             (source "DCTelnet.Book")
-            (dest	 DestDir)
+            (dest     DestDir)
             (newname "DCTelnet-New.Book")
             (infos)
         )
@@ -109,91 +109,91 @@
 )
 
 
-	(COPYFILES
-		(prompt	"Installing the DCTelnet SCIcons (ANSI) icons.")
-		(help	"\n\nAs from 1.4, DCTelnet now uses various icons to represent functions.\n\n"
-			"If you use Workbench to run DCTelnet, it will default to MWB (WB) style icons,\n"
-			"otherwise it will load and use the ANSI (SC) style icons.")
-		(source "SCIcons")
-		(dest	 SCDir)
-		(all)
-	)
+    (COPYFILES
+        (prompt    "Installing the DCTelnet SCIcons (ANSI) icons.")
+        (help    "\n\nAs from 1.4, DCTelnet now uses various icons to represent functions.\n\n"
+            "If you use Workbench to run DCTelnet, it will default to MWB (WB) style icons,\n"
+            "otherwise it will load and use the ANSI (SC) style icons.")
+        (source "SCIcons")
+        (dest     SCDir)
+        (all)
+    )
 
-	(COPYFILES
-		(prompt	"Installing the DCTelnet WBIcons (MWB) icons.")
-		(help	"\n\nAs from 1.4, DCTelnet now uses various icons to represent functions.\n\n"
-			"If you use Workbench to run DCTelnet, it will default to MWB (WB) style icons,\n"
-			"otherwise it will load and use the ANSI (SC) style icons.")
-		(source "WBIcons")
-		(dest	 WBDir)
-		(all)
-	)
+    (COPYFILES
+        (prompt    "Installing the DCTelnet WBIcons (MWB) icons.")
+        (help    "\n\nAs from 1.4, DCTelnet now uses various icons to represent functions.\n\n"
+            "If you use Workbench to run DCTelnet, it will default to MWB (WB) style icons,\n"
+            "otherwise it will load and use the ANSI (SC) style icons.")
+        (source "WBIcons")
+        (dest     WBDir)
+        (all)
+    )
 
-	; COPYLIB: check the version to be installed and the destination version before copying
-	(SET #SrcReqTools	(TACKON #SrcLibsDir "reqtools.library"))
-	(COPYLIB
-		(prompt	"\n\nInstalling ReqTools library: reqtools.library")
-		(help	"\n\nReqTools is a graphical toolkit providing 'requesters'")
-		(source #SrcReqTools)
-		(dest	"libs:")
-		(confirm)
-	)
+    ; COPYLIB: check the version to be installed and the destination version before copying
+    (SET #SrcReqTools    (TACKON #SrcLibsDir "reqtools.library"))
+    (COPYLIB
+        (prompt    "\n\nInstalling ReqTools library: reqtools.library")
+        (help    "\n\nReqTools is a graphical toolkit providing 'requesters'")
+        (source #SrcReqTools)
+        (dest    "libs:")
+        (confirm)
+    )
 
-	(COPYLIB
-		(prompt	"\n\nInstalling FTP support: xprftp.library")
-		(help	"\n\nFTP is a hi-speed and far more efficient transfer method than ZModem\n\n"
-			"Quite a number of Amiga BBS systems support this protocol.\n\n"
-			"XPR-FTP Written By Zed/DC")
-		(source "libs/xprftp.library")
-		(dest	"libs:")
-		(confirm)
-	)
+    (COPYLIB
+        (prompt    "\n\nInstalling FTP support: xprftp.library")
+        (help    "\n\nFTP is a hi-speed and far more efficient transfer method than ZModem\n\n"
+            "Quite a number of Amiga BBS systems support this protocol.\n\n"
+            "XPR-FTP Written By Zed/DC")
+        (source "libs/xprftp.library")
+        (dest    "libs:")
+        (confirm)
+    )
 
-	(SET #SrcXPRZmodem	(TACKON #SrcLibsDir "xprzmodem.library"))
-	(COPYLIB
-		(prompt	"\n\nInstalling Zmodem support: xprzmodem.library")
-		(help	"\n\nZModem is used to transfer files via Telnet.\n\n"
-			"If it is not already installed, it is recommended to do so."
-			)
-		(source #SrcXPRZmodem)
-		(dest	"libs:")
-		(confirm)
-	)
+    (SET #SrcXPRZmodem    (TACKON #SrcLibsDir "xprzmodem.library"))
+    (COPYLIB
+        (prompt    "\n\nInstalling Zmodem support: xprzmodem.library")
+        (help    "\n\nZModem is used to transfer files via Telnet.\n\n"
+            "If it is not already installed, it is recommended to do so."
+            )
+        (source #SrcXPRZmodem)
+        (dest    "libs:")
+        (confirm)
+    )
 
-	(COPYLIB
-		(prompt	"\n\nInstalling external terminal emulation support: xemvt340.library")
-		(help	"\n\nExternal VT emulation support.\n\n"
-			"If it is not already installed, it is recommended to do so."
-			)
-		(source "libs/xemvt340.library")
-		(dest	"libs:")
-		(confirm)
-	)
+    (COPYLIB
+        (prompt    "\n\nInstalling external terminal emulation support: xemvt340.library")
+        (help    "\n\nExternal VT emulation support.\n\n"
+            "If it is not already installed, it is recommended to do so."
+            )
+        (source "libs/xemvt340.library")
+        (dest    "libs:")
+        (confirm)
+    )
 
-	(COPYLIB
-		(prompt	"\n\nInstalling device for ANSI color display: ibmcom.device")
-		(help	"\n\nibmcon.device is used to display the 'pretty' ANSI gfx/colors.\n\n"
-			"It is essential that this be installed on your system for DCTelnet."
-			)
-		(source "devs/ibmcon.device")
-		(dest	"devs:")
-		(confirm)
-	)
+    (COPYLIB
+        (prompt    "\n\nInstalling device for ANSI color display: ibmcom.device")
+        (help    "\n\nibmcon.device is used to display the 'pretty' ANSI gfx/colors.\n\n"
+            "It is essential that this be installed on your system for DCTelnet."
+            )
+        (source "devs/ibmcon.device")
+        (dest    "devs:")
+        (confirm)
+    )
 
-	(COPYFILES
-		(prompt	"Installing a few nice ANSI/BBS fonts.")
-		(help	"\n\nCheck which fonts you would like to install on your system.\n\n"
-			"These 3 are some of the most popular and nicest BBSing fonts."
-		)
-		(source "fonts")
-		(dest	"fonts:")
-		(fonts)
-		(confirm)
-		(all)
-	)
+    (COPYFILES
+        (prompt    "Installing a few nice ANSI/BBS fonts.")
+        (help    "\n\nCheck which fonts you would like to install on your system.\n\n"
+            "These 3 are some of the most popular and nicest BBSing fonts."
+        )
+        (source "fonts")
+        (dest    "fonts:")
+        (fonts)
+        (confirm)
+        (all)
+    )
 
 (message "\n\nDCTelnet is now installed\n\n"
-		"For bugreports/support etc. please refer to the included documentation...\n\n"
-		"...ENJOY!!!")
+        "For bugreports/support etc. please refer to the included documentation...\n\n"
+        "...ENJOY!!!")
 
 (EXIT)

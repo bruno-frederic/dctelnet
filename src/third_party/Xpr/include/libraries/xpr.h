@@ -1,12 +1,12 @@
-#ifndef	LIBRARIES_XPR_H
-#define	LIBRARIES_XPR_H
+#ifndef    LIBRARIES_XPR_H
+#define    LIBRARIES_XPR_H
 /*
-**	$VER: Xpr.h 3.1 (14.03.2026)
+**    $VER: Xpr.h 3.1 (14.03.2026)
 **
-**	structures and defines extracted from XprZmodem.h (XPRZModem v3.1 by Rainer Hess),
-**	taken from the "comm/misc/xprz31.lha" archive on Aminet CD 2.
+**    structures and defines extracted from XprZmodem.h (XPRZModem v3.1 by Rainer Hess),
+**    taken from the "comm/misc/xprz31.lha" archive on Aminet CD 2.
 **
-**	This header is used for rebuilding DCTelnet.
+**    This header is used for rebuilding DCTelnet.
 **
 */
 
@@ -22,18 +22,18 @@
 /*
    *   Flags returned by XProtocolSetup()
  */
-#define XPRS_FAILURE	0x00000000L
-#define XPRS_SUCCESS	0x00000001L
-#define XPRS_NORECREQ	0x00000002L
-#define XPRS_NOSNDREQ	0x00000004L
-#define XPRS_HOSTMON	0x00000008L
-#define XPRS_USERMON	0x00000010L
+#define XPRS_FAILURE    0x00000000L
+#define XPRS_SUCCESS    0x00000001L
+#define XPRS_NORECREQ   0x00000002L
+#define XPRS_NOSNDREQ   0x00000004L
+#define XPRS_HOSTMON    0x00000008L
+#define XPRS_USERMON    0x00000010L
 #define XPRS_HOSTNOWAIT 0x00000020L
 /*
    *   The update structure
  */
 struct XPR_UPDATE
-  {
+{
     long xpru_updatemask;
     char *xpru_protocol;
     char *xpru_filename;
@@ -57,123 +57,132 @@ struct XPR_UPDATE
     long xpru_reserved3;
     long xpru_reserved4;
     long xpru_reserved5;
-  };
+};
+
 /*
    *   The possible bit values for the xpru_updatemask are:
  */
-#define XPRU_PROTOCOL		0x00000001L
-#define XPRU_FILENAME		0x00000002L
-#define XPRU_FILESIZE		0x00000004L
-#define XPRU_MSG		0x00000008L
-#define XPRU_ERRORMSG		0x00000010L
-#define XPRU_BLOCKS		0x00000020L
-#define XPRU_BLOCKSIZE		0x00000040L
-#define XPRU_BYTES		0x00000080L
-#define XPRU_ERRORS		0x00000100L
-#define XPRU_TIMEOUTS		0x00000200L
-#define XPRU_PACKETTYPE 	0x00000400L
-#define XPRU_PACKETDELAY	0x00000800L
-#define XPRU_CHARDELAY		0x00001000L
-#define XPRU_BLOCKCHECK 	0x00002000L
-#define XPRU_EXPECTTIME 	0x00004000L
-#define XPRU_ELAPSEDTIME	0x00008000L
-#define XPRU_DATARATE		0x00010000L
-#define XPRU_RESERVED1		0x00020000L
-#define XPRU_RESERVED2		0x00040000L
-#define XPRU_RESERVED3		0x00080000L
-#define XPRU_RESERVED4		0x00100000L
-#define XPRU_RESERVED5		0x00200000L
+#define XPRU_PROTOCOL     0x00000001L
+#define XPRU_FILENAME     0x00000002L
+#define XPRU_FILESIZE     0x00000004L
+#define XPRU_MSG          0x00000008L
+#define XPRU_ERRORMSG     0x00000010L
+#define XPRU_BLOCKS       0x00000020L
+#define XPRU_BLOCKSIZE    0x00000040L
+#define XPRU_BYTES        0x00000080L
+#define XPRU_ERRORS       0x00000100L
+#define XPRU_TIMEOUTS     0x00000200L
+#define XPRU_PACKETTYPE   0x00000400L
+#define XPRU_PACKETDELAY  0x00000800L
+#define XPRU_CHARDELAY    0x00001000L
+#define XPRU_BLOCKCHECK   0x00002000L
+#define XPRU_EXPECTTIME   0x00004000L
+#define XPRU_ELAPSEDTIME  0x00008000L
+#define XPRU_DATARATE     0x00010000L
+#define XPRU_RESERVED1    0x00020000L
+#define XPRU_RESERVED2    0x00040000L
+#define XPRU_RESERVED3    0x00080000L
+#define XPRU_RESERVED4    0x00100000L
+#define XPRU_RESERVED5    0x00200000L
 /*
    *   The xpro_option structure
  */
 struct xpr_option
-  {
-    char *xpro_description;	/* description of the option                  */
-    long xpro_type;		/* type of option                             */
-    char *xpro_value;		/* pointer to a buffer with the current value */
-    long xpro_length;		/* buffer size                                */
-  };
+{
+    char *xpro_description;  /* description of the option                  */
+    long xpro_type;          /* type of option                             */
+    char *xpro_value;        /* pointer to a buffer with the current value */
+    long xpro_length;        /* buffer size                                */
+};
+
 /*
    *   Valid values for xpro_type are:
  */
-#define XPRO_BOOLEAN 1L		/* xpro_value is "yes", "no", "on" or "off"   */
-#define XPRO_LONG    2L		/* xpro_value is string representing a number */
-#define XPRO_STRING  3L		/* xpro_value is a string               */
-#define XPRO_HEADER  4L		/* xpro_value is ignored                */
-#define XPRO_COMMAND 5L		/* xpro_value is ignored                */
-#define XPRO_COMMPAR 6L		/* xpro_value contains command parameters     */
+#define XPRO_BOOLEAN 1L  /* xpro_value is "yes", "no", "on" or "off"   */
+#define XPRO_LONG    2L  /* xpro_value is string representing a number */
+#define XPRO_STRING  3L  /* xpro_value is a string               */
+#define XPRO_HEADER  4L  /* xpro_value is ignored                */
+#define XPRO_COMMAND 5L  /* xpro_value is ignored                */
+#define XPRO_COMMPAR 6L  /* xpro_value contains command parameters     */
 
 /*
    *   The structure
  */
 struct XPR_IO
-  {
+{
     /* File name(s) */
     char *xpr_filename;
+
     /* Open file */
-    long (*__ASM__ xpr_fopen) (__REG__(a0, char *filename),
-			     __REG__(a1, char *accessmode));
+    long (*__ASM__ xpr_fopen) (__REG__(a0, char *filename), __REG__(a1, char *accessmode));
+
     /* Close file */
     long (*__ASM__ xpr_fclose) (__REG__(a0, long filepointer));
+
     /* Get char from file */
-    long (*__ASM__ xpr_fread) (__REG__(a0, char *buffer),
-			     __REG__(d0, long size),
-			     __REG__(d1, long count),
-			     __REG__(a1, long fileptr));
+    long (*__ASM__ xpr_fread) (__REG__(a0, char *buffer), __REG__(d0, long size),
+          __REG__(d1, long count), __REG__(a1, long fileptr));
+
     /* Put string to file */
-    long (*__ASM__ xpr_fwrite) (__REG__(a0, char *buffer),
-			      __REG__(d0, long size),
-			      __REG__(d1, long count),
-			      __REG__(a1, long fileptr));
+    long (*__ASM__ xpr_fwrite) (__REG__(a0, char *buffer), __REG__(d0, long size),
+          __REG__(d1, long count), __REG__(a1, long fileptr));
+
     /* Get char from serial */
-    long (*__ASM__ xpr_sread) (__REG__(a0, char *buffer),
-			     __REG__(d0, long size),
-			     __REG__(d1, long timeout));
+    long (*__ASM__ xpr_sread) (__REG__(a0, char *buffer), __REG__(d0, long size),
+          __REG__(d1, long timeout));
+
     /* Put string to serial */
-    long (*__ASM__ xpr_swrite) (__REG__(a0, char *buffer),
-			      __REG__(d0, long size));
+    long (*__ASM__ xpr_swrite) (__REG__(a0, char *buffer), __REG__(d0, long size));
+
     /* Flush serial input buffer */
     long (*xpr_sflush) (void);
+
     /* Print stuff */
-    long (*__ASM__ xpr_update) (__REG__(a0,
-			      struct XPR_UPDATE * updatestruct));
+    long (*__ASM__ xpr_update) (__REG__(a0, struct XPR_UPDATE * updatestruct));
+
     /* Check for abort */
     long (*xpr_chkabort) (void);
+
     /* Check misc. stuff */
     void (*xpr_chkmisc) (void);
+
     /* Get string interactively */
-    long (*__ASM__ xpr_gets) (__REG__(a0, char *prompt),
-			    __REG__(a1, char *buffer));
+    long (*__ASM__ xpr_gets) (__REG__(a0, char *prompt), __REG__(a1, char *buffer));
+
     /* Set and Get serial info */
     long (*__ASM__ xpr_setserial) (__REG__(d0, long newstatus));
+
     /* Find first file name */
-    long (*__ASM__ xpr_ffirst) (__REG__(a0, char *buffer),
-			      __REG__(a1, char *pattern));
+    long (*__ASM__ xpr_ffirst) (__REG__(a0, char *buffer), __REG__(a1, char *pattern));
+
     /* Find next file name */
-    long (*__ASM__ xpr_fnext) (__REG__(d0, long oldstate),
-			     __REG__(a0, char *buffer),
-			     __REG__(a1, char *pattern));
+    long (*__ASM__ xpr_fnext) (__REG__(d0, long oldstate), __REG__(a0, char *buffer),
+          __REG__(a1, char *pattern));
+
     /* Return file info */
-    long (*__ASM__ xpr_finfo) (__REG__(a0, char *filename),
-			     __REG__(d0, long typeofinfo));
+    long (*__ASM__ xpr_finfo) (__REG__(a0, char *filename), __REG__(d0, long typeofinfo));
+
     /* Seek in a file */
-    long (*__ASM__ xpr_fseek) (__REG__(a0, long fileptr),
-			     __REG__(d0, long offset),
-			     __REG__(d1, long origin));
+    long (*__ASM__ xpr_fseek) (__REG__(a0, long fileptr), __REG__(d0, long offset),
+          __REG__(d1, long origin));
+
     /* Number of extensions */
     long xpr_extension;
+
     /* Initialized by Setup. */
     long *xpr_data;
+
     /* Multiple XPR options. */
-    long (*__ASM__ xpr_options) (__REG__(d0, long n),
-			       __REG__(a0,
-			       struct xpr_option ** opt));
+    long (*__ASM__ xpr_options) (__REG__(d0, long n), __REG__(a0, struct xpr_option ** opt));
+
     /* Delete a file. */
     long (*__ASM__ xpr_unlink) (__REG__(a0, char *filename));
+
     /* Query serial device */
     long (*xpr_squery) (void);
+
     /* Get various host ptrs */
     long (*__ASM__ xpr_getptr) (__REG__(d0, long type));
-  };
+};
 
-#endif	/* LIBRARIES_XPR_H */
+#endif    /* LIBRARIES_XPR_H */

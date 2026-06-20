@@ -86,7 +86,7 @@ extern BOOL isConnectionAborted;
 extern UWORD connectMsgType;
 extern char *connectString;
 
-extern UWORD tcpPort;	// current tcp port
+extern UWORD tcpPort;    // current tcp port
 
 extern const char prefsFilename[];
 extern const char keysFilename[];
