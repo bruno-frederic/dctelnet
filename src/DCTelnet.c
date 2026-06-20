@@ -965,7 +965,8 @@ BOOL LoadPrefs(void)
 
 		isAppIconified = TRUE;
 
-		SimpleReq(	"This is the first time you've run DCTelnet."	"\n"
+		InfoReq(NULL,
+            	"This is the first time you've run DCTelnet."	"\n"
 										"\n"
 				"You will now have to select a screen mode"	"\n"
 				"for DCTelnet to open on. The recommended"	"\n"
