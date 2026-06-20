@@ -154,9 +154,10 @@ Starting with v1.8, a compatible version of the library is included in the `Libs
 
 ## 🛠️ Build environment
 
-**As of March 2026:**
+**As of June 2026:**
 
 - **IDE**: VS Code (on Windows)
+- Docker/Podman running a telnetd container for testing
 - **Compiler**: **VBCC** and **GNU Make** on Windows, using my custom toolchain :
   [vbcc-bin](https://github.com/bruno-frederic/vbcc-bin/tree/Bruno_toolchain)
 

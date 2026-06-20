@@ -42,14 +42,54 @@ https://eab.abime.net/showthread.php?t=121939
 
 v1.9 Changelog
 
+Features:
+- Improved Telnet Support
+  The Telnet protocol engine has been completely reworked and now uses a
+  state machine compliant with RFC 854 and RFC 1143. Telnet commands are
+  correctly recognized even when split across multiple TCP packets.
+  Supported Telnet options now include: BINARY ; SGA (Suppress Go Ahead) ;
+  TTYPE (Terminal Type) ; ECHO & NAWS (Negotiate About Window Size)
+  As part of this redesign, several legacy compatibility options have been
+  removed: Simple Telnet Negotiation ; Strip Colour & CRLF Correction
+
+- ReqTools optional at startup
+  DCTelnet no longer requires reqtools.library during startup.
+  The external library is now loaded only when one of these specific
+  functions is used:
+    - Screen Palette settings
+    - Screen Mode Selection (on systems prior to AmigaOS 2.1)
+  This improves compatibility on minimal Amiga setups and reduces external
+  requirements.
+
+- XEmulator Library Settings Panel
+  Added a new settings panel to configure XEmulator.library options
+  directly from the DCTelnet user interface. Settings are currently
+  session-only and are not saved between DCTelnet runs.
+
+Internal Refactoring:
+- More robust library opening and closing logic.
+- Refactored screen, display, windows and console initialization and
+  shutdown code.
+- Refactored XEmulator.library integration.
+- Improved maintainability and internal code structure.
+
 Bug Fixes:
-- TODO
+- The "Use XEM Library" menu option is now automatically unchecked when
+  XEmulator.library cannot be opened.
+- Fixed a progress gauge overflow that could occur during file transfers
+  larger than approximately 4.36 MB.
+- Fixed several issues occurring when DCTelnet was iconified to Workbench.
+- DCTelnet can now correctly spawn additional instances regardless of the
+  executable filename.
+  Previously, some functionality only worked when the executable was named
+  exactly "DCTelnet".
 
 Libraries & Packaging:
-- TODO
+- The installer no longer renames an existing phone book in the destination
+  drawer, preventing accidental loss of user settings.
 
 Build & Toolchain:
-- TODO
+- Added a Docker/Podman container running telnetd for testing purposes.
 
 ---
 
@@ -193,9 +233,10 @@ Starting with v1.8, a compatible version of the library is included in the
 
 ## Build environment
 
-As of March 2026:
+As of June 2026:
 
 - IDE: VS Code (on Windows)
+- Docker/Podman running a telnetd container for testing
 - Compiler: VBCC and GNU Make on Windows, using my custom toolchain :
   https://github.com/bruno-frederic/vbcc-bin/tree/Bruno_toolchain
 
