@@ -1490,23 +1490,37 @@ static void Information(void)
 	{
 		register long spent = mytime() - conectionTime;
 
-		mysprintf(buf,	"     Host Name ... : %s\n"
-				"    IP Address ... : %s\n"
-				"      TCP Port ... : %ld\n\n"
-				"   Online Time ... : %02ld:%02ld:%02ld\n"
-				"    Bytes Sent ... : %ld\n"
-				"Bytes Received ... : %ld",
-			hostAddr->h_name,
-			Inet_NtoA(inetSocketAddr.sin_addr.s_addr),
-			tcpPort,
-			spent/3600, (spent/60)%60, spent%60,
-			nBytesSent,
-			nBytesReceived);
+        InfoReq(isRunningOnWB ? NULL : win,
+                "     Host Name ... : %s\n"
+                "    IP Address ... : %s\n"
+                "      TCP Port ... : %ld\n\n"
+                "   Online Time ... : %02ld:%02ld:%02ld\n"
+                "    Bytes Sent ... : %ld\n"
+                "Bytes Received ... : %ld",
+                hostAddr->h_name,
+                Inet_NtoA(inetSocketAddr.sin_addr.s_addr),
+                tcpPort,
+                spent/3600, (spent/60)%60, spent%60,
+                nBytesSent,
+                nBytesReceived);
 
-		rtEZRequestTags(buf, "OK", NULL, NULL,
-				RT_Window,	win,
-				RT_ReqPos,	REQPOS_CENTERSCR,
-				TAG_DONE);
+        // mysprintf(buf,    "     Host Name ... : %s\n"
+        //         "    IP Address ... : %s\n"
+        //         "      TCP Port ... : %ld\n\n"
+        //         "   Online Time ... : %02ld:%02ld:%02ld\n"
+        //         "    Bytes Sent ... : %ld\n"
+        //         "Bytes Received ... : %ld",
+        //     hostAddr->h_name,
+        //     Inet_NtoA(inetSocketAddr.sin_addr.s_addr),
+        //     tcpPort,
+        //     spent/3600, (spent/60)%60, spent%60,
+        //     nBytesSent,
+        //     nBytesReceived);
+
+        // rtEZRequestTags(buf, "OK", NULL, NULL,
+        //         RT_Window,    win,
+        //         RT_ReqPos,    REQPOS_CENTERSCR,
+        //         TAG_DONE);
 	} else
 		SimpleReq("Not isConnected");
 }
@@ -1830,7 +1844,8 @@ static void GetWindowMsg(struct Window *wwin)
 					switch(itemNum)
 					{
 					case 0:
-						rtEZRequestTags(
+                        InfoReq(isRunningOnWB ? NULL : win,
+                        //rtEZRequestTags(
                             "DCTelnet - A classic Amiga Telnet/BBS client with Zmodem"        "\n"
                             "                  v"DCTELNET_VERSION " (build " STR(BUILD_HASH) ")\n"
                             "         Last Compiled .... : "__DATE__""                        "\n"
@@ -1842,11 +1857,11 @@ static void GetWindowMsg(struct Window *wwin)
                             "            Recompiled by   : Bruno FREDERIC"                    "\n"
                                                                                               "\n"
                             "                   More info/sources:"                           "\n"
-                            "           github.com/bruno-frederic/dctelnet"                   "\n",
-                            "OK", NULL, NULL,
-                            RT_Window,	win,
-                            RT_ReqPos,	REQPOS_CENTERSCR,
-                            TAG_DONE);
+                            "           github.com/bruno-frederic/dctelnet"                   "\n");
+                            // "OK", NULL, NULL,
+                            // RT_Window,	win,
+                            // RT_ReqPos,	REQPOS_CENTERSCR,
+                            // TAG_DONE);
 						break;
 
 					case 2:
