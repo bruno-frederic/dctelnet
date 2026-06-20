@@ -1100,6 +1100,14 @@ int main(int argc, char *argv[])
     if (dontUseSig31 != 31)
         InfoReq(NULL, "ERROR: cannot allocate sigbit 31!");
 
+    AslBase = OpenLibrary("asl.library", 0);
+    if (AslBase == NULL)
+    {
+        InfoReq(NULL, "The ASL library could not be opened.\n"
+                     "DCTelnet requires asl.library, which is available in AmigaOS 2.0 and later.");
+        goto clean_exit;
+    }
+
 	if (!(ReqToolsBase = (struct ReqToolsBase *)OpenLibrary (REQTOOLSNAME, 0)))
 	{
 		const char msg[] = "DCTelnet - Requirement Warning\n\n"
@@ -1124,6 +1132,7 @@ int main(int argc, char *argv[])
 	GfxBase = ReqToolsBase -> GfxBase;
 	GadToolsBase = ReqToolsBase -> GadToolsBase;
 	UtilityBase = ReqToolsBase -> UtilityBase;
+
 
 	WorkbenchBase = OpenLibrary("workbench.library", 0);
 	if (WorkbenchBase == NULL) { InfoReq(NULL,"Unable to open workbench.library"); goto clean_exit; }
@@ -1366,6 +1375,7 @@ clean_exit:
 	if (DiskfontBase)  CloseLibrary(DiskfontBase);
 	if (WorkbenchBase) CloseLibrary(WorkbenchBase);
 	if (ReqToolsBase)  CloseLibrary((struct Library *) ReqToolsBase);
+    if (AslBase)       CloseLibrary(AslBase);
 	if (IntuitionBase) CloseLibrary((struct Library *) IntuitionBase);
 
 	if (dontUseSig31 != -1) FreeSignal(dontUseSig31);
@@ -1611,7 +1621,6 @@ static void GetWindowMsg(struct Window *wwin)
 {
 	struct MenuItem *item;
 	struct IntuiMessage *message;
-	struct rtFontRequester *fontreq;
 	UWORD menuNumber, menuNum, itemNum;
 	APTR reqinfo;
 	struct Gadget *gad;
@@ -2038,25 +2047,32 @@ static void GetWindowMsg(struct Window *wwin)
 						break;
 
 					case 1:
-						if(fontreq = rtAllocRequestA (RT_FONTREQ, NULL))
-						{
-							rtChangeReqAttr(fontreq,
-								RTFO_FontName,		prefs.fontname,
-								RTFO_FontHeight,	prefs.fontsize,
-								TAG_END);
+                        if (FontRequester(isRunningOnWB ? NULL : win,
+                                          prefs.fontname, sizeof(prefs.fontname),
+                                          &prefs.fontsize))
+                        {
+                            shouldRestart = TRUE;
+                            shouldReopenScreen = TRUE;
+                        }
+                        // if(fontreq = rtAllocRequestA (RT_FONTREQ, NULL))
+                        // {
+                        //     rtChangeReqAttr(fontreq,
+                        //         RTFO_FontName,        prefs.fontname,
+                        //         RTFO_FontHeight,    prefs.fontsize,
+                        //         TAG_END);
 
-							if(rtFontRequest(fontreq, "Screen Font..",
-								RT_Window,	win,
-								RTFO_Flags,	FREQF_FIXEDWIDTH,
-								TAG_DONE))
-							{
-								strcpy(prefs.fontname, fontreq->Attr.ta_Name);
-								prefs.fontsize = fontreq->Attr.ta_YSize;
-								shouldRestart = TRUE;
-								shouldReopenScreen = TRUE;
-							}
-							rtFreeRequest(fontreq);
-						}
+                        //     if(rtFontRequest(fontreq, "Screen Font..",
+                        //         RT_Window,    win,
+                        //         RTFO_Flags,    FREQF_FIXEDWIDTH,
+                        //         TAG_DONE))
+                        //     {
+                        //         strcpy(prefs.fontname, fontreq->Attr.ta_Name);
+                        //         prefs.fontsize = fontreq->Attr.ta_YSize;
+                        //         shouldRestart = TRUE;
+                        //         shouldReopenScreen = TRUE;
+                        //     }
+                        //     rtFreeRequest(fontreq);
+                        // }
 						break;
 					case 2:
 						reqinfo = rtAllocRequestA(RT_REQINFO, NULL);
