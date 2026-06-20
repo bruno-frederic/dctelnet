@@ -10,8 +10,6 @@
 #include <proto/exec.h>               // OpenLibrary(), AllocMem()...
 #include <proto/dos.h>                // RETURN_OK, VPrintf()
 #include <proto/intuition.h>          // DisplayBeep()
-#include <libraries/reqtools.h>       // RT_REQINFO
-#include <proto/reqtools.h>           // rtAllocRequestA(), rtGetStringA(), rtFreeRequest()...
 #include "Xem_wrapper.h"
 #include "DCTelnet.h"                 // win, scr, ansiFont, prefs.displaydriver, buf
 #include "Xfer.h"                     // xpr_sread(), xpr_swrite(), xpr_sflush(), xpr_options()
@@ -96,15 +94,10 @@ VOID __SAVE_DS__ __ASM__ xem_tbeep(__REG__(d0, ULONG ntimes), __REG__(d1, ULONG 
 LONG __SAVE_DS__ __ASM__ xem_tgets(__REG__(a0, UBYTE *prompt),
                                 __REG__(a1, UBYTE *buffer), __REG__(d0, ULONG buflen))
 {
-    APTR reqinfo = rtAllocRequestA(RT_REQINFO, NULL);
-    if (reqinfo)
-    {
-        LONG ret = rtGetStringA(buffer, buflen, prompt, 0, (struct TagItem *)&reqtoolsTags);
-        rtFreeRequest(reqinfo);
-        return ret;
-    }
-
-    return 0L; // failure or user cancellation
+    return GetStringRequester(isRunningOnWB ? NULL : win,
+                                 "XEM library request",
+                                 prompt,
+                                 buffer, buflen);
 }
 
 

@@ -923,7 +923,12 @@ static void Finger(void)
 	char tbuf[64] = "reiver@plan.cat";
 	char *host;
 
-	if(rtGetStringA(tbuf, 63, "Enter EMail Address:", 0, (struct TagItem *)&reqtoolsTags))
+    if (GetStringRequester(isRunningOnWB ? NULL : win,
+                              "Finger",
+                              "Enter EMail Address:",
+                              tbuf, sizeof(tbuf))
+       )
+    //if(rtGetStringA(tbuf, 63, "Enter EMail Address:", 0, (struct TagItem *)&reqtoolsTags))
 	{
 		host = strchr(tbuf, '@');
 		if(host)
@@ -1440,7 +1445,13 @@ static void OnConnectClicked(char spawnInstance)
 
 	if(!spawnInstance) strcpy(tbuf, server); else tbuf[0] = '\0';
 
-	if(rtGetStringA(tbuf, 63, "Enter host,port:", 0, (struct TagItem *)&reqtoolsTags))
+
+    if (GetStringRequester(isRunningOnWB ? NULL : win,
+                              "Connect",
+                              "Enter host,port:",
+                              tbuf, sizeof(tbuf))
+       )
+    //if(rtGetStringA(tbuf, 63, "Enter host,port:", 0, (struct TagItem *)&reqtoolsTags))
 	{
 		if(tbuf[0] != 0)
 		{
@@ -2075,7 +2086,11 @@ static void GetWindowMsg(struct Window *wwin)
 						break;
 
 					case 5:
-						rtGetStringA(prefs.xferinit, 51, "Protocol Options..", 0, (struct TagItem *)&reqtoolsTags);
+                        //rtGetStringA(prefs.xferinit, 51, "Protocol Options..", 0, (struct TagItem *)&reqtoolsTags);
+                        GetStringRequester(isRunningOnWB ? NULL : win,
+                                                    "XPR Protocol Options..",
+                                                    "Options string:",
+                                                    prefs.xferinit, sizeof(prefs.xferinit));
                         // TODO Open XPR options Dialog : XferOptions(prefs.xferlibrary);
 						break;
 
@@ -2097,9 +2112,13 @@ static void GetWindowMsg(struct Window *wwin)
                             EZReq(win, "The XEM library is currently disabled, so related functionality is unavailable.");
 						break;
 
-					case 9:
-						rtGetStringA(prefs.displayidstr, 31, "Telnet Display ID..", 0, (struct TagItem *)&reqtoolsTags);
-						break;
+                    case 9:
+                        GetStringRequester(isRunningOnWB ? NULL : win,
+                                                    "Telnet Display ID...",
+                                                    "Term type:",
+                                                    prefs.displayidstr, sizeof(prefs.displayidstr));
+                        //rtGetStringA(prefs.displayidstr, 31, "Telnet Display ID..", 0, (struct TagItem *)&reqtoolsTags);
+                    break;
 
 					case 10:
 						rtGetLongA(&prefs.sb_lines, "ScrollBack Lines..", NULL, (struct TagItem *)&reqtoolsTags);
