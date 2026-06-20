@@ -2,6 +2,7 @@
 #define DCTELNET_H
 
 #include <exec/types.h>
+#include <string.h>     // size_t
 
 // Types
 struct PrefsStruct
@@ -105,6 +106,7 @@ void LEDs(void);
 #ifdef __VBCC__
 int stricmp(const char *a, const char *b);
 #endif
+size_t strlcpy(char *dst, const char *src, size_t dstSize);
 void mysprintf(char *Buffer,char *ctl, ...);
 void LocalFmt(char *ctl, ...);
 void TextFmt(struct RastPort *rP, char *ctl, ...);

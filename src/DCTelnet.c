@@ -253,6 +253,63 @@ int stricmp(const char *a, const char *b)
 }
 #endif
 
+
+/**
+* @brief Safe string copy with truncation detection.
+ *
+ * Copies up to dstSize - 1 characters from src to dst and always
+ * NUL-terminates dst when dstSize is non-zero (strncpy() does not ensure that)
+ *
+ * Unlike strncpy(), this function performs no unnecessary NUL padding
+ * and guarantees a valid C string in the destination buffer.
+ *
+ *
+ * This is a BSD extension and is not part of the ISO C or POSIX standards.
+ *
+ * @param dstSize  Size of destination buffer in bytes.
+ *
+ * @return Length of src, excluding the terminating NUL.
+ *         A return value >= dstSize indicates truncation.
+ */
+size_t strlcpy(char *dst, const char *src, size_t dstSize)
+{
+    char *d   = dst;
+    const char *s = src;
+    size_t n = dstSize;
+
+    #ifdef _DEBUG
+        if (src == NULL)
+        {
+            InfoReq(NULL, "strlcpy(): src == NULL");
+            return 0;
+        }
+
+        if (dst == NULL && dstSize != 0)
+        {
+            InfoReq(NULL, "strlcpy(): dst == NULL");
+            return 0;
+        }
+    #endif
+
+    if (n!=0 && --n!=0)
+    {
+        do {
+            if ((*d++ = *s++) == 0)
+                break;
+        } while (--n != 0);
+    }
+
+    if (n == 0)
+    {
+        if (dstSize != 0)
+            *d = '\0';
+        while (*s++) { }
+    }
+
+    return (size_t) (s - src - 1);
+}
+
+
 void mysprintf(char *Buffer, char *ctl, ...)
 {
 	RawDoFmt(ctl, (long *)(&ctl + 1), (void (*))"\x16\xc0\x4e\x75", Buffer);
