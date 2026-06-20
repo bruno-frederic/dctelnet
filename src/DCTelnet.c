@@ -437,42 +437,59 @@ void SavePrefs(void)
 	}
 }
 
-static char ChooseScreen(char firsttime)
+static BOOL ChooseScreen(char firsttime)
 {
-	struct rtScreenModeRequester *scrmodereq;
+    BOOL result = FALSE;
 
-	if(scrmodereq = rtAllocRequestA (RT_SCREENMODEREQ, NULL))
-	{
-		if(firsttime)
-		{
-			scrmodereq->DisplayID = HIRES_KEY;//PAL_MONITOR_ID
-			scrmodereq->DisplayDepth = 4;
-			scrmodereq->DisplayWidth = 640;
-			scrmodereq->DisplayHeight = 256;
-		} else {
-			//rtChangeReqAttr(scrmodereq, RTSC_ModeFromScreen, scr, TAG_END);
-			scrmodereq->DisplayID = prefs.DisplayID;
-			scrmodereq->DisplayWidth = prefs.DisplayWidth;
-			scrmodereq->DisplayHeight = prefs.DisplayHeight;
-			scrmodereq->DisplayDepth = prefs.DisplayDepth;
-		}
+    if(firsttime)
+    {
+        prefs.DisplayID     = (PAL_MONITOR_ID | HIRES_KEY); // PAL High Res (640×256), no interlaced
+        prefs.DisplayWidth  = 640;
+        prefs.DisplayHeight = 256;
+        prefs.DisplayDepth  = 4;
+    }
 
-		if (rtScreenModeRequest (scrmodereq, "Screen Mode..",
-			RT_Window,	win,
-			RTSC_Flags,	SCREQF_DEPTHGAD|SCREQF_SIZEGADS|SCREQF_GUIMODES,
-			RTSC_MaxDepth,	4,
-			TAG_END))
-		{
-			prefs.DisplayID = scrmodereq->DisplayID;
-			prefs.DisplayWidth = scrmodereq->DisplayWidth;
-			prefs.DisplayHeight = scrmodereq->DisplayHeight;
-			prefs.DisplayDepth = scrmodereq->DisplayDepth;
-			rtFreeRequest (scrmodereq);
-			return(TRUE);
-		}
-		rtFreeRequest (scrmodereq);
-	}
-	return(FALSE);
+    if (AslBase && AslBase->lib_Version >= 38) // ASL screen mode requester introduced with AmigaOS 2.1
+    {
+        result = ScreenModeRequester(isRunningOnWB ? NULL : win, &prefs.DisplayID,
+                                    &prefs.DisplayWidth, &prefs.DisplayHeight, &prefs.DisplayDepth);
+    }
+    else    // fallback to legacy ReqTools library
+    {
+        struct rtScreenModeRequester *scrmodereq;
+
+        if(scrmodereq = rtAllocRequestA (RT_SCREENMODEREQ, NULL))
+        {
+            //if(firsttime)
+            //{
+                // scrmodereq->DisplayID = HIRES_KEY;//PAL_MONITOR_ID
+                // (...)
+            //} else {
+                //rtChangeReqAttr(scrmodereq, RTSC_ModeFromScreen, scr, TAG_END);
+            scrmodereq->DisplayID     = prefs.DisplayID;
+            scrmodereq->DisplayWidth  = prefs.DisplayWidth;
+            scrmodereq->DisplayHeight = prefs.DisplayHeight;
+            scrmodereq->DisplayDepth  = prefs.DisplayDepth;
+            //}
+
+            if (rtScreenModeRequest (scrmodereq, "Screen Mode..",
+                                     RT_Window,	win,
+                                     RTSC_Flags,	SCREQF_DEPTHGAD|SCREQF_SIZEGADS|SCREQF_GUIMODES,
+                                     RTSC_MaxDepth,	4,
+                                     TAG_END))
+            {
+                prefs.DisplayID     = scrmodereq->DisplayID;
+                prefs.DisplayWidth  = scrmodereq->DisplayWidth;
+                prefs.DisplayHeight = scrmodereq->DisplayHeight;
+                prefs.DisplayDepth  = scrmodereq->DisplayDepth;
+                result = TRUE;
+            }
+            rtFreeRequest (scrmodereq);
+        }
+    }
+
+    // On first time init, returning FALSE prevents the preferences from being written to disk.
+    return result;
 }
 
 
@@ -902,6 +919,7 @@ Calling code must ensure that ReqTools.library is opened before invoking this fu
 BOOL LoadPrefs(void)
 {
 	BPTR fh = Open(prefsFilename, MODE_OLDFILE);
+    BOOL firsttime = FALSE;
 
 	if(fh)
 	{
@@ -921,9 +939,20 @@ BOOL LoadPrefs(void)
 		}
 		Close(fh);
 	} else {
+        firsttime = TRUE;
+        isAppIconified = TRUE;
+    }
 
-		isAppIconified = TRUE;
+    // Prefs loaded but use must choose another Screen Mode. OpenDisplay() could not OpenScreen()
+    // last time DCTelnet was launched.
+    if (prefs.DisplayID == DEFAULT_MONITOR_ID)
+    {
+        firsttime = TRUE;
+        isAppIconified = TRUE;
+    }
 
+    if (firsttime)
+    {
 		InfoReq(NULL,
             	"This is the first time you've run DCTelnet."	"\n"
 										"\n"
@@ -1035,6 +1064,14 @@ int main(int argc, char *argv[])
         goto clean_exit;
     }
 
+    GfxBase = (struct GfxBase*) OpenLibrary("graphics.library", 0);  // intuition.library uses it
+    if (GfxBase == NULL)
+    {
+        RecoveryAlert(
+            "The graphics.library could not be opened. DCTelnet requires graphics.library.");
+        goto clean_exit;
+    }
+
 	if (mainTask == NULL)
 	{
 		const char msg[] = "ERROR: cannot FindTask()!";
@@ -1088,7 +1125,6 @@ int main(int argc, char *argv[])
 	scrollbackList->lh_TailPred = (struct Node *)scrollbackList;
 	scrollbackList->lh_Head = (struct Node *)&scrollbackList->lh_Tail;
 
-	GfxBase = ReqToolsBase -> GfxBase;
 	GadToolsBase = ReqToolsBase -> GadToolsBase;
 	UtilityBase = ReqToolsBase -> UtilityBase;
 
@@ -1335,6 +1371,7 @@ clean_exit:
 	if (WorkbenchBase) CloseLibrary(WorkbenchBase);
 	if (ReqToolsBase)  CloseLibrary((struct Library *) ReqToolsBase);
     if (AslBase)       CloseLibrary(AslBase);
+    if (GfxBase)       CloseLibrary((struct Library *) GfxBase);
 	if (IntuitionBase) CloseLibrary((struct Library *) IntuitionBase);
 
 	if (dontUseSig31 != -1) FreeSignal(dontUseSig31);
@@ -2011,13 +2048,20 @@ static void GetWindowMsg(struct Window *wwin)
 				case 4: // Menu Settings
 					switch(itemNum)
 					{
+                        UWORD oldDepth;
+                        ULONG oldDispID;
+
 					case 0: // Screen Mode...
-						if(ChooseScreen(FALSE))
-						{
-							shouldRestart = TRUE;
-							shouldReopenScreen = TRUE;
-						}
-						break;
+                        oldDispID = prefs.DisplayID;
+                        oldDepth  = prefs.DisplayDepth;
+                        if (ChooseScreen(FALSE)
+                            && ((oldDispID  != prefs.DisplayID) || (oldDepth != prefs.DisplayDepth))
+                           )
+                        {
+                            shouldRestart = TRUE;
+                            shouldReopenScreen = TRUE;
+                        }
+                    break;
 
 					case 1:
                         if (FontRequester(isRunningOnWB ? NULL : win,
@@ -2694,7 +2738,14 @@ BOOL OpenDisplay(void)
 	if (scr == NULL)  // We need to (re)open completely the screen
 		scr = OpenAppScreen();
 
-	if (scr == NULL) { InfoReq(NULL,"Unable to open screen!"); goto clean_and_return; }
+	if (scr == NULL) {
+        InfoReq(NULL,"Unable to open the screen. Please restart DCTelnet\n"
+                     "and select an appropriate screen mode");
+        prefs.DisplayID = DEFAULT_MONITOR_ID;
+        SavePrefs();
+
+        goto clean_and_return;
+    }
 
 	if (visualInfos == NULL) visualInfos = GetVisualInfoA(scr, NULL);
 	if (drawInfo == NULL)    drawInfo    = GetScreenDrawInfo(scr);
