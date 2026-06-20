@@ -1404,7 +1404,9 @@ static void SaveScrollBack(char *fname)
 	if(fileHandle)
 	{
 		UnLock(fileHandle);
-		if(!rtEZRequestA("File Already Exists.","OverWrite|Cancel", NULL, NULL, (struct TagItem *)&reqtoolsTags))
+        if (! ConfirmRequester(isRunningOnWB ? NULL : win, "OverWrite|Cancel",
+                                       "File Already Exists."))
+        //if(!rtEZRequestA("File Already Exists.","OverWrite|Cancel", NULL, NULL, (struct TagItem *)&reqtoolsTags))
 			return;
 	}
 	fileHandle = Open(fname, MODE_NEWFILE);
@@ -1726,7 +1728,9 @@ static void GetWindowMsg(struct Window *wwin)
 					}
 					break;
 				case 82:
-					if(rtEZRequestA("Print Scrollback?", "Print|Cancel", NULL, NULL, (struct TagItem *)&reqtoolsTags))
+                    if (ConfirmRequester(isRunningOnWB ? NULL : win, "Print|Cancel",
+                                                 "Print Scrollback?"))
+                    //if(rtEZRequestA("Print Scrollback?", "Print|Cancel", NULL, NULL, (struct TagItem *)&reqtoolsTags))
 						SaveScrollBack("PRT:");
 					break;
 				case 80:

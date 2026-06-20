@@ -16,6 +16,7 @@
 #include "edit.h"                     // required
 #include "guis.h"
 #include "DCTelnet.h"
+#include "requesters.h"
 
 struct BookStruct
 {
@@ -418,9 +419,10 @@ connect:
 delete:
 						if(worknode = FindNode(listviewlist, lastcode))
 						{
-							mysprintf(buf, "Delete \042%s\042?", worknode->ln_Name);
-							// Open a confirmation Dialog :
-							if(rtEZRequestA(buf, "Delete|Cancel", NULL, NULL, (struct TagItem *)&reqtoolsTags))
+                            if (ConfirmRequester(isRunningOnWB ? NULL : win,"Delete|Cancel",
+                                                         "Delete \042%s\042?", worknode->ln_Name))
+                            //mysprintf(buf, "Delete \042%s\042?", worknode->ln_Name);
+                            //if(rtEZRequestA(buf, "Delete|Cancel", NULL, NULL, (struct TagItem *)&reqtoolsTags))
 							{
 								Remove(worknode);
 								FreeMem(worknode->ln_Name, sizeof(struct BookStruct));
