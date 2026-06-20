@@ -27,13 +27,13 @@ struct XEM_IO *xemIO;
     */
     LONG __SAVE_DS__ xem_sbreak(VOID)
     {
-        EZReq(win, "xem_sbreak() is not implemented.");
+        InfoReq(isRunningOnWB ? NULL : win, "xem_sbreak() is not implemented.");
         return RETURN_OK;
     }
 
     LONG __SAVE_DS__ xem_squery(VOID)
     {
-        EZReq(win, "xem_squery() is not implemented. when is it called ?");
+        InfoReq(isRunningOnWB ? NULL : win, "xem_squery() is not implemented. when is it called ?");
         return -1L; // error
     }
 
@@ -43,7 +43,7 @@ struct XEM_IO *xemIO;
     */
     VOID __SAVE_DS__ xem_sstart(VOID)
     {
-        EZReq(win, "xem_sstart() is not implemented.");
+        InfoReq(isRunningOnWB ? NULL : win, "xem_sstart() is not implemented.");
     }
 
     /* This function tells the comm program to stop the serial read activity. After this call, the
@@ -53,7 +53,7 @@ struct XEM_IO *xemIO;
     */
     LONG __SAVE_DS__ xem_sstop(VOID)
     {
-        EZReq(win, "xem_sstop() is not implemented.");
+        InfoReq(isRunningOnWB ? NULL : win, "xem_sstop() is not implemented.");
         return RETURN_OK;
     }
 
@@ -62,7 +62,7 @@ struct XEM_IO *xemIO;
     */
     LONG __SAVE_DS__ __ASM__ xem_process_macrokeys(__REG__(a0, struct XEmulatorMacroKey *key))
     {
-        EZReq(win, "xem_process_macrokeys() is not implemented.");
+        InfoReq(isRunningOnWB ? NULL : win, "xem_process_macrokeys() is not implemented.");
         return -1L; // What is the meaning of return value?
     }
 #endif // _DEBUG
@@ -113,8 +113,7 @@ BOOL InitializeXemLibrary(void)
 	XEmulatorBase = OpenLibrary(prefs.displaydriver, 0);
 	if (XEmulatorBase == NULL)
 	{
-		mysprintf(buf,	"Failed to open XEM library: %s", prefs.displaydriver);
-		EZReq(win, buf);
+		InfoReq(isRunningOnWB ? NULL : win, "Failed to open XEM library: %s", prefs.displaydriver);
 
 		goto clean_and_return;
 	}
@@ -149,7 +148,7 @@ BOOL InitializeXemLibrary(void)
     // allocates and initializes emulator-private data :
     if ( ! XEmulatorSetup(xemIO) )
     {
-        EZReq(win, "XEmulatorSetup() failed!");
+        InfoReq(isRunningOnWB ? NULL : win, "XEmulatorSetup() failed!");
         goto clean_and_return;
     }
 
@@ -159,7 +158,7 @@ BOOL InitializeXemLibrary(void)
     if ( ! XEmulatorOpenConsole(xemIO) )
     {
         XEmulatorCleanup(xemIO);
-        EZReq(win, "XEmulatorOpenConsole() failed!");
+        InfoReq(isRunningOnWB ? NULL : win, "XEmulatorOpenConsole() failed!");
         goto clean_and_return;
     }
 

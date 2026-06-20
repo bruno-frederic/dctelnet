@@ -381,30 +381,11 @@ static void WindowSub(void (*Sub)(void))
 	LEDs();
 }
 
-/*
-	Lightweight requester; does not use reqtools.library. Goal: remove the dependency on the
-	unmaintained ReqTools library by using built-in requesters (EasyRequest / ASL) so the program
-	runs on systems without ReqTools.
-	Compatibility: works on KS 2.00 without ReqTools
-*/
-void EZReq(struct Window *win, const char *str)
-{
-	struct EasyStruct es;
-	es.es_StructSize   = sizeof(struct EasyStruct);
-	es.es_Flags        = 0;
-	es.es_Title        = "Information";
-	es.es_TextFormat   = str;
-	es.es_GadgetFormat = "OK";
-
-	EasyRequestArgs(win,	// This can be NULL; requester will appear on the Workbench screen
-					&es,
-					NULL,
-					NULL);
-}
 
 void SimpleReq(char *str)
 {
-	EZReq(win, str);	//rtEZRequestA(str, "OK", NULL, NULL, (struct TagItem *)&tags);
+    //rtEZRequestA(str, "OK", NULL, NULL, (struct TagItem *)&tags);
+    InfoReq(isRunningOnWB ? NULL : win, str);
 	LEDs();
 }
 
@@ -686,7 +667,7 @@ static void Receive(void)
             #ifdef _DEBUG
                 if (outLen >= sizeof(outBuffer))
                 {
-                    EZReq(win, "outBuffer overflow in Receive()!");
+                    InfoReq(isRunningOnWB ? NULL : win, "outBuffer overflow in Receive()!");
                     return;
                 }
             #endif
@@ -1098,7 +1079,7 @@ int main(int argc, char *argv[])
 	{
 		const char msg[] = "ERROR: cannot FindTask()!";
 		PutStr(msg);
-		EZReq(NULL, msg);
+		InfoReq(NULL, msg);
 		goto clean_exit;
 	}
 
@@ -1106,7 +1087,7 @@ int main(int argc, char *argv[])
 	{
 		const char msg[] = "ERROR: cannot determine program name!";
 		PutStr(msg);
-		EZReq(NULL, msg);
+		InfoReq(NULL, msg);
 		goto clean_exit;
 	}
 
@@ -1116,7 +1097,7 @@ int main(int argc, char *argv[])
     // from being assigned elsewhere and accidentally released.
     dontUseSig31 = AllocSignal(31L);
     if (dontUseSig31 != 31)
-        EZReq(NULL, "ERROR: cannot allocate sigbit 31!");
+        InfoReq(NULL, "ERROR: cannot allocate sigbit 31!");
 
 	if (!(ReqToolsBase = (struct ReqToolsBase *)OpenLibrary (REQTOOLSNAME, 0)))
 	{
@@ -1126,7 +1107,7 @@ int main(int argc, char *argv[])
 							"It is available on Aminet: util/libs/ReqToolsUsr\n"
 							"Please install it and try again.";
 		PutStr(msg);
-		EZReq(NULL, msg);
+		InfoReq(NULL, msg);
 
 		goto clean_exit;
 	}
@@ -1144,16 +1125,16 @@ int main(int argc, char *argv[])
 	UtilityBase = ReqToolsBase -> UtilityBase;
 
 	WorkbenchBase = OpenLibrary("workbench.library", 0);
-	if (WorkbenchBase == NULL) { EZReq(NULL,"Unable to open workbench.library"); goto clean_exit; }
+	if (WorkbenchBase == NULL) { InfoReq(NULL,"Unable to open workbench.library"); goto clean_exit; }
 
 	DiskfontBase = OpenLibrary("diskfont.library", 0);
-	if (DiskfontBase == NULL) { EZReq(NULL,"Unable to open diskfont.library"); goto clean_exit; }
+	if (DiskfontBase == NULL) { InfoReq(NULL,"Unable to open diskfont.library"); goto clean_exit; }
 
 	KeymapBase = OpenLibrary("keymap.library", 0);
-	if (KeymapBase == NULL) { EZReq(NULL,"Unable to open keymap.library"); goto clean_exit; }
+	if (KeymapBase == NULL) { InfoReq(NULL,"Unable to open keymap.library"); goto clean_exit; }
 
 	IconBase = OpenLibrary("icon.library", 0);
-	if (IconBase == NULL) { EZReq(NULL,"Unable to open icon.library"); goto clean_exit; }
+	if (IconBase == NULL) { InfoReq(NULL,"Unable to open icon.library"); goto clean_exit; }
 
 	#ifdef _DEBUG
 		PutStr("--> OpenLibrary(bsdsocket.library, 0)\n");
@@ -1243,7 +1224,8 @@ int main(int argc, char *argv[])
 				i = WaitSelect(tcpSocket + 1, &rd, 0, 0, &timeout, &sigmask);
 
 				#ifdef _DEBUG
-					if (i <  0)  EZReq(win, "WaitSelect() returns < 0 (error) ! Why???");
+					if (i <  0)  InfoReq(isRunningOnWB ? NULL : win,
+                                         "WaitSelect() returns < 0 (error) ! Why???");
 				#endif
 
 			} else {
@@ -1289,7 +1271,8 @@ int main(int argc, char *argv[])
 				#ifdef _DEBUG
 					if      (i <  0)
 					{
-						EZReq(win, "WaitSelect() returns < 0 (error) ! Why???");
+						InfoReq(isRunningOnWB ? NULL : win,
+                                "WaitSelect() returns < 0 (error) ! Why???");
 					}
 					else if (i == 0)
 					{
@@ -1297,7 +1280,8 @@ int main(int argc, char *argv[])
 						LogWaitSelectResult(i, sigmask);
 
 						if (FD_ISSET(tcpSocket, &rd))
-							EZReq(win, "WaitSelect() returns 0 but data received! Why???");
+							InfoReq(isRunningOnWB ? NULL : win,
+                                    "WaitSelect() returns 0 but data received! Why???");
 					}
 					else
 					{
@@ -2128,7 +2112,8 @@ static void GetWindowMsg(struct Window *wwin)
 						if (xemIO)
                             XEmulatorOptions(xemIO);
                         else
-                            EZReq(win, "The XEM library is currently disabled, so related functionality is unavailable.");
+                            InfoReq(isRunningOnWB ? NULL : win, "The XEM library is currently "
+                                           "disabled, so related functionality is unavailable.");
 						break;
 
                     case 9:
@@ -2707,16 +2692,17 @@ BOOL OpenDisplay(void)
 	if (scr == NULL)  // We need to (re)open completely the screen
 		scr = OpenAppScreen();
 
-	if (scr == NULL) { EZReq(NULL,"Unable to open screen!"); goto clean_and_return; }
+	if (scr == NULL) { InfoReq(NULL,"Unable to open screen!"); goto clean_and_return; }
 
 	if (visualInfos == NULL) visualInfos = GetVisualInfoA(scr, NULL);
 	if (drawInfo == NULL)    drawInfo    = GetScreenDrawInfo(scr);
 
 	OpenAppWindow();
-	if(win == NULL) { EZReq(NULL,"Unable to open main window!"); goto clean_and_return; }
+	if(win == NULL) { InfoReq(NULL,"Unable to open main window!"); goto clean_and_return; }
 
 	CreateAppMenus();
-	if (menuStrip == NULL) { EZReq(NULL,"Unable to create menus!"); goto clean_and_return; }
+	if (menuStrip == NULL) { InfoReq(isRunningOnWB ? NULL : win, "Unable to create menus!");
+                             goto clean_and_return; }
 
 	reqtoolsTags[0] = RT_Window;
 	reqtoolsTags[1] = (ULONG)win;
@@ -2765,7 +2751,9 @@ BOOL OpenDisplay(void)
 
 		// CreateIORequest() requires a message port.
 		writeConPort = CreateMsgPort();
-		if (!writeConPort) { EZReq(NULL,"Unable to create message port for console device!"); goto clean_and_return; }
+		if (!writeConPort) { InfoReq(isRunningOnWB ? NULL : win,
+                                     "Unable to create message port for console device!");
+                             goto clean_and_return; }
 
 		// https://amigadev.elowar.com/read/ADCD_2.1/Includes_and_Autodocs_2._guide/node0344.html
 		writeConIOReq = CreateIORequest(writeConPort, sizeof(struct IOStdReq));
@@ -2812,8 +2800,9 @@ BOOL OpenDisplay(void)
 		else
 		{
 			isConDeviceOpened = FALSE;
-			mysprintf(buf,	"Failed to open device: %s", devName);
-			EZReq(NULL, buf);
+            InfoReq(isRunningOnWB ? NULL : win, "Failed to open device: %s", devName);
+			// mysprintf(buf,	"Failed to open device: %s", devName);
+			// EZReq(NULL, buf);
 			goto clean_and_return;
 		}
 	}
@@ -2909,7 +2898,8 @@ void CloseDisplay(BOOL manageScreen)
 
 			if (! (mainTask->tc_SigAlloc & (1L << 31)))
 			{
-				EZReq(NULL, "ERROR: sigbit 31 has disappeared before CloseDevice()! Why???");
+				InfoReq(isRunningOnWB ? NULL : win,
+                        "ERROR: sigbit 31 has disappeared before CloseDevice()! Why???");
 			}
 		#endif
 
@@ -2932,7 +2922,7 @@ void CloseDisplay(BOOL manageScreen)
 
 			dontUseSig31 = AllocSignal(31L);
 			if (dontUseSig31 != 31)
-				EZReq(NULL, "ERROR: cannot allocate sigbit 31!");
+				InfoReq(isRunningOnWB ? NULL : win, "ERROR: cannot allocate sigbit 31!");
 
 			#ifdef _DEBUG
 				PutStr("SigAlloc:"); PrintBitsULONG(mainTask->tc_SigAlloc);
@@ -2988,7 +2978,7 @@ void CloseDisplay(BOOL manageScreen)
 
                 #ifdef _DEBUG
                     PutStr("   <-- CloseScreen()\n");
-                    if (! result)  EZReq(NULL, "ERROR: Failed to close screen!");
+                    if (! result)  InfoReq(NULL, "ERROR: Failed to close screen!");
                 #endif
             }
 
