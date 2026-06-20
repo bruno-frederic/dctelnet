@@ -138,7 +138,7 @@ extern struct ExecBase *SysBase;
 struct ReqToolsBase *ReqToolsBase;
 struct IntuitionBase *IntuitionBase;
 struct GfxBase *GfxBase;
-struct Library *KeymapBase, *GadToolsBase, *SocketBase;
+struct Library *KeymapBase, *GadToolsBase, *AslBase, *SocketBase;
 struct Library *DiskfontBase, *IconBase, *WorkbenchBase, *UtilityBase;
 
 struct Window *win, *scrollbackWin, *toolBarWin;
