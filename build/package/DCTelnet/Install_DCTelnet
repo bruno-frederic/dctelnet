@@ -53,6 +53,19 @@
 (SET SCDir    (TACKON DestDir "SCIcons"))
 (SET WBDir    (TACKON DestDir "WBIcons"))
 
+(if (= (exists DestDir) 1)  ; 1 <=> it is a file
+    (
+        (message
+            "\nERROR: A drawer for DCTelnet already exists in the choosen path.\n"
+            "Unable to create a 'DCTelnet' drawer inside an existing DCTelnet installation.\n\n"
+            "Note: The installer will create a new 'DCTelnet' drawer inside the path you select.\n"
+            "When updating an existing installation, please choose the *parent* drawer"
+            " instead of the current DCTelnet drawer.")
+
+        (EXIT (quiet))
+    )
+)
+
     (COPYFILES
         (prompt    "\n\nInstalling DCTelnet executable for 68 000.\n")
         (help @copyfiles-help)
