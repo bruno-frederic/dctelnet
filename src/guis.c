@@ -43,10 +43,12 @@ UWORD                  OffX, OffY;
 static ULONG lastsec, lasttic;
 
 static UBYTE *SORT0Labels[] = {
-    (UBYTE *)"Name",
-    (UBYTE *)"Name Reverse",
-    (UBYTE *)"Last Connect",
-    NULL };
+    (UBYTE *)"Recent Connect (first)",
+    (UBYTE *)"Oldest Connect (first)",
+    (UBYTE *)"Name (A-Z)",
+    (UBYTE *)"Name (Z-A)",
+    NULL
+};
 
 
 static UBYTE aBookGTypes[] = {
@@ -64,7 +66,7 @@ static struct MyNewGadget aBookNGad[] = {
     19, 84, 93, 13, (UBYTE *)"_Connect",
     115, 84, 93, 13, (UBYTE *)"_Edit",
     212, 84, 93, 13, (UBYTE *)"_Add",
-    190, 103, 173, 13, (UBYTE *)"List Sorted By:",
+    160, 103, 203, 13, (UBYTE *)"List Sorted By:",
     308, 84, 93, 13, (UBYTE *)"_Delete",
 };
 
@@ -249,45 +251,79 @@ static struct Node *FindNode(struct List *listviewlist, UWORD lastcode)
     return(0);
 }
 
-static void Sort(struct List *list, char reverse, char lastconnect)
+
+/**
+ * @brief Sorts the bookmark list.
+ *
+ * Sorts the specified bookmark list according to the selected sort mode.
+ *
+ * @param list      Pointer to the bookmark list to sort.
+ * @param sortMode  Sort mode (0..3) :  index in the SORT0Labels[] array
+ */
+static void SortABook(struct List *list, UWORD sortMode)
 {
     register char *temp;
     struct Node *worknode, *nextnode;
     struct Node *inworknode, *innextnode;
+    BOOL swap;
+    const BOOL sortByLastConnect = (sortMode <= 1);
+    const BOOL reverseSort = (sortMode == 1 || sortMode == 3);
 
-    worknode = list -> lh_Head;
-    while(worknode)
+    worknode = list->lh_Head;
+    while (worknode)
     {
-        nextnode = worknode -> ln_Succ;
-        if(!nextnode) break;
+        nextnode = worknode->ln_Succ;
+        if (! nextnode)
+            break;
 
-        inworknode = list -> lh_Head;
-        while(inworknode)
+        inworknode = list->lh_Head;
+        while (inworknode)
         {
-            innextnode = inworknode -> ln_Succ;
-            if(!innextnode) goto jump;
+            innextnode = inworknode->ln_Succ;
+            if (! innextnode)
+                break;
 
-            if(lastconnect)
+            swap = FALSE;
+
+            if (sortByLastConnect)
             {
-                if(((struct BookStruct *)inworknode->ln_Name)->last > ((struct BookStruct *)worknode->ln_Name)->last) goto swap;
-            } else {
-                if(reverse)
+                ULONG a = ((struct BookStruct *)inworknode->ln_Name)->last;
+                ULONG b = ((struct BookStruct *)worknode->ln_Name)->last;
+
+                if (reverseSort)  // Oldest first
                 {
-                    if(stricmp(inworknode->ln_Name, worknode->ln_Name) < 0) goto swap;
-                } else {
-                    if(stricmp(inworknode->ln_Name, worknode->ln_Name) > 0)
-                    {
-swap:                        temp = inworknode->ln_Name;
-                        inworknode->ln_Name = worknode->ln_Name;
-                        worknode->ln_Name = temp;
-                    }
+                    if(a > b)  swap = TRUE;
+                }
+                else              // Most recent first
+                {
+                    if(a < b)  swap = TRUE;
+                }
+            }
+            else
+            {
+                int cmp = stricmp(inworknode->ln_Name, worknode->ln_Name);
+
+                if (reverseSort)  // Z -> A
+                {
+                    if (cmp < 0)  swap = TRUE;
+                }
+                else              // A -> Z
+                {
+                    if (cmp > 0)  swap = TRUE;
                 }
             }
 
-                    inworknode = innextnode;
+            if (swap)
+            {
+                temp = inworknode->ln_Name;
+                inworknode->ln_Name = worknode->ln_Name;
+                worknode->ln_Name = temp;
+            }
+
+            inworknode = innextnode;
         }
-jump:
-                worknode = nextnode;
+
+        worknode = nextnode;
     }
 }
 
@@ -359,6 +395,9 @@ void AddressBook(void)
         Close(fh);
     }
 
+    // Sort using the default Address Book sort order
+    SortABook(listviewlist, 0);
+
     // Attach the list to the listview gadget
     aBookGTags[1] = (unsigned long)listviewlist;
 
@@ -402,13 +441,14 @@ void AddressBook(void)
                     switch(gad->GadgetID)
                     {
                     case GD_SORT:       //  Sorting mode changed
-                        if(code == 2)
-                            Sort(listviewlist, 0, TRUE);
-                        else
-                            Sort(listviewlist, code, FALSE);
+                        SortABook(listviewlist, code);
 
-                        GT_SetGadgetAttrs(aBookGadgets[GD_LIST],aBookWnd,0,GTLV_Labels,listviewlist,GTLV_Selected,lastcode,TAG_DONE);
-                        save = TRUE;
+                        // Refresh the ListView to reflect the new sort order while preserving the
+                        // current selection index.
+                        GT_SetGadgetAttrs(aBookGadgets[GD_LIST], aBookWnd, NULL,
+                                          GTLV_Labels,   listviewlist,
+                                          GTLV_Selected, lastcode,
+                                          TAG_DONE);
                         break;
 
                     case GD_LIST:       // Item selected in listview or double-clicked
