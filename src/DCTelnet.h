@@ -81,7 +81,9 @@ extern BOOL shouldUniconify;        // must shouldUniconifyify
 // Used in Receive(), xpr_sflush(). Beware: each call to this function destroy the content
 extern UBYTE recvBuffer[4096];
 extern unsigned char buf[2048];
-extern unsigned char keys[1520];
+#define F_KEY_COUNT 10
+#define F_KEY_SIZE  152  // 151 chars + '\0'
+extern TEXT fKeys[F_KEY_COUNT * F_KEY_SIZE];
 extern UWORD winTop;                // WinTop topEdge (titlebar height)
 extern struct Task *mainTask;       // An AmigaOS Task is roughly equivalent to a thread
 

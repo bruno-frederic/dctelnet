@@ -1030,16 +1030,16 @@ static struct MyNewGadget fKeysNGad[] = {
 };
 
 static ULONG fKeysGTags[] = {
-    GTST_String, 0, (GTST_MaxChars), 151, (TAG_DONE),
-    GTST_String, 0, (GTST_MaxChars), 151, (TAG_DONE),
-    GTST_String, 0, (GTST_MaxChars), 151, (TAG_DONE),
-    GTST_String, 0, (GTST_MaxChars), 151, (TAG_DONE),
-    GTST_String, 0, (GTST_MaxChars), 151, (TAG_DONE),
-    GTST_String, 0, (GTST_MaxChars), 151, (TAG_DONE),
-    GTST_String, 0, (GTST_MaxChars), 151, (TAG_DONE),
-    GTST_String, 0, (GTST_MaxChars), 151, (TAG_DONE),
-    GTST_String, 0, (GTST_MaxChars), 151, (TAG_DONE),
-    GTST_String, 0, (GTST_MaxChars), 151, (TAG_DONE),
+    GTST_String, (ULONG) NULL, (GTST_MaxChars), F_KEY_SIZE-1, (TAG_DONE),
+    GTST_String, (ULONG) NULL, (GTST_MaxChars), F_KEY_SIZE-1, (TAG_DONE),
+    GTST_String, (ULONG) NULL, (GTST_MaxChars), F_KEY_SIZE-1, (TAG_DONE),
+    GTST_String, (ULONG) NULL, (GTST_MaxChars), F_KEY_SIZE-1, (TAG_DONE),
+    GTST_String, (ULONG) NULL, (GTST_MaxChars), F_KEY_SIZE-1, (TAG_DONE),
+    GTST_String, (ULONG) NULL, (GTST_MaxChars), F_KEY_SIZE-1, (TAG_DONE),
+    GTST_String, (ULONG) NULL, (GTST_MaxChars), F_KEY_SIZE-1, (TAG_DONE),
+    GTST_String, (ULONG) NULL, (GTST_MaxChars), F_KEY_SIZE-1, (TAG_DONE),
+    GTST_String, (ULONG) NULL, (GTST_MaxChars), F_KEY_SIZE-1, (TAG_DONE),
+    GTST_String, (ULONG) NULL, (GTST_MaxChars), F_KEY_SIZE-1, (TAG_DONE),
     (GTCY_Labels), (ULONG)&MOD0Labels[ 0 ], (GA_Disabled), TRUE, (TAG_DONE),
     (GT_Underscore), '_', (TAG_DONE),
     (GT_Underscore), '_', (TAG_DONE)
@@ -1097,34 +1097,37 @@ static int OpenFKeysWindow( void )
 }
 
 
-/*
-Function Keys dialog (pure GadTools implementation).
-
-Allows the user to store strings that are sent to the Telnet server
-when the corresponding function key is pressed.
-*/
+/**
+ * @brief Display the Function Keys configuration dialog.
+ *
+ * Opens a modal GadTools-based dialog that allows the user to edit the strings associated with the
+ * function keys (F1-F10). Each string defines the text that will be sent to the remote Telnet
+ * server when the corresponding function key is pressed.
+ *
+ * If the user confirms the changes, the updated strings are copied to the global function key table
+ * and written to the function key preferences file. If the dialog is cancelled, all modifications
+ * are discarded.
+ *
+ * @note The dialog is implemented entirely with GadTools gadgets and processes Intuition messages
+ *       until the user closes it.
+ *
+ * @note The function updates the in-memory function key table before writing it to disk.
+ */
 void FunctionKeys(void)
 {
     struct IntuiMessage *message;
     struct Gadget *gad;
     ULONG class;
     UWORD code;
-    char subdone = FALSE;
-    char save = FALSE;
+    BOOL subdone = FALSE;
+    BOOL save = FALSE;
+    int i;
 
-    memcpy(buf, keys, 1520);
+    // Initialize gadget fields with current settings:
+    for (i = 0; i < F_KEY_COUNT; i++)
+        fKeysGTags[1 + i * 5] = (ULONG)&fKeys[i * F_KEY_SIZE];
 
-    fKeysGTags[1] = (ULONG)buf;
-    fKeysGTags[6] = (ULONG)&buf[152];
-    fKeysGTags[11] = (ULONG)&buf[152*2];
-    fKeysGTags[16] = (ULONG)&buf[152*3];
-    fKeysGTags[21] = (ULONG)&buf[152*4];
-    fKeysGTags[26] = (ULONG)&buf[152*5];
-    fKeysGTags[31] = (ULONG)&buf[152*6];
-    fKeysGTags[36] = (ULONG)&buf[152*7];
-    fKeysGTags[41] = (ULONG)&buf[152*8];
-    fKeysGTags[46] = (ULONG)&buf[152*9];
-
+    // Open the Functions Keys window
     if(OpenFKeysWindow() == RETURN_OK)
     {
         while(!subdone)
@@ -1132,10 +1135,11 @@ void FunctionKeys(void)
             WaitPort(fKeysWnd->UserPort);
             while (message = GT_GetIMsg(fKeysWnd->UserPort))
             {
-                    gad   = (struct Gadget *)message->IAddress;
+                gad   = (struct Gadget *)message->IAddress;
                 class = message->Class;
                 code  = message->Code;
                 GT_ReplyIMsg(message);
+
                 switch (class)
                 {
                 case IDCMP_CLOSEWINDOW:
@@ -1145,10 +1149,11 @@ void FunctionKeys(void)
                 case IDCMP_VANILLAKEY:
                     switch(toupper(code))
                     {
-                        case 'O':
+                        case 'S':            // Save
                             save = TRUE;
+                            /* fall through */
                         case 'C':
-                            subdone = TRUE;
+                            subdone = TRUE;  // Cancel
                     }
                     break;
 
@@ -1157,34 +1162,47 @@ void FunctionKeys(void)
                     {
                     case GD_SAVEE:
                         save = TRUE;
+                        /* fall through */
                     case GD_CANCELL:
                         subdone = TRUE;
                         break;
-                    }
-                    if(gad->GadgetID < 10)
-                    {
-                        strcpy(&buf[gad->GadgetID*152], ((struct StringInfo *)gad->SpecialInfo)->Buffer);
                     }
                 }
             }
         }
     }
 
-    if ( fKeysWnd ) CloseWindow( fKeysWnd );
-
-    if ( fKeysGList ) FreeGadgets( fKeysGList );
-
+    // Save gadget values to the Prefs file if user pressed OK:
     if(save)
     {
-        register BPTR fh = Open(keysFilename, MODE_NEWFILE);
+        register BPTR fh;
+        LONG l;
+
+        for (i=0 ; i < F_KEY_COUNT ; i++)
+        {
+            // The gadget buffer is expected to be limited by "(GTST_MaxChars), F_KEY_SIZE-1",
+            // but this provides additional protection against unexpected gadget behavior.
+            strlcpy(&fKeys[i * F_KEY_SIZE],
+                    ((struct StringInfo *)fKeysGadgets[i]->SpecialInfo)->Buffer,
+                    F_KEY_SIZE);
+        }
+
+        fh = Open(keysFilename, MODE_NEWFILE);
+        l = 0;
         if(fh)
         {
-            Write(fh, buf, 1520);
+            l = Write(fh, fKeys, F_KEY_COUNT * F_KEY_SIZE);
             Close(fh);
         }
-        memcpy(keys, buf, 1520);
-        //CopyMem(buf, keys, 1520);
+
+        if (!fh || l != (F_KEY_COUNT * F_KEY_SIZE))
+        {
+            SimpleReq("ERROR: Failed to save Function keys settings!");
+        }
     }
+
+    if (fKeysWnd)   { CloseWindow(fKeysWnd);   fKeysWnd   = NULL; }
+    if (fKeysGList) { FreeGadgets(fKeysGList); fKeysGList = NULL; }
 }
 
 

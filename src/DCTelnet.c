@@ -190,7 +190,8 @@ void *visualInfos;
 char username[42], password[42];
 // TCP Receive buffer, used in Receive(), xpr_sflush(). Cauntion: these functs destroy the content
 UBYTE recvBuffer[4096];
-unsigned char buf[2048], keys[1520];
+unsigned char buf[2048];
+TEXT fKeys[F_KEY_COUNT * F_KEY_SIZE];
 static unsigned char conbuf[16], scrollbuf[402];
 char server[64];
 static ULONG lasttop;        // last topline of scrollback
@@ -1146,7 +1147,7 @@ fixprefs:        //prefs.win_left = 0;
     fh = Open(keysFilename, MODE_OLDFILE);
     if(fh)
     {
-        Read(fh, keys, 1520);
+        Read(fh, fKeys, F_KEY_COUNT * F_KEY_SIZE);
         Close(fh);
     }
 
@@ -1938,10 +1939,10 @@ static void GetWindowMsg(struct Window *wwin)
                             if(key_csi)
                             {
                                 key_csi = FALSE;
-                                if(conbuf[i] > 47 && conbuf[i] < 58)
+                                if (conbuf[i] >= '0' && conbuf[i] <= '9')
                                 {
                                     key_macro = TRUE;
-                                    SendMacro(&keys[(conbuf[i]-48)*152]);
+                                    SendMacro(&fKeys[(conbuf[i] - '0') * F_KEY_SIZE]);
                                 }
 
                                 switch(conbuf[i])
