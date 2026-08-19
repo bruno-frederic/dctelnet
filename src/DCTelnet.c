@@ -2263,7 +2263,16 @@ static void GetWindowMsg(struct Window *wwin)
                         break;
 
                     case MENU_USE_XEM_LIBRARY:
-                        UpdatePrefsFlagFromMenu(item, FLAG_USE_XEM_LIBRARY);
+                        if (prefs.displaydriver[0] == '\0')
+                        {
+                            SimpleReq("No XEM library has been selected yet.\n"
+                                      "Please choose one first from the Settings menu.");
+                        }
+                        else
+                            UpdatePrefsFlagFromMenu(item, FLAG_USE_XEM_LIBRARY);
+
+                        // Restart even when prefs.displaydriver[0] == '\0', this forces a menu
+                        // refresh so the CHECKED state of the item is properly reverted :
                         shouldRestart = TRUE;
                         break;
 
