@@ -3095,24 +3095,33 @@ BOOL OpenDisplay(void)
 
     if(!isConnected)
     {
-        register UWORD flags;
-        register char cpu;
+        STRPTR dispEngine;
+        register ULONG flags = SysBase->AttnFlags;
+        LONG cpu = '0';
 
-        flags = SysBase->AttnFlags;
-        cpu = '0';
         if(flags & AFF_68010) cpu = '1';
         if(flags & AFF_68020) cpu = '2';
         if(flags & AFF_68030) cpu = '3';
         if(flags & AFF_68040) cpu = '4';
         if(flags & AFF_68060) cpu = '6';
 
+
+        if(drivertype == DRIVER_XEM_LIB)
+            dispEngine = prefs.displaydriver;
+        else if (isRunningOnWB)
+            dispEngine = "console.device";
+        else
+            dispEngine = "ibmcon.device";
+
         LocalFmt("›0;1;36m\f\r\n\r\n"
                 "Processor: ›37m680%lc0\r\n\r\n›36m"
                 "Kickstart: ›37m%ld.%ld\r\n\r\n›36m"
+                "Display engine: ›37m%s\r\n\r\n›36m"
                 "TCP Stack: ›37m",
                 cpu,
-                ((struct Library *)SysBase)->lib_Version,
-                SysBase->SoftVer);
+                (LONG)((struct Library *)SysBase)->lib_Version,
+                (LONG)SysBase->SoftVer,
+                dispEngine);
 
         if(SocketBase)
         {
