@@ -2,7 +2,7 @@ Short:        DCTelnet - Telnet/BBS client with Zmodem
 Author:       Bruno FREDERIC
 Uploader:     bruno.frederic+aminet@gm...
 Type:         comm/tcp
-Version:      1.9
+Version:      1.9.1-dev
 Architecture: m68k-amigaos >= 2.0
 Distribution: Aminet
 
@@ -39,6 +39,11 @@ Join the conversation on the EAB forum thread:
 https://eab.abime.net/showthread.php?t=121939
 
 ---
+
+v1.9.1 Changelog
+
+TODO
+
 
 v1.9 Changelog
 
