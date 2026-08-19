@@ -22,6 +22,7 @@
 #include "DCTelnet.h"
 #include "guis.h"
 #include "requesters.h"
+#include "utils.h"
 
 #define PATHLEN 256     // From third_party\Xpr\XprZmodem.h
 

@@ -22,6 +22,7 @@
 #include "guis.h"
 #include "DCTelnet.h"
 #include "requesters.h"
+#include "utils.h"
 
 struct BookStruct
 {
@@ -645,80 +646,6 @@ static int OpenEditProfileWindow( void )
     return( 0L );
 }
 
-
-
-// Unix time starts on 1970-01-01, while AmigaOS DateStamp time starts on 1978-01-01.
-// 252460800 is the number of seconds between these two epochs.
-#define UNIX_TO_AMIGA_EPOCH 252460800L
-
-#define SECONDS_PER_DAY     86400
-#define MINUTES_PER_DAY     1440
-#define SECONDS_PER_MINUTE  60
-
-/**
- * @brief Returns the current time as a Unix timestamp.
- *
- * Retrieves the current time using Intuition library and converts it to the number of
- * seconds elapsed since the Unix epoch (1970-01-01 00:00:00 UTC).
- * AmigaOS uses 1978-01-01 00:00:00 as its epoch. The conversion therefore adds the number
- * of seconds between the AmigaOS and Unix epochs.
- *
- * @return Current time in seconds since the Unix epoch.
- */
-ULONG mytime(void)
-{
-    ULONG seconds;
-
-    CurrentTime(&seconds, NULL); // works on OS 3.2 with 2nd arg = NULL
-
-    return seconds + UNIX_TO_AMIGA_EPOCH;
-}
-
-
-/**
- * @brief Converts an Unix timestamp to a human-readable date and time string.
- *
- * Converts a Unix timestamp expressed in seconds since 1970-01-01 00:00:00 into an AmigaOS
- * DateStamp and formats it using DateToStr() from DOS.library.
- *
- * A timestamp of zero is displayed as "Never".
- *
- * @param secs     Unix timestamp in seconds.
- * @param outbuf   Destination buffer receiving the formatted date and time.
- * @param maxLen   Size of the destination buffer in bytes.
- */
-static void myctime(ULONG secs, char *outbuf, size_t maxLen)
-{
-    char strTime[LEN_DATSTRING + 1]; // one extra byte for ' ' character
-    struct DateTime dt;
-
-    if (secs == 0)
-    {
-        strlcpy(outbuf, "Never", maxLen);
-        return;
-    }
-
-    // Convert Unix time (1970 epoch) to AmigaOS DateStamp time (1978 epoch).
-    secs -= UNIX_TO_AMIGA_EPOCH;
-
-    dt.dat_Stamp.ds_Days   = secs / SECONDS_PER_DAY;
-    dt.dat_Stamp.ds_Minute = (secs / SECONDS_PER_MINUTE) % MINUTES_PER_DAY;
-    dt.dat_Stamp.ds_Tick   = (secs % SECONDS_PER_MINUTE) * TICKS_PER_SECOND;
-
-    dt.dat_Format = FORMAT_DOS;
-    dt.dat_Flags  = 0;
-
-    // DateToStr() requires output buffers of at least LEN_DATSTRING bytes.
-    dt.dat_StrDay  = NULL;
-    dt.dat_StrDate = outbuf;
-    dt.dat_StrTime = strTime + 1;
-
-    DateToStr(&dt);
-
-    strTime[0] = ' ';
-
-    strlcat(outbuf, strTime, maxLen);
-}
 
 /*
 Opens the Edit Address Book Profile dialog.

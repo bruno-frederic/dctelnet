@@ -32,14 +32,14 @@ MAKE=smake
 
 TARGET=DCTelnet
 CPU=68000
-DEPS = abook.h connect.h DCTelnet.h DCTelnet-debug.h DCTelnet-protocol.h edit.h fkey.h guis.h Xfer.h Xem_wrapper.h requesters.h
+DEPS = abook.h connect.h DCTelnet.h DCTelnet-debug.h DCTelnet-protocol.h edit.h fkey.h guis.h Xfer.h Xem_wrapper.h requesters.h utils.h
 # The first '/' in the path is equivalent to '../' on other platforms:
 INSTALLDIR=/build/installed/DCTelnet
 
 # final OBJDIR depends on CPU and OBJ_SUFFIX
 # OBJDIR need to be on an Amiga fileystem (too many file access problem on shared WinUAE folder):
 OBJDIR            = RAM:build/sasc-$(CPU)-$(OBJ_SUFFIX)
-OBJS              = $(OBJDIR)/DCTelnet.o $(OBJDIR)/Connect.o $(OBJDIR)/Guis.o $(OBJDIR)/Xfer.o $(OBJDIR)/Xem_wrapper.o $(OBJDIR)/requesters.o
+OBJS              = $(OBJDIR)/DCTelnet.o $(OBJDIR)/Connect.o $(OBJDIR)/Guis.o $(OBJDIR)/Xfer.o $(OBJDIR)/Xem_wrapper.o $(OBJDIR)/requesters.o $(OBJDIR)/utils.o
 TARGET_EXE        = $(OBJDIR)/$(TARGET).$(CPU)
 MAKEFILE_UPTODATE = $(OBJDIR)/Makefile.uptodate
 
@@ -105,6 +105,10 @@ $(OBJDIR)/Xem_wrapper.o: Xem_wrapper.c $(DEPS) $(OBJDIR)
 	$(CC) $(CFLAGS) $*.c  ObjectName=$(OBJDIR)/
 
 $(OBJDIR)/requesters.o: requesters.c $(DEPS) $(OBJDIR)
+	@echo "------------- $@ --------------------"
+	$(CC) $(CFLAGS) $*.c  ObjectName=$(OBJDIR)/
+
+$(OBJDIR)/utils.o: utils.c $(DEPS) $(OBJDIR)
 	@echo "------------- $@ --------------------"
 	$(CC) $(CFLAGS) $*.c  ObjectName=$(OBJDIR)/
 
