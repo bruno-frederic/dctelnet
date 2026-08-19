@@ -35,6 +35,65 @@ void LocalPrintByte(unsigned char b)
 }
 
 
+/**
+ * @brief Write a single character to the current DOS output stream.
+ *
+ * This inline version caches the result of Output() in a local variable, allowing the compiler to
+ * optimize away repeated calls to Output() when PutC() is used inside loops or tight debug-print
+ * sections. This makes the generated code more efficient than a preprocessor macro, while
+ * preserving type safety and avoiding double-evaluation of arguments.
+ */
+#ifdef __SASC
+TEXT __inline
+#else
+inline TEXT
+#endif
+PutC(TEXT ch)
+{
+    BPTR out = Output();
+    return (TEXT) FPutC(out, (LONG) ch);
+}
+
+
+// Lookup table providing human-readable names for all control and non-printable characters.
+// Printable ASCII positions are intentionally left NULL.
+static const char *CtrlName[256] =
+{
+    // 0x00 - 0x1F (C0)
+    "NUL","SOH","STX","ETX","EOT","ENQ","ACK","BEL", "BS", "HT", "LF","VT", "FF","CR","SO","SI",
+    "DLE","DC1","DC2","DC3","DC4","NAK","SYN","ETB", "CAN","EM","SUB","ESC","FS","GS","RS","US",
+
+    /* 0x20 - 0x7E printable ASCII */
+    NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL, NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,
+    NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL, NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,
+    NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL, NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,
+    NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL, NULL,NULL,NULL,NULL,NULL,NULL,NULL,
+    NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL, NULL,NULL,NULL,NULL,NULL,NULL,NULL,
+    NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL,NULL, NULL,NULL,NULL,NULL,NULL,NULL,
+
+    // 0x7F
+    "DEL",
+
+    // 0x80 - 0x9F (C1 Amiga / ECMA-48)
+    "PAD","HOP","BPH","NBH","IND","NEL","SSA","ESA","HTS", "HTJ","VTS","PLD","PLU","RI","SS2","SS3",
+    "DCS","PU1","PU2","STS","CCH","MW" ,"SPA","EPA","SOS","SGCI","SCI","CSI", "ST","OSC","PM","APC"
+
+    // ... printable ISO-8859
+};
+
+
+void LogByteBuffer(const UBYTE *p, ULONG n)
+{
+    while (n--)
+    {
+        UBYTE c = *p++;
+        if (CtrlName[c] == NULL)  { PutC(c); }
+        else                      { Printf("<0x%02lx=%s>", (LONG) c, CtrlName[c]); }
+    }
+    PutC('\n');
+}
+
+
 void LogWindowsSigBit(void)
 {
     ULONG array[1];
