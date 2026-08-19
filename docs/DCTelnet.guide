@@ -427,23 +427,16 @@ address book, to the site you are connected to.
 
 @{b}Character display issues and font selection@{ub}
 
-If, after connecting to a BBS, some characters appear incorrect or
-garbled, this is usually related to the selected terminal font.
-Make sure the font matches the character set expected by the
-remote system.
+If some characters appear incorrect or garbled after connecting to a BBS,
+the issue is usually related to the selected terminal font. Make sure the
+font matches the character set expected by the remote system.
 
-Many PC-based BBSes require an @{b}ANSI-compatible font@{ub} to
-properly display line art and ANSI graphics. In such cases,
-select the bundled @{b}HyperANSI@{ub} font.
+Many PC-based BBSes require an @{b}IBM Code Page 437 (CP437)@{ub} font to display
+line-drawing characters and ANSI artwork correctly. In such cases, select
+one of the bundled IBM/ANSI fonts: @{i}HyperANSI@{i}, @{i}IBM@{ui}, @{i}P0T-IBM@{ui}, or @{i}ANSEY@{ui}.
 
-On @{b}Amiga-based BBSes@{ub}, graphics are often designed for the
-classic @{b}Topaz@{ub} font. This is the case, for example, on
-@{b}Retro 32 BBS@{ub}.
-
-@{b}Important:@{ub}
-After switching the terminal font, @{b}quit DCTelnet and restart
-it@{ub} before reconnecting. This avoids the display issue
-described below and ensures correct rendering.
+On @{b}Amiga-based BBSes@{ub}, graphics are often designed for the classic @{b}Topaz@{ub}
+font. This is the case, for example, on @{i}Retro 32 BBS@{ui}.
 
 ---------------------------------------------
 

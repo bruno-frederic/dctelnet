@@ -101,14 +101,11 @@ On Amiga OS 2.*, the AmigaGuide tool is required (available on Aminet: [text/hyp
 
 ### Character display issues and font selection
 
-If, after connecting to a BBS, some characters appear incorrect or garbled, this is usually related to the selected terminal font. Make sure the font matches the character set expected by the remote system.
+If some characters appear incorrect or garbled after connecting to a BBS, the issue is usually related to the selected terminal font. Make sure the font matches the character set expected by the remote system.
 
-Many PC-based BBSes require an **ANSI-compatible font** to properly display line art and ANSI graphics. In such cases, select the bundled **HyperANSI** font.
+Many PC-based BBSes require an **IBM Code Page 437 (CP437)** font to display line-drawing characters and ANSI artwork correctly. In such cases, select one of the bundled IBM/ANSI fonts: *HyperANSI*, *IBM*, *P0T-IBM*, or *ANSEY*.
 
-On **Amiga-based BBSes**, graphics are often designed for the classic **Topaz** font. This is the case, for example, on **Retro 32 BBS**.
-
-**Important:**
-After switching the terminal font, **quit DCTelnet and restart it** before reconnecting. This avoids the display issue described **below** and ensures correct rendering.
+On **Amiga-based BBSes**, graphics are often designed for the classic **Topaz** font. This is the case, for example, on *Retro 32 BBS*.
 
 
 ### Connection stuck after changing display settings (fonts, XEM, screen mode) or iconifying the application (fixed in v1.8)
