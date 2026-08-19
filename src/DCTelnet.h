@@ -55,6 +55,10 @@ struct PrefsStruct
 #define FLAG_RAW_CONNECTION      (1 << 13)  // BIT 13 = Raw Connection (NO telnet negotiation data)
 #define FLAG_JUMP_SCROLL         (1 << 14)  // BIT 14 = Jump Scroll
 
+// ID of the gadget in top right corner when title bar is hidden in full screen
+#define GADGET_SCREEN_TO_BACK  20
+
+
 // Global variables exported
 extern char server[64];
 extern long nScrollbackLines;

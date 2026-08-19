@@ -11,6 +11,24 @@ struct MyNewGadget
     UBYTE *ng_GadgetText;               // gadget label
 };
 
+/**
+ * @brief Stable identifiers for toolbar buttons.
+ *
+ * Each value corresponds to the matching entry in the icons[] array.
+ */
+enum ToolbarButtonID
+{
+    BUTTON_CONNECT,
+    BUTTON_DISCONNECT,
+    BUTTON_ADDRESS_BOOK,
+    BUTTON_INFORMATION,
+    BUTTON_UPLOAD,
+    BUTTON_DOWNLOAD,
+    BUTTON_QUIT,
+
+    BUTTON_COUNT
+};
+
 // Global variables exported
 extern UWORD                 OffX, OffY;
 extern APTR Scroller;

@@ -200,11 +200,31 @@ static int OpenABookWindow( void )
     return( 0L );
 }
 
+
+// Unix time starts on 1970-01-01, while AmigaOS DateStamp time starts on 1978-01-01.
+// 252460800 is the number of seconds between these two epochs.
+#define UNIX_TO_AMIGA_EPOCH 252460800L
+
+/**
+ * @brief Returns the current time as a Unix timestamp.
+ *
+ * Retrieves the current AmigaOS DateStamp and converts it to the number of seconds elapsed since
+ * the Unix epoch (1970-01-01 00:00:00 UTC).
+ *
+ * AmigaOS DateStamp uses 1978-01-01 00:00:00 as its epoch. The conversion therefore adds the number
+ * of seconds between the AmigaOS and Unix epochs.
+ *
+ * @return Current time in seconds since the Unix epoch.
+ */
 long mytime(void)
 {
     struct DateStamp stamp;
     DateStamp(&stamp);
-    return( (stamp.ds_Days*24*60*60) + (stamp.ds_Minute*60) + (stamp.ds_Tick/50) + 252460800 );
+
+    return (stamp.ds_Days * 24 * 60 * 60)
+         + (stamp.ds_Minute * 60)
+         + (stamp.ds_Tick / TICKS_PER_SECOND)
+         + UNIX_TO_AMIGA_EPOCH;
 }
 
 
@@ -419,7 +439,7 @@ delete:
                         if(worknode = FindNode(listviewlist, lastcode))
                         {
                             if (ConfirmRequester(isRunningOnWB ? NULL : win,"Delete|Cancel",
-                                                         "Delete \042%s\042?", worknode->ln_Name))
+                                                         "Delete \"%s\"?", worknode->ln_Name))
                             //mysprintf(buf, "Delete \042%s\042?", worknode->ln_Name);
                             //if(rtEZRequestA(buf, "Delete|Cancel", NULL, NULL, (struct TagItem *)&reqtoolsTags))
                             {
@@ -610,7 +630,7 @@ static int OpenEditProfileWindow( void )
 
 static void myctime(long secs, char *outbuf)
 {
-    char buf1[16];
+    char buf1[LEN_DATSTRING];
     struct DateTime tostr;
 
     if(secs == 0)
@@ -619,7 +639,7 @@ static void myctime(long secs, char *outbuf)
         return;
     }
 
-    secs -= 252460800;
+    secs -= UNIX_TO_AMIGA_EPOCH;
 
     tostr.dat_Stamp.ds_Days = secs / 86400;
     tostr.dat_Stamp.ds_Minute = (secs / 60) % 1440;
@@ -628,7 +648,7 @@ static void myctime(long secs, char *outbuf)
                     - (86400*tostr.dat_Stamp.ds_Days);
     tostr.dat_Stamp.ds_Tick *= 50;
     tostr.dat_Format    = FORMAT_DOS;
-    tostr.dat_StrDay    = 0;
+    tostr.dat_StrDay    = NULL;
     tostr.dat_StrDate    = outbuf;
     tostr.dat_StrTime    = &buf1[1];
     tostr.dat_Flags        = 0;
@@ -918,7 +938,10 @@ void OpenScrollBack(UWORD sel)
                             ICA_MAP,    ArrowMappings,
                         TAG_DONE))
                         {
-                            memcpy(&newWin, &prefs.sb_left, 8);
+                            newWin.LeftEdge   = prefs.sb_left;
+                            newWin.TopEdge    = prefs.sb_top;
+                            newWin.Width      = prefs.sb_width;
+                            newWin.Height     = prefs.sb_height;
                             newWin.IDCMPFlags = IDCMP_IDCMPUPDATE | LISTVIEWIDCMP | IDCMP_MENUPICK | IDCMP_NEWSIZE | IDCMP_CLOSEWINDOW | BUTTONIDCMP | IDCMP_RAWKEY;
                             newWin.Flags = WFLG_NOCAREREFRESH | WFLG_ACTIVATE|WFLG_CLOSEGADGET|WFLG_DRAGBAR|WFLG_DEPTHGADGET|WFLG_SIZEGADGET;
                             newWin.FirstGadget = Scroller;
@@ -1165,17 +1188,18 @@ void FunctionKeys(void)
 }
 
 
-#define BUTTONS 7
+static char *icons[BUTTON_COUNT] =
+{
+    "Connect",
+    "Disconnect",
+    "AddressBook",
+    "Information",
+    "Upload",
+    "Download",
+    "Quit"
+};
 
-static char *icons[] = {    "Connect",
-            "Disconnect",
-            "AddressBook",
-            "Information",
-            "Upload",
-            "Download",
-            "Quit"            };
-
-static struct DiskObject *dob[BUTTONS];
+static struct DiskObject *dob[BUTTON_COUNT];
 
 
 void CheckDimensions(struct NewWindow *newwin)
@@ -1198,7 +1222,7 @@ void CloseToolBarWindow(void)
         CloseWindow(toolBarWin);
         toolBarWin = NULL;
 
-        for(i=0; i<BUTTONS; i++)
+        for(i=0; i<BUTTON_COUNT; i++)
         {
             if(dob[i]) { FreeDiskObject(dob[i]);  dob[i]= NULL; }
         }
@@ -1253,7 +1277,7 @@ void OpenToolBarWindow(char setmenus)
             }
             i++;
         }
-        while(i != BUTTONS);
+        while(i != BUTTON_COUNT);
 
         if(!firstgad)
         {
@@ -1264,7 +1288,8 @@ void OpenToolBarWindow(char setmenus)
 
         if (isRunningOnWB)
         {
-            memcpy(&newWin, &prefs.toolBarWin_left, 4);
+            newWin.LeftEdge = prefs.toolBarWin_left;
+            newWin.TopEdge  = prefs.toolBarWin_top;
 
             newWin.Width = gad->LeftEdge + gad->Width + scr->WBorRight + 1;
             newWin.Height = maxheight + wintop + scr->WBorBottom + 3 + scr->RastPort.Font->tf_YSize;

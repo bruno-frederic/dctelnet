@@ -618,7 +618,7 @@ BOOL GetStringRequester(struct Window *parent, STRPTR title, STRPTR prompt,
                             done = TRUE;
                         break;
 
-                        case 13:    // RETURN
+                        case '\r':  // RETURN
                             result = TRUE;
                             done = TRUE;
                         break;

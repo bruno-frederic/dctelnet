@@ -658,12 +658,12 @@ static long Checkwinmsg(struct Window *wwin)
             case IDCMP_GADGETUP:
                 switch(gad->GadgetID)
                 {
-                    case 20:
+                    case GADGET_SCREEN_TO_BACK:
                         ScreenToBack(scr);
                         break;
-                    case 6:
+                    case BUTTON_QUIT:
                         shouldQuitApp = TRUE;
-                    case 1:
+                    case BUTTON_DISCONNECT:
                         return(-1);
                     default:
                         DisplayBeep(scr);
@@ -1033,9 +1033,9 @@ void Upload(char *library)
             #endif
             SendZmodemCancelSequence();
 
-            // Pause to let the user read the Xfer window error (~3s on PAL systems)
+            // Pause to let the user read the Xfer window error
             // and to allow the cancel sequence to be transmitted to the server
-            Delay(150);
+            Delay(3*TICKS_PER_SECOND);
 
             xpr_sflush();   // remove garbage received which prevent them to be displayed.
         }
@@ -1076,9 +1076,9 @@ void Download(char *library)
             {
                 SendZmodemCancelSequence();
 
-                // Pause to let the user read the Xfer window error (~3s on PAL systems)
+                // Pause to let the user read the Xfer window error
                 // and to allow the cancel sequence to be transmitted to the server
-                Delay(150);
+                Delay(3*TICKS_PER_SECOND);
 
                 xpr_sflush();   // remove garbage received which prevent them to be displayed.
             }

@@ -38,7 +38,7 @@ static char MainWindowTitle[] =
 #include <proto/utility.h>            // GetTagData()
 #include <proto/icon.h>               // GetDiskObjectNew(), FreeDiskObject()
 #include <proto/wb.h>                 // AddAppIconA(), RemoveAppIcon()
-#include <proto/keymap.h>             // MapRawKey()
+#include <proto/keymap.h>             // MapRawKey(), RAWKEY_UP, RAWKEY_DOWN, RAWKEY_F1...
 #include <devices/conunit.h>          // CONU_SNIPMAP, CONU_CHARMAP, CONFLAG_DEFAULT
 #include <libraries/reqtools.h>       // struct rtFileList, RT_FILEREQ, RT_Window
 #include <proto/reqtools.h>           // rtAllocRequestA() rtScreenModeRequest() rtPaletteRequestA()
@@ -50,6 +50,13 @@ static char MainWindowTitle[] =
 #include "Xfer.h"
 #include "Xem_wrapper.h"
 #include "requesters.h"
+
+#define ESC_CHAR '\x1B'  // ASCII Escape character (decimal 27, octal 033)
+#define ESC_STR  "\x1B"  // ASCII Escape character (decimal 27, octal 033) as a C string
+#define CSI_CHAR '\x9B'  // Amiga console CSI=Control Sequence Introducer ('›', decimal 155,
+                         // octal 233) cf. Amiga ROM Kernel Reference Manual v2.04 - Devices (1991),
+                         // section "Control Sequences for Window Output"
+#define DEL_CHAR '\x7F'  // ASCII DEL character (decimal 127, octal 177)
 
 
 // Adding or removing items in this structure changes their index numbers,
@@ -646,7 +653,7 @@ static void AddBuf(unsigned char *str, long size)
     {
         switch(str[i])
         {
-            case 10:
+            case '\n':
 add:
                 scrollbuf[indexInScrollBuffer] = 0;
                 indexInScrollBuffer += 2;
@@ -679,14 +686,14 @@ add:
                 }
                 indexInScrollBuffer = 0;
                 break;
-            case 7:
-            case 9:
-            case '':
-            case 13:
+            case '\a':  // 	Alert (Bell)
+            case '\t':
+            case '\f':  // Form Feed (clear the window)
+            case '\r':
                 break;
-            case 27:
+            case ESC_CHAR:
                 i++;
-            case 155:
+            case CSI_CHAR:   // Amiga console CSI
                 n = 0;
                 i++;
                 while(i < size && str[i]>='0' && str[i]<=';')
@@ -869,7 +876,7 @@ cont:
                         j++;
                         break;
                     case 'e':
-                        buf[j] = 27;
+                        buf[j] = ESC_CHAR;
                         j++;
                         break;
                     default:
@@ -949,7 +956,13 @@ static void SpeedTest(void)
     ULONG before, after;
     register UWORD i;
 
-    ConWrite("›0 p\233m\014", 7);
+    // "›0 p" = 9B 30 20 70 : Set Cursor Rendition -> make cursor invisible
+    //                        (disabling the cursor slightly improves output speed)
+    // "›m"   = 9B 6D        : Select Graphic Rendition -> reset attributes (white on black)
+    // "\f"   = 0x0C (FF)    : Form Feed -> clear the window
+    // Reference: Amiga ROM Kernel Reference Manual v2.04 - Devices (1991),
+    //            section "Control Sequences for Window Output"
+    ConWrite("›0 p›m\f", 7);
 
     CurrentTime(&before_s, &before_m);
 
@@ -957,6 +970,7 @@ static void SpeedTest(void)
 
     CurrentTime(&after_s, &after_m);
 
+    // set cursor visible
     ConWrite("›1 p", 4);
 
     before = (before_s * 1000000) + before_m;
@@ -1106,7 +1120,7 @@ BOOL LoadPrefs(void)
             strcpy(prefs.fontname, "topaz.font");
             strcpy(prefs.xferlibrary, "xprzmodem.library");
             strcpy(prefs.xferinit, "TC,OR,B32,FO,AN,DN,KY,SN,RN");
-            memcpy(&prefs.color[0], &color[0], 32);
+            memcpy(prefs.color, color, sizeof(prefs.color));
             //CopyMem(&color[0], &prefs.color[0], 32);
             prefs.flags = FLAG_TOOL_BAR;
 fixprefs:        //prefs.win_left = 0;
@@ -1720,10 +1734,10 @@ static void OutKey(unsigned char key)
 {
     if(prefs.flags & FLAG_BS_DEL_SWAP)
     {
-        if(key == 8)
-            key = 127;
+        if(key == '\b') // Backspace
+            key = DEL_CHAR;
         else {
-            if(key == 127) key = 8;
+            if(key == DEL_CHAR) key = '\b';
         }
     }
     if(isConnected)
@@ -1732,7 +1746,7 @@ static void OutKey(unsigned char key)
 
         // If you want to send 0xff then you must double it (0xff, 0xff) to tell telnet that you
         // don't intend to send it a command.
-        if(key == (unsigned char) 255)
+        if(key == (unsigned char) IAC)
             if (! (prefs.flags & FLAG_RAW_CONNECTION))
                 TCPSend((void *)&key, 1);
 
@@ -1801,36 +1815,36 @@ static void GetWindowMsg(struct Window *wwin)
             }
 
             // The gadget in top right corner when title bar is hidden in full screen mode
-            if(gad->GadgetID == 20) ScreenToBack(scr);
+            if(gad->GadgetID == GADGET_SCREEN_TO_BACK) ScreenToBack(scr);
 
             if(wwin == toolBarWin)
             {
                 switch(gad->GadgetID)
                 {
-                    case 0:
+                    case BUTTON_CONNECT:
                         OnConnectClicked(FALSE);
                         break;
-                    case 1:
+                    case BUTTON_DISCONNECT:
                         DisConnect(FALSE, FALSE);
                         break;
-                    case 2:
+                    case BUTTON_ADDRESS_BOOK:
                         WindowSub(AddressBook);
                         break;
-                    case 3:
+                    case BUTTON_INFORMATION:
                         WindowSub(Information);
                         break;
-                    case 4:
-                    case 5:
+                    case BUTTON_UPLOAD:
+                    case BUTTON_DOWNLOAD:
                         if(isConnected)
                         {
-                            if(gad->GadgetID == 4)
+                            if(gad->GadgetID == BUTTON_UPLOAD)
                                 Upload(prefs.xferlibrary);
                             else
                                 Download(prefs.xferlibrary);
                         } else
                             SimpleReq("You better connect first.");
                         break;
-                    case 6:
+                    case BUTTON_QUIT:
                         //if(rtEZRequestA("Quit?", "Quit|Cancel", NULL, NULL, (struct TagItem *)&tags))
                             shouldQuitApp = TRUE;
                         break;
@@ -1855,11 +1869,11 @@ static void GetWindowMsg(struct Window *wwin)
             {
                 switch(code)
                 {
-                case 76:
+                case RAWKEY_CRSRUP:
                     goto up;
-                case 77:
+                case RAWKEY_CRSRDOWN:
                     goto down;
-                case 84:
+                case RAWKEY_F5:
                     buf[0] = '\0';
                     strcpy(fbuf, "DCTelnet.Cap");
                     if (FileRequester(isRunningOnWB ? NULL : win,
@@ -1874,13 +1888,13 @@ static void GetWindowMsg(struct Window *wwin)
                         SaveScrollBack(buf);
                     }
                     break;
-                case 82:
+                case RAWKEY_F3:
                     if (ConfirmRequester(isRunningOnWB ? NULL : win, "Print|Cancel",
                                                  "Print Scrollback?"))
                     //if(rtEZRequestA("Print Scrollback?", "Print|Cancel", NULL, NULL, (struct TagItem *)&reqtoolsTags))
                         SaveScrollBack("PRT:");
                     break;
-                case 80:
+                case RAWKEY_F1:
                     ClearScrollBack();
                     nScrollbackLines = 0;
                     lasttop = 0;
@@ -1910,7 +1924,7 @@ static void GetWindowMsg(struct Window *wwin)
                     {
                         switch(conbuf[i])
                         {
-                        case 155:
+                        case CSI_CHAR:   // Amiga console CSI
                             key_csi = TRUE;
                             break;
                         /*case 'v':
@@ -1932,17 +1946,17 @@ static void GetWindowMsg(struct Window *wwin)
 
                                 switch(conbuf[i])
                                 {
-                                case 65:
-                                    SendMisc("[A", 3);
+                                case 'A':
+                                    SendMisc(ESC_STR "[A", 3);
                                     break;
-                                case 66:
-                                    SendMisc("[B", 3);
+                                case 'B':
+                                    SendMisc(ESC_STR "[B", 3);
                                     break;
-                                case 67:
-                                    SendMisc("[C", 3);
+                                case 'C':
+                                    SendMisc(ESC_STR "[C", 3);
                                     break;
-                                case 68:
-                                    SendMisc("[D", 3);
+                                case 'D':
+                                    SendMisc(ESC_STR "[D", 3);
                                     break;
                                 }
 
@@ -2054,7 +2068,7 @@ static void GetWindowMsg(struct Window *wwin)
                                         register long i;
                                         for(i=0; i<r; i++)
                                         {
-                                            if(buf[i] == 10 && buf[i+1] != 13 && buf[i-1] != 13) buf[i] = 13;
+                                            if(buf[i] == '\n' && buf[i+1] != '\r' && buf[i-1] != '\r') buf[i] = '\r';
                                         }
                                         TCPSend(buf, r);
                                     }
@@ -2597,7 +2611,9 @@ struct Screen* OpenAppScreen(void)
 
         if(prefs.DisplayDepth < 3) pens = &colorPens[12]; else pens = colorPens;
 
-        memcpy(&newscr.Width, &prefs.DisplayWidth, 6);
+        newscr.Width  = prefs.DisplayWidth;
+        newscr.Height = prefs.DisplayHeight;
+        newscr.Depth  = prefs.DisplayDepth;
         newscr.BlockPen = 1;
         newscr.Type = CUSTOMSCREEN;
         newscr.Font = &fontAttr;
@@ -2648,15 +2664,19 @@ void OpenAppWindow(void)
 
     if (isRunningOnWB)
     {
-        static UWORD sizes[4] = { 200, 50, 1600, 1200 };
-
         mynewmenu[24].nm_Flags |= CHECKED;       // WB
         //mynewmenu[38].nm_Flags = NM_ITEMDISABLED;  // Jump Scroll
         mynewmenu[40].nm_Flags = NM_ITEMDISABLED;  // ScreenMode
         mynewmenu[42].nm_Flags = NM_ITEMDISABLED;  // ScreenPalette
 
-        memcpy(&newWin, &prefs.win_left, 8);
-        memcpy(&newWin.MinWidth, &sizes, 8);
+        newWin.LeftEdge   = prefs.win_left;
+        newWin.TopEdge    = prefs.win_top;
+        newWin.Width      = prefs.win_width;
+        newWin.Height     = prefs.win_height;
+        newWin.MinWidth   = 200;
+        newWin.MinHeight  = 50;
+        newWin.MaxWidth   = 1600;
+        newWin.MaxHeight  = 1200;
         newWin.IDCMPFlags = IDCMP_RAWKEY | IDCMP_CLOSEWINDOW | IDCMP_MENUPICK;
         //newWin.Flags = WFLG_GIMMEZEROZERO|WFLG_NEWLOOKMENUS|WFLG_SIMPLE_REFRESH|WFLG_ACTIVATE|WFLG_CLOSEGADGET|WFLG_DRAGBAR|WFLG_DEPTHGADGET|WFLG_SIZEGADGET;
         newWin.Flags = WFLG_GIMMEZEROZERO|WFLG_NEWLOOKMENUS|WFLG_SMART_REFRESH|WFLG_ACTIVATE|WFLG_CLOSEGADGET|WFLG_DRAGBAR|WFLG_DEPTHGADGET|WFLG_SIZEGADGET;
@@ -2699,7 +2719,7 @@ void OpenAppWindow(void)
             screenToBackGadget.Activation = RELVERIFY;
             screenToBackGadget.GadgetType = BOOLGADGET;
             screenToBackGadget.LeftEdge = scr->Width - 20;
-            screenToBackGadget.GadgetID = 20;
+            screenToBackGadget.GadgetID = GADGET_SCREEN_TO_BACK;
         } else {
             top = prefs.fontsize + 3;
             height = scr->Height - (prefs.fontsize + 3);
@@ -2997,7 +3017,7 @@ BOOL OpenDisplay(void)
         if(flags & AFF_68040) cpu = '4';
         if(flags & AFF_68060) cpu = '6';
 
-        LocalFmt("›0;1;36m\014\r\n\r\n"
+        LocalFmt("›0;1;36m\f\r\n\r\n"
                 "Processor: ›37m680%lc0\r\n\r\n›36m"
                 "Kickstart: ›37m%ld.%ld\r\n\r\n›36m"
                 "TCP Stack: ›37m",
