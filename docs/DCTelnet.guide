@@ -153,10 +153,14 @@ you.
    Closes the screen, and puts a icon on your workbench screen.
    The program will continue to run.
 
-                               @{b}@{u} SPEED TEST @{ub}@{uu}
-                                ~~~~~~~~~~
-   By using a virtical screen line scroll, a estimate of how many lines
-   displayed per second will be calculated and displayed.
+                           @{b}@{u} DISPLAY SPEED TEST @{ub}@{uu}
+                            ~~~~~~~~~~~~~~~~~~
+   A number of lines are displayed while the time required to render them is
+   measured. The result provides an estimate of the display speed in lines
+   per second.
+
+   WARNING: The Xem library may hang the terminal window during this test!
+            If this happens, use "Reset Screen" from the DCTelnet menu.
 
                                   @{b}@{u} QUIT @{ub}@{uu}
                                    ~~~~

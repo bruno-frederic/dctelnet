@@ -78,7 +78,7 @@ static struct NewMenu mynewmenu[] =
         {  NM_ITEM, NM_BARLABEL,     0 , 0, 0, 0,},
         {  NM_ITEM, "Scroll Back",    "X", 0, 0, 0,},
         {  NM_ITEM, "Iconify",         "&", 0, 0, 0,},
-        {  NM_ITEM, "Speed Test",    "Y", 0, 0, 0,},             // item #5
+        {  NM_ITEM, "Display Speed Test",    "Y", 0, 0, 0,},             // item #5
         {  NM_ITEM, "Finger",        "@", 0, 0, 0,},
         {  NM_ITEM, NM_BARLABEL,     0 , 0, 0, 0,},
         {  NM_ITEM, "Quit",        "Q", 0, 0, 0,},
@@ -891,36 +891,15 @@ void LEDs(void)
     }
 }
 
-/*void SpeedTest(void)
-{
-    long before;
-    register long spent;
-    register UWORD i;
-
-    ConWrite("›0 p\233m\014", 7);
-
-    before = mytime();
-
-    for(i = 1; i < 201; i++) LocalFmt("Line %ld.\r\n", i);
-
-    spent = mytime() - before;
-
-    ConWrite("›1 p", 4);
-
-    if(spent > 0)
-    {
-        //LocalFmt("›32mResult›33m: ›36m%ld ›mlines/second.\r\n", 200 / spent);
-        before = 200 / spent;
-        rtEZRequestA("Result: %ld lines per second.", "OK", NULL, (APTR)&before, (struct TagItem *)&tags);
-    }
-}*/
 
 static void SpeedTest(void)
 {
-    ULONG before_s, before_m;
-    ULONG after_s, after_m;
-    ULONG before, after;
+    ULONG before_s, before_micros;
+    ULONG after_s, after_micros;
+    ULONG elapsed_micros;
+    ULONG lines_per_second;
     register UWORD i;
+    char *rating;
 
     // "›0 p" = 9B 30 20 70 : Set Cursor Rendition -> make cursor invisible
     //                        (disabling the cursor slightly improves output speed)
@@ -930,42 +909,55 @@ static void SpeedTest(void)
     //            section "Control Sequences for Window Output"
     ConWrite("›0 p›m\f", 7);
 
-    CurrentTime(&before_s, &before_m);
+    if(drivertype && isRunningOnWB)  // if XEM Enabled running on Workbench
+    {
+        LocalPrint("WARNING: The Xem library may hang the terminal window during this test!\r\n"
+                   "If this happens, use \"Reset Screen\" from the DCTelnet menu.\r\n");
+        Delay(3*TICKS_PER_SECOND);
+    }
 
-    for(i = 1; i < 201; i++) LocalFmt("Line %ld.\r\n", i);
+    CurrentTime(&before_s, &before_micros);
 
-    CurrentTime(&after_s, &after_m);
+    for (i = 1; i < 201; i++)
+        LocalFmt("Line %ld.\r\n", i);
+
+    CurrentTime(&after_s, &after_micros);
 
     // set cursor visible
     ConWrite("›1 p", 4);
 
-    before = (before_s * 1000000) + before_m;
-    after  = (after_s  * 1000000) + after_m;
-
-    after -= before;
-
-    if(after > 0)
+    if (after_micros >= before_micros)
     {
-        register char *rating;
-        before = 200000000 / after;
+        elapsed_micros = (after_s - before_s) * 1000000
+                       + (after_micros - before_micros);
+    }
+    else
+    {
+        elapsed_micros = (after_s - before_s - 1) * 1000000
+                       + (1000000 - before_micros + after_micros);
+    }
 
-        if(before < 20)
+    if (elapsed_micros == 0)
+    {
+        LocalPrint("\r\nSpeed: too fast to measure\r\n"
+                   "Rating: Incredible\r\n");
+    }
+    else
+    {
+        lines_per_second = 200000000 / elapsed_micros;
+
+        if (lines_per_second < 20)
             rating = "Poor";
-        else {
-            if(before < 30)
-                rating = "Average";
-            else {
-                if(before < 50)
-                    rating = "Good";
-                else
-                    rating = "Excellent";
-            }
-        }
+        else if (lines_per_second < 30)
+            rating = "Average";
+        else if (lines_per_second < 50)
+            rating = "Good";
+        else
+            rating = "Excellent";
 
-        mysprintf(buf,    "Result: %ld lines per second\n\n"
-                "Rating: %s", before, rating);
-
-        SimpleReq(buf);
+        LocalFmt("\r\nSpeed: %ld lines/second\r\n"
+                 "Rating: %s\r\n",
+                 lines_per_second, rating);
     }
 }
 
