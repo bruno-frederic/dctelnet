@@ -28,7 +28,7 @@ struct BookStruct
     char    name[32];
     char    host[52];
     UWORD    port;
-    long    last;
+    ULONG   lastConnect;
     char    username[42];
     char    password[42];
     char    res[82];
@@ -209,35 +209,6 @@ static int OpenABookWindow( void )
 }
 
 
-// Unix time starts on 1970-01-01, while AmigaOS DateStamp time starts on 1978-01-01.
-// 252460800 is the number of seconds between these two epochs.
-#define UNIX_TO_AMIGA_EPOCH 252460800L
-
-/**
- * @brief Returns the current time as a Unix timestamp.
- *
- * Retrieves the current AmigaOS DateStamp and converts it to the number of seconds elapsed since
- * the Unix epoch (1970-01-01 00:00:00 UTC).
- *
- * AmigaOS DateStamp uses 1978-01-01 00:00:00 as its epoch. The conversion therefore adds the number
- * of seconds between the AmigaOS and Unix epochs.
- *
- * @return Current time in seconds since the Unix epoch.
- */
-long mytime(void)
-{
-    struct DateStamp stamp;
-    DateStamp(&stamp);
-
-    return (stamp.ds_Days * 24 * 60 * 60)
-         + (stamp.ds_Minute * 60)
-         + (stamp.ds_Tick / TICKS_PER_SECOND)
-         + UNIX_TO_AMIGA_EPOCH;
-}
-
-
-
-
 static struct Node *FindNode(struct List *listviewlist, UWORD lastcode)
 {
     struct Node *worknode;
@@ -293,8 +264,8 @@ static void SortABook(struct List *list, UWORD sortMode)
 
             if (sortByLastConnect)
             {
-                ULONG a = ((struct BookStruct *)inworknode->ln_Name)->last;
-                ULONG b = ((struct BookStruct *)worknode->ln_Name)->last;
+                ULONG a = ((struct BookStruct *)inworknode->ln_Name)->lastConnect;
+                ULONG b = ((struct BookStruct *)worknode->ln_Name)->lastConnect;
 
                 if (reverseSort)  // Oldest first
                 {
@@ -552,7 +523,7 @@ add:
         tcpPort = conbook->port;
         if(BeginServerConnection(conbook->host, conbook->port) == RETURN_OK)
         {
-            conbook->last = mytime();
+            conbook->lastConnect = mytime();
             strlcpy(username, conbook->username, sizeof(username));
             strlcpy(password, conbook->password, sizeof(password));
         }
@@ -674,34 +645,79 @@ static int OpenEditProfileWindow( void )
     return( 0L );
 }
 
-static void myctime(long secs, char *outbuf, size_t maxLen)
-{
-    char buf1[LEN_DATSTRING];
-    struct DateTime tostr;
 
-    if(secs == 0)
+
+// Unix time starts on 1970-01-01, while AmigaOS DateStamp time starts on 1978-01-01.
+// 252460800 is the number of seconds between these two epochs.
+#define UNIX_TO_AMIGA_EPOCH 252460800L
+
+#define SECONDS_PER_DAY     86400
+#define MINUTES_PER_DAY     1440
+#define SECONDS_PER_MINUTE  60
+
+/**
+ * @brief Returns the current time as a Unix timestamp.
+ *
+ * Retrieves the current time using Intuition library and converts it to the number of
+ * seconds elapsed since the Unix epoch (1970-01-01 00:00:00 UTC).
+ * AmigaOS uses 1978-01-01 00:00:00 as its epoch. The conversion therefore adds the number
+ * of seconds between the AmigaOS and Unix epochs.
+ *
+ * @return Current time in seconds since the Unix epoch.
+ */
+ULONG mytime(void)
+{
+    ULONG seconds;
+
+    CurrentTime(&seconds, NULL); // works on OS 3.2 with 2nd arg = NULL
+
+    return seconds + UNIX_TO_AMIGA_EPOCH;
+}
+
+
+/**
+ * @brief Converts an Unix timestamp to a human-readable date and time string.
+ *
+ * Converts a Unix timestamp expressed in seconds since 1970-01-01 00:00:00 into an AmigaOS
+ * DateStamp and formats it using DateToStr() from DOS.library.
+ *
+ * A timestamp of zero is displayed as "Never".
+ *
+ * @param secs     Unix timestamp in seconds.
+ * @param outbuf   Destination buffer receiving the formatted date and time.
+ * @param maxLen   Size of the destination buffer in bytes.
+ */
+static void myctime(ULONG secs, char *outbuf, size_t maxLen)
+{
+    char strTime[LEN_DATSTRING + 1]; // one extra byte for ' ' character
+    struct DateTime dt;
+
+    if (secs == 0)
     {
         strlcpy(outbuf, "Never", maxLen);
         return;
     }
 
+    // Convert Unix time (1970 epoch) to AmigaOS DateStamp time (1978 epoch).
     secs -= UNIX_TO_AMIGA_EPOCH;
 
-    tostr.dat_Stamp.ds_Days = secs / 86400;
-    tostr.dat_Stamp.ds_Minute = (secs / 60) % 1440;
-    tostr.dat_Stamp.ds_Tick =    secs
-                    - (60*tostr.dat_Stamp.ds_Minute)
-                    - (86400*tostr.dat_Stamp.ds_Days);
-    tostr.dat_Stamp.ds_Tick *= 50;
-    tostr.dat_Format    = FORMAT_DOS;
-    tostr.dat_StrDay    = NULL;
-    tostr.dat_StrDate    = outbuf;
-    tostr.dat_StrTime    = &buf1[1];
-    tostr.dat_Flags        = 0;
+    dt.dat_Stamp.ds_Days   = secs / SECONDS_PER_DAY;
+    dt.dat_Stamp.ds_Minute = (secs / SECONDS_PER_MINUTE) % MINUTES_PER_DAY;
+    dt.dat_Stamp.ds_Tick   = (secs % SECONDS_PER_MINUTE) * TICKS_PER_SECOND;
 
-    DateToStr(&tostr);
-    buf1[0] = ' ';
-    strlcat(outbuf, buf1, maxLen);
+    dt.dat_Format = FORMAT_DOS;
+    dt.dat_Flags  = 0;
+
+    // DateToStr() requires output buffers of at least LEN_DATSTRING bytes.
+    dt.dat_StrDay  = NULL;
+    dt.dat_StrDate = outbuf;
+    dt.dat_StrTime = strTime + 1;
+
+    DateToStr(&dt);
+
+    strTime[0] = ' ';
+
+    strlcat(outbuf, strTime, maxLen);
 }
 
 /*
@@ -714,7 +730,7 @@ return TRUE  if the user validated the changes (OK)
  */
 static BOOL EditProfile(struct BookStruct *book)
 {
-    char lasttime[32];
+    char strLastTime[2 * LEN_DATSTRING];
     struct IntuiMessage *message;
     struct Gadget *gad;
     ULONG class;
@@ -725,8 +741,8 @@ static BOOL EditProfile(struct BookStruct *book)
     // Initialize gadget fields with current book data
     editProfileGTags[1] = (unsigned long)book->name;
     editProfileGTags[8] = (unsigned long)book->host;
-    myctime(book->last, lasttime, sizeof(lasttime));
-    editProfileGTags[15] = (unsigned long)lasttime;
+    myctime(book->lastConnect, strLastTime, sizeof(strLastTime));
+    editProfileGTags[15] = (unsigned long)strLastTime;
     editProfileGTags[26] = (unsigned long)book->port;
     editProfileGTags[33] = (unsigned long)book->username;
     editProfileGTags[40] = (unsigned long)book->password;

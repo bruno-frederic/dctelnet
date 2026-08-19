@@ -42,7 +42,7 @@ void CloseScrollBack(void);
 void OpenScrollBack(UWORD sel);
 void FunctionKeys(void);
 void AddressBook(void);
-long mytime(void);
+ULONG mytime(void);
 void RefreshListView(UWORD top);
 void OpenToolBarWindow(char setmenus);
 void CloseToolBarWindow(void);

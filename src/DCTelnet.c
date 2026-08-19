@@ -196,7 +196,8 @@ static BPTR fileHandle;
 long nScrollbackLines;
 static long indexInScrollBuffer;
 long tcpSocket, nBytesReceived;
-static long conectionTime, nBytesSent;
+static ULONG conectionTime;
+static long nBytesSent;
 void *visualInfos;
 char username[42], password[42];
 // TCP Receive buffer, used in Receive(), xpr_sflush(). Cauntion: these functs destroy the content
@@ -559,7 +560,7 @@ static void DisConnect(char remote, char quiet)
     {
         if(!quiet && !isAppIconified)
         {
-            register long spent;
+            register ULONG spent;
             if(remote)
                 LocalPrint("›m\r\nConnection closed by foreign host");
             else
@@ -1775,7 +1776,7 @@ static void Information(void)
 {
     if(isConnected)
     {
-        register long spent = mytime() - conectionTime;
+        register ULONG spent = mytime() - conectionTime;
 
         InfoReq(isRunningOnWB ? NULL : win,
                 "     Host Name ... : %s\n"
