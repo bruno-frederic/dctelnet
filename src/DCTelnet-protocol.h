@@ -177,7 +177,7 @@ static void TelnetSendOptionCommand(UBYTE cmd, UBYTE option)
         PutStr("›35m»IAC ");
         if   (TELCMD_OK(cmd))     PutStr(TELCMD(cmd));
         else                      LogByte(cmd);
-        PutStr(" ");
+        PutC(' ');
         if   (TELOPT_OK(option))  PutStr(TELOPT(option));
         else                      LogByte(option);
         PutStr("›m\n");
@@ -462,9 +462,10 @@ static void TelnetHandleSubnegotiation(void)
     #ifdef _DEBUG
         int i;
 
-        PutStr(" ");
+        PutC(' ');
         if   (TELOPT_OK(telnetCtx.sbOption))    PutStr(TELOPT(telnetCtx.sbOption));
         else                                    LogByte(telnetCtx.sbOption);
+        PutC(' ');
 
         // First byte is sub-option qualifier, cf. "third_party\netinclude\arpa\telnet.h"
         for (i = 0; i < telnetCtx.sbLength; i++)
@@ -929,7 +930,7 @@ static BOOL TelnetParseByte(UBYTE c)
 
         case TELNET_STATE_WILL:
             #ifdef _DEBUG
-                PutStr(" ");
+                PutC(' ');
                 if   (TELOPT_OK(c))  PutStr(TELOPT(c));
                 else                 LogByte(c);
                 PutStr("›m"); Flush(Output());
@@ -947,7 +948,7 @@ static BOOL TelnetParseByte(UBYTE c)
 
         case TELNET_STATE_WONT:
             #ifdef _DEBUG
-                PutStr(" ");
+                PutC(' ');
                 if   (TELOPT_OK(c))  PutStr(TELOPT(c));
                 else                 LogByte(c);
                 PutStr("›m"); Flush(Output());
@@ -960,7 +961,7 @@ static BOOL TelnetParseByte(UBYTE c)
 
         case TELNET_STATE_DO:
             #ifdef _DEBUG
-                PutStr(" ");
+                PutC(' ');
                 if   (TELOPT_OK(c))  PutStr(TELOPT(c));
                 else                 LogByte(c);
                 PutStr("›m"); Flush(Output());
@@ -978,7 +979,7 @@ static BOOL TelnetParseByte(UBYTE c)
 
         case TELNET_STATE_DONT:
             #ifdef _DEBUG
-                PutStr(" ");
+                PutC(' ');
                 if   (TELOPT_OK(c))  PutStr(TELOPT(c));
                 else                 LogByte(c);
                 PutStr("›m"); Flush(Output());

@@ -341,9 +341,7 @@ long __SAVE_DS__ __ASM__ xpr_ffirst(__REG__(a0, char *buffer),
                         __REG__(a1, char *pattern))
 {
     #ifdef _DEBUG
-        APTR argArray[1];
-        argArray[0] = pattern;
-        VPrintf("›32m--> xpr_ffirst(buffer = ..., pattern = %s)›m\n", argArray);
+        Printf("›32m--> xpr_ffirst(buffer = ..., pattern = %s)›m\n", pattern);
     #endif
 
     if (uploadArray == NULL || uploadArraySize < 1)
@@ -362,10 +360,8 @@ long __SAVE_DS__ __ASM__ xpr_fnext(__REG__(d0, long oldstate),
                 __REG__(a1, char *pattern))
 {
     #ifdef _DEBUG
-        APTR argArray[2];
-        argArray[0] = (APTR) oldstate;
-        argArray[1] = (APTR) pattern;
-        VPrintf("›32m--> xpr_fnext(oldstate = %ld, buffer = ..., pattern = %s)›m\n", argArray);
+        Printf("›32m--> xpr_fnext(oldstate = %ld, buffer = ..., pattern = %s)›m\n",
+               oldstate, pattern);
     #endif
 
     if (oldstate < uploadArraySize && uploadArray != NULL)

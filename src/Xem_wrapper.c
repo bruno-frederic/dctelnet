@@ -8,7 +8,7 @@
  */
 
 #include <proto/exec.h>               // OpenLibrary(), AllocMem()...
-#include <proto/dos.h>                // RETURN_OK, VPrintf()
+#include <proto/dos.h>                // RETURN_OK, Printf()
 #include <proto/intuition.h>          // DisplayBeep()
 #include "Xem_wrapper.h"
 #include "DCTelnet.h"                 // win, scr, ansiFont, prefs.displaydriver, buf
@@ -72,11 +72,7 @@ struct XEM_IO *xemIO;
 VOID __SAVE_DS__ __ASM__ xem_tbeep(__REG__(d0, ULONG ntimes), __REG__(d1, ULONG delay))
 {
     #ifdef _DEBUG
-        static ULONG array[2];
-        array[0] = ntimes;
-        array[1] = delay;
-
-        VPrintf("--> xem_tbeep(ntimes = %ld, delay = %ld)\n", array);
+        Printf("--> xem_tbeep(ntimes = %ld, delay = %ld)\n", (LONG) ntimes, (LONG) delay);
     #endif
 
     for (; ntimes > 0 ; ntimes--)

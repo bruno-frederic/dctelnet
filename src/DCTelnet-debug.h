@@ -16,14 +16,13 @@ void Pause(void)
     }
 }
 
-// Wrapper around VPrintf() to simplify printing a single byte. This function hides the complexity
-// of VPrintf() and protects against VPrintf's sensitivity to types and format specifiers.
+// Wrapper around Printf() to simplify printing a single byte. This function hides the complexity
+// of Printf() and protects against Printf's sensitivity to types and format specifiers.
 void LogByte(unsigned char b)
 {
-    static LONG array[1] = { 0 };
-
-    array[0] = b;
-    VPrintf(" %ld", array);
+    // The prototype for Printf() currently forces you to cast the first varargs parameter to LONG
+    // due to a deficiency in the programthat generates fds, prototypes, and amiga.lib stubs.
+    Printf("{%ld}", (LONG) b);
 }
 
 void LocalPrintByte(unsigned char b)
@@ -96,107 +95,106 @@ void LogByteBuffer(const UBYTE *p, ULONG n)
 
 void LogWindowsSigBit(void)
 {
-    ULONG array[1];
+    ULONG sigBit;
 
-    array[0] = dontUseSig31;
-    VPrintf("                      dontUseSig31 = %lu\n", array);
+    Printf("                      dontUseSig31 = %lu\n",  (ULONG) dontUseSig31);
 
     if (SocketBase)
     {
-        array[0] = socketLibSigBit;
-        if (array[0] >= 31)
+        sigBit = socketLibSigBit;
+        if (sigBit >= 31)
         {
             PutStr("ERROR: anormal mp_SigBit!!!\n");
         }
-        if (! (mainTask->tc_SigAlloc & (1L << array[0])))
+        if (! (mainTask->tc_SigAlloc & (1L << sigBit)))
         {
             PutStr("ERROR: mp_SigBit disapeared from mainTask->tc_SigAlloc!!!\n");
         }
-        VPrintf("                  socketLib_SigBit = %lu\n", array);
+        Printf("                  socketLib_SigBit = %lu\n", sigBit);
     }
 
     if (win)
     {
-        array[0] = win->UserPort->mp_SigBit;    // Promotes UBYTE to ULONG
-        if (array[0] >= 31)
+        sigBit = win->UserPort->mp_SigBit;    // Promotes UBYTE to ULONG
+        if (sigBit >= 31)
         {
             PutStr("ERROR: anormal mp_SigBit!!!\n");
         }
-        if (! (mainTask->tc_SigAlloc & (1L << array[0])))
+        if (! (mainTask->tc_SigAlloc & (1L << sigBit)))
         {
             PutStr("ERROR: mp_SigBit disapeared from mainTask->tc_SigAlloc!!!\n");
         }
-        VPrintf("          win->UserPort->mp_SigBit = %lu\n", array);
+        Printf("          win->UserPort->mp_SigBit = %lu\n", sigBit);
     }
 
     if (scrollbackWin)
     {
-        array[0] = scrollbackWin->UserPort->mp_SigBit;
-        if (array[0] >= 31)
+        sigBit = scrollbackWin->UserPort->mp_SigBit;
+        if (sigBit >= 31)
         {
             PutStr("ERROR: anormal mp_SigBit!!!\n");
         }
-        if (! (mainTask->tc_SigAlloc & (1L << array[0])))
+        if (! (mainTask->tc_SigAlloc & (1L << sigBit)))
         {
             PutStr("ERROR: mp_SigBit disapeared from mainTask->tc_SigAlloc!!!\n");
         }
-        VPrintf("scrollbackWin->UserPort->mp_SigBit = %lu\n", array);
+        Printf("scrollbackWin->UserPort->mp_SigBit = %lu\n", sigBit);
     }
 
     if (packetWin)
     {
-        array[0] = packetWin->UserPort->mp_SigBit;
-        if (array[0] >= 31)
+        sigBit = packetWin->UserPort->mp_SigBit;
+        if (sigBit >= 31)
         {
             PutStr("ERROR: anormal mp_SigBit!!!\n");
         }
-        if (! (mainTask->tc_SigAlloc & (1L << array[0])))
+        if (! (mainTask->tc_SigAlloc & (1L << sigBit)))
         {
             PutStr("ERROR: mp_SigBit disapeared from mainTask->tc_SigAlloc!!!\n");
         }
-        VPrintf("         packetWin->UserPort->mp_SigBit = %lu\n", array);
+        Printf("     packetWin->UserPort->mp_SigBit = %lu\n", sigBit);
     }
 
     if (toolBarWin)
     {
-        array[0] = toolBarWin->UserPort->mp_SigBit;
-        if (array[0] >= 31)
+        sigBit = toolBarWin->UserPort->mp_SigBit;
+        if (sigBit >= 31)
         {
             PutStr("ERROR: anormal mp_SigBit!!!\n");
         }
-        if (! (mainTask->tc_SigAlloc & (1L << array[0])))
+        if (! (mainTask->tc_SigAlloc & (1L << sigBit)))
         {
             PutStr("ERROR: mp_SigBit disapeared from mainTask->tc_SigAlloc!!!\n");
         }
-        VPrintf("   toolBarWin->UserPort->mp_SigBit = %lu\n", array);
+        Printf("   toolBarWin->UserPort->mp_SigBit = %lu\n", sigBit);
     }
 
     if (writeConsoleMP)
     {
-        array[0] = writeConsoleMP->mp_SigBit;
-        if (array[0] >= 31)
+        sigBit = writeConsoleMP->mp_SigBit;
+        if (sigBit >= 31)
         {
             PutStr("ERROR: anormal mp_SigBit!!!\n");
         }
-        if (! (mainTask->tc_SigAlloc & (1L << array[0])))
+        if (! (mainTask->tc_SigAlloc & (1L << sigBit)))
         {
             PutStr("ERROR: mp_SigBit disapeared from mainTask->tc_SigAlloc!!!\n");
         }
-        VPrintf("        writeConsoleMP->mp_SigBit = %lu\n", array);
+        Printf("        writeConsoleMP->mp_SigBit = %lu\n", sigBit);
     }
 
     if (iconPort)
     {
-        array[0] = iconPort->mp_SigBit;
-        if (array[0] >= 31)
+        sigBit = iconPort->mp_SigBit;
+        if (sigBit >= 31)
         {
             PutStr("ERROR: anormal mp_SigBit!!!\n");
         }
-        if (! (mainTask->tc_SigAlloc & (1L << array[0])))
+        if (! (mainTask->tc_SigAlloc & (1L << sigBit)))
         {
             PutStr("ERROR: mp_SigBit disapeared from mainTask->tc_SigAlloc!!!\n");
         }
-        VPrintf("           iconPort->mp_SigBit = %lu\n", array);
+        Printf("           iconPort->mp_SigBit = %lu\n", sigBit);
     }
 }
 
@@ -217,12 +215,11 @@ typedef unsigned long uint32_t;
 #endif
 
 // Prints a 32-bit unsigned value in hexadecimal and binary.
-// Uses VPrintf(), therefore requires Kickstart 2.0 or newer.
+// Uses Printf(), therefore requires Kickstart 2.0 or newer.
 void PrintBitsULONG(uint32_t val)
 {
     char bin[36];   // 32 bits + 3 spaces + '\0'
     char hex[12];   // "FF FF FF FF" + '\0'
-    APTR argArray[2];
     int bit, nByte;
 
     int bp = 0, hp = 0;
@@ -246,9 +243,7 @@ void PrintBitsULONG(uint32_t val)
     hex[hp] = '\0';
     bin[bp] = '\0';
 
-    argArray[0] = hex;
-    argArray[1] = bin;
-    VPrintf("0x%s = %s\n", argArray);
+    Printf("0x%s = %s\n", hex, bin);
 }
 
 void LogWaitSelectResult(LONG l, ULONG sigmask)

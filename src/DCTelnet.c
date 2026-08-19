@@ -746,7 +746,7 @@ static void Receive(void)
     len = recv(tcpSocket, recvBuffer, sizeof(recvBuffer), 0);
 
     #ifdef _DEBUG_WAITSELECT
-        VPrintf("   --> Receive() => %ld\n", &len);
+        Printf("   --> Receive() => %ld\n", len);
     #endif
 
     if (len <= 0) // Connection closed or error
@@ -1165,7 +1165,6 @@ int main(int argc, char *argv[])
     #ifdef _DEBUG
         ULONG beforeSigAlloc;
         ULONG afterSigAlloc;
-        ULONG argArray[1];
     #endif
     mainTask = FindTask(NULL);
 
@@ -1301,8 +1300,7 @@ int main(int argc, char *argv[])
         PutStr("<-- OpenLibrary(bsdsocket.library, 0)\n");
         afterSigAlloc = mainTask->tc_SigAlloc;
         socketLibSigBit = BitPosition(beforeSigAlloc ^ afterSigAlloc); // XOR detect the differences
-        argArray[0] = socketLibSigBit;
-        VPrintf("                  socketLibSigBit = %lu\n", argArray);
+        Printf("                  socketLibSigBit = %lu\n", (LONG) socketLibSigBit);
     #endif
     // We retry opening the bsdsocket.library later as user might load a TCP/IP stack later.
 
@@ -1441,7 +1439,7 @@ int main(int argc, char *argv[])
                     }
                     else
                     {
-                        VPrintf("<-- WaitSelect() => %ld (= data received)", &i);
+                        Printf("<-- WaitSelect() => %ld (= data received)", i);
                     }
                 #endif
 
@@ -2890,7 +2888,6 @@ BOOL OpenDisplay(void)
         ULONG beforeSigAlloc;
         ULONG afterSigAlloc;
         UBYTE conDeviceSigBit;
-        ULONG argArray[1];
         PutStr("--> OpenDisplay()\n");
     #endif
 
@@ -2995,8 +2992,7 @@ BOOL OpenDisplay(void)
             PutStr("SigAlloc:"); PrintBitsULONG(mainTask->tc_SigAlloc);
             afterSigAlloc = mainTask->tc_SigAlloc;
             conDeviceSigBit = BitPosition(beforeSigAlloc ^ afterSigAlloc); // XOR help detect the difference
-            argArray[0] = conDeviceSigBit;
-            VPrintf("                   conDeviceSigBit = %lu\n", argArray);
+            Printf("                   conDeviceSigBit = %lu\n", (LONG) conDeviceSigBit);
             LogWindowsSigBit();
         #endif
 
