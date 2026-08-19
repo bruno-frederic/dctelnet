@@ -61,6 +61,9 @@ static char MainWindowTitle[] =
 
 // Adding or removing items in this structure changes their index numbers,
 // which will break hard?coded references such as mynewmenu[40].nm_Flags = NM_ITEMDISABLED
+#ifdef __VBCC__
+#pragma dontwarn 81 // warning: only 0 should be cast to pointer
+#endif
 static struct NewMenu mynewmenu[] =
     {
         { NM_TITLE, "DC Telnet",     0 , 0, 0, 0,},             // item #0
@@ -135,7 +138,9 @@ static struct NewMenu mynewmenu[] =
 
         {   NM_END, NULL,         0 , 0, 0, 0,},                 // item #55
     };
-
+#ifdef __VBCC__
+#pragma popwarn
+#endif
 
 static void GetWindowMsg(struct Window *wwin);
 static void ResetTelnetContext(void);
@@ -356,7 +361,13 @@ void LocalPrint(char *data)
 // data from the TCP socket.
 void LocalFmt(char *ctl, ...)
 {
+    #ifdef __VBCC__
+    #pragma dontwarn 79 // warning 79: offset equals size of object
+    #endif
     RawDoFmt(ctl, (long *)(&ctl + 1), (void (*))"\x16\xc0\x4e\x75", buf);
+    #ifdef __VBCC__
+    #pragma popwarn
+    #endif
     ConWrite(buf, strlen(buf));
 }
 
@@ -364,14 +375,28 @@ void LocalFmt(char *ctl, ...)
 // data from the TCP socket.
 void TextFmt(struct RastPort *rP, char *ctl, ...)
 {
+    #ifdef __VBCC__
+    #pragma dontwarn 79 // warning 79: offset equals size of object
+    #endif
     RawDoFmt(ctl, (long *)(&ctl + 1), (void (*))"\x16\xc0\x4e\x75", buf);
+    #ifdef __VBCC__
+    #pragma popwarn
+    #endif
     Text(rP, buf, strlen(buf));
 }
 
 // Wrapper around send() from bsdsocket.library that maintains the nBytesSent counter.
 long TCPSend(const char *buf, long len)
 {
+    // Some SDKs declare send() with const buf, others without; this mismatch triggers SAS/C
+    // warning 104, temporarily ignored here until properly handled.
+    #ifdef __SASC
+        #pragma msg 104 ignore push
+    #endif
     if(send(tcpSocket, buf, len, 0) < 0) return -1;
+    #ifdef __SASC
+        #pragma msg 104 pop
+    #endif
     nBytesSent += len;
     return len;
 }
@@ -644,6 +669,31 @@ struct Scroll
     long        len;    // Node-specific data
 };
 
+/**
+ * @brief Append characters from a raw input buffer into the scrollback buffer.
+ *
+ * AddBuf() processes a sequence of characters and stores them into an internal scrollback buffer.
+ * The function interprets control characters (newline, tab, bell, form feed, carriage return) and a
+ * subset of Amiga console escape sequences (CSI), converting them into scrollback entries.
+ *
+ * The function accumulates characters in a temporary buffer until a newline or a CSI command that
+ * forces a line break is encountered. At that point, a new Scroll node is allocated, filled, and
+ * appended to the scrollback list. If the scrollback exceeds the configured limit, the oldest entry
+ * is removed to keep memory usage bounded.
+ *
+ * Some CSI sequences (notably 'C', 'H', and 'B') require prematurely flushing the current buffer.
+ * To avoid duplicating the line?finalization logic, the function uses three goto jumps that
+ * redirect execution to the common “add” block. This structure triggers VBCC warning 175 (“this
+ * code is weird”) when optimization is enabled, hence the conditional suppression pragma.
+ *
+ * @param str   Pointer to the raw input byte buffer.
+ * @param size  Number of bytes to process from the buffer.
+ */
+#ifdef __VBCC__
+    #ifndef _DEBUG
+        #pragma dontwarn 175  // function "AddBuf": this code is weird
+    #endif
+#endif
 static void AddBuf(unsigned char *str, long size)
 {
     register long i = 0, n;
@@ -1395,11 +1445,13 @@ int main(int argc, char *argv[])
             {
                 // Workbench sends AppMessage to the application's message port to notify it
                 // https://wiki.amigaos.net/wiki/Workbench_Library#The_AppMessage_Structure
-                register struct AppMessage *appmsg;
-                while(appmsg = (struct AppMessage *)GetMsg(iconPort))
+                register struct Message *msg;
+                while(msg = GetMsg(iconPort))
                 {
-                    if(appmsg->am_NumArgs==0 && appmsg->am_ArgList==0) shouldUniconify = TRUE;
-                    ReplyMsg((struct Message *)appmsg);
+                    if (  ((struct AppMessage *)msg)->am_NumArgs == 0
+                       && ((struct AppMessage *)msg)->am_ArgList == NULL)
+                        shouldUniconify = TRUE;
+                    ReplyMsg(msg);
                 }
             }
 
@@ -1815,7 +1867,7 @@ static void GetWindowMsg(struct Window *wwin)
                 strBuffer[0] = 0;
                 ((struct StringInfo *)(strGad.SpecialInfo))->BufferPos = 0;
                 ((struct StringInfo *)(strGad.SpecialInfo))->DispPos = 0;
-                AddGList(wwin, &strGad, ~0, 1, NULL);
+                AddGList(wwin, &strGad, (ULONG)~0, 1, NULL);
                 RefreshGList(&strGad, wwin, NULL, 1);
                 ActivateGadget(&strGad, packetWin, 0);
             }
@@ -2744,7 +2796,7 @@ void OpenAppWindow(void)
             height = scr->Height - top;
             if(backgad)
             {
-                AddGadget(toolBarWin, backgad, -1);
+                AddGadget(toolBarWin, backgad, (ULONG) ~0);
                 backgad = 0;
             }
         }

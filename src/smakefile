@@ -20,11 +20,11 @@ default:
 	@echo  or: smake release
 
 INCLUDES= \
-	IDir=:vbcc/bin/NDK3.2R4/Include_H \
-	IDir=third_party/netinclude \
-	IDir=third_party/ReqTools/include \
-	IDir=third_party/Xem/INCLUDE \
-	IDir=third_party/Xpr/include
+IDir=:vbcc/bin/NDK3.2R4/Include_H \
+IDir=third_party/netinclude \
+IDir=third_party/ReqTools/include \
+IDir=third_party/Xem/INCLUDE \
+IDir=third_party/Xpr/include
 
 COMPILER_STRING=SAS/C_6.58
 CC=SC
@@ -58,7 +58,8 @@ debug:
 	$(MAKE) all -b <<(smake.def)
 OBJ_SUFFIX=debug
 CFLAGS=Define=CPU=$(CPU) Define=COMPILER_STRING=$(COMPILER_STRING) Parameters=register NoStartup \
-		Define=_DEBUG $(INCLUDES)
+	Ignore=304 Error=all $(INCLUDES) \
+	Define=_DEBUG
 LFLAGS=SC SD NOICONS
 <
 
@@ -66,7 +67,8 @@ release:
 	$(MAKE) all -b <<(smake.def)
 OBJ_SUFFIX=release
 CFLAGS=Define=CPU=$(CPU) Define=COMPILER_STRING=$(COMPILER_STRING) Parameters=register NoStartup \
-		StringMerge NoStackCheck Optimize $(INCLUDES)
+	Ignore=304 Error=all $(INCLUDES) \
+	StringMerge NoStackCheck Optimize
 LFLAGS=SC SD NOICONS STRIPDEBUG
 <
 

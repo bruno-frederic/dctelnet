@@ -722,12 +722,13 @@ long __SAVE_DS__ xpr_chkabort(void)
         {
             // Workbench sends AppMessage to the application's message port to notify it
             // https://wiki.amigaos.net/wiki/Workbench_Library#The_AppMessage_Structure
-            register struct AppMessage *appmsg;
-            while(appmsg = (struct AppMessage *)GetMsg(iconPort))
+            register struct Message *msg;
+            while(msg = GetMsg(iconPort))
             {
-                if(appmsg->am_NumArgs==0 && appmsg->am_ArgList==0)
+                if (  ((struct AppMessage *)msg)->am_NumArgs == 0
+                   && ((struct AppMessage *)msg)->am_ArgList == NULL)
                     shouldUniconify = TRUE;  // User requested to restore the window
-                ReplyMsg((struct Message *)appmsg);
+                ReplyMsg(msg);
             }
         }
 
@@ -1444,7 +1445,7 @@ long __SAVE_DS__ __ASM__ xpr_options(__REG__(d0, LONG numopts), __REG__(a0, stru
             {
                 WaitPort(window->UserPort);
 
-                while(imsg = (struct IntuiMessage *)GT_GetIMsg(window->UserPort))
+                while(imsg = GT_GetIMsg(window->UserPort))
                 {
                     class    = imsg->Class;
                     code    = imsg->Code;

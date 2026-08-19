@@ -230,7 +230,13 @@ VOID InfoReq(struct Window *parent, CONST_STRPTR str, ...) // varargs parameters
     }
 
 
+    #ifdef __VBCC__
+    #pragma dontwarn 79 // warning 79: offset equals size of object
+    #endif
     va_start(args, str);
+    #ifdef __VBCC__
+    #pragma popwarn
+    #endif
 
     EasyRequestArgs(parent, // This can be NULL; requester will appear on the Workbench screen
                     &es,
@@ -292,8 +298,13 @@ LONG ConfirmRequester(struct Window *parent, CONST_STRPTR gadgetFormat, CONST_ST
         return answer;
     }
 
-
+    #ifdef __VBCC__
+    #pragma dontwarn 79 // warning 79: offset equals size of object
+    #endif
     va_start(args, str);
+    #ifdef __VBCC__
+    #pragma popwarn
+    #endif
 
     // EasyRequest() provides a simple way to make a requester that allows the user to select one of
     // a limited number of choices.
