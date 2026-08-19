@@ -12,6 +12,14 @@ set InitialDir `cd`
 CD /
 
 SET LatestPackagePath      ${InitialDir}/DCTelnet.lha
+SET LatestDebugPackagePath ${InitialDir}/DCTelnet-debug.lha
+
+echo "Build the LHA Debug binary only package:"
+DELETE  "$LatestDebugPackagePath"
+DELETE  RAM:DCTelnet-debug.info RAM:DCTelnet-debug RAM:FILE_ID.DIZ
+COPY  FROM build/vbcc-68000-debug/DCTelnet.68000  TO RAM:DCTelnet-debug
+COPY  FROM build/package/DCTelnet/DCTelnet.info   TO RAM:DCTelnet-debug.info
+lha -a -Qa a "$LatestDebugPackagePath" RAM:DCTelnet-debug#? COD:dctelnet/docs/debug/FILE_ID.DIZ
 
 echo "Build the LHA package:"
 DELETE  "$LatestPackagePath"
