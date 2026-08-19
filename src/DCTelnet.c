@@ -159,8 +159,8 @@ struct NewGadget newGadget;
 static struct TextAttr fontAttr;    // describes the desired font
 struct TextFont *ansiFont;          // actual font loaded via OpenFont(), ready to use
 static BOOL isConDeviceOpened = FALSE;
-static struct IOStdReq *writeConIOReq = NULL;
-static struct MsgPort *writeConPort = NULL;
+static struct IOStdReq *writeConsoleReq = NULL;
+static struct MsgPort  *writeConsoleMP  = NULL;
 struct Menu *menuStrip;
 static struct DiskObject *diskObj;
 struct MsgPort *iconPort;
@@ -331,7 +331,7 @@ static void ConWrite(char *data, long len)
             XemWrite(data, len);
         else {
             #ifdef _DEBUG
-                if (!writeConIOReq) RecoveryAlert(
+                if (!writeConsoleReq) RecoveryAlert(
                                        "Error writing to console: console device is unavailable.");
             #endif
 
@@ -339,10 +339,10 @@ static void ConWrite(char *data, long len)
             // https://amigadev.elowar.com/read/ADCD_2.1/Devices_Manual_guide/node0006.html
 
             // An I/O request typically has three fields set for every command sent to a device:
-            writeConIOReq->io_Data = data;
-            writeConIOReq->io_Length = len;
-            writeConIOReq->io_Command = CMD_WRITE;
-            DoIO((struct IORequest *)writeConIOReq); // DoIO() is a synchronous function
+            writeConsoleReq->io_Data = data;
+            writeConsoleReq->io_Length = len;
+            writeConsoleReq->io_Command = CMD_WRITE;
+            DoIO((struct IORequest *)writeConsoleReq); // DoIO() is a synchronous function
         }
     }
 }
@@ -745,7 +745,7 @@ static void Receive(void)
 
     len = recv(tcpSocket, recvBuffer, sizeof(recvBuffer), 0);
 
-    #ifdef _DEBUG
+    #ifdef _DEBUG_WAITSELECT
         VPrintf("   --> Receive() => %ld\n", &len);
     #endif
 
@@ -1424,7 +1424,7 @@ int main(int argc, char *argv[])
                 timeout.tv_sec = 30; timeout.tv_usec = 0;
                 i = WaitSelect(tcpSocket + 1, &rd, 0, 0, &timeout, &sigmask);
 
-                #ifdef _DEBUG
+                #ifdef _DEBUG_WAITSELECT
                     if      (i <  0)
                     {
                         InfoReq(isRunningOnWB ? NULL : win,
@@ -2957,13 +2957,13 @@ BOOL OpenDisplay(void)
         // https://amigadev.elowar.com/read/ADCD_2.1/Libraries_Manual_guide/node02A5.html
 
         // CreateIORequest() requires a message port.
-        writeConPort = CreateMsgPort();
-        if (!writeConPort) { InfoReq(isRunningOnWB ? NULL : win,
+        writeConsoleMP = CreateMsgPort();
+        if (!writeConsoleMP) { InfoReq(isRunningOnWB ? NULL : win,
                                      "Unable to create message port for console device!");
                              goto clean_and_return; }
 
         // https://amigadev.elowar.com/read/ADCD_2.1/Includes_and_Autodocs_2._guide/node0344.html
-        writeConIOReq = CreateIORequest(writeConPort, sizeof(struct IOStdReq));
+        writeConsoleReq = CreateIORequest(writeConsoleMP, sizeof(struct IOStdReq));
 
         // The unit number that is a standard parameter for an open call is used
         // specially by this device.
@@ -2978,8 +2978,8 @@ BOOL OpenDisplay(void)
         }
 
         //the window that is used by the console device for output:
-        writeConIOReq->io_Data = win;
-        writeConIOReq->io_Length = sizeof(struct Window);
+        writeConsoleReq->io_Data = win;
+        writeConsoleReq->io_Length = sizeof(struct Window);
 
         #ifdef _DEBUG
             PutStr("   --> OpenDevice()\n");
@@ -2988,7 +2988,7 @@ BOOL OpenDisplay(void)
             LogWindowsSigBit();
         #endif
 
-        b = OpenDevice(devName, unitNumber, (struct IORequest *)writeConIOReq, CONFLAG_DEFAULT);
+        b = OpenDevice(devName, unitNumber, (struct IORequest *)writeConsoleReq, CONFLAG_DEFAULT);
 
         #ifdef _DEBUG
             PutStr("   <-- OpenDevice()\n");
@@ -3099,7 +3099,7 @@ void CloseDisplay(BOOL manageScreen)
     if (isConDeviceOpened)
     {
         #ifdef _DEBUG
-            PutStr("   --> CloseDevice(&writeIOReq)\n");
+            PutStr("   --> CloseDevice(&writeConsoleReq)\n");
             PutStr("SigAlloc:"); PrintBitsULONG(mainTask->tc_SigAlloc);
             LogWindowsSigBit();
 
@@ -3110,19 +3110,19 @@ void CloseDisplay(BOOL manageScreen)
             }
         #endif
 
-        CloseDevice((struct IORequest *)writeConIOReq);
+        CloseDevice((struct IORequest *)writeConsoleReq);
 
         if (mainTask->tc_SigAlloc & (1L << 31))
         {
             #ifdef _DEBUG
-                PutStr("   <-- CloseDevice(&writeIOReq) => sigbit 31 preserved.\n");
+                PutStr("   <-- CloseDevice(&writeConsoleReq) => sigbit 31 preserved.\n");
                 PutStr("SigAlloc:"); PrintBitsULONG(mainTask->tc_SigAlloc);
             #endif
         }
         else
         {
             #ifdef _DEBUG
-                PutStr("   <-- CloseDevice(&writeIOReq) => ERROR: sigbit 31 destroyed!!!\n");
+                PutStr("   <-- CloseDevice(&writeConsoleReq) => ERROR: sigbit 31 destroyed!!!\n");
                 PutStr("SigAlloc:"); PrintBitsULONG(mainTask->tc_SigAlloc);
                 PutStr("   --> AllocSignal(31L)\n");
             #endif
@@ -3139,16 +3139,16 @@ void CloseDisplay(BOOL manageScreen)
         isConDeviceOpened = FALSE;
     }
 
-    if (writeConIOReq)
+    if (writeConsoleReq)
     {
-        DeleteIORequest(writeConIOReq);
-        writeConIOReq=NULL;
+        DeleteIORequest(writeConsoleReq);
+        writeConsoleReq=NULL;
     }
 
-    if (writeConPort)
+    if (writeConsoleMP)
     {
-        DeleteMsgPort(writeConPort);
-        writeConPort = NULL;
+        DeleteMsgPort(writeConsoleMP);
+        writeConsoleMP = NULL;
     }
 
     if(packetWin)
