@@ -1075,24 +1075,23 @@ static void ClearScrollBack(void)
 
 static void Finger(void)
 {
-    long oldflags;
     char tbuf[64] = "reiver@plan.cat";
-    char *host;
 
     if (GetStringRequester(isRunningOnWB ? NULL : win,
                               "Finger",
                               "Enter EMail Address:",
                               tbuf, sizeof(tbuf))
        )
-    //if(rtGetStringA(tbuf, 63, "Enter EMail Address:", 0, (struct TagItem *)&reqtoolsTags))
     {
-        host = strchr(tbuf, '@');
+        char * host = strchr(tbuf, '@');
         if(host)
         {
+            ULONG originalState = prefs.flags & FLAG_RAW_CONNECTION;
+
             host[0] = 0;
             *host++;
-            oldflags = prefs.flags;
-            prefs.flags = FLAG_RAW_CONNECTION;    // Raw Connection (NO telnet negotiation data)
+
+            prefs.flags |= FLAG_RAW_CONNECTION;     // Enable flag (NO telnet negotiation)
             if(BeginServerConnection(host, 79) == RETURN_OK)
             {
                 WORD optionsMenuNumber = GetMenuNumberFromID(MENU_OPTIONS);
@@ -1105,7 +1104,7 @@ static void Finger(void)
 
                 isFingerRequest = TRUE;
             }
-            prefs.flags = oldflags;
+            prefs.flags = (prefs.flags & ~FLAG_RAW_CONNECTION) | originalState;  // Restore state
         }
     }
 }
