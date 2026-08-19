@@ -89,6 +89,7 @@ static struct NewMenu mainMenuDesc[] =
     {    NM_ITEM, "Display Speed Test",             "Y",             0,               0, (APTR)MENU_DISPLAY_SPEED_TEST},
     {    NM_ITEM, "Finger",                         "@",             0,               0, (APTR)MENU_FINGER},
     {    NM_ITEM, NM_BARLABEL,                       0 ,             0,               0, (APTR)MENU_BAR1},
+    {    NM_ITEM, "Reset Screen",                   "C",             0,               0, (APTR)MENU_RESET_SCREEN},
     {    NM_ITEM, "Quit",                           "Q",             0,               0, (APTR)MENU_QUIT},
 
     { NM_TITLE, "Transfer",  0 , 0, 0, (APTR)MENU_TRANSFER},
@@ -2127,6 +2128,11 @@ static void GetWindowMsg(struct Window *wwin)
 
                     case MENU_FINGER:
                         WindowSub(Finger);
+                        break;
+
+                    case MENU_RESET_SCREEN:
+                        shouldRestart = TRUE;
+                        shouldReopenScreen = TRUE;
                         break;
 
                     case MENU_QUIT:
