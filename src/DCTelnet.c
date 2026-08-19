@@ -1574,7 +1574,7 @@ static void SaveScrollBack(char *fname)
  * @brief Handles the user "Connect" action from the UI.
  *
  * This function is triggered when the user clicks the Connect button.
- * It prompts for a "host,port" string, parses the input, and determines the target server and TCP
+ * It prompts for a "host:port" string, parses the input, and determines the target server and TCP
  * port (defaulting to port 23 if not specified).
  *
  * Depending on the execution mode:
@@ -1594,7 +1594,7 @@ static void OnConnectClicked(char spawnInstance)
 
     if (GetStringRequester(isRunningOnWB ? NULL : win,
                               "Connect",
-                              "Enter host,port:",
+                              "Enter host:port",
                               tbuf, sizeof(tbuf))
        )
     //if(rtGetStringA(tbuf, 63, "Enter host,port:", 0, (struct TagItem *)&reqtoolsTags))
@@ -1602,10 +1602,23 @@ static void OnConnectClicked(char spawnInstance)
         if(tbuf[0] != 0)
         {
             register char *po;
-            if(po = strchr(tbuf, ','))
+
+            po = strchr(tbuf, ',');
+
+            if(po == NULL) // No ',' found. Check whether the input uses the "host:port" syntax
             {
-                po[0] = 0;
-                port = atoi((char *)&po[1]);
+                char *p = strchr(tbuf, ':');
+
+                // A ':' is treated as a port separator only if it is the only one in the string.
+                // This avoids confusing IPv6 addresses with "hostname:port" syntax.
+                if(p && strchr(p + 1, ':') == NULL)
+                    po = p;
+            }
+
+            if(po)
+            {
+                *po++ = '\0';
+                port = (UWORD)atoi(po);
             }
 
             if(!port) port = 23;
