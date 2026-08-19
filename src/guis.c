@@ -3,12 +3,18 @@
 
 #define __USE_SYSBASE
 
+#ifdef __VBCC__
+    #pragma dontwarn 306
+#endif
 #include <proto/exec.h>               // AllocMem(), AddTail(), FreeMem(), WaitPort(), Remove()
 #include <proto/dos.h>                // Open(), Close(), FRead(), FWrite()
 #include <proto/intuition.h>          // OpenWindow(),CloseWindow(), NewObjectA() but no NewObject()
 #include <proto/graphics.h>           // Move(), SetAPen(), Text(), SetFont(), Draw()
 #include <proto/gadtools.h>           // LISTVIEW_KIND, BUTTON_KIND, GTLV_Labels...
 #include <proto/icon.h>               // GetDiskObjectNew(), FreeDiskObject()
+#ifdef __VBCC__
+    #pragma popwarn
+#endif
 #include <string.h>                   // memcpy(), strcpy(), strcat(), strlen()
 #include <ctype.h>                    // tolower(), toupper()
 #include "abook.h"                    // required

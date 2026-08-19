@@ -114,9 +114,6 @@ typedef struct
 {
     TelnetProtocolState state;
 
-    UBYTE sbOption;         // Last option received
-    UBYTE sbBuffer[256];
-    UWORD sbLength;
     TelnetOptionState optState[UCHAR_MAX+1];
 
     // Negotiation detection helpers:
@@ -124,6 +121,10 @@ typedef struct
     // - isNegotiationTriggered: ensure we only trigger once the client-side negotiation
     BOOL isServerNegotiationSeen;
     BOOL isClientNegotiationTriggered;
+
+    UWORD sbLength;
+    UBYTE sbBuffer[256];
+    UBYTE sbOption;         // Last option received
 } TelnetContext;
 
 static TelnetContext telnetCtx = { 0 }; // 520 bytes long

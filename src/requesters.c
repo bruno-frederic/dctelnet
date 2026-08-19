@@ -44,7 +44,9 @@
  * @date 2026
  */
 
-
+#ifdef __VBCC__
+    #pragma dontwarn 306
+#endif
 #include <proto/exec.h>       // Alert()
 #include <proto/intuition.h>  // OpenWindow(), CloseWindow(), (Un)lockPubScreen() ActivateGadget(),
                               // EasyRequestArgs()
@@ -53,6 +55,9 @@
                               // GT_GetIMsg(), GT_ReplyIMsg, GT_RefreshWindow()
 #include <proto/asl.h>        // FileRequester, FontRequester, ScreenModeRequester
 #include <exec/alerts.h>      // AN_Unknown, AG_OpenLib, AO_DOSLib (values for Alert()
+#ifdef __VBCC__
+    #pragma popwarn
+#endif
 #include <stdarg.h>           // va_list, va_start(), va_end()
 #include <string.h>           // strlen(), memset(), size_t
 #include "requesters.h"

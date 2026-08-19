@@ -29,6 +29,9 @@ static char MainWindowTitle[] =
 #define TELOPTS
 #endif
 
+#ifdef __VBCC__
+    #pragma dontwarn 306
+#endif
 #include <proto/exec.h>               // OpenLibrary(), GetMsg(), ReplyMsg(), AllocMem()...
 #include <proto/dos.h>                // Open(), Close(), Read(), Write(), PutStr()...
 #include <proto/intuition.h>          // OpenWindow(),CloseWindow(), OnMenu(), OffMenu()...
@@ -44,6 +47,9 @@ static char MainWindowTitle[] =
 #include <proto/reqtools.h>           // rtAllocRequestA() rtScreenModeRequest() rtPaletteRequestA()
 #include <proto/socket.h>             // send(), <CloseSocket>()
 #include <arpa/telnet.h>
+#ifdef __VBCC__
+    #pragma popwarn
+#endif
 #include "DCTelnet.h"
 #include "guis.h"
 #include "connect.h"

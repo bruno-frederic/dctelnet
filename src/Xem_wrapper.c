@@ -7,9 +7,15 @@
  * @date 2026
  */
 
+#ifdef __VBCC__
+    #pragma dontwarn 306
+#endif
 #include <proto/exec.h>               // OpenLibrary(), AllocMem()...
 #include <proto/dos.h>                // RETURN_OK, Printf()
 #include <proto/intuition.h>          // DisplayBeep()
+#ifdef __VBCC__
+    #pragma popwarn
+#endif
 #include "Xem_wrapper.h"
 #include "DCTelnet.h"                 // win, scr, ansiFont, prefs.displaydriver, buf
 #include "Xfer.h"                     // xpr_sread(), xpr_swrite(), xpr_sflush(), xpr_options()

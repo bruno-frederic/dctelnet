@@ -5,10 +5,16 @@
     Built with GadToolBox V2.0b according to the .gui file
 */
 
+#ifdef __VBCC__
+    #pragma dontwarn 306
+#endif
 #include <proto/exec.h>                 // Wait(), Signal()
 #include <proto/dos.h>                  // SIGBREAKF_CTRL_C | SIGBREAKF_CTRL_E
 #include <proto/intuition.h>            // OpenWindowTags(), CloseWindow()
 #include <proto/gadtools.h>             // GT_GetIMsg(), GT_ReplyIMsg(), <CreateContext()...
+#ifdef __VBCC__
+    #pragma popwarn
+#endif
 #include "connect.h"
 #include "DCTelnet.h"
 #include "guis.h"

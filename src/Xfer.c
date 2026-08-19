@@ -2,6 +2,9 @@
 
 #define __USE_SYSBASE
 
+#ifdef __VBCC__
+    #pragma dontwarn 306
+#endif
 #include <proto/exec.h>               // OpenLibrary(), GetMsg(), ReplyMsg(), SetSignal()...
 #include <proto/dos.h>                // Open(), Close(), Read(), Write(), PutStr()...
 #include <proto/intuition.h>          // OpenWindow(),CloseWindow(), OnMenu(), OffMenu()...
@@ -12,6 +15,9 @@
 #include <proto/Xpr.h>                // XProtocolSetup(), XProtocolSend(), XProtocolReceive(), ...
 #include <proto/bsdsocket.h>          // WaitSelect(), recv(), IoctlSocket(), Errno()
 #include <sys/ioctl.h>                // FIONBIO
+#ifdef __VBCC__
+    #pragma popwarn
+#endif
 #include "Xfer.h"
 #include "DCTelnet.h"
 #include "guis.h"
