@@ -964,7 +964,7 @@ void OpenScrollBack(UWORD sel)
                             {
                                 //GT_RefreshWindow(scrollbackWin, NULL);
                                 RefreshListView(sel);
-                                ResetMenuStrip(scrollbackWin, menuStrip);
+                                ResetMenuStrip(scrollbackWin, mainMenuStrip);
                             }
                         }
                     }
@@ -1238,8 +1238,9 @@ void CloseToolBarWindow(void)
             if(dob[i]) { FreeDiskObject(dob[i]);  dob[i]= NULL; }
         }
 
-        item = ItemAddress(menuStrip, FULLMENUNUM(3, 10, 0));
-        if(item) item->Flags &= ~CHECKED;
+        item = GetMenuItemFromID(MENU_TOOLBAR);
+        if (item != NULL)
+            item->Flags &= ~CHECKED;
     }
 }
 
@@ -1335,7 +1336,7 @@ void OpenToolBarWindow(char setmenus)
         toolBarWin = OpenWindow(&newWin);
         if (toolBarWin)
         {
-            if(setmenus) ResetMenuStrip(toolBarWin, menuStrip);
+            if(setmenus) ResetMenuStrip(toolBarWin, mainMenuStrip);
             SetFont(toolBarWin->RPort, scr->RastPort.Font);
             SetAPen(toolBarWin->RPort, drawInfo->dri_Pens[TEXTPEN]);
             gad = firstgad;

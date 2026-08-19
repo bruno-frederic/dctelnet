@@ -39,32 +39,104 @@ struct PrefsStruct
 * These defines describe the meaning of each individual bit.
 * These flags map directly to the checkable items in the "Options" pull-down menu
 */
-#define FLAG_HIDE_TITLEBAR       (1 << 0)   // BIT 0  = Hide Title Bar
-#define FLAG_CRLF_CORRECTION     (1 << 1)   // BIT 1  = CRLF Correction
-#define FLAG_HIDE_LEDS           (1 << 2)   // BIT 2  = Hide LEDS
-#define FLAG_USE_WORKBENCH       (1 << 3)   // BIT 3  = Use Workbench
-#define FLAG_BS_DEL_SWAP         (1 << 4)   // BIT 4  = BS/DEL Swap
-#define FLAG_DISABLE_SCROLLBACK  (1 << 5)   // BIT 5  = Disable Scrollback
-#define FLAG_STRIP_COLOUR        (1 << 6)   // BIT 6  = Strip Colour
-#define FLAG_SIMPLE_TELNET       (1 << 7)   // BIT 7  = Very simple telnet negotiation.
-#define FLAG_PACKET_WINDOW       (1 << 8)   // BIT 8  = Packet Window
-#define FLAG_USE_XEM_LIBRARY     (1 << 9)   // BIT 9  = Use XEM Library
-#define FLAG_TOOL_BAR            (1 << 10)  // BIT 10 = Tool bar
-#define FLAG_RETURN_CRLF         (1 << 11)  // BIT 11 = Return = CR&LF
-#define FLAG_LOCAL_ECHO          (1 << 12)  // BIT 12 = Local Echoback
-#define FLAG_RAW_CONNECTION      (1 << 13)  // BIT 13 = Raw Connection (NO telnet negotiation data)
-#define FLAG_JUMP_SCROLL         (1 << 14)  // BIT 14 = Jump Scroll
+#define FLAG_HIDE_TITLEBAR       (1UL << 0)   // BIT 0  = Hide Title Bar
+#define FLAG_CRLF_CORRECTION     (1UL << 1)   // BIT 1  = CRLF Correction
+#define FLAG_HIDE_LEDS           (1UL << 2)   // BIT 2  = Hide LEDS
+#define FLAG_USE_WORKBENCH       (1UL << 3)   // BIT 3  = Use Workbench
+#define FLAG_BS_DEL_SWAP         (1UL << 4)   // BIT 4  = BS/DEL Swap
+#define FLAG_DISABLE_SCROLLBACK  (1UL << 5)   // BIT 5  = Disable Scrollback
+#define FLAG_STRIP_COLOUR        (1UL << 6)   // BIT 6  = Strip Colour
+#define FLAG_SIMPLE_TELNET       (1UL << 7)   // BIT 7  = Very simple telnet negotiation.
+#define FLAG_PACKET_WINDOW       (1UL << 8)   // BIT 8  = Packet Window
+#define FLAG_USE_XEM_LIBRARY     (1UL << 9)   // BIT 9  = Use XEM Library
+#define FLAG_TOOL_BAR            (1UL << 10)  // BIT 10 = Tool bar
+#define FLAG_RETURN_CRLF         (1UL << 11)  // BIT 11 = Return = CR&LF
+#define FLAG_LOCAL_ECHO          (1UL << 12)  // BIT 12 = Local Echoback
+#define FLAG_RAW_CONNECTION      (1UL << 13)  // BIT 13 = Raw Connection (NO telnet negotiation data)
+#define FLAG_JUMP_SCROLL         (1UL << 14)  // BIT 14 = Jump Scroll
+
 
 // ID of the gadget in top right corner when title bar is hidden in full screen
 #define GADGET_SCREEN_TO_BACK  20
 
+/**
+ * @brief Stable identifiers for entries in the main menu.
+ *
+ * Each identifier is stored in the corresponding NewMenu structure's nm_UserData field.
+ * Values must remain unique.
+ */
+enum MenuItemID
+{
+    MENU_DCTELNET,
+    MENU_ABOUT,
+    MENU_BAR0,
+    MENU_SCROLLBACK,
+    MENU_ICONIFY,
+    MENU_DISPLAY_SPEED_TEST,
+    MENU_FINGER,
+    MENU_BAR1,
+    MENU_QUIT,
+
+    MENU_TRANSFER,
+    MENU_UPLOAD,
+    MENU_BAR2,
+    MENU_DOWNLOAD,
+    MENU_BAR3,
+    MENU_ASCII_SEND,
+
+    MENU_CONNECTION,
+    MENU_CONNECT,
+    MENU_CONNECT_NEW_INSTANCE,
+    MENU_DISCONNECT,
+    MENU_BAR4,
+    MENU_ADDRESS_BOOK,
+    MENU_BAR5,
+    MENU_INFORMATION,
+
+    MENU_OPTIONS,
+    MENU_USE_WORKBENCH,
+    MENU_DISABLE_LEDS,
+    MENU_HIDE_TITLEBAR,
+    MENU_UNUSED_CRLF,
+    MENU_BS_DEL_SWAP,
+    MENU_DISABLE_SCROLLBACK,
+    MENU_STRIP_ANSI_CODES,
+    MENU_UNUSED_SIMPLE_TELNET,
+    MENU_PACKET_WINDOW,
+    MENU_USE_XEM_LIBRARY,
+    MENU_TOOLBAR,
+    MENU_RETURN_CRLF,
+    MENU_LOCAL_ECHOBACK,
+    MENU_RAW_CONNECTION,
+    MENU_JUMP_SCROLL,
+
+    MENU_SETTINGS,
+    MENU_SCREEN_MODE,
+    MENU_SCREEN_FONT,
+    MENU_SCREEN_PALETTE,
+    MENU_DOWNLOAD_PATH,
+    MENU_TRANSFER_PROTOCOL,
+    MENU_PROTOCOL_OPTIONS,
+    MENU_FUNCTION_KEYS,
+    MENU_XEM_LIBRARY,
+    MENU_XEM_LIB_OPTIONS,
+    MENU_TELNET_DISPLAY_ID,
+    MENU_SCROLLBACK_LINES,
+    MENU_SNAPSHOT_WINDOWS,
+
+    MENU_LOGIN,
+    MENU_SEND_USERNAME,
+    MENU_SEND_PASSWORD,
+
+    MENU_END
+};
 
 // Global variables exported
 extern char server[64];
 extern long nScrollbackLines;
 extern long tcpSocket, nBytesReceived;
 extern struct DrawInfo *drawInfo;
-extern struct Menu *menuStrip;
+extern struct Menu *mainMenuStrip;
 extern struct MsgPort *iconPort;
 extern struct NewWindow newWin;
 extern struct PrefsStruct prefs;
@@ -116,5 +188,7 @@ void SavePrefs(void);
 void SimpleReq(char *str);
 void SetWaitPointer(struct Window * window);
 UWORD BeginServerConnection(char *servername, UWORD port);
+struct MenuItem *GetMenuItemFromID(enum MenuItemID id);
+WORD GetMenuNumberFromID(enum MenuItemID id);
 
 #endif /* DCTELNET_H */

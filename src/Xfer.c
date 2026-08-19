@@ -126,11 +126,46 @@ static void ProtoClean(void)
 {
     if(!isAppIconified)
     {
-        OnMenu(xferwin, FULLMENUNUM(1, -1, 0));
-        OnMenu(xferwin, FULLMENUNUM(2, -1, 0));
-        OnMenu(xferwin, FULLMENUNUM(3, -1, 0));
-        OnMenu(xferwin, FULLMENUNUM(4, -1, 0));
-        OnMenu(xferwin, FULLMENUNUM(5, -1, 0));
+        WORD menuNumber;
+
+        // Iconify is the only available command during file transfer:
+        menuNumber = GetMenuNumberFromID(MENU_DCTELNET);
+        if (menuNumber >= 0)
+        {
+            UWORD itemNumber = 0;
+            struct MenuItem *item = ItemAddress(mainMenuStrip, FULLMENUNUM(menuNumber, 0, NOSUB));
+
+            while (item != NULL)
+            {
+                if ((ULONG)GTMENUITEM_USERDATA(item) != (ULONG)MENU_ICONIFY)
+                    OnMenu(xferwin, FULLMENUNUM(menuNumber, itemNumber, NOSUB));
+
+                item = item->NextItem;
+                itemNumber++;
+            }
+        }
+
+        menuNumber = GetMenuNumberFromID(MENU_TRANSFER);
+        if (menuNumber >= 0)
+            OnMenu(xferwin, FULLMENUNUM(menuNumber, NOITEM, NOSUB));
+
+        menuNumber = GetMenuNumberFromID(MENU_CONNECTION);
+        if (menuNumber >= 0)
+            OnMenu(xferwin, FULLMENUNUM(menuNumber, NOITEM, NOSUB));
+
+        menuNumber = GetMenuNumberFromID(MENU_OPTIONS);
+        if (menuNumber >= 0)
+            OnMenu(xferwin, FULLMENUNUM(menuNumber, NOITEM, NOSUB));
+
+        menuNumber = GetMenuNumberFromID(MENU_SETTINGS);
+        if (menuNumber >= 0)
+            OnMenu(xferwin, FULLMENUNUM(menuNumber, NOITEM, NOSUB));
+
+        menuNumber = GetMenuNumberFromID(MENU_LOGIN);
+        if (menuNumber >= 0)
+            OnMenu(xferwin, FULLMENUNUM(menuNumber, NOITEM, NOSUB));
+
+
         ClearMenuStrip(xferwin);
         CloseWindow(xferwin);
         LEDs();
@@ -173,7 +208,6 @@ long __SAVE_DS__ __ASM__ xpr_finfo(__REG__(a0, char *filename),
 /* This function writes a buffer with the given size to the socket/serial port.
    It returns 0L on success,
    non-zero on failure. */
-#define FLAG_RAW_CONNECTION      (1 << 13)  // BIT 13 = Raw Connection (NO telnet negotiation data)
 long __SAVE_DS__ __ASM__ xpr_swrite(__REG__(a0, char *buffer),
                         __REG__(d0, long size))
 {
@@ -645,10 +679,8 @@ void SendZmodemCancelSequence(void)
 static long Checkwinmsg(struct Window *wwin)
 {
     UWORD code;
-    UWORD menuNumber, menuNum, itemNum;
     ULONG class;
     struct IntuiMessage *im;
-    struct MenuItem *item;
     struct Gadget *gad;
     char close = FALSE;
 
@@ -684,20 +716,45 @@ static long Checkwinmsg(struct Window *wwin)
                 break;
 
             case IDCMP_MENUPICK:
+            {
+                UWORD menuNumber = code;
+                struct MenuItem *item = NULL;
+                UWORD nextMenuNumber = MENUNULL;
+                enum MenuItemID menuID;
+
                 LEDs();
-                menuNumber = code;
+
                 while (menuNumber != MENUNULL)
                 {
-                    item = ItemAddress(menuStrip, menuNumber);
-                    menuNum = MENUNUM(menuNumber);
-                    itemNum = ITEMNUM(menuNumber);
-                    if(menuNum == 0 && itemNum == 3)
-                        close = TRUE;
-                    else
-                        DisplayBeep(scr);
+                    item = ItemAddress(mainMenuStrip, menuNumber);
 
-                    menuNumber = item->NextSelect;
+                    if (item == NULL)
+                        break;
+
+                    // Save this before a handler potentially rebuilds or frees the menu
+                    nextMenuNumber = item->NextSelect;
+
+                    menuID = (enum MenuItemID)(ULONG)GTMENUITEM_USERDATA(item);
+
+                    switch (menuID)
+                    {
+                        case MENU_ICONIFY:
+                        close = TRUE;
+                        break;
+
+                        default:
+                            #ifdef _DEBUG
+                                SimpleReq("FIXME: case default in Xfer.c>Checkwinmsg(), "
+                                          "should not happen");
+                            #endif
+                        DisplayBeep(scr);
+                        break;
+                    }
+
+                    menuNumber = nextMenuNumber;
                 }
+                break;
+            }  // case IDCMP_MENUPICK
         }
     }
 
@@ -884,6 +941,7 @@ void XferOptions(char *library)
 static char XferWindow(void)
 {
     WORD x, y, reuse, right;
+    WORD menuNumber;
 
     x = 64 * win->RPort->Font->tf_XSize;
     y = (10 * (win->RPort->Font->tf_YSize+1)) + 12;
@@ -918,12 +976,44 @@ static char XferWindow(void)
         return(0);
     }
 
-    ResetMenuStrip(xferwin, menuStrip);
-    OffMenu(xferwin, FULLMENUNUM(1, -1, 0));
-    OffMenu(xferwin, FULLMENUNUM(2, -1, 0));
-    OffMenu(xferwin, FULLMENUNUM(3, -1, 0));
-    OffMenu(xferwin, FULLMENUNUM(4, -1, 0));
-    OffMenu(xferwin, FULLMENUNUM(5, -1, 0));
+    ResetMenuStrip(xferwin, mainMenuStrip);
+
+    // Iconify is the only available command during file transfer:
+    menuNumber = GetMenuNumberFromID(MENU_DCTELNET);
+    if (menuNumber >= 0)
+    {
+        UWORD itemNumber = 0;
+        struct MenuItem *item = ItemAddress(mainMenuStrip, FULLMENUNUM(menuNumber, 0, NOSUB));
+
+        while (item != NULL)
+        {
+            if ((ULONG)GTMENUITEM_USERDATA(item) != (ULONG)MENU_ICONIFY)
+                OffMenu(xferwin, FULLMENUNUM(menuNumber, itemNumber, NOSUB));
+
+            item = item->NextItem;
+            itemNumber++;
+        }
+    }
+
+    menuNumber = GetMenuNumberFromID(MENU_TRANSFER);
+    if (menuNumber >= 0)
+        OffMenu(xferwin, FULLMENUNUM(menuNumber, NOITEM, NOSUB));
+
+    menuNumber = GetMenuNumberFromID(MENU_CONNECTION);
+    if (menuNumber >= 0)
+        OffMenu(xferwin, FULLMENUNUM(menuNumber, NOITEM, NOSUB));
+
+    menuNumber = GetMenuNumberFromID(MENU_OPTIONS);
+    if (menuNumber >= 0)
+        OffMenu(xferwin, FULLMENUNUM(menuNumber, NOITEM, NOSUB));
+
+    menuNumber = GetMenuNumberFromID(MENU_SETTINGS);
+    if (menuNumber >= 0)
+        OffMenu(xferwin, FULLMENUNUM(menuNumber, NOITEM, NOSUB));
+
+    menuNumber = GetMenuNumberFromID(MENU_LOGIN);
+    if (menuNumber >= 0)
+        OffMenu(xferwin, FULLMENUNUM(menuNumber, NOITEM, NOSUB));
 
     xrp = xferwin->RPort;
 
