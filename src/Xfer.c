@@ -1488,7 +1488,9 @@ long __SAVE_DS__ __ASM__ xpr_options(__REG__(d0, LONG numopts), __REG__(a0, stru
                                 if(strcmp(opts[id]->xpro_value, ((struct StringInfo *)gadget->SpecialInfo)->Buffer))
                                 {
                                     flags |= (1 << id);
-                                    strcpy(opts[id]->xpro_value,((struct StringInfo *)gadget->SpecialInfo)->Buffer);
+                                    strlcpy(opts[id]->xpro_value,
+                                           ((struct StringInfo *)gadget->SpecialInfo)->Buffer,
+                                           opts[id]->xpro_length);
                                 }
                                 quit = TRUE;
                             }
@@ -1508,9 +1510,9 @@ long __SAVE_DS__ __ASM__ xpr_options(__REG__(d0, LONG numopts), __REG__(a0, stru
                                         flags |= (1 << i);
 
                                         if(gadgetarray[i]->Flags & SELECTED)
-                                            strcpy(opts[i]->xpro_value, "yes");
+                                            strlcpy(opts[i]->xpro_value, "yes", opts[i]->xpro_length);
                                         else
-                                            strcpy(opts[i]->xpro_value, "no");
+                                            strlcpy(opts[i]->xpro_value, "no",  opts[i]->xpro_length);
                                     }
                                 break;
 
@@ -1519,7 +1521,9 @@ long __SAVE_DS__ __ASM__ xpr_options(__REG__(d0, LONG numopts), __REG__(a0, stru
                                     if(strcmp(opts[i]->xpro_value, ((struct StringInfo *)gadgetarray[i]->SpecialInfo)->Buffer))
                                     {
                                         flags |= (1 << i);
-                                        strcpy(opts[i]->xpro_value,((struct StringInfo *)gadgetarray[i]->SpecialInfo)->Buffer);
+                                        strlcpy(opts[i]->xpro_value,
+                                                ((struct StringInfo *)gadgetarray[i]->SpecialInfo)->Buffer,
+                                                opts[i]->xpro_length);
                                     }
                                 break;
                             }

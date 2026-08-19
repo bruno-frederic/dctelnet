@@ -276,11 +276,11 @@ int stricmp(const char *a, const char *b)
 /**
 * @brief Safe string copy with truncation detection.
  *
- * Copies up to dstSize - 1 characters from src to dst and always
- * NUL-terminates dst when dstSize is non-zero (strncpy() does not ensure that)
+ * Copies up to dstSize - 1 characters from src to dst and always NUL-terminates dst when dstSize is
+ * non-zero (strncpy() does not ensure that)
  *
- * Unlike strncpy(), this function performs no unnecessary NUL padding
- * and guarantees a valid C string in the destination buffer.
+ * Unlike strncpy(), this function performs no unnecessary NUL padding and guarantees a valid C
+ * string in the destination buffer.
  *
  *
  * This is a BSD extension and is not part of the ISO C or POSIX standards.
@@ -328,6 +328,78 @@ size_t strlcpy(char *dst, const char *src, size_t dstSize)
     return (size_t) (s - src - 1);
 }
 
+/**
+ * @brief Safe string concatenation with truncation detection.
+ *
+ * Appends up to dstSize - strlen(dst) - 1 characters from src to dst and always NUL-terminates
+ * dst when dstSize is non-zero.
+ *
+ * Unlike strcat(), this function never writes beyond the destination buffer. Unlike strncat(),
+ * dstSize specifies the total size of the destination buffer rather than the maximum number of
+ * characters to append.
+ *
+ * If dst is not NUL-terminated within the first dstSize bytes, no characters are appended and
+ * the function returns dstSize + strlen(src).
+ *
+ * This is a BSD extension and is not part of the ISO C or POSIX standards.
+ *
+ * @param dst      Destination C string to which src is appended.
+ * @param src      Source C string to append.
+ * @param dstSize  Size of destination buffer in bytes.
+ *
+ * @return The total length of the string they tried to create, excluding the terminating NUL.
+ *
+ * ```
+ * A return value >= dstSize indicates truncation.
+ * ```
+ */
+size_t strlcat(char *dst, const char *src, size_t dstSize)
+{
+    const char *odst = dst;
+    const char *osrc = src;
+    size_t n = dstSize;
+    size_t dlen;
+
+#ifdef _DEBUG
+    if (src == NULL)
+    {
+        InfoReq(NULL, "strlcat(): src == NULL");
+        return 0;
+    }
+
+    if (dst == NULL && dstSize != 0)
+    {
+        InfoReq(NULL, "strlcat(): dst == NULL");
+        return 0;
+    }
+#endif
+
+    // Find the end of dst and adjust bytes left but don't go past end.
+    while (n-- != 0 && *dst != '\0')
+        dst++;
+
+    dlen = dst - odst;
+    n = dstSize - dlen;
+
+    if (n == 0)
+        return dlen + strlen(src);
+
+    n--;    // Reserve space for the terminating '\0'
+
+    while (*src != '\0')
+    {
+        if (n != 0)
+        {
+            *dst++ = *src;
+            n--;
+        }
+        src++;
+    }
+
+    *dst = '\0';
+
+    return dlen + (src - osrc);     // Count does not include NUL
+}
 
 void mysprintf(char *Buffer, char *ctl, ...)
 {
@@ -1174,9 +1246,9 @@ BOOL LoadPrefs(void)
         if(ChooseScreen(TRUE))
         {
             prefs.fontsize = 8;
-            strcpy(prefs.fontname, "topaz.font");
-            strcpy(prefs.xferlibrary, "xprzmodem.library");
-            strcpy(prefs.xferinit, "TC,OR,B32,FO,AN,DN,KY,SN,RN");
+            strlcpy(prefs.fontname,    "topaz.font",                  sizeof(prefs.fontname));
+            strlcpy(prefs.xferlibrary, "xprzmodem.library",           sizeof(prefs.xferlibrary));
+            strlcpy(prefs.xferinit,    "TC,OR,B32,FO,AN,DN,KY,SN,RN", sizeof(prefs.xferinit));
             memcpy(prefs.color, color, sizeof(prefs.color));
             //CopyMem(&color[0], &prefs.color[0], 32);
             prefs.flags = FLAG_TOOL_BAR;
@@ -1197,7 +1269,8 @@ fixprefs:        //prefs.win_left = 0;
     }
 
     if(prefs.sb_lines == 0) prefs.sb_lines = 300;
-    if(prefs.displayidstr[0] == 0) strcpy(prefs.displayidstr, "VT102");
+
+    if(prefs.displayidstr[0] == 0) strlcpy(prefs.displayidstr, "VT102", sizeof(prefs.displayidstr));
 
     // Loads the macro function keys config file if present:
     fh = Open(keysFilename, MODE_OLDFILE);
@@ -1254,7 +1327,7 @@ int main(int argc, char *argv[])
             goto clean_exit;
         }
 
-        strcpy(server, argv[1]);
+        strlcpy(server, argv[1], sizeof(server));
 
         if(argc > 2) tcpPort = atoi(argv[2]);
 
@@ -1645,7 +1718,8 @@ static void OnConnectClicked(char spawnInstance)
     char tbuf[64];
     UWORD port = 0;
 
-    if(!spawnInstance) strcpy(tbuf, server); else tbuf[0] = '\0';
+    if(!spawnInstance)  strlcpy(tbuf, server, sizeof(tbuf));
+    else                tbuf[0] = '\0';
 
 
     if (GetStringRequester(isRunningOnWB ? NULL : win,
@@ -1862,13 +1936,11 @@ static void GetWindowMsg(struct Window *wwin)
         switch (class)
         {
         case IDCMP_GADGETUP:
-            if(wwin == packetWin)
-            {
+            if(wwin == packetWin)  // A line has been validated in the packet window;
+            {                      // send it to the server.
                 RemoveGList(wwin, &strGad, 1);
-                if(prefs.flags & FLAG_RETURN_CRLF)
-                    strcat(strBuffer, "\r\n");
-                else
-                    strcat(strBuffer, "\r");
+                strlcat(strBuffer, (prefs.flags & FLAG_RETURN_CRLF) ? "\r\n" : "\r",
+                        sizeof(strBuffer));
                 SendMacro(strBuffer);
                 strBuffer[0] = 0;
                 ((struct StringInfo *)(strGad.SpecialInfo))->BufferPos = 0;
@@ -1945,7 +2017,7 @@ static void GetWindowMsg(struct Window *wwin)
                     goto down;
                 case RAWKEY_F5:
                     buf[0] = '\0';
-                    strcpy(fbuf, "DCTelnet.Cap");
+                    strlcpy(fbuf, "DCTelnet.Cap", sizeof(fbuf));
                     if (FileRequester(isRunningOnWB ? NULL : win,
                                       buf,  sizeof(buf),
                                       fbuf, sizeof(fbuf),
@@ -2126,7 +2198,7 @@ static void GetWindowMsg(struct Window *wwin)
                             // if(FileReq(buf, "#?", fbuf, "ASCII Send", TRUE, 0))
                             {
                                 register long r;
-                                strcpy(buf, prefs.uploadpath);
+                                strlcpy(buf, prefs.uploadpath, sizeof(buf));
                                 AddPart(buf, fbuf, sizeof(buf));
                                 //strcat(buf, fbuf);
                                 SimpleReq(buf);
@@ -2575,7 +2647,7 @@ static UWORD EstablishTCPConnection(char *servername, UWORD port)
 
     LocalFmt("\r\nLooking up ›32m%s›m...\r\n", servername);
 
-    strcpy(server, servername);
+    strlcpy(server, servername, sizeof(server));
 
     isConnectionAborted = 0;
     hostAddr = gethostbyname(server);
@@ -3096,7 +3168,7 @@ BOOL OpenDisplay(void)
         if(SocketBase)
         {
             register char *po;
-            strcpy(buf, SocketBase->lib_IdString);
+            strlcpy(buf, SocketBase->lib_IdString, sizeof(buf));
             // truncate the string at the first line feed:
             po = strchr(buf, '\n');
             if(po) po[0] = '\0';

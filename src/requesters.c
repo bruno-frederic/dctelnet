@@ -64,7 +64,7 @@
 
 
 // Calling module must provide these:
-// Safer string copy than strcpy() and strncpy(). Note: this is a POSIX function.
+// strlcpy(): a safer alternative to strcpy() and strncpy(). Note: it is not part of standard C.
 extern size_t strlcpy(char *dst, const char *src, size_t dstSize);
 
 

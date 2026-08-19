@@ -15,7 +15,7 @@
 #ifdef __VBCC__
     #pragma popwarn
 #endif
-#include <string.h>                   // memcpy(), strcpy(), strcat(), strlen()
+#include <string.h>                   // memcpy(), strlen()
 #include <ctype.h>                    // tolower(), toupper()
 #include "abook.h"                    // required
 #include "edit.h"                     // required
@@ -518,8 +518,8 @@ add:
                         book = AllocMem(sizeof(struct BookStruct), MEMF_PUBLIC|MEMF_CLEAR);
                         if(book)
                         {
-                            strcpy(book->name, "*new site*");
-                            strcpy(book->host, "*ip/host here*");
+                            strlcpy(book->name, "*new site*", sizeof(book->name));
+                            strlcpy(book->host, "*ip/host here*", sizeof(book->host));
                             book->port = 23;
                             if(EditProfile(book))
                             {
@@ -553,8 +553,8 @@ add:
         if(BeginServerConnection(conbook->host, conbook->port) == RETURN_OK)
         {
             conbook->last = mytime();
-            strcpy(username, conbook->username);
-            strcpy(password, conbook->password);
+            strlcpy(username, conbook->username, sizeof(username));
+            strlcpy(password, conbook->password, sizeof(password));
         }
     }
 
@@ -674,14 +674,14 @@ static int OpenEditProfileWindow( void )
     return( 0L );
 }
 
-static void myctime(long secs, char *outbuf)
+static void myctime(long secs, char *outbuf, size_t maxLen)
 {
     char buf1[LEN_DATSTRING];
     struct DateTime tostr;
 
     if(secs == 0)
     {
-        strcpy(outbuf, "Never");
+        strlcpy(outbuf, "Never", maxLen);
         return;
     }
 
@@ -701,7 +701,7 @@ static void myctime(long secs, char *outbuf)
 
     DateToStr(&tostr);
     buf1[0] = ' ';
-    strcat(outbuf, buf1);
+    strlcat(outbuf, buf1, maxLen);
 }
 
 /*
@@ -725,7 +725,7 @@ static BOOL EditProfile(struct BookStruct *book)
     // Initialize gadget fields with current book data
     editProfileGTags[1] = (unsigned long)book->name;
     editProfileGTags[8] = (unsigned long)book->host;
-    myctime(book->last, lasttime);
+    myctime(book->last, lasttime, sizeof(lasttime));
     editProfileGTags[15] = (unsigned long)lasttime;
     editProfileGTags[26] = (unsigned long)book->port;
     editProfileGTags[33] = (unsigned long)book->username;
@@ -800,15 +800,19 @@ static BOOL EditProfile(struct BookStruct *book)
         // Copy gadget values to the BookStruct if user pressed OK:
         if (ret)
         {
-            strcpy(book->name,
-                    ((struct StringInfo *)editProfileGadgets[GD_SITE]->SpecialInfo)->Buffer);
-            strcpy(book->host,
-                    ((struct StringInfo *)editProfileGadgets[GD_ADDRESS]->SpecialInfo)->Buffer);
+            strlcpy(book->name,
+                    ((struct StringInfo *)editProfileGadgets[GD_SITE]->SpecialInfo)->Buffer,
+                    sizeof(book->name));
+            strlcpy(book->host,
+                    ((struct StringInfo *)editProfileGadgets[GD_ADDRESS]->SpecialInfo)->Buffer,
+                    sizeof(book->host));
             book->port = ((struct StringInfo *)editProfileGadgets[GD_PORT]->SpecialInfo)->LongInt;
-            strcpy(book->username,
-                    ((struct StringInfo *)editProfileGadgets[GD_USERNAME]->SpecialInfo)->Buffer);
-            strcpy(book->password,
-                    ((struct StringInfo *)editProfileGadgets[GD_PASSWORD]->SpecialInfo)->Buffer);
+            strlcpy(book->username,
+                    ((struct StringInfo *)editProfileGadgets[GD_USERNAME]->SpecialInfo)->Buffer,
+                    sizeof(book->username));
+            strlcpy(book->password,
+                    ((struct StringInfo *)editProfileGadgets[GD_PASSWORD]->SpecialInfo)->Buffer,
+                    sizeof(book->password));
         }
 
         ClearPointer(aBookWnd); // Restore normal pointer
@@ -1312,12 +1316,8 @@ void OpenToolBarWindow(char setmenus)
 
         do
         {
-            if (isRunningOnWB)
-                strcpy(buf, "PROGDIR:WBIcons/");
-            else
-                strcpy(buf, "PROGDIR:SCIcons/");
-
-            strcat(buf, icons[i]);
+            strlcpy(buf, isRunningOnWB ? "PROGDIR:WBIcons/" : "PROGDIR:SCIcons/", sizeof(buf));
+            strlcat(buf, icons[i], sizeof(buf));
             dob[i] = GetDiskObjectNew(buf);
             if(dob[i])
             {
