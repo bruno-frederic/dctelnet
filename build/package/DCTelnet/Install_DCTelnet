@@ -26,11 +26,11 @@
 
 (if (< #os-ver 37)
     (
-        (SET #SrcLibsDir    "Libs-r36")
+        (SET #srcLibsDir    "Libs-r36")
     )
     ; else
     (
-        (SET #SrcLibsDir    "Libs")
+        (SET #srcLibsDir    "Libs")
     )
 )
 
@@ -38,7 +38,7 @@
 ;---[ Start installation ]----------------------------------------------------
 
 
-(SET DestDir
+(SET #destDir
     (ASKDIR    (prompt "Please select where you would like DCTelnet to be installed\n"
                     "a drawer will be created")
         (help @askdir-help)
@@ -47,13 +47,13 @@
      )
 )
 
-(SET DestDir    (TACKON DestDir "DCTelnet"))
-(SET @default-dest DestDir)
-(SET DocsDir    (TACKON DestDir "Docs"))
-(SET SCDir    (TACKON DestDir "SCIcons"))
-(SET WBDir    (TACKON DestDir "WBIcons"))
+(SET #destDir       (TACKON #destDir "DCTelnet"))
+(SET #docsDir       (TACKON #destDir "Docs"))
+(SET #scIconsDir    (TACKON #destDir "SCIcons"))
+(SET #wbIconsDir    (TACKON #destDir "WBIcons"))
+(SET @default-dest  #destDir)
 
-(if (= (exists DestDir) 1)  ; 1 <=> it is a file
+(if (= (exists #destDir) 1)  ; 1 <=> it is a file
     (
         (message
             "\nERROR: A drawer for DCTelnet already exists in the choosen path.\n"
@@ -70,7 +70,7 @@
         (prompt    "\n\nInstalling DCTelnet executable for 68 000.\n")
         (help @copyfiles-help)
         (source "DCTelnet")
-        (dest     DestDir)
+        (dest     #destDir)
         (infos)
         (confirm)  ; if the "confirm" option is present, user will be prompted to indicate which
                    ; files are to be copied, else the files will be copied silently.
@@ -79,7 +79,7 @@
         (prompt    "\n\nInstalling DCTelnet executable for 68 020 CPU.\n")
         (help @copyfiles-help)
         (source "DCTelnet.020")
-        (dest    DestDir)
+        (dest    #destDir)
         (infos)
         (confirm)
     )
@@ -88,20 +88,20 @@
         (prompt    "Installing the DCTelnet documentation.")
         (help @copyfiles-help)
         (source "docs")
-        (dest     DocsDir)
+        (dest     #docsDir)
         (infos)
         (confirm)
         (all)            ; needed to copy whole directory
     )
 
-(SET #address-book-path    (TACKON DestDir "DCTelnet.book"))
+(SET #address-book-path    (TACKON #destDir "DCTelnet.book"))
 (if (= (exists #address-book-path) 0)
     (
         (COPYFILES
             (prompt    "Installing starter address book.")
             (help @copyfiles-help)
             (source "DCTelnet.Book")
-            (dest     DestDir)
+            (dest     #destDir)
             (infos)
         )
     )
@@ -114,7 +114,7 @@
             (prompt    "Installing starter address book.")
             (help @copyfiles-help)
             (source "DCTelnet.Book")
-            (dest     DestDir)
+            (dest     #destDir)
             (newname "DCTelnet-New.Book")
             (infos)
         )
@@ -128,7 +128,7 @@
             "If you use Workbench to run DCTelnet, it will default to MWB (WB) style icons,\n"
             "otherwise it will load and use the ANSI (SC) style icons.")
         (source "SCIcons")
-        (dest     SCDir)
+        (dest     #scIconsDir)
         (all)
     )
 
@@ -138,12 +138,12 @@
             "If you use Workbench to run DCTelnet, it will default to MWB (WB) style icons,\n"
             "otherwise it will load and use the ANSI (SC) style icons.")
         (source "WBIcons")
-        (dest     WBDir)
+        (dest     #wbIconsDir)
         (all)
     )
 
     ; COPYLIB: check the version to be installed and the destination version before copying
-    (SET #SrcReqTools    (TACKON #SrcLibsDir "reqtools.library"))
+    (SET #SrcReqTools    (TACKON #srcLibsDir "reqtools.library"))
     (COPYLIB
         (prompt    "\n\nInstalling ReqTools library: reqtools.library")
         (help    "\n\nReqTools is a graphical toolkit providing 'requesters'")
@@ -162,7 +162,7 @@
         (confirm)
     )
 
-    (SET #SrcXPRZmodem    (TACKON #SrcLibsDir "xprzmodem.library"))
+    (SET #SrcXPRZmodem    (TACKON #srcLibsDir "xprzmodem.library"))
     (COPYLIB
         (prompt    "\n\nInstalling Zmodem support: xprzmodem.library")
         (help    "\n\nZModem is used to transfer files via Telnet.\n\n"
