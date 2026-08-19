@@ -32,9 +32,11 @@
 @{b}DCTelnet@{ub} is a Telnet client for Commodore @{b}Amiga@{ub} computers.
 It is @{b}easy to use@{ub}, @{b}lightweight@{ub}, and @{b}reliable@{ub}.
 
-@{b}DCTelnet@{ub} is ideal for accessing @{b}Telnet-enabled BBS systems@{ub}
-on classic @{b}Amiga hardware@{ub}, and supports @{b}file transfers via
-ZModem@{ub}.
+In fullscreen mode, DCTelnet is ideal for accessing @{b}Telnet-enabled BBS
+systems@{ub} on classic Amiga hardware, and supports @{b}file transfers via ZModem@{ub}.
+
+It is also perfect for regular Telnet usage thanks to its @{b}windowed mode on
+Workbench@{ub}.
 
 @EndNode
 
@@ -42,11 +44,14 @@ ZModem@{ub}.
 
 @node FEATURES "Features of DCTelnet"
 
-- @{b}68000@{ub} compatible (no 68020 required)
+- @{b}68000@{ub} compatible
 
-- @{b}ZModem@{ub} upload and download using @{b}XPR libraries@{ub}
+- @{b}ZModem@{ub} upload and download using XPR libraries
 
-- Fast and efficient design: direct access to bsdsocket API
+- Fast and efficient design : DCTelnet access the TCP/IP stack directly
+
+- Flexible display modes: fullscreen, windowed on Workbench or minimizable/
+  iconifiable
 
 - Address book with username and password entries
 
@@ -54,13 +59,11 @@ ZModem@{ub}.
 
 - User-definable screen modes & fonts
 
-- Application can be iconified while running
+- @{b}Multiple simultaneous@{ub} Telnet connections
 
-- @{b}Multiple simultaneous Telnet connections@{ub}
+- @{b}No@{ub} MUI, ClassAct or ReAction required
 
-- @{b}No MUI, ClassAct or ReAction required@{ub}
-
-- @{b}No telser.device required@{ub}
+- @{b}No@{ub} telser.device required
 @EndNode
 
 
@@ -69,7 +72,8 @@ ZModem@{ub}.
 
 - Kickstart / Workbench @{b}v2.00 (V36)@{ub} or higher
 
-- A TCP/IP stack: @{b}AmiTCP@{ub}, @{b}Miami@{ub}, UAE bsdsocket.library or compatible
+- A TCP/IP stack: @{b}AmiTCP@{ub}, @{b}Roadshow@{ub}, @{b}Miami@{ub}, UAE bsdsocket.library or
+  compatible
 
 @EndNode
 
@@ -444,48 +448,43 @@ font. This is the case, for example, on @{i}Retro 32 BBS@{ui}.
 
 ---------------------------------------------
 
-@{b}Connection stuck after changing display settings (fonts,@{ub}
-@{b}XEM, screen mode) or iconifying the application (fixed in v1.8)@{ub}
+@{b}Rendering glitches and compatibility issues on several BBSes@{ub}
 
-After iconifying the application or changing certain display-related
-settings (such as the terminal font, disabling the toolbar, enabling the XEM
-library, or switching the screen mode), the current connection and any
-future connections may appear successful, but @{b}no output is
-displayed@{ub}. The status remains @{i}Connected@{ui}, while the terminal window
-no longer shows any data.
+Rendering issues occur on multiple BBSes, whether using ibmcon.device or
+XemVT340.library for display. Some screens freeze, misalign the UI, or fail
+to display animations.
 
-This issue has existed since @{b}DCTelnet 1.1@{ub} and occurs when used with certain
+Details on GitHub: https://github.com/bruno-frederic/dctelnet/issues/11
+
+---------------------------------------------
+
+@{b}Network issues with AmiBerry and FS-UAE on Linux@{ub}
+
+Connection issues have been reported when using the integrated TCP/IP stack
+provided by AmiBerry or FS-UAE under Linux. The problem appears to be
+specific to these emulators' bsdsocket.library implementations. Using a
+different IP stack resolves the issue.
+
+Details on GitHub: https://github.com/bruno-frederic/dctelnet/issues/13
+
+---------------------------------------------
+
+@{b}Connection stuck after changing display settings (fonts, XEM, screen mode)@{ub}
+@{b}or iconifying the application (fixed in v1.8)@{ub}
+
+This issue had existed since DCTelnet 1.1 and occured when used with certain
 versions of "bsdsocket.library", notably UAE bsdsocket.library 4.1 (WinUAE)
 and Amiberry's built-in library.
 
-The problem happens because "ibmcon.device" incorrectly releases an internal
-system signal (bit 31).
-
-Since v1.8, DCTelnet prevents this signal from being used, avoiding the
-connection freeze.
-
-@{b}Workaround before v1.8:@{ub}
-After modifying any of these settings, @{b}quit DCTelnet and restart
-it@{ub}.
-
-Greetings to @{b}Marius@{ub} (aka Firestone on EAB forum) for his help reporting
-this bug and testing DCTelnet across different configurations.
+Details on GitHub: https://github.com/bruno-frederic/dctelnet/issues/3
 
 ---------------------------------------------
 
 @{b}Address Book Profile may not be saved correctly (fixed in v1.8)@{ub}
 
+This bug has been present at least since the original version 1.1 release.
 
-This bug has been present at least since the original version 1.1 release
-(December 1997).
-
-Before v1.8, changes made in the Address Book Profile were not saved
-correctly when navigating between fields @{b}with the mouse@{ub}.
-
-@{b}Workaround before v1.8:@{ub} When editing Address Book Profile:
-- Press @{b}[Enter]@{ub} after typing text in each field.
-- Or move to the next field using @{b}[Tab]@{ub}, then press @{b}[Enter]@{ub}
-  before leaving the profile window.
+Details on GitHub: https://github.com/bruno-frederic/dctelnet/issues/4
 
 ---------------------------------------------
 
@@ -508,7 +507,42 @@ Starting with v1.8, a compatible version of the library is included in the
 
 ---[ DCTelnet 1.9.1 ]-------------------------------------------------------
 
-TODO
+New Features:
+- Refreshed toolbar icons for fullscreen mode
+- Added three IBM CP437 fonts for improved PC BBS display:
+    - ANSEY
+    - P0T-IBM
+    - IBM
+- Reset Screen action in the DCTelnet menu
+- Address Book improvements:
+    - The Address Book now sorts entries by most recent connection by
+      default.
+    - Entry order now remains consistent with the selected default sort
+      mode, and changing the sort order no longer rewrites the Address Book
+      file unnecessarily.
+- The Connect dialog now accepts ":" as a host/port separator
+  Example: bbs.example.com:23
+- Displays the name of the active display engine at startup (e.g.,
+  ibmcon.device, console.device, xemvt340.library)
+
+Bug Fixes
+- Fixed Function Keys window not saving changes when switching fields with
+  the mouse.
+- Improved DNS resolution robustness when establishing TCP connections
+- The Speed Test is now reliable on very fast machines.
+- DCTelnet now notifies the user when XEmulator.library is not configured.
+- The installer now warns when attempting to create a "DCTelnet" subdrawer
+  inside an existing DCTelnet directory.
+
+Internal Improvements
+- Refactored menu handling for improved maintainability.
+- Improved string-safety throughout the application with strlcpy() and
+  strlcat().
+- Improved date and time handling, including protection against the Year
+  2038 limitation for last connection timestamps.
+
+Build & Packaging
+- Updated installer to follow Installer v42 naming guidelines.
 
 
 

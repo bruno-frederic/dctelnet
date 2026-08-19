@@ -1,60 +1,66 @@
 # DCTelnet
-### A classic *𝔸miga* Telnet/BBS client with Zmodem
+[![Latest Release](https://img.shields.io/github/v/release/bruno-frederic/dctelnet?color=green)](https://github.com/bruno-frederic/dctelnet/releases)
+![AmigaOS 2.0+](https://img.shields.io/badge/AmigaOS-2.0+-blue)
+![Motorola CPU 68000+](https://img.shields.io/badge/CPU-68000+-blue)
+[![Aminet package](https://img.shields.io/badge/aminet-comm/tcp/DCTelnet-green)](https://aminet.net/package/comm/tcp/DCTelnet)
 
-**DCTelnet** is a Telnet client for Commodore **Amiga** computers.
+
+**DCTelnet** is a Telnet client for **Amiga** computers.
 It is **easy to use**, **lightweight**, and **reliable**.
 
-**DCTelnet** is ideal for accessing **Telnet-enabled BBS systems** on classic
+In fullscreen mode, DCTelnet is ideal for accessing **Telnet-enabled BBS systems** on classic
 **Amiga hardware**, and supports **file transfers via ZModem**.
+
+It is also perfect for regular Telnet usage thanks to its **windowed mode on Workbench**.
+
 
 ![DCTelnet screenshot](assets/screenshot.png)
 
 ---
 
-> **Note:** This repository provides recompiled versions of DCTelnet,
-> including a **68000-compatible binary** for classic Amiga systems
-> (A500, A600, A2000), as well as an **optimized 68020 build**.
+> **Note:** Starting with the v1.7 release in 2026, this repository provides
+> recompiled versions of DCTelnet, including a **68000‑compatible binary**
+> for classic Amiga systems (A500, A600, A2000 with KS 2.0 or higher), as
+> well as an **optimized 68020 build**.
 >
-> **DCTelnet** was originally written by **Zed**. As of January 2026, the
-> DCTelnet 1.5/1.6 releases available on Aminet target 68020+ CPUs only.
+> **DCTelnet** was originally written by **Zed**. His latest releases
+> (v1.5-1.6, published between 1998 and 2000) were compiled
+> **for 68020+ CPUs only**.
 >
-> This new release also offers **simplified installation**, **improved
+> The new releases also offers **simplified installation**, **improved
 > documentation** and **bug fixes**.
->
-> 🎨 **Help wanted: UI icons**
->
-> To give DCTelnet a more modern look, I’m looking for help to design a new set of toolbar icons.
-> If you have pixel-art or icon design skills, your help would be greatly appreciated.
-> See [issue #6](https://github.com/bruno-frederic/dctelnet/issues/6) for details.
->
->
-> 💬 Contact & Discussion
->
-> Want to chat, give feedback, or share your ideas about DCTelnet?
-> Join the conversation on the [EAB forum thread](https://eab.abime.net/showthread.php?t=121939)
+
+---
+
+## 💬 Contact & Discussion
+
+Want to chat, give feedback, or share your ideas about DCTelnet?
+
+You can reach me on [Retro 32 BBS](https://www.retro32.com/retro32-bbs), where I go by *Bruno*,
+or join the discussion on the [EAB forum thread](https://eab.abime.net/showthread.php?t=121939)
 
 
 ---
 
 ## ✨ Features
 
-- **68000** compatible (no 68020 required)
-- **ZModem** upload & download using **XPR libraries**
-- Fast and efficient design : DCTelnet access the bsdsocket API directly
+- **68000** compatible
+- **ZModem** upload & download using XPR libraries
+- Fast and efficient design : DCTelnet access the TCP/IP stack directly
+- Flexible display modes: fullscreen, windowed on Workbench or minimizable/iconifiable
 - Address book with username & password entries
 - Additional terminal emulations via **XEM libraries**
 - User-definable screen modes & fonts
-– Application can be iconified while running
-- **multiple simultaneous Telnet connections**
-- **No MUI, ClassAct or ReAction required**
-- **No `telser.device` required**
+- **multiple simultaneous** Telnet connections
+- **No** MUI, ClassAct or ReAction required
+- **No** `telser.device` required
 
 ---
 
 ## ⚙️ Requirements
 
 - Kickstart / Workbench **v2.00 (V36)** or higher
-- A TCP/IP stack: **AmiTCP**, **Miami**, UAE bsdsocket.library or compatible
+- A TCP/IP stack: **AmiTCP**, **Roadshow**, **Miami**, UAE bsdsocket.library or compatible
 
 ---
 
@@ -108,37 +114,36 @@ Many PC-based BBSes require an **IBM Code Page 437 (CP437)** font to display lin
 On **Amiga-based BBSes**, graphics are often designed for the classic **Topaz** font. This is the case, for example, on *Retro 32 BBS*.
 
 
+### Rendering glitches and compatibility issues on several BBSes
+
+Rendering issues occur on multiple BBSes, whether using ibmcon.device or
+XemVT340.library for display. Some screens freeze, misalign the UI, or fail
+to display animations.
+
+Details on [GitHub issue #11](https://github.com/bruno-frederic/dctelnet/issues/11).
+
+
+### Network issues with AmiBerry and FS-UAE on Linux
+
+Connection issues have been reported when using the integrated TCP/IP stack provided by AmiBerry or FS-UAE under Linux. The problem appears to be specific to these emulators' bsdsocket.library implementations. Using a different IP stack resolves the issue.
+
+Details on [GitHub issue #13](https://github.com/bruno-frederic/dctelnet/issues/13).
+
+
 ### Connection stuck after changing display settings (fonts, XEM, screen mode) or iconifying the application (fixed in v1.8)
 
-
-After iconifying the application or changing certain display-related settings (such as the **terminal font**, disabling the toolbar, enabling the **XEM library**, or switching the **screen mode**), the current connection and any future connections may appear successful, but **no output is displayed**. The status remains *Connected*, while the terminal window no longer shows any data. [(issue #3)](https://github.com/bruno-frederic/dctelnet/issues/3)
-
-This issue has existed since **DCTelnet 1.1** and occurs when used with certain
+This issue had existed since **DCTelnet 1.1** and occured when used with certain
 versions of "bsdsocket.library", notably UAE bsdsocket.library 4.1 (WinUAE)
 and Amiberry's built-in library.
 
-The problem happens because "ibmcon.device" incorrectly releases an internal
-system signal (bit 31).
+Details on [GitHub issue #3](https://github.com/bruno-frederic/dctelnet/issues/3).
 
-Since v1.8, DCTelnet prevents this signal from being used, avoiding the
-connection freeze.
-
-**Workaround:**
-After modifying any of these settings, **quit DCTelnet and restart it**.
-
-Greetings to **Marius** (aka Firestone on EAB forum) for his help reporting
-this bug and testing DCTelnet across different configurations.
 
 ### Address Book Profile may not be saved correctly (fixed in v1.8)
 
 This bug has been present at least since the original version 1.1 release (December 1997).
 
-Before v1.8, changes made in the Address Book Profile were not saved
-correctly when navigating between fields **with the mouse**. [(issue #4)](https://github.com/bruno-frederic/dctelnet/issues/4)
-
-**Workaround before v1.8:** When editing Address Book Profile:
-- Press **[Enter]** after typing text in each field.
-- Or move to the next field using **[Tab]**, then press **[Enter]** before leaving the profile window.
+Details on [GitHub issue #4](https://github.com/bruno-frederic/dctelnet/issues/4).
 
 
 ### On AmigaOS / Kickstart 2.00 & 2.02 (fixed in v1.8)
@@ -151,14 +156,14 @@ Starting with v1.8, a compatible version of the library is included in the `Libs
 
 ## 🛠️ Build environment
 
-**As of June 2026:**
+**As of August 2026:**
 
 - **IDE**: VS Code (on Windows)
 - Docker/Podman running a telnetd container for testing
 - **Compiler**: **VBCC** and **GNU Make** on Windows, using my custom toolchain :
   [vbcc-bin](https://github.com/bruno-frederic/vbcc-bin/tree/Bruno_toolchain)
-
 - The project can also be built with SAS/C v6.58 under AmigaOS 3.2
+- Icon Editor : IconEdit from AmigaOS 3.2.3
 
 ### Source code
 

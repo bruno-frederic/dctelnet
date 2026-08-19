@@ -9,104 +9,87 @@ Distribution: Aminet
 DCTelnet is a Telnet client for Commodore Amiga computers. It is easy to
 use, lightweight, and reliable.
 
-DCTelnet is ideal for accessing Telnet-enabled BBS systems on classic Amiga
-hardware, and supports file transfers via ZModem.
+In fullscreen mode, DCTelnet is ideal for accessing Telnet-enabled BBS
+systems on classic Amiga hardware, and supports file transfers via ZModem.
+
+It is also perfect for regular Telnet usage thanks to its windowed mode on
+Workbench.
 
 More info/sources : https://github.com/bruno-frederic/dctelnet
 
 
-Note: This release provides recompiled versions of DCTelnet including a
-68000-compatible binary for classic Amiga systems (A500, A600, A2000), as
-well as an optimized 68020 build.
+Note: Starting with the v1.7 release in 2026, this package provides
+recompiled versions of DCTelnet, including a 68000-compatible binary for
+classic Amiga systems (A500, A600, A2000 with KS 2.0 or higher), as well as
+an optimized 68020 build.
 
-DCTelnet was originally written by Zed. As of January 2026, the DCTelnet
-1.5/1.6 releases available on Aminet target 68020+ CPUs only.
+DCTelnet was originally written by Zed. His latest releases (v1.5-1.6,
+published between 1998 and 2000) were compiled for 68020+ CPUs only.
 
-This new release also offers simplified installation, improved
+The new releases also offers simplified installation, improved
 documentation and bug fixes.
-
-- Help wanted: UI icons
-
-To give DCTelnet a more modern look, I'm looking for help to design a new
-set of toolbar icons. If you have pixel-art or icon design skills, your
-help would be greatly appreciated. See github issue #6 for details:
-https://github.com/bruno-frederic/dctelnet/issues/6
 
 - Contact & Discussion:
 
 Want to chat, give feedback, or share your ideas about DCTelnet?
-Join the conversation on the EAB forum thread:
+
+You can reach me on Retro 32 BBS, where I go by "Bruno", or join the
+discussion on the EAB forum thread:
 https://eab.abime.net/showthread.php?t=121939
 
 ---
 
 v1.9.1 Changelog
 
-TODO
+New Features:
+- Refreshed toolbar icons for fullscreen mode
+- Added three IBM CP437 fonts for improved PC BBS display:
+    - ANSEY
+    - P0T-IBM
+    - IBM
+- Reset Screen action in the DCTelnet menu
+- Address Book improvements:
+    - The Address Book now sorts entries by most recent connection by
+      default.
+    - Entry order now remains consistent with the selected default sort
+      mode, and changing the sort order no longer rewrites the Address Book
+      file unnecessarily.
+- The Connect dialog now accepts ":" as a host/port separator
+  Example: bbs.example.com:23
+- Displays the name of the active display engine at startup (e.g.,
+  ibmcon.device, console.device, xemvt340.library)
 
+Bug Fixes
+- Fixed Function Keys window not saving changes when switching fields with
+  the mouse.
+- Improved DNS resolution robustness when establishing TCP connections
+- The Speed Test is now reliable on very fast machines.
+- DCTelnet now notifies the user when XEmulator.library is not configured.
+- The installer now warns when attempting to create a "DCTelnet" subdrawer
+  inside an existing DCTelnet directory.
 
-v1.9 Changelog
+Internal Improvements
+- Refactored menu handling for improved maintainability.
+- Improved string-safety throughout the application with strlcpy() and
+  strlcat().
+- Improved date and time handling, including protection against the Year
+  2038 limitation for last connection timestamps.
 
-Features:
-- Improved Telnet Support
-  The Telnet protocol engine has been completely reworked and now uses a
-  state machine compliant with RFC 854 and RFC 1143. Telnet commands are
-  correctly recognized even when split across multiple TCP packets.
-  Supported Telnet options now include: BINARY ; SGA (Suppress Go Ahead) ;
-  TTYPE (Terminal Type) ; ECHO & NAWS (Negotiate About Window Size)
-  As part of this redesign, several legacy compatibility options have been
-  removed: Simple Telnet Negotiation ; Strip Colour & CRLF Correction
-
-- ReqTools optional at startup
-  DCTelnet no longer requires reqtools.library during startup.
-  The external library is now loaded only when one of these specific
-  functions is used:
-    - Screen Palette settings
-    - Screen Mode Selection (on systems prior to AmigaOS 2.1)
-  This improves compatibility on minimal Amiga setups and reduces external
-  requirements.
-
-- XEmulator Library Settings Panel
-  Added a new settings panel to configure XEmulator.library options
-  directly from the DCTelnet user interface. Settings are currently
-  session-only and are not saved between DCTelnet runs.
-
-Internal Refactoring:
-- More robust library opening and closing logic.
-- Refactored screen, display, windows and console initialization and
-  shutdown code.
-- Refactored XEmulator.library integration.
-- Improved maintainability and internal code structure.
-
-Bug Fixes:
-- The "Use XEM Library" menu option is now automatically unchecked when
-  XEmulator.library cannot be opened.
-- Fixed a progress gauge overflow that could occur during file transfers
-  larger than approximately 4.36 MB.
-- Fixed several issues occurring when DCTelnet was iconified to Workbench.
-- DCTelnet can now correctly spawn additional instances regardless of the
-  executable filename.
-  Previously, some functionality only worked when the executable was named
-  exactly "DCTelnet".
-
-Libraries & Packaging:
-- The installer no longer renames an existing phone book in the destination
-  drawer, preventing accidental loss of user settings.
-
-Build & Toolchain:
-- Added a Docker/Podman container running telnetd for testing purposes.
+Build & Packaging
+- Updated installer to follow Installer v42 naming guidelines.
 
 ---
 
 ## Features
 
-- 68000 compatible (no 68020 required)
+- 68000 compatible
 - ZModem upload & download using XPR libraries
-- Fast and efficient design : DCTelnet access the bsdsocket API directly
+- Fast and efficient design : DCTelnet access the TCP/IP stack directly
+- Flexible display modes: fullscreen, windowed on Workbench or minimizable/
+  iconifiable
 - Address book with username & password entries
 - Additional terminal emulations via XEM libraries
 - User-definable screen modes & fonts
-- Application can be iconified while running
 - multiple simultaneous Telnet connections
 - No MUI, ClassAct or ReAction required
 - No telser.device required
@@ -116,7 +99,8 @@ Build & Toolchain:
 ## Requirements
 
 - Kickstart / Workbench v2.00 (V36) or higher
-- A TCP/IP stack: AmiTCP, Miami, UAE bsdsocket.library or compatible
+- A TCP/IP stack: AmiTCP, Roadshow, Miami, UAE bsdsocket.library or
+  compatible
 
 ---
 
@@ -180,46 +164,37 @@ one of the bundled IBM/ANSI fonts: HyperANSI, IBM, P0T-IBM, or ANSEY.
 On Amiga-based BBSes, graphics are often designed for the classic Topaz
 font. This is the case, for example, on Retro 32 BBS.
 
+### Rendering glitches and compatibility issues on several BBSes
+
+Rendering issues occur on multiple BBSes, whether using ibmcon.device or
+XemVT340.library for display. Some screens freeze, misalign the UI, or fail
+to display animations.
+
+Details on GitHub: https://github.com/bruno-frederic/dctelnet/issues/11
+
+### Network issues with AmiBerry and FS-UAE on Linux
+
+Connection issues have been reported when using the integrated TCP/IP stack
+provided by AmiBerry or FS-UAE under Linux. The problem appears to be
+specific to these emulators' bsdsocket.library implementations. Using a
+different IP stack resolves the issue.
+
+Details on GitHub: https://github.com/bruno-frederic/dctelnet/issues/13
 
 ### Connection stuck after changing display settings (fonts, XEM, screen
     mode) or iconifying the application (fixed in v1.8)
 
-After iconifying the application or changing certain display-related
-settings (such as the terminal font, disabling the toolbar, enabling the
-XEM library, or switching the screen mode), the current connection and any
-future connections may appear successful, but no output is displayed. The
-status remains *Connected*, while the terminal window no longer shows any
-data.
+This issue had existed since DCTelnet 1.1 and occured when used with
+certain versions of "bsdsocket.library", notably UAE bsdsocket.library 4.1
+(WinUAE) and Amiberry's built-in library.
 
-This issue has existed since DCTelnet 1.1 and occurs when used with certain
-versions of "bsdsocket.library", notably UAE bsdsocket.library 4.1 (WinUAE)
-and Amiberry's built-in library.
-
-The problem happens because "ibmcon.device" incorrectly releases an internal
-system signal (bit 31).
-
-Since v1.8, DCTelnet prevents this signal from being used, avoiding the
-connection freeze.
-
-Workaround before v1.8:
-After modifying any of these settings, quit DCTelnet and restart it.
-
-Greetings to Marius (aka Firestone on EAB forum) for his help reporting
-this bug and testing DCTelnet across different configurations.
-
+Details on GitHub: https://github.com/bruno-frederic/dctelnet/issues/3
 
 ### Address Book Profile may not be saved correctly (fixed in v1.8)
 
-This bug has been present at least since the original version 1.1 release
-(December 1997).
+This bug has been present at least since the original version 1.1 release.
 
-Before v1.8, changes made in the Address Book Profile were not saved
-correctly when navigating between fields with the mouse.
-
-Workaround before v1.8: When editing an Address Book Profile:
-- Press [Enter] after typing text in each field.
-- Or move to the next field using [Tab], then press [Enter] before
-  leaving the profile window.
+Details on GitHub: https://github.com/bruno-frederic/dctelnet/issues/4
 
 ### On AmigaOS / Kickstart 2.00 & 2.02 (fixed in v1.8)
 
@@ -233,14 +208,14 @@ Starting with v1.8, a compatible version of the library is included in the
 
 ## Build environment
 
-As of June 2026:
+As of August 2026:
 
 - IDE: VS Code (on Windows)
 - Docker/Podman running a telnetd container for testing
 - Compiler: VBCC and GNU Make on Windows, using my custom toolchain :
   https://github.com/bruno-frederic/vbcc-bin/tree/Bruno_toolchain
-
 - The project can also be built with SAS/C v6.58 under AmigaOS 3.2
+- Icon Editor : IconEdit from AmigaOS 3.2.3
 
 ### Source code
 
