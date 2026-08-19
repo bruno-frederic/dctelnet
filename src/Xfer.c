@@ -394,7 +394,9 @@ long __SAVE_DS__ __ASM__ xpr_gets(__REG__(a0, char *prompt),
     The function returns 0L on failure or user cancellation, non-zero on success.
     */
     #ifdef _DEBUG
-        SimpleReq("TODO : xpr_gets() is not implemented yet.");
+        InfoReq(isRunningOnWB ? NULL : win,
+                "TODO : xpr_gets() is not implemented yet.\r\nprompt=%s\r\nbuffer=%lx",
+                prompt, buffer);
     #endif
 
     return(0);
@@ -1440,7 +1442,7 @@ long __SAVE_DS__ __ASM__ xpr_options(__REG__(d0, LONG numopts), __REG__(a0, stru
         {
             struct IntuiMessage    *imsg;
             struct Gadget        *gadget;
-            ULONG class, code;
+            ULONG class; //, code;
             BOOL quit;
 
             AddGList(window,gadgetlist,(UWORD)-1,(UWORD)-1,NULL);
@@ -1454,7 +1456,7 @@ long __SAVE_DS__ __ASM__ xpr_options(__REG__(d0, LONG numopts), __REG__(a0, stru
                 while(imsg = GT_GetIMsg(window->UserPort))
                 {
                     class    = imsg->Class;
-                    code    = imsg->Code;
+                    //code    = imsg->Code;
                     gadget    = (struct Gadget *)imsg->IAddress;
 
                     GT_ReplyIMsg(imsg);

@@ -1489,7 +1489,7 @@ int main(int argc, char *argv[])
                     else if (i == 0)
                     {
                         PutStr("<-- WaitSelect() => 0 (= timeout or signal received)\n    sigs=");
-                        LogWaitSelectResult(i, sigmask);
+                        LogWaitSelectResult(sigmask);
 
                         if (FD_ISSET(tcpSocket, &rd))
                             InfoReq(isRunningOnWB ? NULL : win,

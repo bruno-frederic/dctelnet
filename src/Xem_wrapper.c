@@ -68,7 +68,10 @@ struct XEM_IO *xemIO;
     */
     LONG __SAVE_DS__ __ASM__ xem_process_macrokeys(__REG__(a0, struct XEmulatorMacroKey *key))
     {
-        InfoReq(isRunningOnWB ? NULL : win, "xem_process_macrokeys() is not implemented.");
+        InfoReq(isRunningOnWB ? NULL : win,
+                "xem_process_macrokeys() is not implemented.\r\xmk_Code=%ld",
+                (LONG) ((key == NULL) ? 0 : key->xmk_Code));
+
         return -1L; // What is the meaning of return value?
     }
 #endif // _DEBUG

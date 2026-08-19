@@ -246,7 +246,7 @@ void PrintBitsULONG(uint32_t val)
     Printf("0x%s = %s\n", hex, bin);
 }
 
-void LogWaitSelectResult(LONG l, ULONG sigmask)
+void LogWaitSelectResult(ULONG sigmask)
 {
     PrintBitsULONG(sigmask);
 
