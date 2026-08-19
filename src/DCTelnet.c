@@ -181,7 +181,6 @@ struct Menu *mainMenuStrip;
 static struct DiskObject *diskObj;
 struct MsgPort *iconPort;
 static struct AppIcon *appIconOnWB;
-static struct hostent *hostAddr;
 static struct sockaddr_in inetSocketAddr;
 struct NewWindow newWin;
 
@@ -1709,7 +1708,7 @@ static void Information(void)
                 "   Online Time ... : %02ld:%02ld:%02ld\n"
                 "    Bytes Sent ... : %ld\n"
                 "Bytes Received ... : %ld",
-                hostAddr->h_name,
+                server,
                 Inet_NtoA(inetSocketAddr.sin_addr.s_addr),
                 tcpPort,
                 spent/3600, (spent/60)%60, spent%60,
@@ -2555,6 +2554,10 @@ static void UpdateConnectingWindowMessage(char *msg, UWORD type)
 
 static UWORD EstablishTCPConnection(char *servername, UWORD port)
 {
+    struct hostent *hostAddr;
+    char strIPAddress[16];    // 16 : 255.255.255.255 + '\0'
+    char strOfficialName[20]; // Limited by the "Connecting" window field
+
     if(!SocketBase) SocketBase = OpenLibrary("bsdsocket.library", 0);
 
     if(!SocketBase)
@@ -2576,9 +2579,13 @@ static UWORD EstablishTCPConnection(char *servername, UWORD port)
     UpdateConnectingWindowMessage("Looking up...", 4);
     UpdateConnectingWindowMessage(servername, 0);
 
-    LocalFmt("\r\nLooking up ›32m%s›m...\r\n", servername);
+    LocalFmt("\r\nLooking up ›32m%s›m... ", servername);
 
-    strlcpy(server, servername, sizeof(server));
+    if (servername != server)
+        strlcpy(server, servername, sizeof(server));
+    #ifdef _DEBUG
+    else  SimpleReq("servername == global server variable!!! could crash strcpy()");
+    #endif
 
     isConnectionAborted = 0;
     hostAddr = gethostbyname(server);
@@ -2592,23 +2599,39 @@ static UWORD EstablishTCPConnection(char *servername, UWORD port)
         return(1);
     }
 
+    #ifdef _DEBUG
+        Printf("<-- gethostbyname(%s) => type=%ld, len=%ld\r\n",
+                server,
+                hostAddr->h_addrtype,
+                hostAddr->h_length);
+    #endif
+
+    // Sanity check: expected IPv4 response; protects against unexpected resolver data.
+    if (hostAddr->h_addrtype != AF_INET  ||
+        hostAddr->h_length   != sizeof(inetSocketAddr.sin_addr))
+    {
+        LocalPrint("Host lookup returned an unsupported address type.\r\n");
+        LEDs();
+        return(1);
+    }
+
+    memset(&inetSocketAddr, 0, sizeof(inetSocketAddr));
     inetSocketAddr.sin_len = sizeof(inetSocketAddr);
-    inetSocketAddr.sin_port = port;
     inetSocketAddr.sin_family = AF_INET;
-    inetSocketAddr.sin_addr.s_addr = 0;
-
+    inetSocketAddr.sin_port = htons(port);
     memcpy(&inetSocketAddr.sin_addr, hostAddr->h_addr, hostAddr->h_length);
-    //CopyMem(hostAddr->h_addr, &inetSocketAddr.sin_addr, hostAddr->h_length);
 
-    UpdateConnectingWindowMessage(Inet_NtoA(inetSocketAddr.sin_addr.s_addr), 1);
-    UpdateConnectingWindowMessage(hostAddr->h_name, 2);
+    strlcpy(strIPAddress, Inet_NtoA(inetSocketAddr.sin_addr.s_addr), sizeof(strIPAddress));
+    strlcpy(strOfficialName, hostAddr->h_name, sizeof(strOfficialName));
 
-    LocalFmt("Connecting to ›32m%s›m (›36m%s›m) port ›35m%ld›m...\r\n",
-        hostAddr->h_name,
-        Inet_NtoA(inetSocketAddr.sin_addr.s_addr),
-        port);
+    LocalFmt("Found ›36m%s›m (official name: ›32m%s)›m\r\n", strIPAddress, strOfficialName);
 
-    tcpSocket = socket(hostAddr->h_addrtype, SOCK_STREAM, 0);
+    UpdateConnectingWindowMessage(strIPAddress, 1);
+    UpdateConnectingWindowMessage(strOfficialName, 2);
+
+    LocalFmt("Connecting to ›36m%s›m port ›35m%ld›m...\r\n", strIPAddress, port);
+
+    tcpSocket = socket(AF_INET, SOCK_STREAM, 0);
     if(tcpSocket == -1)
     {
         LocalPrint("Cannot Open Socket.\r\n");
