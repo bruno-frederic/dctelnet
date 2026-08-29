@@ -1,9 +1,9 @@
 @DATABASE "DCTelnet.guide"
-@$VER: DCTelnet.guide 1.9.1-dev (xx.x.26)
+@$VER: DCTelnet.guide 1.9.1 (29.8.26)
 @node "MAIN" "DCTelnet Guide"
 @author "Shane, Zed and Bruno FREDERIC"
 @TOC "MAIN"
-                              @{b}DCTelnet v1.9.1-dev@{ub}
+                              @{b}DCTelnet v1.9.1@{ub}
      ______  ______ ____________________    __    ___________________
     /\\_____\\/\\_____\\\\_________\\______\\__\\  /\\_\\  /\\__\\______\\_________\\
    / /  ___ \\/  ___//___   ___/  ____/  / / /  \\/ /  /  ____/___   ___/
