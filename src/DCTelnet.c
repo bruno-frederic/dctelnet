@@ -960,14 +960,21 @@ void LEDs(void)
 }
 
 
+/**
+ * @brief Run a terminal output speed test and display the elapsed time.
+ *
+ * The test outputs either the contents of PROGDIR:speedtest.ans or, if the file cannot be opened,
+ * 200 colored ASCII lines. The elapsed time is measured with CurrentTime().
+ *
+ * The terminal cursor is temporarily hidden during the test.
+ *
+ */
 static void SpeedTest(void)
 {
     ULONG before_s, before_micros;
     ULONG after_s, after_micros;
-    ULONG elapsed_micros;
-    ULONG lines_per_second;
-    register UWORD i;
-    char *rating;
+    ULONG elapsed_tenths;
+    BPTR fh;
 
     // "›0 p" = 9B 30 20 70 : Set Cursor Rendition -> make cursor invisible
     //                        (disabling the cursor slightly improves output speed)
@@ -976,57 +983,93 @@ static void SpeedTest(void)
     // Reference: Amiga ROM Kernel Reference Manual v2.04 - Devices (1991),
     //            section "Control Sequences for Window Output"
     ConWrite("›0 p›m\f", 7);
+    if (renderer == RENDERER_BUILTIN)
+        cursor_hide();
 
     if(drivertype && isRunningOnWB)  // if XEM Enabled running on Workbench
     {
         LocalPrint("WARNING: The Xem library may hang the terminal window during this test!\r\n"
                    "If this happens, use \"Reset Screen\" from the DCTelnet menu.\r\n");
-        Delay(3*TICKS_PER_SECOND);
+        Delay(3 * TICKS_PER_SECOND);
     }
+
+    fh = Open("PROGDIR:speedtest.ans", MODE_OLDFILE);
 
     CurrentTime(&before_s, &before_micros);
 
-    for (i = 1; i < 201; i++)
-        LocalFmt("Line %ld.\r\n", i);
+    if (fh == 0) // File open error, so simply print ASCII lines
+    {
+        int i;
+        int color;
+
+        for (i = 1; i < 201; i++)
+        {
+            color = i % 8;  // cycle through ANSI colors 0-7
+            LocalFmt("›3%ldmLine %ld.\r\n", color, i);  // ESC[3Xm -> set foreground color
+        }
+    }
+    else
+    {
+        LONG len;
+
+        while ((len = Read(fh, recvBuffer, sizeof(recvBuffer))) > 0)
+            ConWrite(recvBuffer, len);
+
+        Close(fh);
+    }
 
     CurrentTime(&after_s, &after_micros);
 
-    // set cursor visible
-    ConWrite("›1 p", 4);
-
+    // Convert the elapsed time to tenths of a second, rounding to the nearest tenth using integer
+    // arithmetic.
+    // CurrentTime() updates the time at most 60 times per second, so the sub-second value has a
+    // maximum resolution of about 0.01667 s, which is sufficient for a tenth-of-a-second
+    // measurement.
     if (after_micros >= before_micros)
     {
-        elapsed_micros = (after_s - before_s) * 1000000
-                       + (after_micros - before_micros);
+        elapsed_tenths = (after_s - before_s) * 10
+                       + (after_micros - before_micros + 50000) / 100000;
     }
     else
     {
-        elapsed_micros = (after_s - before_s - 1) * 1000000
-                       + (1000000 - before_micros + after_micros);
+        elapsed_tenths = (after_s - before_s - 1) * 10
+                       + (1000000 - before_micros + after_micros + 50000) / 100000;
     }
 
-    if (elapsed_micros == 0)
-    {
-        LocalPrint("\r\nSpeed: too fast to measure\r\n"
-                   "Rating: Incredible\r\n");
-    }
-    else
-    {
-        lines_per_second = 200000000 / elapsed_micros;
+    LocalFmt("›0m›255B\r\nDuration: %ld.%ld seconds\r\n",
+             elapsed_tenths / 10,
+             elapsed_tenths % 10);
 
-        if (lines_per_second < 20)
-            rating = "Poor";
-        else if (lines_per_second < 30)
-            rating = "Average";
-        else if (lines_per_second < 50)
-            rating = "Good";
+    if (fh == 0)
+    {
+        if (elapsed_tenths == 0)
+        {
+            LocalPrint("Rating: Incredible\r\n");
+        }
         else
-            rating = "Excellent";
+        {
+            // Round to the nearest integer using integer arithmetic.
+            LONG lines_per_second = (2000 + elapsed_tenths / 2) / elapsed_tenths;
 
-        LocalFmt("\r\nSpeed: %ld lines/second\r\n"
-                 "Rating: %s\r\n",
-                 lines_per_second, rating);
+            STRPTR rating;
+
+            if      (lines_per_second < 20) rating = "Poor";
+            else if (lines_per_second < 30) rating = "Average";
+            else if (lines_per_second < 50) rating = "Good";
+            else                             rating = "Excellent";
+
+            LocalFmt("Speed: %ld lines/second\r\nRating: %s\r\n", lines_per_second, rating);
+        }
     }
+
+    #ifdef _DEBUG
+        LocalPrint("WARNING: Use an optimized release binary for representative results!\r\n");
+    #endif
+
+    // Restore cursor visibility after the test.
+    ConWrite("›1 p", 4);
+    if (renderer == RENDERER_BUILTIN)
+        cursor_show();
 }
 
 static void ClearScrollBack(void)

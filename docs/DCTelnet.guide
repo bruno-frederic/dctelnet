@@ -159,9 +159,19 @@ you.
 
                            @{b}@{u} DISPLAY SPEED TEST @{ub}@{uu}
                             ~~~~~~~~~~~~~~~~~~
-   A number of lines are displayed while the time required to render them is
-   measured. The result provides an estimate of the display speed in lines
-   per second.
+   This function measures the speed of the renderer.
+
+   If a speedtest.ans file is present in the program drawer, it is rendered,
+   providing test conditions that more closely match real-world display
+   behaviour.
+   Otherwise, a set of lines is displayed.
+   In both cases, the time required to render the output is measured.
+
+   Speed varies with PAL/NTSC mode and with toolbar/menu visibility, as more
+   visible lines slow down scrolling.
+
+   The result does not account for the time spent processing the network
+   protocol.
 
    WARNING: The Xem library may hang the terminal window during this test!
             If this happens, use "Reset Screen" from the DCTelnet menu.
