@@ -116,7 +116,6 @@ static struct NewMenu mainMenuDesc[] =
     {    NM_ITEM, "BS/DEL Swap",                    "/", HIGHCOMP|CHECKIT|MENUTOGGLE, 0, (APTR)MENU_BS_DEL_SWAP},
     {    NM_ITEM, "Disable Scroll-B",               "E", HIGHCOMP|CHECKIT|MENUTOGGLE, 0, (APTR)MENU_DISABLE_SCROLLBACK},
     {    NM_ITEM, "Packet Window",                  "2", HIGHCOMP|CHECKIT|MENUTOGGLE, 0, (APTR)MENU_PACKET_WINDOW},
-    {    NM_ITEM, "Use XEM Library",                "3", HIGHCOMP|CHECKIT|MENUTOGGLE, 0, (APTR)MENU_USE_XEM_LIBRARY},
     {    NM_ITEM, "Tool Bar",                       "4", HIGHCOMP|CHECKIT|MENUTOGGLE, 0, (APTR)MENU_TOOLBAR},
     {    NM_ITEM, "Return = CR + LF",               "5", HIGHCOMP|CHECKIT|MENUTOGGLE, 0, (APTR)MENU_RETURN_CRLF},
     {    NM_ITEM, "Local Echoback",                 "6", HIGHCOMP|CHECKIT|MENUTOGGLE, 0, (APTR)MENU_LOCAL_ECHOBACK},
@@ -124,6 +123,11 @@ static struct NewMenu mainMenuDesc[] =
     {    NM_ITEM, "Jump Scroll",                    "8", HIGHCOMP|CHECKIT|MENUTOGGLE, 0, (APTR)MENU_JUMP_SCROLL},
 
     { NM_TITLE, "Settings",                          0 ,             0,               0, (APTR)MENU_SETTINGS},
+    {    NM_ITEM, "Renderer",                        0 ,             0,               0, (APTR)MENU_RENDERER},
+    {       NM_SUB, "Built-in (experimental)",      "1", HIGHCOMP|CHECKIT,     ~(1L<<0), (APTR)MENU_BUILTIN_RENDERER},
+    {       NM_SUB, "AmigaOS console.device",        0 , HIGHCOMP|CHECKIT,     ~(1L<<1), (APTR)MENU_CONSOLE_DEVICE},
+    {       NM_SUB, "External XEM Library",         "3", HIGHCOMP|CHECKIT,     ~(1L<<2), (APTR)MENU_XEM_LIBRARY},
+    {       NM_SUB, "Zed's ibmcon.device",           0 , HIGHCOMP|CHECKIT,     ~(1L<<3), (APTR)MENU_IBMCON_DEVICE},
     {    NM_ITEM, "Screen Mode..",                  "S",             0,               0, (APTR)MENU_SCREEN_MODE},
     {    NM_ITEM, "Screen Font..",                  "F",             0,               0, (APTR)MENU_SCREEN_FONT},
     {    NM_ITEM, "Screen Palette..",               "-",             0,               0, (APTR)MENU_SCREEN_PALETTE},
@@ -131,7 +135,7 @@ static struct NewMenu mainMenuDesc[] =
     {    NM_ITEM, "Transfer Protocol..",            "T",             0,               0, (APTR)MENU_TRANSFER_PROTOCOL},
     {    NM_ITEM, "Protocol Options..",             "*",             0,               0, (APTR)MENU_PROTOCOL_OPTIONS},
     {    NM_ITEM, "Function Keys..",                "K",             0,               0, (APTR)MENU_FUNCTION_KEYS},
-    {    NM_ITEM, "XEM Library..",                  "#",             0,               0, (APTR)MENU_XEM_LIBRARY},
+    {    NM_ITEM, "XEM Library path..",             "#",             0,               0, (APTR)MENU_XEM_LIBRARY_PATH},
     {    NM_ITEM, "XEM Lib Options..",              "+",             0,               0, (APTR)MENU_XEM_LIB_OPTIONS},
     {    NM_ITEM, "Telnet Display ID..",            "9",             0,               0, (APTR)MENU_TELNET_DISPLAY_ID},
     {    NM_ITEM, "ScrollBack Lines..",             "0",             0,               0, (APTR)MENU_SCROLLBACK_LINES},
@@ -215,9 +219,7 @@ BOOL isRunningOnWB; // running in wb
 BOOL isAppIconified;    // iconified
 static BOOL shouldIconify;        // must iconify
 BOOL shouldUniconify;        // must uniconify
-static UBYTE drivertype;    // drivertype 0 - normal    1 - xem library
-#define DRIVER_NORMAL  0
-#define DRIVER_XEM_LIB 1
+
 static BOOL isFingerRequest;        // isFingerRequest?
 
 static UWORD colorPens[]  = { 1,4,1,1,6,4,1,0,5,4,1,6,65535 };
@@ -233,15 +235,26 @@ struct Task *mainTask = NULL;
 BYTE dontUseSig31 = -1; // don't use it, ibmcon.device will destroy it.
 
 #include "DCTelnet-debug.h"
+#define send_data(data, len) TCPSend((data), (len))
+#include "term-engine.c"
 
 
 static void ConWrite(char *data, long len)
 {
     if(!isAppIconified)
     {
-        if(drivertype)
-            XemWrite(data, len);
-        else {
+        if (STATE_IS(APP_RENDERER_BUILTIN))
+        {
+            // With retro32-term, drawing only ever happens with the cursor hidden, so glyphs never
+            // land on an inverted cell.
+            cursor_hide();
+            while (len-- > 0)
+                term_feed((UBYTE)*data++);
+            cursor_show();
+            return; // direct return because maximal optimization is needed for this frequently called function
+        }
+        else if (STATE_IS(APP_RENDERER_CONSOLE_DEVICE | APP_RENDERER_IBMCON_DEVICE))
+        {
             #ifdef _DEBUG
                 if (!writeConsoleReq) RecoveryAlert(
                                        "Error writing to console: console device is unavailable.");
@@ -255,6 +268,13 @@ static void ConWrite(char *data, long len)
             writeConsoleReq->io_Length = len;
             writeConsoleReq->io_Command = CMD_WRITE;
             DoIO((struct IORequest *)writeConsoleReq); // DoIO() is a synchronous function
+            return;
+        }
+        else // APP_RENDERER_XEM_LIB:
+        {
+            XemWrite(data, len);
+
+            return;
         }
     }
 }
@@ -293,7 +313,7 @@ void TextFmt(struct RastPort *rP, char *ctl, ...)
 }
 
 // Wrapper around send() from bsdsocket.library that maintains the nBytesSent counter.
-long TCPSend(const char *buf, long len)
+long TCPSend(const UBYTE *buf, long len)
 {
     // Some SDKs declare send() with const buf, others without; this mismatch triggers SAS/C
     // warning 104, temporarily ignored here until properly handled.
@@ -983,10 +1003,8 @@ static void SpeedTest(void)
     // Reference: Amiga ROM Kernel Reference Manual v2.04 - Devices (1991),
     //            section "Control Sequences for Window Output"
     ConWrite("›0 p›m\f", 7);
-    if (renderer == RENDERER_BUILTIN)
-        cursor_hide();
 
-    if(drivertype && isRunningOnWB)  // if XEM Enabled running on Workbench
+    if (STATE_IS(APP_RENDERER_XEM_LIB))
     {
         LocalPrint("WARNING: The Xem library may hang the terminal window during this test!\r\n"
                    "If this happens, use \"Reset Screen\" from the DCTelnet menu.\r\n");
@@ -1068,8 +1086,6 @@ static void SpeedTest(void)
 
     // Restore cursor visibility after the test.
     ConWrite("›1 p", 4);
-    if (renderer == RENDERER_BUILTIN)
-        cursor_show();
 }
 
 static void ClearScrollBack(void)
@@ -1195,7 +1211,7 @@ BOOL LoadPrefs(void)
             strlcpy(prefs.xferinit,    "TC,OR,B32,FO,AN,DN,KY,SN,RN", sizeof(prefs.xferinit));
             memcpy(prefs.color, color, sizeof(prefs.color));
             //CopyMem(&color[0], &prefs.color[0], 32);
-            prefs.flags = FLAG_TOOL_BAR;
+            prefs.flags = APP_RENDERER_BUILTIN | FLAG_HIDE_TITLEBAR | FLAG_HIDE_LEDS;
 fixprefs:        //prefs.win_left = 0;
             prefs.win_top = 11;
             prefs.win_width = 640;
@@ -2231,24 +2247,10 @@ static void GetWindowMsg(struct Window *wwin)
 
                     case MENU_PACKET_WINDOW:
                         UpdatePrefsFlagFromMenu(item, FLAG_PACKET_WINDOW);
-                        if (isRunningOnWB)
+                        if (isRunningOnWB || STATE_IS(APP_RENDERER_BUILTIN))
                             SimpleReq("Packet Window cannot work in Workbench mode.");
                         else
                             shouldRestart = TRUE;
-                        break;
-
-                    case MENU_USE_XEM_LIBRARY:
-                        if (prefs.displaydriver[0] == '\0')
-                        {
-                            SimpleReq("No XEM library has been selected yet.\n"
-                                      "Please choose one first from the Settings menu.");
-                        }
-                        else
-                            UpdatePrefsFlagFromMenu(item, FLAG_USE_XEM_LIBRARY);
-
-                        // Restart even when prefs.displaydriver[0] == '\0', this forces a menu
-                        // refresh so the CHECKED state of the item is properly reverted :
-                        shouldRestart = TRUE;
                         break;
 
                     case MENU_TOOLBAR:
@@ -2274,11 +2276,78 @@ static void GetWindowMsg(struct Window *wwin)
                     case MENU_RAW_CONNECTION:
                         UpdatePrefsFlagFromMenu(item, FLAG_RAW_CONNECTION);
                         break;
+
                     case MENU_JUMP_SCROLL:
+                        #ifdef _DEBUG
+                            // This item must be disabled when ibmcon.device is not in use.
+                            if (STATE_IS_NOT(APP_RENDERER_IBMCON_DEVICE))
+                                SimpleReq("Error: unexpected MENU_JUMP_SCROLL path!" );
+                        #endif
                         UpdatePrefsFlagFromMenu(item, FLAG_JUMP_SCROLL);
-                        if(!isRunningOnWB && !(prefs.flags & FLAG_USE_XEM_LIBRARY))
-                            shouldRestart = TRUE;
+                        shouldRestart = TRUE;
                         break;
+
+                    case MENU_BUILTIN_RENDERER:
+                        if (STATE_IS_NOT(APP_RENDERER_BUILTIN))
+                        {
+                            // Update Prefs State bits:
+                            STATE_UNSET(APP_RENDERER_ALL);
+                            STATE_SET(APP_RENDERER_BUILTIN);
+
+                            // Changing the pen mapping requires reopening the screen,
+                            // because Intuition only applies SA_Pens during screen creation.
+                            shouldReopenScreen = STATE_IS(APP_RENDERER_CONSOLE_DEVICE
+                                                           | APP_RENDERER_IBMCON_DEVICE);
+                            shouldRestart = TRUE;
+                        }
+                    break;
+
+                    case MENU_CONSOLE_DEVICE:
+                        if (STATE_IS_NOT(APP_RENDERER_CONSOLE_DEVICE))
+                        {
+                            // Update Prefs State bits:
+                            STATE_UNSET(APP_RENDERER_ALL);
+                            STATE_SET(APP_RENDERER_CONSOLE_DEVICE);
+
+                            shouldReopenScreen = STATE_IS(APP_RENDERER_BUILTIN
+                                                           | APP_RENDERER_XEM_LIB);
+                            shouldRestart = TRUE;
+                        }
+                    break;
+
+                    case MENU_XEM_LIBRARY:
+                        if (prefs.displaydriver[0] == '\0')
+                        {
+                            SimpleReq("No XEM library has been selected yet.\n"
+                                      "Please choose one first from the Settings menu.");
+                        }
+                        else
+                        {
+                            // Update Prefs State bits:
+                            STATE_UNSET(APP_RENDERER_ALL);
+                            STATE_SET(APP_RENDERER_XEM_LIB);
+
+                            shouldReopenScreen = STATE_IS(APP_RENDERER_CONSOLE_DEVICE
+                                                          | APP_RENDERER_IBMCON_DEVICE);
+                        }
+
+                        // Restart even when prefs.displaydriver[0] == '\0', this forces a menu
+                        // refresh so the CHECKED state of the item is properly reverted :
+                        shouldRestart = TRUE;
+                        break;
+
+                    case MENU_IBMCON_DEVICE:
+                        if (STATE_IS_NOT(APP_RENDERER_IBMCON_DEVICE))
+                        {
+                            // Update Prefs State bits:
+                            STATE_UNSET(APP_RENDERER_ALL);
+                            STATE_SET(APP_RENDERER_IBMCON_DEVICE);
+
+                            shouldReopenScreen = STATE_IS(APP_RENDERER_BUILTIN
+                                                          | APP_RENDERER_XEM_LIB);
+                            shouldRestart = TRUE;
+                        }
+                    break;
 
                     case MENU_SCREEN_MODE:
                         oldDispID = prefs.DisplayID;
@@ -2331,14 +2400,14 @@ static void GetWindowMsg(struct Window *wwin)
                         WindowSub(FunctionKeys);
                         break;
 
-                    case MENU_XEM_LIBRARY:
+                    case MENU_XEM_LIBRARY_PATH:
                         if (FileRequester(isRunningOnWB ? NULL : win,
                                           "LIBS:", 0, // 0 because we don't want to get the dirname
                                           prefs.displaydriver, sizeof(prefs.displaydriver),
                                           "xem#?.library",
                                           FILEREQ_LOAD))
                         {
-                            if(prefs.flags & FLAG_USE_XEM_LIBRARY) shouldRestart = TRUE;
+                            if (STATE_IS(APP_RENDERER_XEM_LIB)) shouldRestart = TRUE;
                         }
                         break;
 
@@ -2875,17 +2944,36 @@ void CreateAppMenus(void)
         PutStr("   --> CreateAppMenus()\n");
     #endif
 
-    // Check options in menu as set in DCTelnet.prefs file:
-    if((prefs.flags & FLAG_USE_XEM_LIBRARY) && prefs.displaydriver[0])
+    GetNewMenuItemFromID(MENU_BUILTIN_RENDERER)->nm_Flags &= ~CHECKED;
+    GetNewMenuItemFromID(MENU_CONSOLE_DEVICE  )->nm_Flags &= ~CHECKED;
+    GetNewMenuItemFromID(MENU_XEM_LIBRARY     )->nm_Flags &= ~CHECKED;
+    GetNewMenuItemFromID(MENU_IBMCON_DEVICE   )->nm_Flags &= ~CHECKED;
+
+    // Disable menu items that are only relevant for specific renderers.
+    GetNewMenuItemFromID(MENU_JUMP_SCROLL     )->nm_Flags = NM_ITEMDISABLED;
+    GetNewMenuItemFromID(MENU_XEM_LIB_OPTIONS )->nm_Flags = NM_ITEMDISABLED;
+
+    if (STATE_IS(APP_RENDERER_BUILTIN))
     {
-        drivertype = DRIVER_XEM_LIB;
-        GetNewMenuItemFromID(MENU_XEM_LIB_OPTIONS)->nm_Flags = 0;  // Enable "XEM Lib Options" (state not saved in prefs)
-        GetNewMenuItemFromID(MENU_JUMP_SCROLL)->nm_Flags = NM_ITEMDISABLED;
-    } else {
-        drivertype = DRIVER_NORMAL;
+        GetNewMenuItemFromID(MENU_BUILTIN_RENDERER)->nm_Flags |= CHECKED;
+
+    }
+    else if (STATE_IS(APP_RENDERER_CONSOLE_DEVICE))
+    {
+        GetNewMenuItemFromID(MENU_CONSOLE_DEVICE)->nm_Flags |= CHECKED;
+    }
+    else if (STATE_IS(APP_RENDERER_XEM_LIB))
+    {
+        GetNewMenuItemFromID(MENU_XEM_LIBRARY)->nm_Flags |= CHECKED;
+
+        // Enable "XEM Lib Options": setting nm_Flags to 0 restores GadTools' default flags.
+        GetNewMenuItemFromID(MENU_XEM_LIB_OPTIONS)->nm_Flags = 0;
+    }
+    else  // APP_RENDERER_IBMCON_DEVICE
+    {
+        GetNewMenuItemFromID(MENU_IBMCON_DEVICE)->nm_Flags |= CHECKED;
+
         GetNewMenuItemFromID(MENU_JUMP_SCROLL)->nm_Flags = HIGHCOMP|CHECKIT|MENUTOGGLE;
-        GetNewMenuItemFromID(MENU_XEM_LIB_OPTIONS)->nm_Flags = NM_ITEMDISABLED;
-        prefs.flags &= ~FLAG_USE_XEM_LIBRARY;
     }
 
     // The NewMenu item CHECKED flag will be set according to saved Prefs flags. Note: these flags
@@ -2896,7 +2984,6 @@ void CreateAppMenus(void)
     SetNewMenuCheckFromPref(MENU_BS_DEL_SWAP,          FLAG_BS_DEL_SWAP);
     SetNewMenuCheckFromPref(MENU_DISABLE_SCROLLBACK,   FLAG_DISABLE_SCROLLBACK);
     SetNewMenuCheckFromPref(MENU_PACKET_WINDOW,        FLAG_PACKET_WINDOW);
-    SetNewMenuCheckFromPref(MENU_USE_XEM_LIBRARY,      FLAG_USE_XEM_LIBRARY);
     SetNewMenuCheckFromPref(MENU_TOOLBAR,              FLAG_TOOL_BAR);
     SetNewMenuCheckFromPref(MENU_RETURN_CRLF,          FLAG_RETURN_CRLF);
     SetNewMenuCheckFromPref(MENU_LOCAL_ECHOBACK,       FLAG_LOCAL_ECHO);
@@ -2992,28 +3079,64 @@ BOOL OpenDisplay(void)
 
 
     // Try to initialize the XEM library if the user enabled it.
-    // If it fails fallback to ibmcon/console device.
-    if(drivertype == DRIVER_XEM_LIB)
+    // If it fails fallback to builtin renderer.
+    if(STATE_IS(APP_RENDERER_XEM_LIB))
         if (! InitializeXemLibrary())
         {
             struct MenuItem *item = NULL;
 
-            drivertype = DRIVER_NORMAL; // Xem lib failed to load so we'll try with ibmcon.device
+            // Update Prefs State bits:
+            STATE_UNSET(APP_RENDERER_ALL);
+            STATE_SET(APP_RENDERER_BUILTIN);
 
-            prefs.flags &= ~FLAG_USE_XEM_LIBRARY;
-
-            // Uncheck the "Use XEM Library" option:
+            // Uncheck the "External XEM Library" option:
             //https://amigadev.elowar.com/read/ADCD_2.1/Includes_and_Autodocs_2._guide/node024A.html
             // https://www.amiga-news.de/en/news/AN-2023-10-00017-EN.html
             ClearMenuStrip(win);
 
-            item = GetMenuItemFromID(MENU_USE_XEM_LIBRARY);
+            item = GetMenuItemFromID(MENU_XEM_LIBRARY);
             if (item != NULL)
                 item->Flags &= ~CHECKED;
+
+            // Check the "Renderer > Built-in" option:
+            item = GetMenuItemFromID(MENU_BUILTIN_RENDERER);
+            if (item != NULL)
+                item->Flags |= CHECKED;
 
             ResetMenuStrip(win, mainMenuStrip);
         }
 
+
+    if (STATE_IS(APP_RENDERER_BUILTIN))
+    {
+        int res = term_init(scr, ansiFont);
+
+        // If it fails fallback to console.device.
+        if (res != RETURN_OK)
+        {
+            struct MenuItem *item = NULL;
+
+            InfoReq(isRunningOnWB ? NULL : win,
+                    "Failed to setup retro32-term, error # %ld.\nFallback to console.device", res);
+
+            // Update Prefs State bits:
+            STATE_UNSET(APP_RENDERER_ALL);
+            STATE_SET(APP_RENDERER_CONSOLE_DEVICE);
+
+            ClearMenuStrip(win);
+
+            item = GetMenuItemFromID(MENU_BUILTIN_RENDERER);
+            if (item != NULL)
+                item->Flags &= ~CHECKED;
+
+            // Check the "Renderer > Built-in" option:
+            item = GetMenuItemFromID(MENU_CONSOLE_DEVICE);
+            if (item != NULL)
+                item->Flags |= CHECKED;
+
+            ResetMenuStrip(win, mainMenuStrip);
+        }
+    }
 
     // The console device :
     // https://amigadev.elowar.com/read/ADCD_2.1/Devices_Manual_guide/node0080.html
@@ -3021,10 +3144,10 @@ BOOL OpenDisplay(void)
     // Doc about OpenDevice() to open a console device :
     // https://amigadev.elowar.com/read/ADCD_2.1/Libraries_Manual_guide/node029E.html
     // https://amigadev.elowar.com/read/ADCD_2.1/Includes_and_Autodocs_2._guide/node0509.html
-    if(drivertype == DRIVER_NORMAL)
+    if(STATE_IS(APP_RENDERER_IBMCON_DEVICE | APP_RENDERER_CONSOLE_DEVICE))
     {
         UWORD unitNumber;
-        char *devName = isRunningOnWB ? "console.device" : "ibmcon.device";
+        char *devName = STATE_IS(APP_RENDERER_CONSOLE_DEVICE) ? "console.device" : "ibmcon.device";
         BOOL b;
 
         // Exec Device I/O Functions docs:
@@ -3041,7 +3164,7 @@ BOOL OpenDisplay(void)
 
         // The unit number that is a standard parameter for an open call is used
         // specially by this device.
-        if (isRunningOnWB)
+        if (STATE_IS(APP_RENDERER_CONSOLE_DEVICE))
         {
             unitNumber = CONU_SNIPMAP;
         } else {
@@ -3079,10 +3202,13 @@ BOOL OpenDisplay(void)
         }
         else
         {
+            // Device open failed; falling back to console.device for the next DCTelnet launch.
+            // console.device is the most compatible renderer.
+            STATE_UNSET(APP_RENDERER_ALL);
+            STATE_SET(APP_RENDERER_CONSOLE_DEVICE);
+
             isConDeviceOpened = FALSE;
             InfoReq(isRunningOnWB ? NULL : win, "Failed to open device: %s", devName);
-            // mysprintf(buf,    "Failed to open device: %s", devName);
-            // EZReq(NULL, buf);
             goto clean_and_return;
         }
     }
@@ -3093,9 +3219,10 @@ BOOL OpenDisplay(void)
 
     if(!isConnected)
     {
-        STRPTR dispEngine;
+        STRPTR strRenderer = NULL;
         register ULONG flags = SysBase->AttnFlags;
         LONG cpu = '0';
+        ULONG renderer = prefs.flags & APP_RENDERER_ALL;
 
         if(flags & AFF_68010) cpu = '1';
         if(flags & AFF_68020) cpu = '2';
@@ -3103,23 +3230,34 @@ BOOL OpenDisplay(void)
         if(flags & AFF_68040) cpu = '4';
         if(flags & AFF_68060) cpu = '6';
 
+        switch (renderer)
+        {
+            case APP_RENDERER_BUILTIN:
+                strRenderer = "retro32-term";
+            break;
 
-        if(drivertype == DRIVER_XEM_LIB)
-            dispEngine = prefs.displaydriver;
-        else if (isRunningOnWB)
-            dispEngine = "console.device";
-        else
-            dispEngine = "ibmcon.device";
+            case APP_RENDERER_CONSOLE_DEVICE:
+                strRenderer = "console.device";
+            break;
+
+            case APP_RENDERER_XEM_LIB:
+                strRenderer = prefs.displaydriver;
+            break;
+
+            case APP_RENDERER_IBMCON_DEVICE:
+                strRenderer = "ibmcon.device";
+            break;
+        }
 
         LocalFmt("›0;1;36m\f\r\n\r\n"
                 "Processor: ›37m680%lc0\r\n\r\n›36m"
                 "Kickstart: ›37m%ld.%ld\r\n\r\n›36m"
-                "Display engine: ›37m%s\r\n\r\n›36m"
+                "Renderer: ›37m%s\r\n\r\n›36m"
                 "TCP Stack: ›37m",
                 cpu,
                 (LONG)((struct Library *)SysBase)->lib_Version,
                 (LONG)SysBase->SoftVer,
-                dispEngine);
+                strRenderer);
 
         if(SocketBase)
         {

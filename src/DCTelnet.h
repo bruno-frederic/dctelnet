@@ -5,6 +5,45 @@
 #include <string.h>     // size_t
 
 // Types
+
+// Renderer is tested 1 x in ConWrite() which is called 1x for each Receive()
+#define APP_RENDERER_BUILTIN         (1UL << 15)
+#define APP_RENDERER_CONSOLE_DEVICE  (1UL << 16)
+#define APP_RENDERER_XEM_LIB         (1UL << 17)
+#define APP_RENDERER_IBMCON_DEVICE   (1UL << 18)
+
+#define APP_RENDERER_ALL \
+        ( APP_RENDERER_BUILTIN \
+        | APP_RENDERER_CONSOLE_DEVICE \
+        | APP_RENDERER_XEM_LIB \
+        | APP_RENDERER_IBMCON_DEVICE )
+
+
+// Set one or more state bits.
+#define STATE_SET(bits) \
+    (prefs.flags |= (bits))
+
+// Clear one or more state bits.
+#define STATE_UNSET(bits) \
+    (prefs.flags &= ~(bits))
+
+// Toggle one or more state bits.
+#define STATE_TOGGLE(bits) \
+    (prefs.flags ^= (bits))
+
+// Test whether one or more state bits are set.
+#define STATE_IS(bits) \
+    ((prefs.flags & (bits)) != 0)
+
+// Test whether all specified state bits are set.
+#define STATE_ARE_ALL(bits) \
+    ((prefs.flags & (bits)) == (bits))
+
+// Test whether none of the specified state bits are set.
+#define STATE_IS_NOT(bits) \
+    ((prefs.flags & (bits)) == 0)
+
+
 struct PrefsStruct
 {
     ULONG DisplayID;
@@ -48,7 +87,7 @@ struct PrefsStruct
 #define FLAG_STRIP_COLOUR        (1UL << 6)   // BIT 6  = Strip Colour
 #define FLAG_SIMPLE_TELNET       (1UL << 7)   // BIT 7  = Very simple telnet negotiation.
 #define FLAG_PACKET_WINDOW       (1UL << 8)   // BIT 8  = Packet Window
-#define FLAG_USE_XEM_LIBRARY     (1UL << 9)   // BIT 9  = Use XEM Library
+//#define FLAG_USE_XEM_LIBRARY     (1UL << 9)   // BIT 9  = Use XEM Library
 #define FLAG_TOOL_BAR            (1UL << 10)  // BIT 10 = Tool bar
 #define FLAG_RETURN_CRLF         (1UL << 11)  // BIT 11 = Return = CR&LF
 #define FLAG_LOCAL_ECHO          (1UL << 12)  // BIT 12 = Local Echoback
@@ -102,7 +141,6 @@ enum MenuItemID
     MENU_BS_DEL_SWAP,
     MENU_DISABLE_SCROLLBACK,
     MENU_PACKET_WINDOW,
-    MENU_USE_XEM_LIBRARY,
     MENU_TOOLBAR,
     MENU_RETURN_CRLF,
     MENU_LOCAL_ECHOBACK,
@@ -110,6 +148,11 @@ enum MenuItemID
     MENU_JUMP_SCROLL,
 
     MENU_SETTINGS,
+        MENU_RENDERER,
+            MENU_BUILTIN_RENDERER,
+            MENU_XEM_LIBRARY,
+            MENU_CONSOLE_DEVICE,
+            MENU_IBMCON_DEVICE,
     MENU_SCREEN_MODE,
     MENU_SCREEN_FONT,
     MENU_SCREEN_PALETTE,
@@ -117,7 +160,7 @@ enum MenuItemID
     MENU_TRANSFER_PROTOCOL,
     MENU_PROTOCOL_OPTIONS,
     MENU_FUNCTION_KEYS,
-    MENU_XEM_LIBRARY,
+    MENU_XEM_LIBRARY_PATH,
     MENU_XEM_LIB_OPTIONS,
     MENU_TELNET_DISPLAY_ID,
     MENU_SCROLLBACK_LINES,
@@ -176,7 +219,7 @@ extern char username[42], password[42];
 // Functions exported
 BOOL OpenDisplay(void);
 void CloseDisplay(BOOL manageScreen);
-long TCPSend(const char *buf, long len);
+long TCPSend(const UBYTE *buf, long len);
 void CloseIcon(void);                                   // Uniconify the application
 void LEDs(void);
 void LocalFmt(char *ctl, ...);

@@ -21,6 +21,7 @@ default:
 
 INCLUDES= \
 IDir=:vbcc/bin/NDK3.2R4/Include_H \
+IDir=third_party/retro32-term \
 IDir=third_party/netinclude \
 IDir=third_party/ReqTools/include \
 IDir=third_party/Xem/INCLUDE \
@@ -32,7 +33,7 @@ MAKE=smake
 
 TARGET=DCTelnet
 CPU=68000
-DEPS = abook.h connect.h DCTelnet.h DCTelnet-debug.h DCTelnet-protocol.h edit.h fkey.h guis.h Xfer.h Xem_wrapper.h requesters.h utils.h
+DEPS = abook.h connect.h DCTelnet.h DCTelnet-debug.h DCTelnet-protocol.h third_party/retro32-term/term-engine.c edit.h fkey.h guis.h Xfer.h Xem_wrapper.h requesters.h utils.h
 # The first '/' in the path is equivalent to '../' on other platforms:
 INSTALLDIR=/build/installed/DCTelnet
 

@@ -20,6 +20,7 @@
 
 # These includes can be placed here:
 INCLUDES := \
+	-Ithird_party/retro32-term \
 	-Ithird_party/Xem/INCLUDE \
 	-Ithird_party/Xpr/include
 
@@ -33,7 +34,7 @@ TARGET     := DCTelnet
 CPU        ?= 68000
 CFLAGS     := +aos68k -warn=-1 "-dontwarn=163,166,167,168,170,307" -warnings-as-errors -cpu=$(CPU) -DCOMPILER_STRING=$(COMPILER_STRING) -DBUILD_HASH=$(BUILD_HASH) $(INCLUDES)
 SRCS       := DCTelnet.c connect.c guis.c Xfer.c Xem_wrapper.c requesters.c utils.c
-DEPS       := abook.h connect.h DCTelnet.h DCTelnet-debug.h DCTelnet-protocol.h edit.h fkey.h guis.h Xfer.h Xem_wrapper.h requesters.h utils.h
+DEPS       := abook.h connect.h DCTelnet.h DCTelnet-debug.h DCTelnet-protocol.h third_party/retro32-term/term-engine.c edit.h fkey.h guis.h Xfer.h Xem_wrapper.h requesters.h utils.h
 INSTALLDIR := ../build/installed/DCTelnet
 
 # OBJ subdir depends on DEBUG flag (use DEBUG=yes to enable)
@@ -42,7 +43,7 @@ ifeq ($(DEBUG),yes)
 	CFLAGS += -g -D_DEBUG
 	OBJ_SUFFIX := debug
 else
-	CFLAGS += -O3 -size
+	CFLAGS += -O3 -speed
 	OBJ_SUFFIX := release
 endif
 
