@@ -332,7 +332,7 @@ static void TelnetAskToEnableServerOption(UBYTE option)
  *
  *     IAC SB TELOPT_TTYPE TELQUAL_IS <terminal-type> IAC SE
  *
- * The <terminal-type> field is taken from prefs.displayidstr (for example: "vt100", "xterm", etc.).
+ * The <terminal-type> field is taken from prefs.TelnetTermType (for example: "vt100", "xterm"...).
  *
  * This function should only be called after the remote host has negotiated the TTYPE option with:
  *
@@ -356,12 +356,12 @@ static void TelnetSendTType(void)
 
     #ifdef _DEBUG
             PutStr("›35m»IAC SB TELOPT_TTYPE TELQUAL_IS ");
-            PutStr(prefs.displayidstr);
+            PutStr(prefs.TelnetTermType);
             PutStr(" IAC SE›m\n");
     #endif
 
     TCPSend(start, sizeof(start));
-    TCPSend(prefs.displayidstr, strlen(prefs.displayidstr));
+    TCPSend(prefs.TelnetTermType, strlen(prefs.TelnetTermType));
     TCPSend(end, sizeof(end));
 }
 

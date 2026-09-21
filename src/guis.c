@@ -23,6 +23,7 @@
 #include "DCTelnet.h"
 #include "requesters.h"
 #include "utils.h"
+#include "prefs.h"
 
 struct BookStruct
 {
@@ -456,7 +457,7 @@ connect:
 delete:
                         if(worknode = FindNode(listviewlist, lastcode))
                         {
-                            if (ConfirmRequester(isRunningOnWB ? NULL : win,"Delete|Cancel",
+                            if (ConfirmRequester(win,"Delete|Cancel",
                                                          "Delete \"%s\"?", worknode->ln_Name))
                             //mysprintf(buf, "Delete \042%s\042?", worknode->ln_Name);
                             //if(rtEZRequestA(buf, "Delete|Cancel", NULL, NULL, (struct TagItem *)&reqtoolsTags))
@@ -847,8 +848,8 @@ void OpenScrollBack(UWORD sel)
     LONG SizeType;
     Object *SizeImage;
 
-    if(prefs.sb_width > scr->Width) prefs.sb_width = scr->Width;
-    if(prefs.sb_height > scr->Height) prefs.sb_height = scr->Height;
+    if(prefs.ScrollbackWinWidth > scr->Width) prefs.ScrollbackWinWidth = scr->Width;
+    if(prefs.ScrollbackWinHeight > scr->Height) prefs.ScrollbackWinHeight = scr->Height;
 
     if(scr->Flags & SCREENHIRES)
         SizeType = SYSISIZE_MEDRES;
@@ -901,7 +902,7 @@ void OpenScrollBack(UWORD sel)
                     PGA_NewLook,    TRUE,
                     PGA_Borderless,    TRUE,
                     PGA_Top,    sel,
-                    PGA_Visible,    (prefs.sb_height - (prefs.fontsize + scr->WBorTop + 2)) / prefs.fontsize,
+                    PGA_Visible,    (prefs.ScrollbackWinHeight - (prefs.FontSize + scr->WBorTop + 2)) / prefs.FontSize,
                     PGA_Total,    nScrollbackLines,
                 TAG_DONE))
                 {
@@ -931,26 +932,26 @@ void OpenScrollBack(UWORD sel)
                             ICA_MAP,    ArrowMappings,
                         TAG_DONE))
                         {
-                            newWin.LeftEdge   = prefs.sb_left;
-                            newWin.TopEdge    = prefs.sb_top;
-                            newWin.Width      = prefs.sb_width;
-                            newWin.Height     = prefs.sb_height;
+                            newWin.LeftEdge   = prefs.ScrollbackWinLeftEdge;
+                            newWin.TopEdge    = prefs.ScrollbackWinTopEdge;
+                            newWin.Width      = prefs.ScrollbackWinWidth;
+                            newWin.Height     = prefs.ScrollbackWinHeight;
                             newWin.IDCMPFlags = IDCMP_IDCMPUPDATE | LISTVIEWIDCMP | IDCMP_MENUPICK | IDCMP_NEWSIZE | IDCMP_CLOSEWINDOW | BUTTONIDCMP | IDCMP_RAWKEY;
                             newWin.Flags = WFLG_NOCAREREFRESH | WFLG_ACTIVATE|WFLG_CLOSEGADGET|WFLG_DRAGBAR|WFLG_DEPTHGADGET|WFLG_SIZEGADGET;
                             newWin.FirstGadget = Scroller;
                             newWin.Title = "Scroll Back:  F1 - Clear  F3 - Print  F5 - Save";
-                            newWin.MinWidth = 180;
-                            newWin.MinHeight = 50;
-                            newWin.MaxWidth = 1600;
-                            newWin.MaxHeight = 1200;
+                            newWin.MinWidth   = WIN_MIN_WIDTH;
+                            newWin.MinHeight  = WIN_MIN_HEIGHT;
+                            newWin.MaxWidth   = DISP_MAX_WIDTH;
+                            newWin.MaxHeight  = DISP_MAX_HEIGHT;
                             CheckDimensions(&newWin);
                             scrollbackWin = OpenWindow(&newWin);
                             /*scrollbackWin = OpenWindowTags(NULL,
                                 WA_Title,        "Scroll Back:  F1 - Clear  F3 - Print  F5 - Save",
-                                WA_Left,        prefs.sb_left,
-                                WA_Top,            prefs.sb_top,
-                                WA_Width,        prefs.sb_width,
-                                WA_Height,        prefs.sb_height,
+                                WA_Left,        prefs.ScrollbackWinLeftEdge,
+                                WA_Top,            prefs.ScrollbackWinTopEdge,
+                                WA_Width,        prefs.ScrollbackWinWidth,
+                                WA_Height,        prefs.ScrollbackWinHeight,
                                 WA_MinHeight,        50,
                                 WA_MinWidth,        200,
                                 WA_MaxHeight,        1200,
@@ -1238,7 +1239,7 @@ void CloseToolBarWindow(void)
             if(dob[i]) { FreeDiskObject(dob[i]);  dob[i]= NULL; }
         }
 
-        item = GetMenuItemFromID(MENU_TOOLBAR);
+        item = GetMenuItemFromID(MENU_TOOL_BAR);
         if (item != NULL)
             item->Flags &= ~CHECKED;
     }
@@ -1253,14 +1254,13 @@ void OpenToolBarWindow(char setmenus)
         UWORD nextleft = scr->WBorLeft + 1, maxheight = 0, i = 0;
         WORD wintop, spacing = 5;
 
-        if (isRunningOnWB)
-            wintop = winTop;
-        else
-            wintop = 0;
+        wintop = STATE_IS(APP_FULLSCREEN) ? 0 : winTop;
 
         do
         {
-            strlcpy(buf, isRunningOnWB ? "PROGDIR:WBIcons/" : "PROGDIR:SCIcons/", sizeof(buf));
+            strlcpy(buf,
+                    STATE_IS(APP_FULLSCREEN) ? "PROGDIR:SCIcons/" : "PROGDIR:WBIcons/",
+                    sizeof(buf));
             strlcat(buf, icons[i], sizeof(buf));
             dob[i] = GetDiskObjectNew(buf);
             if(dob[i])
@@ -1290,14 +1290,14 @@ void OpenToolBarWindow(char setmenus)
         if(!firstgad)
         {
             SimpleReq("No icons available.");
-            prefs.flags &= ~FLAG_TOOL_BAR;
+            STATE_UNSET(APP_TOOL_BAR_ENABLED);
             return;
         }
 
-        if (isRunningOnWB)
+        if (STATE_IS_NOT(APP_FULLSCREEN))
         {
-            newWin.LeftEdge = prefs.toolBarWin_left;
-            newWin.TopEdge  = prefs.toolBarWin_top;
+            newWin.LeftEdge = prefs.ToolBarWinLeftEdge;
+            newWin.TopEdge  = prefs.ToolBarWinTopEdge;
 
             newWin.Width = gad->LeftEdge + gad->Width + scr->WBorRight + 1;
             newWin.Height = maxheight + wintop + scr->WBorBottom + 3 + scr->RastPort.Font->tf_YSize;
@@ -1318,10 +1318,10 @@ void OpenToolBarWindow(char setmenus)
             }
 
             newWin.LeftEdge = 0;
-            if(prefs.flags & FLAG_HIDE_TITLEBAR)
-                newWin.TopEdge = 0;
+            if STATE_IS(APP_TITLE_BAR_ENABLED)
+                newWin.TopEdge = prefs.FontSize + 3;
             else
-                newWin.TopEdge = prefs.fontsize + 3;
+                newWin.TopEdge = 0;
 
             newWin.Width = scr->Width;
             newWin.Height = maxheight + scr->RastPort.Font->tf_YSize + 4;
@@ -1349,7 +1349,7 @@ void OpenToolBarWindow(char setmenus)
 
                 gad = gad->NextGadget;
             }
-            if(!isRunningOnWB)
+            if (STATE_IS(APP_FULLSCREEN))
             {
                 SetAPen(toolBarWin->RPort, drawInfo->dri_Pens[SHINEPEN]);
                 Move(toolBarWin->RPort, 0, toolBarWin->Height-2);

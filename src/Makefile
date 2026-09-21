@@ -33,8 +33,8 @@ CC=vc
 TARGET     := DCTelnet
 CPU        ?= 68000
 CFLAGS     := +aos68k -warn=-1 "-dontwarn=163,166,167,168,170,307" -warnings-as-errors -cpu=$(CPU) -DCOMPILER_STRING=$(COMPILER_STRING) -DBUILD_HASH=$(BUILD_HASH) $(INCLUDES)
-SRCS       := DCTelnet.c connect.c guis.c Xfer.c Xem_wrapper.c requesters.c utils.c
-DEPS       := abook.h connect.h DCTelnet.h DCTelnet-debug.h DCTelnet-protocol.h third_party/retro32-term/term-engine.c edit.h fkey.h guis.h Xfer.h Xem_wrapper.h requesters.h utils.h
+SRCS       := DCTelnet.c connect.c guis.c Xfer.c Xem_wrapper.c requesters.c utils.c prefs.c
+DEPS       := abook.h connect.h DCTelnet.h DCTelnet-debug.h DCTelnet-protocol.h third_party/retro32-term/term-engine.c edit.h fkey.h guis.h Xfer.h Xem_wrapper.h requesters.h utils.h prefs.h
 INSTALLDIR := ../build/installed/DCTelnet
 
 # OBJ subdir depends on DEBUG flag (use DEBUG=yes to enable)

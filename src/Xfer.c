@@ -23,6 +23,7 @@
 #include "guis.h"
 #include "requesters.h"
 #include "utils.h"
+#include "prefs.h"
 
 #define PATHLEN 256     // From third_party\Xpr\XprZmodem.h
 
@@ -67,7 +68,7 @@ static int posY(WORD n)
  * The global @c ff_escape_pending flag is preserved across calls so that escape sequences split
  * across multiple TCP receive buffers are handled correctly.
  *
- * Raw connections (@c FLAG_RAW_CONNECTION) bypass this processing and the original buffer length is
+ * Raw connections (@c APP_RAW_CONNECTION) bypass this processing and the original buffer length is
  * returned unchanged.
  *
  * @param buff
@@ -97,7 +98,7 @@ static long instrip(unsigned char *buff, long length)
 {
     register long i = 0, j = 0;
     unsigned char *tb = NULL;
-    if (prefs.flags & FLAG_RAW_CONNECTION)
+    if (STATE_IS(APP_RAW_CONNECTION))
         return length; // No stripping for raw connections
 
     tb = AllocMem(length+2, MEMF_PUBLIC);
@@ -123,7 +124,7 @@ static long instrip(unsigned char *buff, long length)
 
 static void ProtoClean(void)
 {
-    if(!isAppIconified)
+    if(STATE_IS_NOT(APP_ICONIFIED))
     {
         WORD menuNumber;
 
@@ -152,11 +153,11 @@ static void ProtoClean(void)
         if (menuNumber >= 0)
             OnMenu(xferwin, FULLMENUNUM(menuNumber, NOITEM, NOSUB));
 
-        menuNumber = GetMenuNumberFromID(MENU_OPTIONS);
+        menuNumber = GetMenuNumberFromID(MENU_TERMINAL);
         if (menuNumber >= 0)
             OnMenu(xferwin, FULLMENUNUM(menuNumber, NOITEM, NOSUB));
 
-        menuNumber = GetMenuNumberFromID(MENU_SETTINGS);
+        menuNumber = GetMenuNumberFromID(MENU_DISPLAY);
         if (menuNumber >= 0)
             OnMenu(xferwin, FULLMENUNUM(menuNumber, NOITEM, NOSUB));
 
@@ -221,7 +222,7 @@ long __SAVE_DS__ __ASM__ xpr_swrite(__REG__(a0, char *buffer),
             // 0xff then you must send it twice to tell telnet that you don't intend to send a
             // command. This escaping is only required for Telnet connections and must not be
             // applied to raw TCP connections.
-            if((unsigned char) buffer[i] == 255 && !(prefs.flags & FLAG_RAW_CONNECTION))
+            if((unsigned char) buffer[i] == 255 && STATE_IS_NOT(APP_RAW_CONNECTION))
             {
                 tb[j] = buffer[i];
                 j++;
@@ -247,7 +248,7 @@ long __SAVE_DS__ __ASM__ xpr_sread(__REG__(a0, char *buffer),
     long insize;
     struct timeval timer;
 
-    if(!isAppIconified) winsig = 1L << xferwin->UserPort->mp_SigBit; else winsig = 0;
+    if(STATE_IS_NOT(APP_ICONIFIED)) winsig = 1L << xferwin->UserPort->mp_SigBit; else winsig = 0;
 
     if(timeout)
     {
@@ -366,7 +367,7 @@ long __SAVE_DS__ __ASM__ xpr_ffirst(__REG__(a0, char *buffer),
     if (uploadArray == NULL || uploadArraySize < 1)
         return 0L;
 
-    strlcpy(buffer, prefs.uploadpath, PATHLEN);
+    strlcpy(buffer, prefs.UploadPath, PATHLEN);
     AddPart(buffer, uploadArray[0].wa_Name, PATHLEN);
 
     // Return index number of the next element:
@@ -385,7 +386,7 @@ long __SAVE_DS__ __ASM__ xpr_fnext(__REG__(d0, long oldstate),
 
     if (oldstate < uploadArraySize && uploadArray != NULL)
     {
-        strlcpy(buffer, prefs.uploadpath, PATHLEN);
+        strlcpy(buffer, prefs.UploadPath, PATHLEN);
         AddPart(buffer, uploadArray[oldstate].wa_Name, PATHLEN);
 
         // Return index number of the next element:
@@ -407,7 +408,7 @@ long __SAVE_DS__ __ASM__ xpr_gets(__REG__(a0, char *prompt),
     The function returns 0L on failure or user cancellation, non-zero on success.
     */
     #ifdef _DEBUG
-        InfoReq(isRunningOnWB ? NULL : win,
+        InfoReq(win,
                 "TODO : xpr_gets() is not implemented yet.\r\nprompt=%s\r\nbuffer=%lx",
                 prompt, buffer);
     #endif
@@ -425,7 +426,7 @@ long __SAVE_DS__ __ASM__ xpr_fopen(__REG__(a0, char *filename),
 {
     register long fh;
 
-    if(!isAppIconified) EraseRect(xrp, 21, posY(9), xferwin->Width-21, posY(9)+9);
+    if(STATE_IS_NOT(APP_ICONIFIED)) EraseRect(xrp, 21, posY(9), xferwin->Width-21, posY(9)+9);
     xfer_gauge_width = 0;
 
     switch(*accessmode)
@@ -516,7 +517,7 @@ long __SAVE_DS__ __ASM__ xpr_update(__REG__(a0,
     register long ud = updatestruct->xpru_updatemask;
     register UWORD new_xfer_gauge_width=0;
 
-    if(isAppIconified) return(0);
+    if(STATE_IS(APP_ICONIFIED)) return(0);
 
     // xpru_protocol    -- a string that indicates the name of the protocol used
     if(ud&XPRU_PROTOCOL)
@@ -530,9 +531,9 @@ long __SAVE_DS__ __ASM__ xpr_update(__REG__(a0,
     {
         Move(xrp, posX(12), posY(2));
         if(xfertype == XFER_DOWNLOAD)
-            Text(xrp, prefs.downloadpath, strlen(prefs.downloadpath));
+            Text(xrp, prefs.DownloadPath, strlen(prefs.DownloadPath));
         else        // XFER_UPLOAD
-            Text(xrp, prefs.uploadpath, strlen(prefs.uploadpath));
+            Text(xrp, prefs.UploadPath, strlen(prefs.UploadPath));
 
         Move(xrp, posX(12), posY(3));
         TextFmt(xrp, "%-30s", FilePart(updatestruct->xpru_filename));
@@ -759,7 +760,7 @@ static long Checkwinmsg(struct Window *wwin)
 long __SAVE_DS__ xpr_chkabort(void)
 {
     // If the application is iconified on the Workbench
-    if(isAppIconified)
+    if(STATE_IS(APP_ICONIFIED))
     {
         // Process pending AppMessages from Workbench to detect a "shouldUniconifyify" request
         if(iconPort)
@@ -796,10 +797,10 @@ long __SAVE_DS__ xpr_chkabort(void)
     if(Checkwinmsg(xferwin) == -1) return( -1L );
 
     // If not iconified, also check messages from the main window (win) and tool bar window (toolBarWin)
-    if(!isAppIconified)
+    if(STATE_IS_NOT(APP_ICONIFIED))
     {
         if(Checkwinmsg(win) == -1) return( -1L );
-        if(!isAppIconified && toolBarWin)
+        if(STATE_IS_NOT(APP_ICONIFIED) && toolBarWin)
         {
             return(Checkwinmsg(toolBarWin));
         }
@@ -877,11 +878,11 @@ static char ProtoStart(char *library, char *firstfile)
     xio.xpr_squery    = xpr_squery;
     xio.xpr_extension = 1L;
 
-    xio.xpr_filename = prefs.xferinit;//"TC,OR,B32,FO,AN,DN,KY,SN,RN";
+    xio.xpr_filename = prefs.XferOptions;//"TC,OR,B32,FO,AN,DN,KY,SN,RN";
     XProtocolSetup(&xio);
     xio.xpr_filename = firstfile;
 
-    if(isAppIconified) return(TRUE); else return(XferWindow());
+    if(STATE_IS(APP_ICONIFIED)) return(TRUE); else return(XferWindow());
 }
 
 /* TODO MAKE A CLEAN FUNCTION NOT REDUNDANT WITH ProtoStart() */
@@ -975,11 +976,11 @@ static char XferWindow(void)
     if (menuNumber >= 0)
         OffMenu(xferwin, FULLMENUNUM(menuNumber, NOITEM, NOSUB));
 
-    menuNumber = GetMenuNumberFromID(MENU_OPTIONS);
+    menuNumber = GetMenuNumberFromID(MENU_TERMINAL);
     if (menuNumber >= 0)
         OffMenu(xferwin, FULLMENUNUM(menuNumber, NOITEM, NOSUB));
 
-    menuNumber = GetMenuNumberFromID(MENU_SETTINGS);
+    menuNumber = GetMenuNumberFromID(MENU_DISPLAY);
     if (menuNumber >= 0)
         OffMenu(xferwin, FULLMENUNUM(menuNumber, NOITEM, NOSUB));
 
@@ -1048,17 +1049,17 @@ void Upload(char *library)
 {
     struct FileRequester *fr;
 
-    if(isAppIconified) return;
+    if(STATE_IS(APP_ICONIFIED)) return;
 
     ff_escape_pending = FALSE;
     xfertype = XFER_UPLOAD;
 
     fr = (struct FileRequester *) AllocAslRequestTags(ASL_FileRequest,    // type of requester
-                                        ASL_Window, isRunningOnWB ? NULL : win,
+                                        ASL_Window, win,
                                         ASL_Hail,  "Select one or more files",
 
                                         // Supply initial values for requester:
-                                        ASL_Dir,     prefs.uploadpath,
+                                        ASL_Dir,     prefs.UploadPath,
                                         ASL_Pattern, "#?",
 
                                         ASL_FuncFlags, FILF_PATGAD  // Enable pattern match gadget
@@ -1067,7 +1068,7 @@ void Upload(char *library)
 
     if (fr == NULL)
     {
-        InfoReq(isRunningOnWB ? NULL : win, "AllocAslRequestTags() => NULL (failed)");
+        InfoReq(win, "AllocAslRequestTags() => NULL (failed)");
         goto clean_and_return;
     }
 
@@ -1079,7 +1080,7 @@ void Upload(char *library)
     }
 
     // Save the directory in which files where selected to be uploaded:
-    strlcpy(prefs.uploadpath, fr->rf_Dir, sizeof(prefs.uploadpath));
+    strlcpy(prefs.UploadPath, fr->rf_Dir, sizeof(prefs.UploadPath));
     SavePrefs();
 
     strlcpy(buf, fr->rf_Dir,  sizeof(buf));
@@ -1131,7 +1132,7 @@ void Download(char *library)
 
     ff_escape_pending = FALSE;
 
-    lck = Lock(prefs.downloadpath, SHARED_LOCK);
+    lck = Lock(prefs.DownloadPath, SHARED_LOCK);
     if(lck)
     {
         old = CurrentDir(lck);

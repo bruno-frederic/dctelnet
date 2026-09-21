@@ -57,6 +57,7 @@ static char MainWindowTitle[] =
 #include "Xem_wrapper.h"
 #include "requesters.h"
 #include "utils.h"
+#include "prefs.h"
 
 #define ESC_CHAR '\x1B'  // ASCII Escape character (decimal 27, octal 033)
 #define ESC_STR  "\x1B"  // ASCII Escape character (decimal 27, octal 033) as a C string
@@ -83,62 +84,68 @@ static struct NewMenu mainMenuDesc[] =
 {
     { NM_TITLE, "DC Telnet",  0, 0, 0, (APTR)MENU_DCTELNET},
     {    NM_ITEM, "About",                          "A",             0,               0, (APTR)MENU_ABOUT},
-    {    NM_ITEM, NM_BARLABEL,                       0 ,             0,               0, (APTR)MENU_BAR0},
-    {    NM_ITEM, "Scroll Back",                    "X",             0,               0, (APTR)MENU_SCROLLBACK},
+    {    NM_ITEM, NM_BARLABEL,                       0 ,             0,               0, (APTR)MENU_BAR},
+    {    NM_ITEM, "Scrollback window",              "X",             0,               0, (APTR)MENU_SCROLLBACK_WIN},
     {    NM_ITEM, "Iconify",                        "&",             0,               0, (APTR)MENU_ICONIFY},
     {    NM_ITEM, "Display Speed Test",             "Y",             0,               0, (APTR)MENU_DISPLAY_SPEED_TEST},
     {    NM_ITEM, "Finger",                         "@",             0,               0, (APTR)MENU_FINGER},
-    {    NM_ITEM, NM_BARLABEL,                       0 ,             0,               0, (APTR)MENU_BAR1},
+    {    NM_ITEM, NM_BARLABEL,                       0 ,             0,               0, (APTR)MENU_BAR},
     {    NM_ITEM, "Reset Screen",                   "C",             0,               0, (APTR)MENU_RESET_SCREEN},
     {    NM_ITEM, "Quit",                           "Q",             0,               0, (APTR)MENU_QUIT},
 
     { NM_TITLE, "Transfer",  0 , 0, 0, (APTR)MENU_TRANSFER},
     {    NM_ITEM, "Upload",                         "U",             0,               0, (APTR)MENU_UPLOAD},
-    {    NM_ITEM, NM_BARLABEL,                       0 ,             0,               0, (APTR)MENU_BAR2},
+    {    NM_ITEM, NM_BARLABEL,                       0 ,             0,               0, (APTR)MENU_BAR},
     {    NM_ITEM, "Download",                       "D",             0,               0, (APTR)MENU_DOWNLOAD},
-    {    NM_ITEM, NM_BARLABEL,                       0 ,             0,               0, (APTR)MENU_BAR3},
+    {    NM_ITEM, NM_BARLABEL,                       0 ,             0,               0, (APTR)MENU_BAR},
     {    NM_ITEM, "ASCII Send",                     "%",             0,               0, (APTR)MENU_ASCII_SEND},
+    {    NM_ITEM, NM_BARLABEL,                       0 ,             0,               0, (APTR)MENU_BAR},
+    {    NM_ITEM, "Download Path..",                "O",             0,               0, (APTR)MENU_DOWNLOAD_PATH},
+    {    NM_ITEM, "Transfer Protocol..",            "T",             0,               0, (APTR)MENU_TRANSFER_PROTOCOL},
+    {    NM_ITEM, "Protocol Options..",             "*",             0,               0, (APTR)MENU_PROTOCOL_OPTIONS},
 
     { NM_TITLE, "Connection",  0 , 0, 0, (APTR)MENU_CONNECTION},
     {    NM_ITEM, "Connect",                        "M",             0,               0, (APTR)MENU_CONNECT},
     {    NM_ITEM, "Connect (New instance)",         "G",             0,               0, (APTR)MENU_CONNECT_NEW_INSTANCE},
     {    NM_ITEM, "Disconnect",                     "H",             0,               0, (APTR)MENU_DISCONNECT},
-    {    NM_ITEM, NM_BARLABEL,                       0 ,             0,               0, (APTR)MENU_BAR4},
+    {    NM_ITEM, NM_BARLABEL,                       0 ,             0,               0, (APTR)MENU_BAR},
     {    NM_ITEM, "Address Book",                   "B",             0,               0, (APTR)MENU_ADDRESS_BOOK},
-    {    NM_ITEM, NM_BARLABEL,                       0 ,             0,               0, (APTR)MENU_BAR5},
+    {    NM_ITEM, NM_BARLABEL,                       0 ,             0,               0, (APTR)MENU_BAR},
     {    NM_ITEM, "Information",                    "^",             0,               0, (APTR)MENU_INFORMATION},
 
-    { NM_TITLE, "Options",  0, 0, 0, (APTR)MENU_OPTIONS},
-    {    NM_ITEM, "Use Workbench",                  "W", HIGHCOMP|CHECKIT|MENUTOGGLE, 0, (APTR)MENU_USE_WORKBENCH},
-    {    NM_ITEM, "Disable LEDs",                   "I", HIGHCOMP|CHECKIT|MENUTOGGLE, 0, (APTR)MENU_DISABLE_LEDS},
-    {    NM_ITEM, "Hide TitleBar",                  "R", HIGHCOMP|CHECKIT|MENUTOGGLE, 0, (APTR)MENU_HIDE_TITLEBAR},
-    //  {    NM_ITEM, "CRLF Correction",            "L", HIGHCOMP|CHECKIT|MENUTOGGLE, 0, (APTR)MENU_UNUSED_CRLF},
-    {    NM_ITEM, "BS/DEL Swap",                    "/", HIGHCOMP|CHECKIT|MENUTOGGLE, 0, (APTR)MENU_BS_DEL_SWAP},
-    {    NM_ITEM, "Disable Scroll-B",               "E", HIGHCOMP|CHECKIT|MENUTOGGLE, 0, (APTR)MENU_DISABLE_SCROLLBACK},
-    {    NM_ITEM, "Packet Window",                  "2", HIGHCOMP|CHECKIT|MENUTOGGLE, 0, (APTR)MENU_PACKET_WINDOW},
-    {    NM_ITEM, "Tool Bar",                       "4", HIGHCOMP|CHECKIT|MENUTOGGLE, 0, (APTR)MENU_TOOLBAR},
-    {    NM_ITEM, "Return = CR + LF",               "5", HIGHCOMP|CHECKIT|MENUTOGGLE, 0, (APTR)MENU_RETURN_CRLF},
-    {    NM_ITEM, "Local Echoback",                 "6", HIGHCOMP|CHECKIT|MENUTOGGLE, 0, (APTR)MENU_LOCAL_ECHOBACK},
+    { NM_TITLE, "Terminal",  0, 0, 0, (APTR)MENU_TERMINAL},
+    {    NM_ITEM, "Telnet terminal type..",         "9",             0,               0, (APTR)MENU_TELNET_TERM_TYPE},
     {    NM_ITEM, "Raw Connection",                 "7", HIGHCOMP|CHECKIT|MENUTOGGLE, 0, (APTR)MENU_RAW_CONNECTION},
-    {    NM_ITEM, "Jump Scroll",                    "8", HIGHCOMP|CHECKIT|MENUTOGGLE, 0, (APTR)MENU_JUMP_SCROLL},
+//  {    NM_ITEM, "Convert incoming LF to CRLF",    "L", HIGHCOMP|CHECKIT|MENUTOGGLE, 0, (APTR)MENU_INCOMING_LF_TO_CRLF},
+    {    NM_ITEM, NM_BARLABEL,                       0 ,             0,               0, (APTR)MENU_BAR},
+    {    NM_ITEM, "Local Echo",                     "6", HIGHCOMP|CHECKIT|MENUTOGGLE, 0, (APTR)MENU_LOCAL_ECHO},
+    {    NM_ITEM, "Swap BackSpace & Del keys",      "/", HIGHCOMP|CHECKIT|MENUTOGGLE, 0, (APTR)MENU_BACKSPACE_DEL_SWAP},
+    {    NM_ITEM, "Return key send CR+LF",          "5", HIGHCOMP|CHECKIT|MENUTOGGLE, 0, (APTR)MENU_RETURN_SENDING_CRLF},
+    {    NM_ITEM, NM_BARLABEL,                       0 ,             0,               0, (APTR)MENU_BAR},
+    {    NM_ITEM, "Packet Window",                  "2", HIGHCOMP|CHECKIT|MENUTOGGLE, 0, (APTR)MENU_PACKET_WINDOW},
+    {    NM_ITEM, "Scrollback History",              "E", HIGHCOMP|CHECKIT|MENUTOGGLE, 0, (APTR)MENU_SCROLLBACK},
+    {    NM_ITEM, "ScrollBack Lines..",             "0",             0,               0, (APTR)MENU_SCROLLBACK_LINES},
+    {    NM_ITEM, "Function Keys..",                "K",             0,               0, (APTR)MENU_FUNCTION_KEYS},
 
-    { NM_TITLE, "Settings",                          0 ,             0,               0, (APTR)MENU_SETTINGS},
+    { NM_TITLE, "Display",                          0 ,             0,               0, (APTR)MENU_DISPLAY},
     {    NM_ITEM, "Renderer",                        0 ,             0,               0, (APTR)MENU_RENDERER},
-    {       NM_SUB, "Built-in (experimental)",      "1", HIGHCOMP|CHECKIT,     ~(1L<<0), (APTR)MENU_BUILTIN_RENDERER},
-    {       NM_SUB, "AmigaOS console.device",        0 , HIGHCOMP|CHECKIT,     ~(1L<<1), (APTR)MENU_CONSOLE_DEVICE},
-    {       NM_SUB, "External XEM Library",         "3", HIGHCOMP|CHECKIT,     ~(1L<<2), (APTR)MENU_XEM_LIBRARY},
-    {       NM_SUB, "Zed's ibmcon.device",           0 , HIGHCOMP|CHECKIT,     ~(1L<<3), (APTR)MENU_IBMCON_DEVICE},
+    {       NM_SUB, "Built-in (experimental)",      "1", HIGHCOMP|CHECKIT, ~(1L<<0), (APTR)MENU_BUILTIN_RENDERER},
+    {       NM_SUB, "AmigaOS console.device",        0 , HIGHCOMP|CHECKIT, ~(1L<<1), (APTR)MENU_CONSOLE_DEVICE},
+    {       NM_SUB, "External XEM Library",         "3", HIGHCOMP|CHECKIT, ~(1L<<2), (APTR)MENU_XEM_LIBRARY},
+    {       NM_SUB, "Zed's ibmcon.device",           0 , HIGHCOMP|CHECKIT, ~(1L<<3), (APTR)MENU_IBMCON_DEVICE},
+    {       NM_ITEM, NM_BARLABEL,                    0 ,             0,               0, (APTR)MENU_BAR},
+    {       NM_SUB, "Fast Scroll (ibmcon.device)",  "8", HIGHCOMP|CHECKIT|MENUTOGGLE, 0, (APTR)MENU_FAST_SCROLL},
+    {       NM_ITEM, "XEM Library path..",          "#",             0,               0, (APTR)MENU_XEM_LIBRARY_PATH},
+    {       NM_ITEM, "XEM Lib Options..",           "+",             0,               0, (APTR)MENU_XEM_LIB_OPTIONS},
+    {    NM_ITEM, NM_BARLABEL,                       0 ,             0,               0, (APTR)MENU_BAR},
     {    NM_ITEM, "Screen Mode..",                  "S",             0,               0, (APTR)MENU_SCREEN_MODE},
     {    NM_ITEM, "Screen Font..",                  "F",             0,               0, (APTR)MENU_SCREEN_FONT},
     {    NM_ITEM, "Screen Palette..",               "-",             0,               0, (APTR)MENU_SCREEN_PALETTE},
-    {    NM_ITEM, "Download Path..",                "O",             0,               0, (APTR)MENU_DOWNLOAD_PATH},
-    {    NM_ITEM, "Transfer Protocol..",            "T",             0,               0, (APTR)MENU_TRANSFER_PROTOCOL},
-    {    NM_ITEM, "Protocol Options..",             "*",             0,               0, (APTR)MENU_PROTOCOL_OPTIONS},
-    {    NM_ITEM, "Function Keys..",                "K",             0,               0, (APTR)MENU_FUNCTION_KEYS},
-    {    NM_ITEM, "XEM Library path..",             "#",             0,               0, (APTR)MENU_XEM_LIBRARY_PATH},
-    {    NM_ITEM, "XEM Lib Options..",              "+",             0,               0, (APTR)MENU_XEM_LIB_OPTIONS},
-    {    NM_ITEM, "Telnet Display ID..",            "9",             0,               0, (APTR)MENU_TELNET_DISPLAY_ID},
-    {    NM_ITEM, "ScrollBack Lines..",             "0",             0,               0, (APTR)MENU_SCROLLBACK_LINES},
+    {    NM_ITEM, NM_BARLABEL,                       0 ,             0,               0, (APTR)MENU_BAR},
+    {    NM_ITEM, "Full-screen",                    "W", HIGHCOMP|CHECKIT|MENUTOGGLE, 0, (APTR)MENU_FULLSCREEN},
+    {    NM_ITEM, "Title Bar",                      "R", HIGHCOMP|CHECKIT|MENUTOGGLE, 0, (APTR)MENU_TITLE_BAR},
+    {    NM_ITEM, "Tool Bar",                       "4", HIGHCOMP|CHECKIT|MENUTOGGLE, 0, (APTR)MENU_TOOL_BAR},
+    {    NM_ITEM, "LEDs",                           "I", HIGHCOMP|CHECKIT|MENUTOGGLE, 0, (APTR)MENU_LEDS},
     {    NM_ITEM, "Snapshot Windows",               "$",             0,               0, (APTR)MENU_SNAPSHOT_WINDOWS},
 
     { NM_TITLE, "Login",  0, 0, 0, (APTR)MENU_LOGIN},
@@ -192,8 +199,6 @@ enum    {    GAD_SCROLLER,
         GAD_DOWN
     };
 
-struct PrefsStruct prefs;
-
 static BPTR fileHandle;
 long nScrollbackLines;
 static long indexInScrollBuffer;
@@ -205,7 +210,6 @@ char username[42], password[42];
 // TCP Receive buffer, used in Receive(), xpr_sflush(). Cauntion: these functs destroy the content
 UBYTE recvBuffer[4096];
 unsigned char buf[2048];
-TEXT fKeys[F_KEY_COUNT * F_KEY_SIZE];
 static unsigned char conbuf[16], scrollbuf[402];
 char server[64];
 static ULONG lasttop;        // last topline of scrollback
@@ -215,21 +219,11 @@ BOOL shouldQuitApp;    // program finished
 static BOOL isConnected;    // tcp connected
 static BOOL shouldRestart;    // prefs changed, restart
 static BOOL shouldReopenScreen;    // flag
-BOOL isRunningOnWB; // running in wb
-BOOL isAppIconified;    // iconified
 static BOOL shouldIconify;        // must iconify
 BOOL shouldUniconify;        // must uniconify
 
 static BOOL isFingerRequest;        // isFingerRequest?
 
-static UWORD colorPens[]  = { 1,4,1,1,6,4,1,0,5,4,1,6,65535 };
-static UWORD color[] = { 0x0000, 0x0DDD, 0x00D0, 0x0DD0, 0x000D, 0x0D0D, 0x00DD, 0x0D00,
-          0x0555, 0x0FFF, 0x00F0, 0x0FF0, 0x000F, 0x0F0F, 0x00FF, 0x0F00, 65535 };
-/*                 black,    white,  green, yellow, blue, purple, aqua,   red */
-
-char const prefsFilename[] = "PROGDIR:DCTelnet.Prefs";
-char const bookFilename[]  = "PROGDIR:DCTelnet.Book";
-char const keysFilename[]  = "PROGDIR:DCTelnet.Keys";
 static char *programName = NULL;   // Name provided by argv[0] or task::tc_Node.ln_Name
 struct Task *mainTask = NULL;
 BYTE dontUseSig31 = -1; // don't use it, ibmcon.device will destroy it.
@@ -241,7 +235,7 @@ BYTE dontUseSig31 = -1; // don't use it, ibmcon.device will destroy it.
 
 static void ConWrite(char *data, long len)
 {
-    if(!isAppIconified)
+    if(STATE_IS_NOT(APP_ICONIFIED))
     {
         if (STATE_IS(APP_RENDERER_BUILTIN))
         {
@@ -397,7 +391,7 @@ static void WindowSub(void (*Sub)(void))
 
 void SimpleReq(char *str)
 {
-    InfoReq(isRunningOnWB ? NULL : win, str);
+    InfoReq(win, str);
     LEDs();
 }
 
@@ -489,7 +483,7 @@ static void DisConnect(char remote, char quiet)
 {
     if(isConnected)
     {
-        if(!quiet && !isAppIconified)
+        if(!quiet && STATE_IS_NOT(APP_ICONIFIED))
         {
             register ULONG spent;
             if(remote)
@@ -510,7 +504,7 @@ static void DisConnect(char remote, char quiet)
 
         if(isFingerRequest)
         {
-            WORD optionsMenuNumber = GetMenuNumberFromID(MENU_OPTIONS);
+            WORD optionsMenuNumber = GetMenuNumberFromID(MENU_TERMINAL);
 
             if (optionsMenuNumber >= 0)
                 OnMenu(win, FULLMENUNUM(optionsMenuNumber, NOITEM, NOSUB));
@@ -519,16 +513,6 @@ static void DisConnect(char remote, char quiet)
         }
 
         LEDs();
-    }
-}
-
-void SavePrefs(void)
-{
-    fileHandle = Open(prefsFilename, MODE_NEWFILE);
-    if(fileHandle)
-    {
-        Write(fileHandle, &prefs, sizeof(struct PrefsStruct));
-        Close(fileHandle);
     }
 }
 
@@ -556,7 +540,7 @@ static BOOL InitializeReqToolsLib(ULONG reqtoolsTags[5])
         }
         else
         {
-            InfoReq(isRunningOnWB ? NULL : win,
+            InfoReq(win,
                     "DCTelnet - Missing Library\n\n"
                     "Unable to open reqtools.library.\n"
                     "This feature requires ReqTools.\n\n"
@@ -578,7 +562,7 @@ static BOOL InitializeReqToolsLib(ULONG reqtoolsTags[5])
     {
         result=FALSE;
         #ifdef _DEBUG
-            InfoReq(isRunningOnWB ? NULL : win,
+            InfoReq(win,
                     "InitializeReqToolsLib() called with a NULL argument!");
         #endif
     }
@@ -586,21 +570,13 @@ static BOOL InitializeReqToolsLib(ULONG reqtoolsTags[5])
     return result;
 }
 
-static BOOL ChooseScreen(char firsttime)
+BOOL ChooseScreen(void)
 {
     BOOL result = FALSE;
 
-    if(firsttime)
-    {
-        prefs.DisplayID     = (PAL_MONITOR_ID | HIRES_KEY); // PAL High Res (640×256), no interlaced
-        prefs.DisplayWidth  = 640;
-        prefs.DisplayHeight = 256;
-        prefs.DisplayDepth  = 4;
-    }
-
     if (AslBase && AslBase->lib_Version >= 38) // ASL screen mode requester introduced with AmigaOS 2.1
     {
-        result = ScreenModeRequester(isRunningOnWB ? NULL : win, &prefs.DisplayID,
+        result = ScreenModeRequester(win, &prefs.DisplayID,
                                     &prefs.DisplayWidth, &prefs.DisplayHeight, &prefs.DisplayDepth);
     }
     else    // fallback to legacy ReqTools library
@@ -650,10 +626,12 @@ static void ChoosePalette(void)
         if(rtPaletteRequestA("Screen Palette..", reqinfo, (struct TagItem *)&reqtoolsTags) != -1)
         {
             UWORD i = 0;
+            UWORD *colors = STATE_IS(APP_RENDERER_BUILTIN | APP_RENDERER_XEM_LIB) ?
+                            prefs.AnsiColors : prefs.DeviceColors;
 
             while(i < 16)
             {
-                prefs.color[i] = GetRGB4(scr->ViewPort.ColorMap, i);
+                colors[i] = GetRGB4(scr->ViewPort.ColorMap, i);
                 i++;
             }
         }
@@ -719,7 +697,7 @@ add:
                     AddTail(scrollbackList, (struct Node *) node);
                     nScrollbackLines++;
                 }
-                if(nScrollbackLines > prefs.sb_lines)
+                if(nScrollbackLines > prefs.nScrollbackLines)
                 {
                     nScrollbackLines--;
                     node = (struct Scroll *)scrollbackList->lh_Head;
@@ -820,10 +798,11 @@ static void Receive(void)
         }
     #endif
 
-    if (prefs.flags & FLAG_RAW_CONNECTION)
+    if (STATE_IS(APP_RAW_CONNECTION))
     {
         ConWrite(recvBuffer, len);
-        if(!(prefs.flags & FLAG_DISABLE_SCROLLBACK))   AddBuf(recvBuffer, len);
+        if (STATE_IS(APP_SCROLLBACK_ENABLED))
+            AddBuf(recvBuffer, len);
 
         for (i = 0; i < len; i++)
         {
@@ -839,7 +818,7 @@ static void Receive(void)
             #ifdef _DEBUG
                 if (outLen >= sizeof(outBuffer))
                 {
-                    InfoReq(isRunningOnWB ? NULL : win, "outBuffer overflow in Receive()!");
+                    InfoReq(win, "outBuffer overflow in Receive()!");
                     return;
                 }
             #endif
@@ -868,7 +847,7 @@ static void Receive(void)
         {
             ConWrite(outBuffer, outLen);
 
-            if(!(prefs.flags & FLAG_DISABLE_SCROLLBACK))
+            if (STATE_IS(APP_SCROLLBACK_ENABLED))
                 AddBuf(outBuffer, outLen);
         }
 
@@ -887,11 +866,11 @@ static void Receive(void)
     {
         // Some BBSes never respond to Telnet option negotiation; this is for informational purposes
         // only:
-        if (! (prefs.flags & FLAG_RAW_CONNECTION))
+        if (STATE_IS_NOT(APP_RAW_CONNECTION))
             IsTelnetSessionReadyForXfer();
 
-        if (zmodemCtx.state == ZMODEM_DOWNLOAD) Download(prefs.xferlibrary);
-        if (zmodemCtx.state == ZMODEM_UPLOAD)     Upload(prefs.xferlibrary);
+        if (zmodemCtx.state == ZMODEM_DOWNLOAD) Download(prefs.XferLibrary);
+        if (zmodemCtx.state == ZMODEM_UPLOAD)     Upload(prefs.XferLibrary);
 
         ResetZmodemContext();
     }
@@ -967,14 +946,14 @@ norm:                buf[j] = str[i];
 void LEDs(void)
 {
     // Draw connection activity indicator when Title bar AND LEDs are enabled AND NOT iconified
-    if((prefs.flags & (FLAG_HIDE_TITLEBAR | FLAG_HIDE_LEDS)) == 0  &&  !isAppIconified)
+    if (STATE_ARE_ALL(APP_TITLE_BAR_ENABLED | APP_LEDS_ENABLED)  &&  STATE_IS_NOT(APP_ICONIFIED))
     {
-        EraseRect(&scr->RastPort, scr->Width-72, 2, scr->Width-60, prefs.fontsize-1);
-        EraseRect(&scr->RastPort, scr->Width-86, 2, scr->Width-74, prefs.fontsize-1);
+        EraseRect(&scr->RastPort, scr->Width-72, 2, scr->Width-60, prefs.FontSize-1);
+        EraseRect(&scr->RastPort, scr->Width-86, 2, scr->Width-74, prefs.FontSize-1);
         if(isConnected)
         {
             SetAPen(&scr->RastPort, 15);
-            RectFill(&scr->RastPort, scr->Width-84, 3, scr->Width-76, prefs.fontsize-2);
+            RectFill(&scr->RastPort, scr->Width-84, 3, scr->Width-76, prefs.FontSize-2);
         }
     }
 }
@@ -1112,7 +1091,7 @@ static void Finger(void)
 {
     char tbuf[64] = "reiver@plan.cat";
 
-    if (GetStringRequester(isRunningOnWB ? NULL : win,
+    if (GetStringRequester(win,
                               "Finger",
                               "Enter EMail Address:",
                               tbuf, sizeof(tbuf))
@@ -1121,126 +1100,34 @@ static void Finger(void)
         char * host = strchr(tbuf, '@');
         if(host)
         {
-            ULONG originalState = prefs.flags & FLAG_RAW_CONNECTION;
+            BOOL originalState = STATE_IS(APP_RAW_CONNECTION);
 
             host[0] = 0;
             *host++;
 
-            prefs.flags |= FLAG_RAW_CONNECTION;     // Enable flag (NO telnet negotiation)
+            STATE_SET(APP_RAW_CONNECTION);     // Enable flag (NO telnet negotiation)
             if(BeginServerConnection(host, 79) == RETURN_OK)
             {
-                WORD optionsMenuNumber = GetMenuNumberFromID(MENU_OPTIONS);
+                WORD optionsMenuNumber = GetMenuNumberFromID(MENU_TERMINAL);
 
                 mysprintf(buf, "/W %s\r\n", tbuf);
                 send(tcpSocket, buf, strlen(buf), 0);
 
+                // Prevent the user from toggling Raw Connection (or any other Terminal option)
+                // while this finger exchange relies on it. Re-enabled in DisConnect().
                 if (optionsMenuNumber >= 0)
                     OffMenu(win, FULLMENUNUM(optionsMenuNumber, NOITEM, NOSUB));
 
                 isFingerRequest = TRUE;
             }
-            prefs.flags = (prefs.flags & ~FLAG_RAW_CONNECTION) | originalState;  // Restore state
+
+            // Restore state
+            if (originalState)
+                STATE_SET(APP_RAW_CONNECTION);
+            else
+                STATE_UNSET(APP_RAW_CONNECTION);
         }
     }
-}
-
-/**
-@brief Load application preferences from the prefs file.
-
-Loads preferences from the configured prefs file. If the file does not exist, it is created and
-initialized with default values.
-
-Calling code must ensure that ReqTools.library is opened before invoking this function.
-
-@return TRUE on success, non-zero error code on failure.
-*/
-BOOL LoadPrefs(void)
-{
-    BPTR fh = Open(prefsFilename, MODE_OLDFILE);
-    BOOL firsttime = FALSE;
-
-    if(fh)
-    {
-        if(Read(fh, &prefs, sizeof(struct PrefsStruct)) < 252) // IF OLD CONFIG FILE
-        {
-            /*//prefs.win_left = 0;
-            prefs.win_top = 11;
-            prefs.win_width = 640;
-            prefs.win_height = 200;
-            //prefs.sb_left = 0;
-            prefs.sb_top = 12;
-            prefs.sb_width = 640;
-            prefs.sb_height = (prefs.DisplayHeight / 2) - 4;*/
-
-            Close(fh);
-            goto fixprefs;
-        }
-        Close(fh);
-    } else {
-        firsttime = TRUE;
-        isAppIconified = TRUE;
-    }
-
-    // Prefs loaded but use must choose another Screen Mode. OpenDisplay() could not OpenScreen()
-    // last time DCTelnet was launched.
-    if (prefs.DisplayID == DEFAULT_MONITOR_ID)
-    {
-        firsttime = TRUE;
-        isAppIconified = TRUE;
-    }
-
-    if (firsttime)
-    {
-        InfoReq(NULL,
-                "This is the first time you've run DCTelnet."    "\n"
-                                        "\n"
-                "You will now have to select a screen mode"    "\n"
-                "for DCTelnet to open on. The recommended"    "\n"
-                "mode is 640*256*16 for good ANSI emulation."    "\n"
-                                        "\n"
-                "Once DCTelnet has started, you can make"    "\n"
-                "the program open a window on the Workbench"    "\n"
-                "screen, instead of opening its own screen."
-            );
-
-        if(ChooseScreen(TRUE))
-        {
-            prefs.fontsize = 8;
-            strlcpy(prefs.fontname,    "topaz.font",                  sizeof(prefs.fontname));
-            strlcpy(prefs.xferlibrary, "xprzmodem.library",           sizeof(prefs.xferlibrary));
-            strlcpy(prefs.xferinit,    "TC,OR,B32,FO,AN,DN,KY,SN,RN", sizeof(prefs.xferinit));
-            memcpy(prefs.color, color, sizeof(prefs.color));
-            //CopyMem(&color[0], &prefs.color[0], 32);
-            prefs.flags = APP_RENDERER_BUILTIN | FLAG_HIDE_TITLEBAR | FLAG_HIDE_LEDS;
-fixprefs:        //prefs.win_left = 0;
-            prefs.win_top = 11;
-            prefs.win_width = 640;
-            prefs.win_height = 200;
-            //prefs.sb_left = 0;
-            prefs.sb_top = 12;
-            prefs.sb_width = 640;
-            prefs.sb_height = (prefs.DisplayHeight / 2) - 4;
-            SavePrefs();
-        }
-        else
-        {
-            return FALSE;
-        }
-    }
-
-    if(prefs.sb_lines == 0) prefs.sb_lines = 300;
-
-    if(prefs.displayidstr[0] == 0) strlcpy(prefs.displayidstr, "VT102", sizeof(prefs.displayidstr));
-
-    // Loads the macro function keys config file if present:
-    fh = Open(keysFilename, MODE_OLDFILE);
-    if(fh)
-    {
-        Read(fh, fKeys, F_KEY_COUNT * F_KEY_SIZE);
-        Close(fh);
-    }
-
-    return TRUE;
 }
 
 
@@ -1442,7 +1329,7 @@ int main(int argc, char *argv[])
             shouldUniconify = FALSE;
         }
 
-        if(isAppIconified)
+        if(STATE_IS(APP_ICONIFIED))
         {
             if(iconPort) iconsig = 1L<<iconPort->mp_SigBit;
 
@@ -1467,7 +1354,7 @@ int main(int argc, char *argv[])
                 i = WaitSelect(tcpSocket + 1, &rd, 0, 0, &timeout, &sigmask);
 
                 #ifdef _DEBUG
-                    if (i <  0)  InfoReq(isRunningOnWB ? NULL : win,
+                    if (i <  0)  InfoReq(win,
                                          "WaitSelect() returns < 0 (error) ! Why???");
                 #endif
 
@@ -1516,7 +1403,7 @@ int main(int argc, char *argv[])
                 #ifdef _DEBUG_WAITSELECT
                     if      (i <  0)
                     {
-                        InfoReq(isRunningOnWB ? NULL : win,
+                        InfoReq(win,
                                 "WaitSelect() returns < 0 (error) ! Why???");
                     }
                     else if (i == 0)
@@ -1525,7 +1412,7 @@ int main(int argc, char *argv[])
                         LogWaitSelectResult(sigmask);
 
                         if (FD_ISSET(tcpSocket, &rd))
-                            InfoReq(isRunningOnWB ? NULL : win,
+                            InfoReq(win,
                                     "WaitSelect() returns 0 but data received! Why???");
                     }
                     else
@@ -1543,14 +1430,14 @@ int main(int argc, char *argv[])
                 if(i != 0)
                 {
                     // Draw when Title bar AND LEDs are enabled :
-                    if((prefs.flags & (FLAG_HIDE_TITLEBAR | FLAG_HIDE_LEDS)) == 0)
+                    if (STATE_ARE_ALL(APP_TITLE_BAR_ENABLED | APP_LEDS_ENABLED))
                     {
                         SetAPen(&scr->RastPort, 10);
-                        RectFill(&scr->RastPort, scr->Width-70, 3, scr->Width-62, prefs.fontsize-2);
+                        RectFill(&scr->RastPort, scr->Width-70, 3, scr->Width-62, prefs.FontSize-2);
                     }
                     Receive();
-                    if((prefs.flags & (FLAG_HIDE_TITLEBAR | FLAG_HIDE_LEDS)) == 0)
-                        EraseRect(&scr->RastPort, scr->Width-72, 2, scr->Width-60, prefs.fontsize-1);
+                    if (STATE_ARE_ALL(APP_TITLE_BAR_ENABLED | APP_LEDS_ENABLED))
+                        EraseRect(&scr->RastPort, scr->Width-72, 2, scr->Width-60, prefs.FontSize-1);
                 }
 
             } else {  // not connected
@@ -1593,7 +1480,7 @@ int main(int argc, char *argv[])
 
     SavePrefs();
 
-    prefs.flags = FLAG_HIDE_TITLEBAR;
+    STATE_UNSET(APP_TITLE_BAR_ENABLED);
 
     returnCode = RETURN_OK;
 
@@ -1637,7 +1524,7 @@ static void SaveScrollBack(char *fname)
     if(fileHandle)
     {
         UnLock(fileHandle);
-        if (! ConfirmRequester(isRunningOnWB ? NULL : win, "OverWrite|Cancel",
+        if (! ConfirmRequester(win, "OverWrite|Cancel",
                                "File Already Exists."))
             return;
     }
@@ -1681,7 +1568,7 @@ static void OnConnectClicked(char spawnInstance)
     else                tbuf[0] = '\0';
 
 
-    if (GetStringRequester(isRunningOnWB ? NULL : win, "Connect",
+    if (GetStringRequester(win, "Connect",
                            "Enter host:port",  tbuf, sizeof(tbuf))
        )
     {
@@ -1733,7 +1620,7 @@ static void Information(void)
     {
         register ULONG spent = mytime() - conectionTime;
 
-        InfoReq(isRunningOnWB ? NULL : win,
+        InfoReq(win,
                 "     Host Name ... : %s\n"
                 "    IP Address ... : %s\n"
                 "      TCP Port ... : %ld\n\n"
@@ -1755,11 +1642,11 @@ static void Information(void)
 /**
  * @brief Updates a NewMenu item's checked state based on a preference flag.
  *
- * If the specified flag is set in prefs.flags, the menu item is checked.
+ * If the specified flag is set in prefs.State, the menu item is checked.
  * Otherwise, the menu item is unchecked.
  *
  * @param id Identifier of the NewMenu item whose CHECKED state is to be set.
- * @param flag The flag in prefs.flags controlling the menu item's checked state.
+ * @param flag The flag in prefs.State controlling the menu item's checked state.
  */
 static void SetNewMenuCheckFromPref(enum MenuItemID id, ULONG flag)
 {
@@ -1772,7 +1659,7 @@ static void SetNewMenuCheckFromPref(enum MenuItemID id, ULONG flag)
         return;
     }
 
-    if (prefs.flags & flag)
+    if (STATE_IS(flag))
         newMenuItem->nm_Flags |= CHECKED;
     else
         newMenuItem->nm_Flags &= ~CHECKED;
@@ -1780,24 +1667,24 @@ static void SetNewMenuCheckFromPref(enum MenuItemID id, ULONG flag)
 
 
 /**
- * @brief Updates prefs.flags based on a menu item's checked state.
+ * @brief Updates prefs.State based on a menu item's checked state.
  *
- * If the menu item is checked, the prefs.flags bit is set.
+ * If the menu item is checked, the prefs.State bit is set.
  * If it is unchecked, the flag bit is cleared.
  *
  * @param item Pointer to the MenuItem whose CHECKED state is to be used.
- * @param flag The flag (bit) in prefs.flags to set or clear.
+ * @param flag The flag (bit) in prefs.State to set or clear.
  */
-static void UpdatePrefsFlagFromMenu(struct MenuItem *item, ULONG flag)
+static void UpdatePrefsFromMenu(struct MenuItem *item, ULONG flag)
 {
     if(item->Flags & CHECKED)
-        prefs.flags |= flag;
+        STATE_SET(flag);
     else
-        prefs.flags &= ~flag;
+        STATE_UNSET(flag);
 }
 
 /*
- Uncheck a menu item and clear the corresponding flag in prefs.flags,
+ Uncheck a menu item and clear the corresponding flag in prefs.State,
  or check the menu item and set the flag, depending on the "wantedState" parameter.
  https://amigadev.elowar.com/read/ADCD_2.1/Includes_and_Autodocs_2._guide/node024A.html
  https://www.amiga-news.de/en/news/AN-2023-10-00017-EN.html
@@ -1806,7 +1693,7 @@ static void SetLocalEchoBack(BOOL wantedState)
 {
     struct MenuItem *item = NULL;
 
-    BOOL currentState = prefs.flags & FLAG_LOCAL_ECHO;
+    BOOL currentState = STATE_IS(APP_LOCAL_ECHO);
 
     #ifdef _DEBUG
         PutStr("›34m--> SetLocalEchoBack()›m\n");
@@ -1819,18 +1706,18 @@ static void SetLocalEchoBack(BOOL wantedState)
         #endif
         ClearMenuStrip(win);
 
-        item = GetMenuItemFromID(MENU_LOCAL_ECHOBACK);
+        item = GetMenuItemFromID(MENU_LOCAL_ECHO);
         if (item != NULL)
         {
             if (wantedState)
             {
                 item->Flags |= CHECKED;
-                prefs.flags |= FLAG_LOCAL_ECHO;
+                STATE_SET(APP_LOCAL_ECHO);
             }
             else
             {
                 item->Flags &= ~CHECKED;
-                prefs.flags &= ~FLAG_LOCAL_ECHO;
+                STATE_UNSET(APP_LOCAL_ECHO);
             }
         }
         ResetMenuStrip(win, mainMenuStrip);
@@ -1839,7 +1726,7 @@ static void SetLocalEchoBack(BOOL wantedState)
 
 static void OutKey(unsigned char key)
 {
-    if(prefs.flags & FLAG_BS_DEL_SWAP)
+    if(STATE_IS(APP_BACKSPACE_DEL_SWAPPED))
     {
         if(key == '\b') // Backspace
             key = DEL_CHAR;
@@ -1854,10 +1741,11 @@ static void OutKey(unsigned char key)
         // If you want to send 0xff then you must double it (0xff, 0xff) to tell telnet that you
         // don't intend to send it a command.
         if(key == (unsigned char) IAC)
-            if (! (prefs.flags & FLAG_RAW_CONNECTION))
+            if (STATE_IS_NOT(APP_RAW_CONNECTION))
                 TCPSend((void *)&key, 1);
 
-        if(prefs.flags & FLAG_LOCAL_ECHO) goto cwrite;
+        if(STATE_IS(APP_LOCAL_ECHO))
+            goto cwrite;
     } else
 cwrite:        ConWrite(&key, 1);
 }
@@ -1889,7 +1777,7 @@ static void GetWindowMsg(struct Window *wwin)
             if(wwin == packetWin)  // A line has been validated in the packet window;
             {                      // send it to the server.
                 RemoveGList(wwin, &strGad, 1);
-                strlcat(strBuffer, (prefs.flags & FLAG_RETURN_CRLF) ? "\r\n" : "\r",
+                strlcat(strBuffer, STATE_IS(APP_RETURN_SENDING_CRLF) ? "\r\n" : "\r",
                         sizeof(strBuffer));
                 SendMacro(strBuffer);
                 strBuffer[0] = 0;
@@ -1930,9 +1818,9 @@ static void GetWindowMsg(struct Window *wwin)
                         if(isConnected)
                         {
                             if(gad->GadgetID == BUTTON_UPLOAD)
-                                Upload(prefs.xferlibrary);
+                                Upload(prefs.XferLibrary);
                             else
-                                Download(prefs.xferlibrary);
+                                Download(prefs.XferLibrary);
                         } else
                             SimpleReq("You better connect first.");
                         break;
@@ -1967,12 +1855,11 @@ static void GetWindowMsg(struct Window *wwin)
                 case RAWKEY_F5:
                     buf[0] = '\0';
                     strlcpy(fbuf, "DCTelnet.Cap", sizeof(fbuf));
-                    if (FileRequester(isRunningOnWB ? NULL : win,
+                    if (FileRequester(win,
                                       buf,  sizeof(buf),
                                       fbuf, sizeof(fbuf),
                                       "#?",
                                       FILEREQ_SAVE))
-                    //if(FileReq(buf, "#?", fbuf, "Save Scroll Back", TRUE, 0))
                     {
                         AddPart(buf, fbuf, sizeof(buf));
                         //strcat(buf, fbuf);
@@ -1980,7 +1867,7 @@ static void GetWindowMsg(struct Window *wwin)
                     }
                     break;
                 case RAWKEY_F3:
-                    if (ConfirmRequester(isRunningOnWB ? NULL : win, "Print|Cancel",
+                    if (ConfirmRequester(win, "Print|Cancel",
                                          "Print Scrollback?"))
                         SaveScrollBack("PRT:");
                     break;
@@ -2059,7 +1946,8 @@ static void GetWindowMsg(struct Window *wwin)
                                 else
                                 {
                                     OutKey(conbuf[i]);
-                                    if(conbuf[i] == '\r' && (prefs.flags & FLAG_RETURN_CRLF)) OutKey('\n');
+                                    if(conbuf[i] == '\r' && STATE_IS(APP_RETURN_SENDING_CRLF))
+                                        OutKey('\n');
                                 }
                             }
                         }
@@ -2097,7 +1985,7 @@ static void GetWindowMsg(struct Window *wwin)
                     ULONG reqtoolsTags[5]; // for rtGetLongA()
 
                     case MENU_ABOUT:
-                        InfoReq(isRunningOnWB ? NULL : win,
+                        InfoReq(win,
                             "DCTelnet - A classic Amiga Telnet/BBS client with Zmodem"        "\n"
                             "                  v"DCTELNET_VERSION " (build " STR(BUILD_HASH) ")\n"
                             "         Last Compiled .... : "__DATE__""                        "\n"
@@ -2112,7 +2000,7 @@ static void GetWindowMsg(struct Window *wwin)
                             "           github.com/bruno-frederic/dctelnet"                   "\n");
                         break;
 
-                    case MENU_SCROLLBACK:
+                    case MENU_SCROLLBACK_WIN:
                         if(wwin != scrollbackWin)
                         {
                             CloseScrollBack();
@@ -2142,12 +2030,12 @@ static void GetWindowMsg(struct Window *wwin)
                         break;
 
                     case MENU_UPLOAD:
-                        if(isConnected)  Upload(prefs.xferlibrary);
+                        if(isConnected)  Upload(prefs.XferLibrary);
                         else             SimpleReq("You better connect first.");
                         break;
 
                     case MENU_DOWNLOAD:
-                        if(isConnected)  Download(prefs.xferlibrary);
+                        if(isConnected)  Download(prefs.XferLibrary);
                         else             SimpleReq("You better connect first.");
                         break;
 
@@ -2155,14 +2043,14 @@ static void GetWindowMsg(struct Window *wwin)
                         if(isConnected)
                         {
                             fbuf[0] = '\0';
-                            if (FileRequester(isRunningOnWB ? NULL : win,
-                                              prefs.uploadpath, sizeof(prefs.uploadpath),
+                            if (FileRequester(win,
+                                              prefs.UploadPath, sizeof(prefs.UploadPath),
                                               fbuf, sizeof(fbuf),
                                               "#?",
                                               FILEREQ_LOAD))
                             {
                                 register long r;
-                                strlcpy(buf, prefs.uploadpath, sizeof(buf));
+                                strlcpy(buf, prefs.UploadPath, sizeof(buf));
                                 AddPart(buf, fbuf, sizeof(buf));
                                 SimpleReq(buf);
                                 fileHandle = Open(buf, MODE_OLDFILE);
@@ -2207,83 +2095,86 @@ static void GetWindowMsg(struct Window *wwin)
                         WindowSub(Information);
                         break;
 
-                    case MENU_USE_WORKBENCH:
-                        UpdatePrefsFlagFromMenu(item, FLAG_USE_WORKBENCH);
+                    case MENU_FULLSCREEN:
+                        UpdatePrefsFromMenu(item, APP_FULLSCREEN);
                         shouldRestart = TRUE;
                         shouldReopenScreen = TRUE;
                         break;
 
-                    case MENU_DISABLE_LEDS:
-                        UpdatePrefsFlagFromMenu(item, FLAG_HIDE_LEDS);
+                    case MENU_LEDS:
+                        UpdatePrefsFromMenu(item, APP_LEDS_ENABLED);
                         if(item->Flags & CHECKED)
                         {
-                            if(!(prefs.flags & FLAG_HIDE_TITLEBAR))
-                            {
-                                SetAPen(&scr->RastPort, 1);
-                                RectFill(&scr->RastPort, scr->Width-86, 2, scr->Width-60, prefs.fontsize-1);
-                            }
+                            LEDs();
                         }
                         else
-                            LEDs();
+                        {
+                            if(STATE_IS(APP_TITLE_BAR_ENABLED))
+                            {
+                                SetAPen(&scr->RastPort, 1);
+                                RectFill(&scr->RastPort, scr->Width-86, 2, scr->Width-60, prefs.FontSize-1);
+                            }
+                        }
                         break;
 
-                    case MENU_HIDE_TITLEBAR:
-                        UpdatePrefsFlagFromMenu(item, FLAG_HIDE_TITLEBAR);
+                    case MENU_TITLE_BAR:
+                        UpdatePrefsFromMenu(item, APP_TITLE_BAR_ENABLED);
                         shouldRestart = TRUE;
                         shouldReopenScreen = TRUE;
                         break;
 
-                    // case MENU_UNUSED_CRLF:
-                    //     UpdatePrefsFlagFromMenu(item, FLAG_CRLF_CORRECTION);
+                    // case MENU_INCOMING_LF_TO_CRLF:
+                    //     UpdatePrefsFromMenu(item, APP_INCOMING_LF_TO_CRLF);
                     //     break;
 
-                    case MENU_BS_DEL_SWAP:
-                        UpdatePrefsFlagFromMenu(item, FLAG_BS_DEL_SWAP);
+                    case MENU_BACKSPACE_DEL_SWAP:
+                        UpdatePrefsFromMenu(item, APP_BACKSPACE_DEL_SWAPPED);
                         break;
 
-                    case MENU_DISABLE_SCROLLBACK:
-                        UpdatePrefsFlagFromMenu(item, FLAG_DISABLE_SCROLLBACK);
+                    case MENU_SCROLLBACK:
+                        UpdatePrefsFromMenu(item, APP_SCROLLBACK_ENABLED);
                         break;
 
                     case MENU_PACKET_WINDOW:
-                        UpdatePrefsFlagFromMenu(item, FLAG_PACKET_WINDOW);
-                        if (isRunningOnWB || STATE_IS(APP_RENDERER_BUILTIN))
-                            SimpleReq("Packet Window cannot work in Workbench mode.");
-                        else
+                        UpdatePrefsFromMenu(item, APP_PACKET_WINDOW_ENABLED);
+                        if (STATE_IS(APP_FULLSCREEN))
                             shouldRestart = TRUE;
+                        else
+                            SimpleReq("Packet Window cannot work in Workbench mode.");
                         break;
 
-                    case MENU_TOOLBAR:
-                        UpdatePrefsFlagFromMenu(item, FLAG_TOOL_BAR);
-                        if (isRunningOnWB)
+                    case MENU_TOOL_BAR:
+                        UpdatePrefsFromMenu(item, APP_TOOL_BAR_ENABLED);
+                        if (STATE_IS(APP_FULLSCREEN))
+                            shouldRestart = TRUE;
+                        else
                         {
                             if(item->Flags & CHECKED)
                                 OpenToolBarWindow(TRUE);
                             else
                                 CloseToolBarWindow();
-                        } else
-                            shouldRestart = TRUE;
+                        }
                         break;
 
-                    case MENU_RETURN_CRLF:
-                        UpdatePrefsFlagFromMenu(item, FLAG_RETURN_CRLF);
+                    case MENU_RETURN_SENDING_CRLF:
+                        UpdatePrefsFromMenu(item, APP_RETURN_SENDING_CRLF);
                         break;
 
-                    case MENU_LOCAL_ECHOBACK:
-                        UpdatePrefsFlagFromMenu(item, FLAG_LOCAL_ECHO);
+                    case MENU_LOCAL_ECHO:
+                        UpdatePrefsFromMenu(item, APP_LOCAL_ECHO);
                         break;
 
                     case MENU_RAW_CONNECTION:
-                        UpdatePrefsFlagFromMenu(item, FLAG_RAW_CONNECTION);
+                        UpdatePrefsFromMenu(item, APP_RAW_CONNECTION);
                         break;
 
-                    case MENU_JUMP_SCROLL:
+                    case MENU_FAST_SCROLL:
                         #ifdef _DEBUG
                             // This item must be disabled when ibmcon.device is not in use.
                             if (STATE_IS_NOT(APP_RENDERER_IBMCON_DEVICE))
                                 SimpleReq("Error: unexpected MENU_JUMP_SCROLL path!" );
                         #endif
-                        UpdatePrefsFlagFromMenu(item, FLAG_JUMP_SCROLL);
+                        UpdatePrefsFromMenu(item, APP_FAST_SCROLL_ENABLED);
                         shouldRestart = TRUE;
                         break;
 
@@ -2316,7 +2207,7 @@ static void GetWindowMsg(struct Window *wwin)
                     break;
 
                     case MENU_XEM_LIBRARY:
-                        if (prefs.displaydriver[0] == '\0')
+                        if (prefs.XemLibrary[0] == '\0')
                         {
                             SimpleReq("No XEM library has been selected yet.\n"
                                       "Please choose one first from the Settings menu.");
@@ -2352,7 +2243,7 @@ static void GetWindowMsg(struct Window *wwin)
                     case MENU_SCREEN_MODE:
                         oldDispID = prefs.DisplayID;
                         oldDepth  = prefs.DisplayDepth;
-                        if (ChooseScreen(FALSE)
+                        if (ChooseScreen()
                             && ((oldDispID  != prefs.DisplayID) || (oldDepth != prefs.DisplayDepth))
                            )
                         {
@@ -2362,9 +2253,9 @@ static void GetWindowMsg(struct Window *wwin)
                         break;
 
                     case MENU_SCREEN_FONT:
-                        if (FontRequester(isRunningOnWB ? NULL : win,
-                                          prefs.fontname, sizeof(prefs.fontname),
-                                          &prefs.fontsize))
+                        if (FontRequester(win,
+                                          prefs.FontName, sizeof(prefs.FontName),
+                                          &prefs.FontSize))
                         {
                             shouldRestart = TRUE;
                             shouldReopenScreen = TRUE;
@@ -2376,24 +2267,24 @@ static void GetWindowMsg(struct Window *wwin)
                         break;
 
                     case MENU_DOWNLOAD_PATH:
-                        DirectoryRequester(isRunningOnWB ? NULL : win,
-                                           prefs.downloadpath, sizeof(prefs.downloadpath));
+                        DirectoryRequester(win,
+                                           prefs.DownloadPath, sizeof(prefs.DownloadPath));
                         break;
 
                     case MENU_TRANSFER_PROTOCOL:
-                        FileRequester(isRunningOnWB ? NULL : win,
+                        FileRequester(win,
                                       "LIBS:", 0, // 0 because we don't want to get the dirname
-                                      prefs.xferlibrary, sizeof(prefs.xferlibrary),
+                                      prefs.XferLibrary, sizeof(prefs.XferLibrary),
                                       "xpr#?.library",
                                       FILEREQ_LOAD);
                         break;
 
                     case MENU_PROTOCOL_OPTIONS:
-                        GetStringRequester(isRunningOnWB ? NULL : win,
+                        GetStringRequester(win,
                                                     "XPR Protocol Options..",
                                                     "Options string:",
-                                                    prefs.xferinit, sizeof(prefs.xferinit));
-                        // TODO Open XPR options Dialog : XferOptions(prefs.xferlibrary);
+                                                    prefs.XferOptions, sizeof(prefs.XferOptions));
+                        // TODO Open XPR options Dialog : XferOptions(prefs.XferLibrary);
                         break;
 
                     case MENU_FUNCTION_KEYS:
@@ -2401,9 +2292,9 @@ static void GetWindowMsg(struct Window *wwin)
                         break;
 
                     case MENU_XEM_LIBRARY_PATH:
-                        if (FileRequester(isRunningOnWB ? NULL : win,
+                        if (FileRequester(win,
                                           "LIBS:", 0, // 0 because we don't want to get the dirname
-                                          prefs.displaydriver, sizeof(prefs.displaydriver),
+                                          prefs.XemLibrary, sizeof(prefs.XemLibrary),
                                           "xem#?.library",
                                           FILEREQ_LOAD))
                         {
@@ -2415,39 +2306,39 @@ static void GetWindowMsg(struct Window *wwin)
                         if (xemIO)
                             XEmulatorOptions(xemIO);
                         else
-                            InfoReq(isRunningOnWB ? NULL : win, "The XEM library is currently "
+                            InfoReq(win, "The XEM library is currently "
                                            "disabled, so related functionality is unavailable.");
                         break;
 
-                    case MENU_TELNET_DISPLAY_ID:
-                        GetStringRequester(isRunningOnWB ? NULL : win,
-                                                    "Telnet Display ID...",
-                                                    "Term type:",
-                                                    prefs.displayidstr, sizeof(prefs.displayidstr));
+                    case MENU_TELNET_TERM_TYPE:
+                        GetStringRequester(win,
+                                           "Telnet Terminal Type",
+                                           "Terminal type sent to telnet server:",
+                                           prefs.TelnetTermType, sizeof(prefs.TelnetTermType));
                         break;
 
                     case MENU_SCROLLBACK_LINES:
                         InitializeReqToolsLib(reqtoolsTags);
-                        rtGetLongA(&prefs.sb_lines, "ScrollBack Lines..", NULL, (struct TagItem *)&reqtoolsTags);
+                        rtGetLongA(&prefs.nScrollbackLines, "ScrollBack Lines..", NULL, (struct TagItem *)&reqtoolsTags);
                         break;
 
                     case MENU_SNAPSHOT_WINDOWS:
-                        prefs.win_top    = win->TopEdge;
-                        prefs.win_left   = win->LeftEdge;
-                        prefs.win_height = win->Height;
-                        prefs.win_width  = win->Width;
+                        prefs.MainWinTopEdge  = win->TopEdge;
+                        prefs.MainWinLeftEdge = win->LeftEdge;
+                        prefs.MainWinHeight   = win->Height;
+                        prefs.MainWinWidth    = win->Width;
 
                         if(scrollbackWin)
                         {
-                            prefs.sb_left   = scrollbackWin->LeftEdge;
-                            prefs.sb_top    = scrollbackWin->TopEdge;
-                            prefs.sb_width  = scrollbackWin->Width;
-                            prefs.sb_height = scrollbackWin->Height;
+                            prefs.ScrollbackWinLeftEdge = scrollbackWin->LeftEdge;
+                            prefs.ScrollbackWinTopEdge  = scrollbackWin->TopEdge;
+                            prefs.ScrollbackWinWidth    = scrollbackWin->Width;
+                            prefs.ScrollbackWinHeight   = scrollbackWin->Height;
                         }
                         if (toolBarWin)
                         {
-                            prefs.toolBarWin_left = toolBarWin->LeftEdge;
-                            prefs.toolBarWin_top  = toolBarWin->TopEdge;
+                            prefs.ToolBarWinLeftEdge    = toolBarWin->LeftEdge;
+                            prefs.ToolBarWinTopEdge     = toolBarWin->TopEdge;
                         }
 
                         break;
@@ -2487,7 +2378,7 @@ up:                if(lasttop > 0) lasttop--;
                 break;
 
             case GAD_DOWN:
-down:                if(lasttop+((scrollbackWin->Height - (prefs.fontsize + scr->WBorTop + 2)) / prefs.fontsize) < nScrollbackLines) lasttop++;
+down:                if(lasttop+((scrollbackWin->Height - (prefs.FontSize + scr->WBorTop + 2)) / prefs.FontSize) < nScrollbackLines) lasttop++;
                 break;
             }
             SetGadgetAttrs((struct Gadget *)Scroller, scrollbackWin, NULL,
@@ -2507,14 +2398,14 @@ down:                if(lasttop+((scrollbackWin->Height - (prefs.fontsize + scr-
         RefreshWindowFrame(scrollbackWin);
         RefreshListView(lasttop);
         SetGadgetAttrs((struct Gadget *)Scroller, scrollbackWin, NULL,
-            PGA_Visible,    (scrollbackWin->Height - (prefs.fontsize + scr->WBorTop + 2)) / prefs.fontsize,
+            PGA_Visible,    (scrollbackWin->Height - (prefs.FontSize + scr->WBorTop + 2)) / prefs.FontSize,
         TAG_END);
     }
     if(close) CloseScrollBack();
     if(shouldCloseToolbarWin)
     {
         CloseToolBarWindow();
-        prefs.flags &= ~FLAG_TOOL_BAR;
+        STATE_UNSET(APP_TOOL_BAR_ENABLED);
     }
 }
 
@@ -2614,10 +2505,10 @@ static UWORD EstablishTCPConnection(char *servername, UWORD port)
     }
 
     //  Draw connection activity indicator when Title bar AND LEDs are enabled
-    if((prefs.flags & (FLAG_HIDE_TITLEBAR | FLAG_HIDE_LEDS)) == 0)
+    if (STATE_ARE_ALL(APP_TITLE_BAR_ENABLED | APP_LEDS_ENABLED))
     {
         SetAPen(&scr->RastPort, 11);
-        RectFill(&scr->RastPort, scr->Width-84, 3, scr->Width-76, prefs.fontsize-2);
+        RectFill(&scr->RastPort, scr->Width-84, 3, scr->Width-76, prefs.FontSize-2);
     }
 
     DisConnect(FALSE, FALSE);
@@ -2702,7 +2593,10 @@ static UWORD EstablishTCPConnection(char *servername, UWORD port)
     ResetTelnetContext();
     ResetZmodemContext();
 
-    if (isRunningOnWB) WindowToFront(win); else ScreenToFront(scr);
+    if (STATE_IS(APP_FULLSCREEN))
+        ScreenToFront(scr);
+    else
+        WindowToFront(win);
 
     conectionTime = mytime();
 
@@ -2718,11 +2612,8 @@ struct Screen* OpenAppScreen(void)
 {
     struct Screen *scr;
 
-    if(prefs.flags & FLAG_USE_WORKBENCH) isRunningOnWB = TRUE;
-    else isRunningOnWB = FALSE;
-
-    fontAttr.ta_Name = prefs.fontname;
-    fontAttr.ta_YSize = prefs.fontsize;
+    fontAttr.ta_Name = prefs.FontName;
+    fontAttr.ta_YSize = prefs.FontSize;
     ansiFont = OpenDiskFont(&fontAttr);
     if(!ansiFont)
     {
@@ -2731,49 +2622,73 @@ struct Screen* OpenAppScreen(void)
         ansiFont = OpenFont(&fontAttr);
     }
 
-    if (isRunningOnWB)
+    if (STATE_IS_NOT(APP_FULLSCREEN))
     {
-        prefs.flags |= FLAG_HIDE_LEDS;
-        prefs.flags &= ~FLAG_PACKET_WINDOW;           // Not Packet Window
+        STATE_UNSET(APP_LEDS_ENABLED);
+        STATE_UNSET(APP_PACKET_WINDOW_ENABLED);
         scr = LockPubScreen(0L);
+        STATE_UNSET(APP_CUSTOM_SCREEN_OPENED);
     }
     else
     {
-        register UWORD *pens;
-        static struct NewScreen newscr;
+        // Screen colors are set at the time the screen is opened with the SA_Colors tag.
+        // If the colors need to be changed after the screen is opened, the graphics library
+        // function, LoadRGB4() should be used.
+        // To change a single entry in the color table, use SetRGB4() and SetRGB4CM().
+        // https://amigadev.elowar.com/read/ADCD_2.1/Libraries_Manual_guide/node00F2.html
 
-        if(prefs.DisplayDepth < 3) pens = &colorPens[12]; else pens = colorPens;
+        // Custom pen specification is applied when the screen is opened by providing the SA_Pens
+        // tag along with a pointer to a pen array.
+        // Do not use SA_DetailPen or SA_BlockPen anymore; SA_Pens replaces them.
+        const UWORD *pens;
 
-        newscr.Width  = prefs.DisplayWidth;
-        newscr.Height = prefs.DisplayHeight;
-        newscr.Depth  = prefs.DisplayDepth;
-        newscr.BlockPen = 1;
-        newscr.Type = CUSTOMSCREEN;
-        newscr.Font = &fontAttr;
-        // Main window title in full screen mode:
-        newscr.DefaultTitle = MainWindowTitle;
+        const UWORD *colorsRGB4;
+        struct ColorSpec colors[17];
+        int i;
 
-        scr = OpenScreenTags(&newscr,
-            SA_DisplayID,    prefs.DisplayID,
-            SA_Pens,        (ULONG)pens,
-            SA_ShowTitle,    !(prefs.flags & FLAG_HIDE_TITLEBAR),
-            SA_AutoScroll,    TRUE,
-            SA_Interleaved,    TRUE,
-            TAG_END);
-        /*
+        if (STATE_IS(APP_RENDERER_BUILTIN | APP_RENDERER_XEM_LIB))
+        {
+            colorsRGB4 = prefs.AnsiColors;
+            pens       = ansiPens;
+        }
+        else
+        {
+            colorsRGB4 = prefs.DeviceColors;
+            pens       = devicePens;
+        }
+
+        pens = (prefs.DisplayDepth < 3) ? defaultPens : pens;
+
+        // Convert RGB4 colors array to ColorSpec array needed for SA_Colors during screen open:
+        for (i = 0; i < 16; i++) {
+            colors[i].ColorIndex = i;
+            colors[i].Red   = (colorsRGB4[i] >> 8) & 0xF;
+            colors[i].Green = (colorsRGB4[i] >> 4) & 0xF;
+            colors[i].Blue  =  colorsRGB4[i]       & 0xF;
+        }
+        colors[16].ColorIndex = -1; /* -1 terminates an array of ColorSpec	*/
+        colors[16].Red = colors[16].Green = colors[16].Blue = 0;
+
+        // https://amigadev.elowar.com/read/ADCD_2.1/Libraries_Manual_guide/node00E5.html
         scr = OpenScreenTags(NULL,
-            SA_Title,    "DCTelnet 1.5 © "__DATE__" By ZED^DC",
-            SA_Width,    prefs.DisplayWidth,
-            SA_Height,    prefs.DisplayHeight,
-            SA_DisplayID,    prefs.DisplayID,
-                        SA_Depth,    prefs.DisplayDepth,
-            SA_ShowTitle,    !prefs.flags&1,
-            SA_Type,    CUSTOMSCREEN,
-                        SA_Pens,    (ULONG)pens,
-            SA_Font,    &fontAttr,
+            SA_Title,         (ULONG) MainWindowTitle,
+            SA_Width,         prefs.DisplayWidth,
+            SA_Height,        prefs.DisplayHeight,
+            SA_DisplayID,     prefs.DisplayID,
+            SA_Depth,         prefs.DisplayDepth,
+            SA_Colors,        (ULONG) colors,
+            SA_Pens,          (ULONG) pens,
+            SA_Type,          CUSTOMSCREEN,
+            SA_Font,          (ULONG) &fontAttr,
+            SA_ShowTitle,     STATE_IS(APP_TITLE_BAR_ENABLED),
             SA_AutoScroll,    TRUE,
-            SA_Interleaved,    TRUE,
-                        TAG_END);*/
+            SA_Interleaved,   TRUE,
+            TAG_END);
+
+        if (scr == NULL)
+            STATE_UNSET(APP_CUSTOM_SCREEN_OPENED);
+        else
+            STATE_SET(APP_CUSTOM_SCREEN_OPENED);
     }
 
     return scr;
@@ -2795,21 +2710,16 @@ void OpenAppWindow(void)
     newWin.DetailPen = 255;
     newWin.BlockPen = 255;
 
-    if (isRunningOnWB)
+    if (STATE_IS_NOT(APP_FULLSCREEN))
     {
-        GetNewMenuItemFromID(MENU_USE_WORKBENCH)->nm_Flags |= CHECKED;
-        //GetNewMenuItemFromID(MENU_JUMPSCROLL)->nm_Flags = NM_ITEMDISABLED;
-        GetNewMenuItemFromID(MENU_SCREEN_MODE)->nm_Flags = NM_ITEMDISABLED;
-        GetNewMenuItemFromID(MENU_SCREEN_PALETTE)->nm_Flags = NM_ITEMDISABLED;
-
-        newWin.LeftEdge   = prefs.win_left;
-        newWin.TopEdge    = prefs.win_top;
-        newWin.Width      = prefs.win_width;
-        newWin.Height     = prefs.win_height;
-        newWin.MinWidth   = 200;
-        newWin.MinHeight  = 50;
-        newWin.MaxWidth   = 1600;
-        newWin.MaxHeight  = 1200;
+        newWin.LeftEdge   = prefs.MainWinLeftEdge;
+        newWin.TopEdge    = prefs.MainWinTopEdge;
+        newWin.Width      = prefs.MainWinWidth;
+        newWin.Height     = prefs.MainWinHeight;
+        newWin.MinWidth   = WIN_MIN_WIDTH;
+        newWin.MinHeight  = WIN_MIN_HEIGHT;
+        newWin.MaxWidth   = DISP_MAX_WIDTH;
+        newWin.MaxHeight  = DISP_MAX_HEIGHT;
         newWin.IDCMPFlags = IDCMP_RAWKEY
                           | IDCMP_CLOSEWINDOW
                           | IDCMP_MENUPICK;
@@ -2836,23 +2746,18 @@ void OpenAppWindow(void)
         // screen (Amiga ROM Kernel Reference Manual, § Accessing a public screen by name)
         UnlockPubScreen(0L, scr);
 
-        if(prefs.flags & FLAG_TOOL_BAR) OpenToolBarWindow(FALSE);
+        if (STATE_IS(APP_TOOL_BAR_ENABLED))
+            OpenToolBarWindow(FALSE);
     }
     else  // running in custom full screen
     {
         struct Gadget *backgad;
         UWORD top, height;
 
-        GetNewMenuItemFromID(MENU_USE_WORKBENCH)->nm_Flags = HIGHCOMP|CHECKIT|MENUTOGGLE;
-        //GetNewMenuItemFromID(MENU_JUMPSCROLL)->nm_Flags = HIGHCOMP|CHECKIT|MENUTOGGLE;
-        GetNewMenuItemFromID(MENU_SCREEN_MODE)->nm_Flags = 0;
-        GetNewMenuItemFromID(MENU_SCREEN_PALETTE)->nm_Flags = 0;
+        if (STATE_IS(APP_TOOL_BAR_ENABLED))
+            OpenToolBarWindow(FALSE);
 
-        LoadRGB4(&scr->ViewPort, (UWORD *)&prefs.color, 16);
-
-        if(prefs.flags & FLAG_TOOL_BAR) OpenToolBarWindow(FALSE);
-
-        if(prefs.flags&1) // HIDE TITLE
+        if(STATE_IS_NOT(APP_TITLE_BAR_ENABLED))
         {
             top = 0;
             height = scr->Height;
@@ -2864,8 +2769,8 @@ void OpenAppWindow(void)
             screenToBackGadget.LeftEdge = scr->Width - 20;
             screenToBackGadget.GadgetID = GADGET_SCREEN_TO_BACK;
         } else {
-            top = prefs.fontsize + 3;
-            height = scr->Height - (prefs.fontsize + 3);
+            top = prefs.FontSize + 3;
+            height = scr->Height - (prefs.FontSize + 3);
             backgad = 0;
         }
 
@@ -2884,9 +2789,9 @@ void OpenAppWindow(void)
         newWin.Title = 0;
         newWin.Width = scr->Width;
 
-        if(prefs.flags & FLAG_PACKET_WINDOW)    // Packet
+        if(STATE_IS(APP_PACKET_WINDOW_ENABLED))
         {
-            height -= (prefs.fontsize + 2);
+            height -= (prefs.FontSize + 2);
 
             strInfo.Buffer     = strBuffer;
             strInfo.MaxChars   = BUFSIZE;
@@ -2896,10 +2801,10 @@ void OpenAppWindow(void)
             strGad.GadgetType  = GTYP_STRGADGET;
             strGad.SpecialInfo = &strInfo;
             strGad.Width       = scr->Width;
-            strGad.Height      = prefs.fontsize;
+            strGad.Height      = prefs.FontSize;
 
             newWin.TopEdge     = top+height;
-            newWin.Height      = prefs.fontsize+2,
+            newWin.Height      = prefs.FontSize+2,
             newWin.FirstGadget = &strGad;
             newWin.IDCMPFlags  = IDCMP_MENUPICK
                                | IDCMP_GADGETUP;
@@ -2944,19 +2849,31 @@ void CreateAppMenus(void)
         PutStr("   --> CreateAppMenus()\n");
     #endif
 
+    if (STATE_IS(APP_FULLSCREEN))
+    {
+        // Reset nm_Flags to GadTools defaults (item becomes enabled).
+        GetNewMenuItemFromID(MENU_SCREEN_MODE   )->nm_Flags = 0;
+        GetNewMenuItemFromID(MENU_SCREEN_PALETTE)->nm_Flags = 0;
+    }
+    else
+    {
+        GetNewMenuItemFromID(MENU_SCREEN_MODE   )->nm_Flags = NM_ITEMDISABLED;
+        GetNewMenuItemFromID(MENU_SCREEN_PALETTE)->nm_Flags = NM_ITEMDISABLED;
+    }
+
+
     GetNewMenuItemFromID(MENU_BUILTIN_RENDERER)->nm_Flags &= ~CHECKED;
     GetNewMenuItemFromID(MENU_CONSOLE_DEVICE  )->nm_Flags &= ~CHECKED;
     GetNewMenuItemFromID(MENU_XEM_LIBRARY     )->nm_Flags &= ~CHECKED;
     GetNewMenuItemFromID(MENU_IBMCON_DEVICE   )->nm_Flags &= ~CHECKED;
 
     // Disable menu items that are only relevant for specific renderers.
-    GetNewMenuItemFromID(MENU_JUMP_SCROLL     )->nm_Flags = NM_ITEMDISABLED;
+    GetNewMenuItemFromID(MENU_FAST_SCROLL     )->nm_Flags = NM_ITEMDISABLED;
     GetNewMenuItemFromID(MENU_XEM_LIB_OPTIONS )->nm_Flags = NM_ITEMDISABLED;
 
     if (STATE_IS(APP_RENDERER_BUILTIN))
     {
         GetNewMenuItemFromID(MENU_BUILTIN_RENDERER)->nm_Flags |= CHECKED;
-
     }
     else if (STATE_IS(APP_RENDERER_CONSOLE_DEVICE))
     {
@@ -2973,22 +2890,22 @@ void CreateAppMenus(void)
     {
         GetNewMenuItemFromID(MENU_IBMCON_DEVICE)->nm_Flags |= CHECKED;
 
-        GetNewMenuItemFromID(MENU_JUMP_SCROLL)->nm_Flags = HIGHCOMP|CHECKIT|MENUTOGGLE;
+        GetNewMenuItemFromID(MENU_FAST_SCROLL)->nm_Flags = HIGHCOMP|CHECKIT|MENUTOGGLE;
     }
 
     // The NewMenu item CHECKED flag will be set according to saved Prefs flags. Note: these flags
     // are already set: HIGHCOMP|CHECKIT|MENUTOGGLE for every item in Options menu in mainMenuDesc[]
-    SetNewMenuCheckFromPref(MENU_USE_WORKBENCH,        FLAG_USE_WORKBENCH);
-    SetNewMenuCheckFromPref(MENU_DISABLE_LEDS,         FLAG_HIDE_LEDS);
-    SetNewMenuCheckFromPref(MENU_HIDE_TITLEBAR,        FLAG_HIDE_TITLEBAR);
-    SetNewMenuCheckFromPref(MENU_BS_DEL_SWAP,          FLAG_BS_DEL_SWAP);
-    SetNewMenuCheckFromPref(MENU_DISABLE_SCROLLBACK,   FLAG_DISABLE_SCROLLBACK);
-    SetNewMenuCheckFromPref(MENU_PACKET_WINDOW,        FLAG_PACKET_WINDOW);
-    SetNewMenuCheckFromPref(MENU_TOOLBAR,              FLAG_TOOL_BAR);
-    SetNewMenuCheckFromPref(MENU_RETURN_CRLF,          FLAG_RETURN_CRLF);
-    SetNewMenuCheckFromPref(MENU_LOCAL_ECHOBACK,       FLAG_LOCAL_ECHO);
-    SetNewMenuCheckFromPref(MENU_RAW_CONNECTION,       FLAG_RAW_CONNECTION);
-    SetNewMenuCheckFromPref(MENU_JUMP_SCROLL,          FLAG_JUMP_SCROLL);
+    SetNewMenuCheckFromPref(MENU_FULLSCREEN,              APP_FULLSCREEN);
+    SetNewMenuCheckFromPref(MENU_LEDS,                    APP_LEDS_ENABLED);
+    SetNewMenuCheckFromPref(MENU_TITLE_BAR,               APP_TITLE_BAR_ENABLED);
+    SetNewMenuCheckFromPref(MENU_BACKSPACE_DEL_SWAP,      APP_BACKSPACE_DEL_SWAPPED);
+    SetNewMenuCheckFromPref(MENU_SCROLLBACK,              APP_SCROLLBACK_ENABLED);
+    SetNewMenuCheckFromPref(MENU_PACKET_WINDOW,           APP_PACKET_WINDOW_ENABLED);
+    SetNewMenuCheckFromPref(MENU_TOOL_BAR,                APP_TOOL_BAR_ENABLED);
+    SetNewMenuCheckFromPref(MENU_RETURN_SENDING_CRLF,     APP_RETURN_SENDING_CRLF);
+    SetNewMenuCheckFromPref(MENU_LOCAL_ECHO,              APP_LOCAL_ECHO);
+    SetNewMenuCheckFromPref(MENU_RAW_CONNECTION,          APP_RAW_CONNECTION);
+    SetNewMenuCheckFromPref(MENU_FAST_SCROLL,             APP_FAST_SCROLL_ENABLED);
 
 
     // Gadtools CreateMenuA() generates a list of Intuition Menu structs.
@@ -3009,7 +2926,7 @@ void CreateAppMenus(void)
         item->Flags = (item->Flags & ~HIGHFLAGS) | HIGHBOX;
     }
 
-    ltags[1] = isRunningOnWB;
+    ltags[1] = STATE_IS_NOT(APP_FULLSCREEN);
 
     #ifdef _DEBUG
         PutStr("   --> LayoutMenusA()\n");
@@ -3061,7 +2978,7 @@ BOOL OpenDisplay(void)
     if (scr == NULL) {
         InfoReq(NULL,"Unable to open the screen. Please restart DCTelnet\n"
                      "and select an appropriate screen mode");
-        prefs.DisplayID = DEFAULT_MONITOR_ID;
+        prefs.DisplayID = (ULONG) INVALID_ID;
         SavePrefs();
 
         goto clean_and_return;
@@ -3074,14 +2991,14 @@ BOOL OpenDisplay(void)
     if(win == NULL) { InfoReq(NULL,"Unable to open main window!"); goto clean_and_return; }
 
     CreateAppMenus();
-    if (mainMenuStrip == NULL) { InfoReq(isRunningOnWB ? NULL : win, "Unable to create menus!");
+    if (mainMenuStrip == NULL) { InfoReq(win, "Unable to create menus!");
                                  goto clean_and_return; }
 
 
     // Try to initialize the XEM library if the user enabled it.
     // If it fails fallback to builtin renderer.
     if(STATE_IS(APP_RENDERER_XEM_LIB))
-        if (! InitializeXemLibrary())
+        if (! InitializeXemLibrary(prefs.XemLibrary))
         {
             struct MenuItem *item = NULL;
 
@@ -3116,7 +3033,7 @@ BOOL OpenDisplay(void)
         {
             struct MenuItem *item = NULL;
 
-            InfoReq(isRunningOnWB ? NULL : win,
+            InfoReq(win,
                     "Failed to setup retro32-term, error # %ld.\nFallback to console.device", res);
 
             // Update Prefs State bits:
@@ -3155,7 +3072,7 @@ BOOL OpenDisplay(void)
 
         // CreateIORequest() requires a message port.
         writeConsoleMP = CreateMsgPort();
-        if (!writeConsoleMP) { InfoReq(isRunningOnWB ? NULL : win,
+        if (!writeConsoleMP) { InfoReq(win,
                                      "Unable to create message port for console device!");
                              goto clean_and_return; }
 
@@ -3168,8 +3085,8 @@ BOOL OpenDisplay(void)
         {
             unitNumber = CONU_SNIPMAP;
         } else {
-            if(prefs.flags & FLAG_JUMP_SCROLL)
-                unitNumber = 2; // unit 2 is undocumented in the NDK and AmigaOS docs
+            if(STATE_IS(APP_FAST_SCROLL_ENABLED))
+                unitNumber = 2; // Unit 2 is a non-standard unit specific to ibmcon.device
             else
                 unitNumber = CONU_CHARMAP;
         }
@@ -3208,12 +3125,14 @@ BOOL OpenDisplay(void)
             STATE_SET(APP_RENDERER_CONSOLE_DEVICE);
 
             isConDeviceOpened = FALSE;
-            InfoReq(isRunningOnWB ? NULL : win, "Failed to open device: %s", devName);
+
+            InfoReq(win, "Failed to open device: %s", devName);
+
             goto clean_and_return;
         }
     }
 
-    isAppIconified = FALSE;
+    STATE_UNSET(APP_ICONIFIED);
 
     LEDs();
 
@@ -3222,7 +3141,7 @@ BOOL OpenDisplay(void)
         STRPTR strRenderer = NULL;
         register ULONG flags = SysBase->AttnFlags;
         LONG cpu = '0';
-        ULONG renderer = prefs.flags & APP_RENDERER_ALL;
+        ULONG renderer = prefs.State & APP_RENDERER_ALL;
 
         if(flags & AFF_68010) cpu = '1';
         if(flags & AFF_68020) cpu = '2';
@@ -3241,7 +3160,7 @@ BOOL OpenDisplay(void)
             break;
 
             case APP_RENDERER_XEM_LIB:
-                strRenderer = prefs.displaydriver;
+                strRenderer = prefs.XemLibrary;
             break;
 
             case APP_RENDERER_IBMCON_DEVICE:
@@ -3325,7 +3244,7 @@ void CloseDisplay(BOOL manageScreen)
 
             if (! (mainTask->tc_SigAlloc & (1L << 31)))
             {
-                InfoReq(isRunningOnWB ? NULL : win,
+                InfoReq(win,
                         "ERROR: sigbit 31 has disappeared before CloseDevice()! Why???");
             }
         #endif
@@ -3349,7 +3268,7 @@ void CloseDisplay(BOOL manageScreen)
 
             dontUseSig31 = AllocSignal(31L);
             if (dontUseSig31 != 31)
-                InfoReq(isRunningOnWB ? NULL : win, "ERROR: cannot allocate sigbit 31!");
+                InfoReq(win, "ERROR: cannot allocate sigbit 31!");
 
             #ifdef _DEBUG
                 PutStr("SigAlloc:"); PrintBitsULONG(mainTask->tc_SigAlloc);
@@ -3396,7 +3315,7 @@ void CloseDisplay(BOOL manageScreen)
         if(drawInfo)              { FreeScreenDrawInfo(scr, drawInfo);  drawInfo = NULL; }
         if(scr != NULL)
         {
-            if (! isRunningOnWB)
+            if (STATE_IS(APP_CUSTOM_SCREEN_OPENED))
             {
                 #ifdef _DEBUG
                     BOOL result =
@@ -3414,7 +3333,7 @@ void CloseDisplay(BOOL manageScreen)
         if(ansiFont)              { CloseFont(ansiFont);                ansiFont = NULL; }
     }
 
-    isAppIconified = TRUE;
+    STATE_SET(APP_ICONIFIED);
 
     #ifdef _DEBUG
         PutStr("<-- CloseDisplay()\n");

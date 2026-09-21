@@ -23,7 +23,7 @@ extern struct XEM_IO *xemIO;
 
 
 // Functions exported
-BOOL InitializeXemLibrary(void);
+BOOL InitializeXemLibrary(CONST_STRPTR libName);
 void UninitializeXemLibrary(void);
 
 // XEmulatorWrite() is invoked directly from DCTelnet.c via this macro to avoid the overhead of an

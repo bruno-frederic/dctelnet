@@ -6,95 +6,6 @@
 
 // Types
 
-// Renderer is tested 1 x in ConWrite() which is called 1x for each Receive()
-#define APP_RENDERER_BUILTIN         (1UL << 15)
-#define APP_RENDERER_CONSOLE_DEVICE  (1UL << 16)
-#define APP_RENDERER_XEM_LIB         (1UL << 17)
-#define APP_RENDERER_IBMCON_DEVICE   (1UL << 18)
-
-#define APP_RENDERER_ALL \
-        ( APP_RENDERER_BUILTIN \
-        | APP_RENDERER_CONSOLE_DEVICE \
-        | APP_RENDERER_XEM_LIB \
-        | APP_RENDERER_IBMCON_DEVICE )
-
-
-// Set one or more state bits.
-#define STATE_SET(bits) \
-    (prefs.flags |= (bits))
-
-// Clear one or more state bits.
-#define STATE_UNSET(bits) \
-    (prefs.flags &= ~(bits))
-
-// Toggle one or more state bits.
-#define STATE_TOGGLE(bits) \
-    (prefs.flags ^= (bits))
-
-// Test whether one or more state bits are set.
-#define STATE_IS(bits) \
-    ((prefs.flags & (bits)) != 0)
-
-// Test whether all specified state bits are set.
-#define STATE_ARE_ALL(bits) \
-    ((prefs.flags & (bits)) == (bits))
-
-// Test whether none of the specified state bits are set.
-#define STATE_IS_NOT(bits) \
-    ((prefs.flags & (bits)) == 0)
-
-
-struct PrefsStruct
-{
-    ULONG DisplayID;
-    UWORD DisplayWidth,
-          DisplayHeight,
-          DisplayDepth,
-          fontsize;
-    char  fontname[32],
-          downloadpath[52],
-          xferlibrary[52],
-          xferinit[52];
-    UWORD color[16];
-    ULONG flags;
-    UWORD win_left,
-          win_top,
-          win_width,
-          win_height,
-          sb_left,
-          sb_top,
-          sb_width,
-          sb_height;
-    char  uploadpath[52],
-          displaydriver[32];
-    ULONG sb_lines;
-    char  displayidstr[32];
-    UWORD toolBarWin_left,
-          toolBarWin_top;
-};
-
-/*
-* Bit flags stored in PrefsStruct->flags.
-* These defines describe the meaning of each individual bit.
-* These flags map directly to the checkable items in the "Options" pull-down menu
-*/
-#define FLAG_HIDE_TITLEBAR       (1UL << 0)   // BIT 0  = Hide Title Bar
-#define FLAG_CRLF_CORRECTION     (1UL << 1)   // BIT 1  = CRLF Correction
-#define FLAG_HIDE_LEDS           (1UL << 2)   // BIT 2  = Hide LEDS
-#define FLAG_USE_WORKBENCH       (1UL << 3)   // BIT 3  = Use Workbench
-#define FLAG_BS_DEL_SWAP         (1UL << 4)   // BIT 4  = BS/DEL Swap
-#define FLAG_DISABLE_SCROLLBACK  (1UL << 5)   // BIT 5  = Disable Scrollback
-#define FLAG_STRIP_COLOUR        (1UL << 6)   // BIT 6  = Strip Colour
-#define FLAG_SIMPLE_TELNET       (1UL << 7)   // BIT 7  = Very simple telnet negotiation.
-#define FLAG_PACKET_WINDOW       (1UL << 8)   // BIT 8  = Packet Window
-//#define FLAG_USE_XEM_LIBRARY     (1UL << 9)   // BIT 9  = Use XEM Library
-#define FLAG_TOOL_BAR            (1UL << 10)  // BIT 10 = Tool bar
-#define FLAG_RETURN_CRLF         (1UL << 11)  // BIT 11 = Return = CR&LF
-#define FLAG_LOCAL_ECHO          (1UL << 12)  // BIT 12 = Local Echoback
-#define FLAG_RAW_CONNECTION      (1UL << 13)  // BIT 13 = Raw Connection (NO telnet negotiation data)
-#define FLAG_JUMP_SCROLL         (1UL << 14)  // BIT 14 = Jump Scroll
-
-
 // ID of the gadget in top right corner when title bar is hidden in full screen
 #define GADGET_SCREEN_TO_BACK  20
 
@@ -107,68 +18,76 @@ struct PrefsStruct
 enum MenuItemID
 {
     MENU_DCTELNET,
-    MENU_ABOUT,
-    MENU_BAR0,
-    MENU_SCROLLBACK,
-    MENU_ICONIFY,
-    MENU_DISPLAY_SPEED_TEST,
-    MENU_FINGER,
-    MENU_BAR1,
-    MENU_RESET_SCREEN,
-    MENU_QUIT,
+        MENU_ABOUT,
+
+        MENU_SCROLLBACK_WIN,
+        MENU_ICONIFY,
+        MENU_DISPLAY_SPEED_TEST,
+        MENU_FINGER,
+
+        MENU_RESET_SCREEN,
+        MENU_QUIT,
 
     MENU_TRANSFER,
-    MENU_UPLOAD,
-    MENU_BAR2,
-    MENU_DOWNLOAD,
-    MENU_BAR3,
-    MENU_ASCII_SEND,
+        MENU_UPLOAD,
+
+        MENU_DOWNLOAD,
+
+        MENU_ASCII_SEND,
+
+        MENU_DOWNLOAD_PATH,
+        MENU_TRANSFER_PROTOCOL,
+        MENU_PROTOCOL_OPTIONS,
 
     MENU_CONNECTION,
-    MENU_CONNECT,
-    MENU_CONNECT_NEW_INSTANCE,
-    MENU_DISCONNECT,
-    MENU_BAR4,
-    MENU_ADDRESS_BOOK,
-    MENU_BAR5,
-    MENU_INFORMATION,
+        MENU_CONNECT,
+        MENU_CONNECT_NEW_INSTANCE,
+        MENU_DISCONNECT,
 
-    MENU_OPTIONS,
-    MENU_USE_WORKBENCH,
-    MENU_DISABLE_LEDS,
-    MENU_HIDE_TITLEBAR,
-    // MENU_UNUSED_CRLF,
-    MENU_BS_DEL_SWAP,
-    MENU_DISABLE_SCROLLBACK,
-    MENU_PACKET_WINDOW,
-    MENU_TOOLBAR,
-    MENU_RETURN_CRLF,
-    MENU_LOCAL_ECHOBACK,
-    MENU_RAW_CONNECTION,
-    MENU_JUMP_SCROLL,
+        MENU_ADDRESS_BOOK,
 
-    MENU_SETTINGS,
+        MENU_INFORMATION,
+
+    MENU_TERMINAL,
+        MENU_TELNET_TERM_TYPE,
+        MENU_RAW_CONNECTION,
+//      MENU_INCOMING_LF_TO_CRLF,
+
+        MENU_LOCAL_ECHO,
+        MENU_BACKSPACE_DEL_SWAP,
+        MENU_RETURN_SENDING_CRLF,
+
+        MENU_SCROLLBACK,
+        MENU_SCROLLBACK_LINES,
+        MENU_FUNCTION_KEYS,
+
+    MENU_DISPLAY,
         MENU_RENDERER,
             MENU_BUILTIN_RENDERER,
             MENU_XEM_LIBRARY,
             MENU_CONSOLE_DEVICE,
             MENU_IBMCON_DEVICE,
-    MENU_SCREEN_MODE,
-    MENU_SCREEN_FONT,
-    MENU_SCREEN_PALETTE,
-    MENU_DOWNLOAD_PATH,
-    MENU_TRANSFER_PROTOCOL,
-    MENU_PROTOCOL_OPTIONS,
-    MENU_FUNCTION_KEYS,
-    MENU_XEM_LIBRARY_PATH,
-    MENU_XEM_LIB_OPTIONS,
-    MENU_TELNET_DISPLAY_ID,
-    MENU_SCROLLBACK_LINES,
-    MENU_SNAPSHOT_WINDOWS,
+
+            MENU_FAST_SCROLL,
+            MENU_XEM_LIBRARY_PATH,
+            MENU_XEM_LIB_OPTIONS,
+
+        MENU_FULLSCREEN,
+        MENU_LEDS,
+        MENU_TITLE_BAR,
+        MENU_PACKET_WINDOW,
+        MENU_TOOL_BAR,
+
+        MENU_SCREEN_MODE,
+        MENU_SCREEN_FONT,
+        MENU_SCREEN_PALETTE,
+        MENU_SNAPSHOT_WINDOWS,
 
     MENU_LOGIN,
-    MENU_SEND_USERNAME,
-    MENU_SEND_PASSWORD,
+        MENU_SEND_USERNAME,
+        MENU_SEND_PASSWORD,
+
+    MENU_BAR,   // Used several times
 
     MENU_END
 };
@@ -181,7 +100,6 @@ extern struct DrawInfo *drawInfo;
 extern struct Menu *mainMenuStrip;
 extern struct MsgPort *iconPort;
 extern struct NewWindow newWin;
-extern struct PrefsStruct prefs;
 extern struct List *scrollbackList;
 extern struct Screen *scr;
 extern struct TextFont *ansiFont;
@@ -189,15 +107,10 @@ extern struct Window *win, *scrollbackWin, *toolBarWin;
 
 extern struct NewGadget newGadget;
 extern BOOL shouldQuitApp;          // program finished
-extern BOOL isRunningOnWB;          // running in wb
-extern BOOL isAppIconified;         // iconified
 extern BOOL shouldUniconify;        // must shouldUniconifyify
 // Used in Receive(), xpr_sflush(). Beware: each call to this function destroy the content
 extern UBYTE recvBuffer[4096];
 extern unsigned char buf[2048];
-#define F_KEY_COUNT 10
-#define F_KEY_SIZE  152  // 151 chars + '\0'
-extern TEXT fKeys[F_KEY_COUNT * F_KEY_SIZE];
 extern UWORD winTop;                // WinTop topEdge (titlebar height)
 extern struct Task *mainTask;       // An AmigaOS Task is roughly equivalent to a thread
 
@@ -207,10 +120,6 @@ extern UWORD connectMsgType;
 extern char *connectString;
 
 extern UWORD tcpPort;    // current tcp port
-
-extern const char prefsFilename[];
-extern const char keysFilename[];
-extern const char bookFilename[];
 
 extern void *visualInfos;
 extern char username[42], password[42];
@@ -226,8 +135,8 @@ void LocalFmt(char *ctl, ...);
 void TextFmt(struct RastPort *rP, char *ctl, ...);
 void LocalPrint(char *data);
 void OpenIcon(void);                                    // inconify the application
-void SavePrefs(void);
 void SimpleReq(char *str);
+BOOL ChooseScreen(void);
 void SetWaitPointer(struct Window * window);
 UWORD BeginServerConnection(char *servername, UWORD port);
 struct MenuItem *GetMenuItemFromID(enum MenuItemID id);

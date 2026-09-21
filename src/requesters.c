@@ -944,8 +944,6 @@ BOOL FontRequester(struct Window *parent, STRPTR fontName, UWORD maxLen, UWORD *
                              // Supply initial values for requester:
                              ASL_FontName,    fontName,
                              ASL_FontHeight, *fontYSize,
-                             ASL_FrontPen,    0x01L,
-                             ASL_BackPen,     0x00L,
 
                              ASL_FuncFlags, FONF_FIXEDWIDTH | // Only show fixed width fonts
                                             FONF_DRAWMODE,
