@@ -159,7 +159,11 @@ static void ResetZmodemContext(void);
 static void SetLocalEchoBack(BOOL wantedState);
 
 extern struct ExecBase *SysBase;
-struct ReqToolsBase *ReqToolsBase = NULL;
+#ifdef __GNUC__
+    struct Library      *ReqToolsBase = NULL;
+#else
+    struct ReqToolsBase *ReqToolsBase = NULL;
+#endif
 struct IntuitionBase *IntuitionBase;
 struct GfxBase *GfxBase;
 struct Library *KeymapBase, *GadToolsBase, *AslBase, *SocketBase;

@@ -1,8 +1,24 @@
-# Makefile for VBCC (tested on Windows with VBCC and GNU Make for Windows).
+# Makefile for building with VBCC or GCC
+#
+# Tested on Windows with:
+#   VBCC 0.9h patch 3
+#   Bebbo's Amiga-GCC 6.5.0b
+#   GNU Make 4.2.90 built for Windows32 & 4.4.1 built for x86_64-pc-msys
+#
+# Notes:
+#  - Put the selected toolchain's bin directory first in PATH.
+#    Otherwise, commands from the other toolchain may be picked up instead.
+#  - On Windows, Bebbo's Amiga-GCC 6.5.0b replaces GNU Make with a patched executable that is
+#    unreliable with current versions of GNU Make. Restore the original executable from the GCC
+#    toolchain before building:
+#      copy amiga-gcc\bin\_make.exe amiga-gcc\bin\make.exe
+#
+#
 #
 # make must be run in "src" folder under Powershell.
 #
-# make                    ->  build 68000 & 68020 release binaries
+# make                    ->  build 68000 & 68020 release binaries with VBCC
+# make TOOLCHAIN=gcc      ->  build 68000 & 68020 release binaries with GCC
 # make 68000              ->  build only 68000 release binary
 # make debug              ->  build 68000 & 68020 debug binaries
 # make DEBUG=yes 68000    ->  build only 68000 debug binary
@@ -23,31 +39,53 @@ INCLUDES := \
 	-Ithird_party/Xem/INCLUDE \
 	-Ithird_party/Xpr/include
 
-# Do not use spaces or '.' VC passes '.' to the linker, which causes problems.
-COMPILER_STRING=VBCC_0_9h_patch_3
+# vbcc or gcc
+TOOLCHAIN ?= vbcc
+CPU       ?= 68000
+
+ifeq ($(TOOLCHAIN),vbcc)
+	# Do not use spaces or '.' VC passes '.' to the linker, which causes problems.
+	COMPILER_STRING := VBCC_0_9h_patch_3
+	CC              := vc
+	WARN            := -warn=-1 "-dontwarn=163,166,167,168,170,307" -warnings-as-errors
+	CFLAGS          := +aos68k $(WARN) -cpu=$(CPU)
+		DEBUG_CFLAGS    := -g -D_DEBUG -stack-check
+		RELEASE_CFLAGS  := -O3 -size # v2.0 switch from -size to -speed
+else ifeq ($(TOOLCHAIN),gcc)
+	COMPILER_STRING := GCC $(shell m68k-amigaos-gcc -dumpversion)
+	CC              := m68k-amigaos-gcc
+	# TODO: analyse all these GCC warning then enables all:
+	WARN            := -Wno-incompatible-pointer-types -Wno-int-conversion -Wno-overflow -Wno-discarded-qualifiers
+	#WARN           := -Wall -Wextra -Werror
+	CFLAGS          := -noixemul -fbaserel $(WARN) -m$(CPU) -D__AMIGADATE__=__DATE__
+		DEBUG_CFLAGS    := -g -D_DEBUG -fstack-check
+		RELEASE_CFLAGS  := -O3
+else
+	$(error Invalid TOOLCHAIN value '$(TOOLCHAIN)'; choose 'vbcc' or 'gcc')
+endif
+
 BUILD_HASH := $(shell git rev-parse --short HEAD)
 
-CC=vc
+CFLAGS += -D"COMPILER_STRING=$(COMPILER_STRING)" -DBUILD_HASH=$(BUILD_HASH) $(INCLUDES)
+
 
 TARGET     := DCTelnet
-CPU        ?= 68000
-CFLAGS     := +aos68k -warn=-1 "-dontwarn=163,166,167,168,170,307" -warnings-as-errors -cpu=$(CPU) -DCOMPILER_STRING=$(COMPILER_STRING) -DBUILD_HASH=$(BUILD_HASH) $(INCLUDES)
 SRCS       := DCTelnet.c connect.c guis.c Xfer.c Xem_wrapper.c requesters.c utils.c
 DEPS       := abook.h connect.h DCTelnet.h DCTelnet-debug.h DCTelnet-protocol.h edit.h fkey.h guis.h Xfer.h Xem_wrapper.h requesters.h utils.h
 INSTALLDIR := ../build/installed/DCTelnet
 
-# OBJ subdir depends on DEBUG flag (use DEBUG=yes to enable)
+# OBJ subdir depends on TOOLCHAIN and DEBUG flag (use DEBUG=yes to enable)
 OBJ_SUFFIX ?= release
 ifeq ($(DEBUG),yes)
-	CFLAGS += -g -D_DEBUG
+	CFLAGS += $(DEBUG_CFLAGS)
 	OBJ_SUFFIX := debug
 else
-	CFLAGS += -O3 -size
+	CFLAGS += $(RELEASE_CFLAGS)
 	OBJ_SUFFIX := release
 endif
 
-# final OBJDIR depends on CPU and OBJ_SUFFIX
-OBJDIR     := ../build/vbcc-$(CPU)-$(OBJ_SUFFIX)
+# final OBJDIR depends on TOOLCHAIN, CPU and OBJ_SUFFIX
+OBJDIR     := ../build/$(TOOLCHAIN)-$(CPU)-$(OBJ_SUFFIX)
 OBJS       := $(SRCS:%.c=$(OBJDIR)/%.o)
 TARGET_EXE := $(OBJDIR)/$(TARGET).$(CPU)
 MAKEFILE_UPTODATE=$(OBJDIR)/Makefile.uptodate

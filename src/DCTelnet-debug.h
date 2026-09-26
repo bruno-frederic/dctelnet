@@ -42,10 +42,13 @@ void LocalPrintByte(unsigned char b)
  * sections. This makes the generated code more efficient than a preprocessor macro, while
  * preserving type safety and avoiding double-evaluation of arguments.
  */
-#ifdef __SASC
-TEXT __inline
+#if defined(__SASC)
+    TEXT __inline
+#elif defined(__GNUC__)
+    //FIXME enable inlining for GNU-C. Currently fails at linking stage: undefined reference to PutC
+    TEXT
 #else
-inline TEXT
+    inline TEXT
 #endif
 PutC(TEXT ch)
 {
