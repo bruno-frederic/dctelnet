@@ -23,9 +23,11 @@ endif
 
 HEADERS_BUILT := Xpr/include/proto/xpr.h \
                  Xpr/include/inline/xpr_protos.h \
+                 Xpr/include/inline/xpr.h \
                  Xpr/include/pragma/xpr_lib.h \
                  Xem/include/proto/xem.h \
                  Xem/include/inline/xem_protos.h \
+                 Xem/include/inline/xem.h \
                  Xem/include/pragma/xem_lib.h
 
 all: folders $(HEADERS_BUILT)
@@ -47,6 +49,11 @@ Xem/include/inline/xem_protos.h : $(FD_XEM) $(CLIB_XEM)
 	@echo "------------- $@ --------------------"
 	$(FD2PRAGMA) -i $(FD_XEM) --clib $(CLIB_XEM) -s 70 --voidbase -t Xem/include/inline
 
+# Header file with GCC-specific assembler inline calls (#40):
+Xem/include/inline/xem.h : $(FD_XEM) $(CLIB_XEM)
+	@echo "------------- $@ --------------------"
+	$(FD2PRAGMA) -i $(FD_XEM) --clib $(CLIB_XEM) -s 40 --voidbase -t Xem/include/inline
+
 # Create the correct pragma files for SAS/C (#6):
 Xem/include/pragma/xem_lib.h : $(FD_XEM) $(CLIB_XEM)
 	@echo "------------- $@ --------------------"
@@ -65,6 +72,11 @@ Xpr/include/proto/xpr.h : $(FD_XPR)
 Xpr/include/inline/xpr_protos.h : $(FD_XPR) $(CLIB_XPR)
 	@echo "------------- $@ --------------------"
 	$(FD2PRAGMA) -i $(FD_XPR) --clib $(CLIB_XPR) -s 70 --voidbase --to Xpr/include/inline
+
+# Header file with GCC-specific assembler inline calls (#40):
+Xpr/include/inline/xpr.h : $(FD_XPR) $(CLIB_XPR)
+	@echo "------------- $@ --------------------"
+	$(FD2PRAGMA) -i $(FD_XPR) --clib $(CLIB_XPR) -s 40 --voidbase --to Xpr/include/inline
 
 # Create the correct pragma files for SAS/C (#6):
 Xpr/include/pragma/xpr_lib.h : $(FD_XPR) $(CLIB_XPR)

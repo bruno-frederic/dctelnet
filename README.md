@@ -162,7 +162,7 @@ Starting with v1.8, a compatible version of the library is included in the `Libs
 - Docker/Podman running a telnetd container for testing
 - **Compiler**: **VBCC** and **GNU Make** on Windows, using my custom toolchain :
   [vbcc-bin](https://github.com/bruno-frederic/vbcc-bin/tree/Bruno_toolchain)
-- The project can also be built with SAS/C v6.58 under AmigaOS 3.2
+- The project can also be built with SAS/C v6.58 under AmigaOS 3.2 and with Bebbo's Amiga-GCC 6.5.0b
 - Icon Editor : IconEdit from AmigaOS 3.2.3
 
 ### Source code
