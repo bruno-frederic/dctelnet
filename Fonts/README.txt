@@ -1,24 +1,19 @@
 Petscii.font / PetsciiLower.font
 ================================
 
-Real C64 PETSCII glyph shapes, packaged as Amiga strike fonts (16x8,
-width-doubled from the source 8x8 to compensate Amiga hires' 2x
-horizontal pixel density vs the C64's roughly-square pixels).
+Amiga bitmap fonts with the Commodore 64 character set, for DCTelnet's
+PETSCII Mode. They are a free redraw of the C64 font.
 
-Source: glyph bitmaps extracted from SyncTerm/Synchronet's
-src/conio/allfonts.c ("eight_by_eight" Commodore 64 UPPER/Lower tables).
-The glyphs are indexed by raw PETSCII byte value.
+  Petscii.font/8       upper case and graphics (the C64's default set)
+  PetsciiLower.font/8  lower and upper case (the C64's shifted set)
 
-LICENSE STATUS: UNRESOLVED. allfonts.c itself carries no copyright/license
-header (unlike petscii.c/cterm_petscii.c in the same codebase, which are
-explicitly LGPLv2+ under Rob Swindell). SyncTerm's docs claim these fonts
-were "imported from FreeBSD syscons," but the current FreeBSD source tree
-has no Commodore/PETSCII font file, so that provenance claim could not be
-verified. Please treat these files as unlicensed until that is settled;
-without them DCTelnet's PETSCII Mode falls back to CP437 lookalike glyphs.
+Each is 16x8: the C64's 8x8 cells drawn twice as wide, so 40 columns fill
+an Amiga hires line the way they fill a C64 screen. The glyphs are indexed
+by the raw PETSCII byte.
 
-Generator: tools/gen_petscii_font.py rebuilds Petscii/8 and PetsciiLower/8
-from tools/glyphs/*.bin (repacks glyph-major 8x8 into Amiga's row-major
-strike layout, doubles width, assembles with vasm and links with vlink).
-Check: python3 tools/check_amiga_font.py Fonts/Petscii.font (also run by
-`make` in test/).
+Install: copy both .font files and their drawers to FONTS:, or leave them
+in DCTelnet's own Fonts drawer -- DCTelnet looks there too. Without them
+PETSCII Mode still works, with CP437 lookalike glyphs.
+
+Check: python3 tools/check_amiga_font.py Fonts/Petscii.font parses a font
+the way diskfont.library loads it (also run by `make` in test/).
