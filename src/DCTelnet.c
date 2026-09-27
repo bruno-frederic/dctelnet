@@ -112,15 +112,9 @@ static struct NewMenu mainMenuDesc[] =
     {    NM_ITEM, "Use Workbench",                  "W", HIGHCOMP|CHECKIT|MENUTOGGLE, 0, (APTR)MENU_USE_WORKBENCH},
     {    NM_ITEM, "Disable LEDs",                   "I", HIGHCOMP|CHECKIT|MENUTOGGLE, 0, (APTR)MENU_DISABLE_LEDS},
     {    NM_ITEM, "Hide TitleBar",                  "R", HIGHCOMP|CHECKIT|MENUTOGGLE, 0, (APTR)MENU_HIDE_TITLEBAR},
-    #ifdef _LEGACY_RECEIVE
-        {    NM_ITEM, "CRLF Correction",            "L", HIGHCOMP|CHECKIT|MENUTOGGLE, 0, (APTR)MENU_UNUSED_CRLF},
-    #endif
+    //  {    NM_ITEM, "CRLF Correction",            "L", HIGHCOMP|CHECKIT|MENUTOGGLE, 0, (APTR)MENU_UNUSED_CRLF},
     {    NM_ITEM, "BS/DEL Swap",                    "/", HIGHCOMP|CHECKIT|MENUTOGGLE, 0, (APTR)MENU_BS_DEL_SWAP},
     {    NM_ITEM, "Disable Scroll-B",               "E", HIGHCOMP|CHECKIT|MENUTOGGLE, 0, (APTR)MENU_DISABLE_SCROLLBACK},
-    #ifdef _LEGACY_RECEIVE
-        {    NM_ITEM, "Strip Colour",               "J", HIGHCOMP|CHECKIT|MENUTOGGLE, 0, (APTR)MENU_STRIP_ANSI_CODES},
-        {    NM_ITEM, "Simple Telnet",              "1", HIGHCOMP|CHECKIT|MENUTOGGLE, 0, (APTR)MENU_UNUSED_SIMPLE_TELNET},
-    #endif
     {    NM_ITEM, "Packet Window",                  "2", HIGHCOMP|CHECKIT|MENUTOGGLE, 0, (APTR)MENU_PACKET_WINDOW},
     {    NM_ITEM, "Use XEM Library",                "3", HIGHCOMP|CHECKIT|MENUTOGGLE, 0, (APTR)MENU_USE_XEM_LIBRARY},
     {    NM_ITEM, "Tool Bar",                       "4", HIGHCOMP|CHECKIT|MENUTOGGLE, 0, (APTR)MENU_TOOLBAR},
@@ -215,11 +209,6 @@ UWORD tcpPort = 23;    // current tcp port
 UWORD winTop;        // WinTop topEdge (titlebar height)
 BOOL shouldQuitApp;    // program finished
 static BOOL isConnected;    // tcp connected
-#ifdef _LEGACY_RECEIVE
-    // Useless with new Telnet state machine:
-    static UBYTE passAll;       // passall telnet negotiation
-    static UBYTE passFlag;      // already sent 8bit info
-#endif
 static BOOL shouldRestart;    // prefs changed, restart
 static BOOL shouldReopenScreen;    // flag
 BOOL isRunningOnWB; // running in wb
@@ -388,7 +377,6 @@ static void WindowSub(void (*Sub)(void))
 
 void SimpleReq(char *str)
 {
-    //rtEZRequestA(str, "OK", NULL, NULL, (struct TagItem *)&tags);
     InfoReq(isRunningOnWB ? NULL : win, str);
     LEDs();
 }
@@ -495,13 +483,8 @@ static void DisConnect(char remote, char quiet)
         CloseSocket(tcpSocket);
 
         isConnected = FALSE;
-        #ifdef _LEGACY_RECEIVE
-            passAll = FALSE;
-            passFlag = FALSE;
-        #else
         ResetTelnetContext();
         ResetZmodemContext();
-        #endif
         nBytesReceived = 0;
         nBytesSent = 0;
 
@@ -609,17 +592,10 @@ static BOOL ChooseScreen(char firsttime)
 
         if(scrmodereq = rtAllocRequestA (RT_SCREENMODEREQ, NULL))
         {
-            //if(firsttime)
-            //{
-                // scrmodereq->DisplayID = HIRES_KEY;//PAL_MONITOR_ID
-                // (...)
-            //} else {
-                //rtChangeReqAttr(scrmodereq, RTSC_ModeFromScreen, scr, TAG_END);
             scrmodereq->DisplayID     = prefs.DisplayID;
             scrmodereq->DisplayWidth  = prefs.DisplayWidth;
             scrmodereq->DisplayHeight = prefs.DisplayHeight;
             scrmodereq->DisplayDepth  = prefs.DisplayDepth;
-            //}
 
             if (rtScreenModeRequest (scrmodereq, "Screen Mode..",
                                      RT_Window,    win,
@@ -837,6 +813,7 @@ static void Receive(void)
     }
     else // Telnet connection
     {
+        // High-frequency loop: called once per received character; avoid branching or allocations:
         for(i = 0; i < len; i++)
         {
             #ifdef _DEBUG
@@ -1602,8 +1579,7 @@ static void SaveScrollBack(char *fname)
     {
         UnLock(fileHandle);
         if (! ConfirmRequester(isRunningOnWB ? NULL : win, "OverWrite|Cancel",
-                                       "File Already Exists."))
-        //if(!rtEZRequestA("File Already Exists.","OverWrite|Cancel", NULL, NULL, (struct TagItem *)&reqtoolsTags))
+                               "File Already Exists."))
             return;
     }
     fileHandle = Open(fname, MODE_NEWFILE);
@@ -1646,12 +1622,9 @@ static void OnConnectClicked(char spawnInstance)
     else                tbuf[0] = '\0';
 
 
-    if (GetStringRequester(isRunningOnWB ? NULL : win,
-                              "Connect",
-                              "Enter host:port",
-                              tbuf, sizeof(tbuf))
+    if (GetStringRequester(isRunningOnWB ? NULL : win, "Connect",
+                           "Enter host:port",  tbuf, sizeof(tbuf))
        )
-    //if(rtGetStringA(tbuf, 63, "Enter host,port:", 0, (struct TagItem *)&reqtoolsTags))
     {
         if(tbuf[0] != 0)
         {
@@ -1714,25 +1687,8 @@ static void Information(void)
                 spent/3600, (spent/60)%60, spent%60,
                 nBytesSent,
                 nBytesReceived);
-
-        // mysprintf(buf,    "     Host Name ... : %s\n"
-        //         "    IP Address ... : %s\n"
-        //         "      TCP Port ... : %ld\n\n"
-        //         "   Online Time ... : %02ld:%02ld:%02ld\n"
-        //         "    Bytes Sent ... : %ld\n"
-        //         "Bytes Received ... : %ld",
-        //     hostAddr->h_name,
-        //     Inet_NtoA(inetSocketAddr.sin_addr.s_addr),
-        //     tcpPort,
-        //     spent/3600, (spent/60)%60, spent%60,
-        //     nBytesSent,
-        //     nBytesReceived);
-
-        // rtEZRequestTags(buf, "OK", NULL, NULL,
-        //         RT_Window,    win,
-        //         RT_ReqPos,    REQPOS_CENTERSCR,
-        //         TAG_DONE);
-    } else
+    }
+    else
         SimpleReq("Not isConnected");
 }
 
@@ -1842,15 +1798,6 @@ static void OutKey(unsigned char key)
             if (! (prefs.flags & FLAG_RAW_CONNECTION))
                 TCPSend((void *)&key, 1);
 
-        #ifdef _LEGACY_RECEIVE
-            // Useless with new Telnet state machine:
-            if(!passFlag)
-            {
-                // IAC DO BINARY   IAC WILL BINARY
-                TCPSend("\377\375\000\377\373\000", 6); // 8-bit data path
-                passFlag = TRUE;
-            }
-        #endif
         if(prefs.flags & FLAG_LOCAL_ECHO) goto cwrite;
     } else
 cwrite:        ConWrite(&key, 1);
@@ -1931,9 +1878,8 @@ static void GetWindowMsg(struct Window *wwin)
                             SimpleReq("You better connect first.");
                         break;
                     case BUTTON_QUIT:
-                        //if(rtEZRequestA("Quit?", "Quit|Cancel", NULL, NULL, (struct TagItem *)&tags))
-                            shouldQuitApp = TRUE;
-                        break;
+                        shouldQuitApp = TRUE;
+                    break;
                 }
             }
             break;
@@ -1976,8 +1922,7 @@ static void GetWindowMsg(struct Window *wwin)
                     break;
                 case RAWKEY_F3:
                     if (ConfirmRequester(isRunningOnWB ? NULL : win, "Print|Cancel",
-                                                 "Print Scrollback?"))
-                    //if(rtEZRequestA("Print Scrollback?", "Print|Cancel", NULL, NULL, (struct TagItem *)&reqtoolsTags))
+                                         "Print Scrollback?"))
                         SaveScrollBack("PRT:");
                     break;
                 case RAWKEY_F1:
@@ -2229,9 +2174,9 @@ static void GetWindowMsg(struct Window *wwin)
                         shouldReopenScreen = TRUE;
                         break;
 
-                    case MENU_UNUSED_CRLF:
-                        UpdatePrefsFlagFromMenu(item, FLAG_CRLF_CORRECTION);
-                        break;
+                    // case MENU_UNUSED_CRLF:
+                    //     UpdatePrefsFlagFromMenu(item, FLAG_CRLF_CORRECTION);
+                    //     break;
 
                     case MENU_BS_DEL_SWAP:
                         UpdatePrefsFlagFromMenu(item, FLAG_BS_DEL_SWAP);
@@ -2239,17 +2184,6 @@ static void GetWindowMsg(struct Window *wwin)
 
                     case MENU_DISABLE_SCROLLBACK:
                         UpdatePrefsFlagFromMenu(item, FLAG_DISABLE_SCROLLBACK);
-                        break;
-
-                    case MENU_STRIP_ANSI_CODES:
-                        UpdatePrefsFlagFromMenu(item, FLAG_STRIP_COLOUR);
-                        #ifndef _LEGACY_RECEIVE
-                            if(item->Flags & CHECKED) LocalPrint("›m");
-                        #endif
-                        break;
-
-                    case MENU_UNUSED_SIMPLE_TELNET:
-                        UpdatePrefsFlagFromMenu(item, FLAG_SIMPLE_TELNET);
                         break;
 
                     case MENU_PACKET_WINDOW:
@@ -2386,22 +2320,22 @@ static void GetWindowMsg(struct Window *wwin)
                         break;
 
                     case MENU_SNAPSHOT_WINDOWS:
-                        prefs.win_top = win->TopEdge;
-                        prefs.win_left = win->LeftEdge;
+                        prefs.win_top    = win->TopEdge;
+                        prefs.win_left   = win->LeftEdge;
                         prefs.win_height = win->Height;
-                        prefs.win_width = win->Width;
+                        prefs.win_width  = win->Width;
 
                         if(scrollbackWin)
                         {
-                            prefs.sb_left = scrollbackWin->LeftEdge;
-                            prefs.sb_top = scrollbackWin->TopEdge;
-                            prefs.sb_width = scrollbackWin->Width;
+                            prefs.sb_left   = scrollbackWin->LeftEdge;
+                            prefs.sb_top    = scrollbackWin->TopEdge;
+                            prefs.sb_width  = scrollbackWin->Width;
                             prefs.sb_height = scrollbackWin->Height;
                         }
                         if (toolBarWin)
                         {
                             prefs.toolBarWin_left = toolBarWin->LeftEdge;
-                            prefs.toolBarWin_top = toolBarWin->TopEdge;
+                            prefs.toolBarWin_top  = toolBarWin->TopEdge;
                         }
 
                         break;
@@ -2607,8 +2541,8 @@ static UWORD EstablishTCPConnection(char *servername, UWORD port)
     #endif
 
     // Sanity check: expected IPv4 response; protects against unexpected resolver data.
-    if (hostAddr->h_addrtype != AF_INET  ||
-        hostAddr->h_length   != sizeof(inetSocketAddr.sin_addr))
+    if (   hostAddr->h_addrtype != AF_INET
+        || hostAddr->h_length   != sizeof(inetSocketAddr.sin_addr))
     {
         LocalPrint("Host lookup returned an unsupported address type.\r\n");
         LEDs();
@@ -2653,17 +2587,8 @@ static UWORD EstablishTCPConnection(char *servername, UWORD port)
 
     LocalPrint("Connected.\r\n");
 
-    #ifdef _LEGACY_RECEIVE
-        if(!(prefs.flags & FLAG_RAW_CONNECTION))
-            TCPSend("\377\375\003", 3);    // IAC DO SGA
-        else {
-            passAll = TRUE;
-            passFlag = TRUE;
-        }
-    #else
     ResetTelnetContext();
     ResetZmodemContext();
-    #endif
 
     if (isRunningOnWB) WindowToFront(win); else ScreenToFront(scr);
 
@@ -2773,9 +2698,17 @@ void OpenAppWindow(void)
         newWin.MinHeight  = 50;
         newWin.MaxWidth   = 1600;
         newWin.MaxHeight  = 1200;
-        newWin.IDCMPFlags = IDCMP_RAWKEY | IDCMP_CLOSEWINDOW | IDCMP_MENUPICK;
-        //newWin.Flags = WFLG_GIMMEZEROZERO|WFLG_NEWLOOKMENUS|WFLG_SIMPLE_REFRESH|WFLG_ACTIVATE|WFLG_CLOSEGADGET|WFLG_DRAGBAR|WFLG_DEPTHGADGET|WFLG_SIZEGADGET;
-        newWin.Flags = WFLG_GIMMEZEROZERO|WFLG_NEWLOOKMENUS|WFLG_SMART_REFRESH|WFLG_ACTIVATE|WFLG_CLOSEGADGET|WFLG_DRAGBAR|WFLG_DEPTHGADGET|WFLG_SIZEGADGET;
+        newWin.IDCMPFlags = IDCMP_RAWKEY
+                          | IDCMP_CLOSEWINDOW
+                          | IDCMP_MENUPICK;
+        newWin.Flags      = WFLG_GIMMEZEROZERO
+                          | WFLG_NEWLOOKMENUS   // Requests new-look menu treatment (V39)
+                          | WFLG_SMART_REFRESH  // WFLG_SIMPLE_REFRESH
+                          | WFLG_ACTIVATE
+                          | WFLG_CLOSEGADGET
+                          | WFLG_DRAGBAR
+                          | WFLG_DEPTHGADGET
+                          | WFLG_SIZEGADGET;
         // Main window title in windowed workbench mode:
         newWin.Title = MainWindowTitle;
         newWin.FirstGadget = 0;
@@ -2792,7 +2725,9 @@ void OpenAppWindow(void)
         UnlockPubScreen(0L, scr);
 
         if(prefs.flags & FLAG_TOOL_BAR) OpenToolBarWindow(FALSE);
-    } else { // running in full screen
+    }
+    else  // running in custom full screen
+    {
         struct Gadget *backgad;
         UWORD top, height;
 
@@ -2840,23 +2775,25 @@ void OpenAppWindow(void)
         if(prefs.flags & FLAG_PACKET_WINDOW)    // Packet
         {
             height -= (prefs.fontsize + 2);
-            strInfo.Buffer = strBuffer;
-            strInfo.MaxChars = BUFSIZE;
-            strGad.TopEdge = 2;
-            strGad.Activation = GACT_RELVERIFY | GACT_STRINGLEFT;
-            strGad.GadgetType = GTYP_STRGADGET;
-            strGad.SpecialInfo = &strInfo;
-            strGad.Width = scr->Width;
-            strGad.Height = prefs.fontsize;
 
-            newWin.TopEdge = top+height;
-            newWin.Height = prefs.fontsize+2,
+            strInfo.Buffer     = strBuffer;
+            strInfo.MaxChars   = BUFSIZE;
+
+            strGad.TopEdge     = 2;
+            strGad.Activation  = GACT_RELVERIFY | GACT_STRINGLEFT;
+            strGad.GadgetType  = GTYP_STRGADGET;
+            strGad.SpecialInfo = &strInfo;
+            strGad.Width       = scr->Width;
+            strGad.Height      = prefs.fontsize;
+
+            newWin.TopEdge     = top+height;
+            newWin.Height      = prefs.fontsize+2,
             newWin.FirstGadget = &strGad;
-            newWin.IDCMPFlags =    IDCMP_MENUPICK |
-                        IDCMP_GADGETUP;
-            newWin.Flags =    WFLG_NEWLOOKMENUS |
-                    WFLG_BORDERLESS |
-                    WFLG_BACKDROP;
+            newWin.IDCMPFlags  = IDCMP_MENUPICK
+                               | IDCMP_GADGETUP;
+            newWin.Flags       = WFLG_NEWLOOKMENUS
+                               | WFLG_BORDERLESS
+                               | WFLG_BACKDROP;
 
             packetWin = OpenWindow(&newWin);
 
@@ -2864,18 +2801,18 @@ void OpenAppWindow(void)
             Draw(packetWin->RPort, packetWin->Width, 0);
         }
 
-        newWin.TopEdge = top;
-        newWin.Height = height;
+        newWin.TopEdge     = top;
+        newWin.Height      = height;
         newWin.FirstGadget = backgad;
-        newWin.IDCMPFlags =    IDCMP_GADGETUP |
-                    IDCMP_RAWKEY |
-                    IDCMP_CLOSEWINDOW |
-                    IDCMP_MENUPICK;
-        newWin.Flags =    WFLG_SMART_REFRESH |
-                WFLG_NEWLOOKMENUS |
-                WFLG_BORDERLESS |
-                WFLG_ACTIVATE |
-                WFLG_BACKDROP;
+        newWin.IDCMPFlags  = IDCMP_GADGETUP
+                           | IDCMP_RAWKEY
+                           | IDCMP_CLOSEWINDOW
+                           | IDCMP_MENUPICK;
+        newWin.Flags       = WFLG_SMART_REFRESH
+                           | WFLG_NEWLOOKMENUS
+                           | WFLG_BORDERLESS
+                           | WFLG_ACTIVATE
+                           | WFLG_BACKDROP;
 
         win = OpenWindow(&newWin);
     }
@@ -2886,7 +2823,10 @@ void OpenAppWindow(void)
 void CreateAppMenus(void)
 {
     register struct MenuItem *item;
-    static ULONG ltags[] = { GTMN_NewLookMenus, TRUE, TAG_END };
+    static ULONG ltags[] = {
+        GTMN_NewLookMenus, TRUE,  // Required for applications using V39+ new-look menus
+        TAG_END
+    };
     #ifdef _DEBUG
         BOOL res;
         PutStr("   --> CreateAppMenus()\n");
@@ -2910,15 +2850,8 @@ void CreateAppMenus(void)
     SetNewMenuCheckFromPref(MENU_USE_WORKBENCH,        FLAG_USE_WORKBENCH);
     SetNewMenuCheckFromPref(MENU_DISABLE_LEDS,         FLAG_HIDE_LEDS);
     SetNewMenuCheckFromPref(MENU_HIDE_TITLEBAR,        FLAG_HIDE_TITLEBAR);
-    #ifdef _LEGACY_RECEIVE
-        SetNewMenuCheckFromPref(MENU_UNUSED_CRLF,           FLAG_CRLF_CORRECTION);
-    #endif
     SetNewMenuCheckFromPref(MENU_BS_DEL_SWAP,          FLAG_BS_DEL_SWAP);
     SetNewMenuCheckFromPref(MENU_DISABLE_SCROLLBACK,   FLAG_DISABLE_SCROLLBACK);
-    #ifdef _LEGACY_RECEIVE
-        SetNewMenuCheckFromPref(MENU_STRIP_ANSI_CODES,      FLAG_STRIP_COLOUR);
-        SetNewMenuCheckFromPref(MENU_UNUSED_SIMPLE_TELNET,  FLAG_SIMPLE_TELNET);
-    #endif
     SetNewMenuCheckFromPref(MENU_PACKET_WINDOW,        FLAG_PACKET_WINDOW);
     SetNewMenuCheckFromPref(MENU_USE_XEM_LIBRARY,      FLAG_USE_XEM_LIBRARY);
     SetNewMenuCheckFromPref(MENU_TOOLBAR,              FLAG_TOOL_BAR);

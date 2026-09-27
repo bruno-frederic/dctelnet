@@ -33,7 +33,6 @@ static struct Window *xferwin;
 // An array of files to upload in batch when user select multiple file to upload:
 static struct WBArg *uploadArray = NULL;
 static LONG uploadArraySize = 0;
-//static struct rtFileList *uplist, *upfirst;
 static struct XPR_IO xio;
 
 static UWORD xfer_gauge_width;
@@ -303,35 +302,14 @@ long __SAVE_DS__ __ASM__ xpr_sread(__REG__(a0, char *buffer),
         if(er == EWOULDBLOCK) return 0;
         return -1; // XPR interpret -1 as an error
     }
+
     set = 0;
     IoctlSocket(tcpSocket, FIONBIO, (char *)&set);
+
     insize = instrip(buffer, insize);
     nBytesReceived += insize;
-    return(insize);
 
-/*    FD_ZERO(&rd);
-    FD_SET(tcpSocket, &rd);
-
-    sig = winsig;
-
-    timer.tv_sec = 0;
-    timer.tv_usec = 1;
-
-    if(WaitSelect(tcpSocket + 1, &rd, 0L, 0L, &timer, &sig) < 0) return(-1);
-
-    if(xpr_chkabort() == -1) return(-1);
-
-    if(FD_ISSET(stcpSocketok, &rd))
-    {
-        insize = recv(tcpSocket, buffer, size, 0);
-        if(insize > 0)
-        {
-            insize = instrip(buffer, insize);
-            bytes += insize;
-            return(insize);
-        }
-    }
-    return(0);*/
+    return insize ;
 }
 
 /* Flush socket/serial input buffer
@@ -946,28 +924,22 @@ static char XferWindow(void)
     x = 64 * win->RPort->Font->tf_XSize;
     y = (10 * (win->RPort->Font->tf_YSize+1)) + 12;
 
-    newWin.LeftEdge = (scr->Width - x) / 2;
-    newWin.TopEdge = (scr->Height - y) / 2;
-    newWin.Width = x;
-    newWin.Height = y + winTop;
-    newWin.IDCMPFlags = IDCMP_CLOSEWINDOW|IDCMP_MENUPICK;
-    newWin.Flags = WFLG_NEWLOOKMENUS|WFLG_ACTIVATE|WFLG_CLOSEGADGET|WFLG_DRAGBAR|WFLG_DEPTHGADGET;
+    newWin.LeftEdge    = (scr->Width - x) / 2;
+    newWin.TopEdge     = (scr->Height - y) / 2;
+    newWin.Width       = x;
+    newWin.Height      = y + winTop;
+    newWin.IDCMPFlags  = IDCMP_CLOSEWINDOW
+                       | IDCMP_MENUPICK;
+    newWin.Flags       = WFLG_NEWLOOKMENUS
+                       | WFLG_ACTIVATE
+                       | WFLG_CLOSEGADGET
+                       | WFLG_DRAGBAR
+                       | WFLG_DEPTHGADGET;
     newWin.FirstGadget = 0;
-    newWin.Title = "Transfer in Progress...";
+    newWin.Title       = "Transfer in Progress...";
 
     CheckDimensions(&newWin);
     xferwin = OpenWindow(&newWin);
-
-/*    xferwin = OpenWindowTags(NULL,
-        WA_Title,        "Transfer in Progress...",
-        WA_Left,        (scr->Width - x) / 2,
-        WA_Top,            (scr->Height - y) / 2,
-        WA_Width,        x,
-        WA_InnerHeight,        y,
-        WA_CustomScreen,    scr,
-        WA_IDCMP,        IDCMP_CLOSEWINDOW|IDCMP_MENUPICK,
-        WA_Flags,        WFLG_NEWLOOKMENUS|WFLG_ACTIVATE|WFLG_CLOSEGADGET|WFLG_DRAGBAR|WFLG_DEPTHGADGET,//|WFLG_RMBTRAP,
-        TAG_END);*/
 
     if(!xferwin)
     {

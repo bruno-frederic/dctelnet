@@ -90,10 +90,10 @@ static int OpenConnectingWindow( void )
     ComputeFont( ConnectingWidth, ConnectingHeight );
 
     DrawBevelBox( ConnectingWnd->RPort, OffX + ComputeX( 3 ),
-                    OffY + ComputeY( 2 ),
-                    ComputeX( 326 ),
-                    ComputeY( 101 ),
-                    GT_VisualInfo, visualInfos, TAG_DONE );
+                  OffY + ComputeY( 2 ),
+                  ComputeX( 326 ),
+                  ComputeY( 101 ),
+                  GT_VisualInfo, visualInfos, TAG_DONE );
 
     return( 0L );
 }
