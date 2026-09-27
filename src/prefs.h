@@ -130,6 +130,8 @@ struct PrefsStruct
 #define APP_RENDERER_XEM_LIB         (1UL << 11)
 #define APP_RENDERER_IBMCON_DEVICE   (1UL << 12)
 
+#define APP_PETSCII_MODE             (1UL << 15)
+
 #define APP_CUSTOM_SCREEN_OPENED     (1UL << 23)  // Rarely accessed (during display initalization)
 
 // Keep hot flags in bits 24-31 for potentially faster 68000 memory BTST access (to be measured).

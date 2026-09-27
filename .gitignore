@@ -25,3 +25,7 @@ build/vbcc-*/**
 build/vbcc-*.info
 build/Build-output*.txt
 build/DCTelnet*.lha
+
+# Host-built PETSCII test binaries
+tests/test_petscii_*
+!tests/test_petscii_*.c
