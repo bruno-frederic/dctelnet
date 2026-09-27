@@ -2,7 +2,7 @@ Short:        DCTelnet - Telnet/BBS client with Zmodem
 Author:       Bruno FREDERIC
 Uploader:     bruno.frederic+aminet@gm...
 Type:         comm/tcp
-Version:      1.9.1
+Version:      2.0-dev
 Architecture: m68k-amigaos >= 2.0
 Distribution: Aminet
 
@@ -39,44 +39,9 @@ https://eab.abime.net/showthread.php?t=121939
 
 ---
 
-v1.9.1 Changelog
+v2.0 Changelog
 
-New Features:
-- Refreshed toolbar icons for fullscreen mode
-- Added three IBM CP437 fonts for improved PC BBS display:
-    - ANSEY
-    - P0T-IBM
-    - IBM
-- Reset Screen action in the DCTelnet menu
-- Address Book improvements:
-    - The Address Book now sorts entries by most recent connection by
-      default.
-    - Entry order now remains consistent with the selected default sort
-      mode, and changing the sort order no longer rewrites the Address Book
-      file unnecessarily.
-- The Connect dialog now accepts ":" as a host/port separator
-  Example: bbs.example.com:23
-- Displays the name of the active display engine at startup (e.g.,
-  ibmcon.device, console.device, xemvt340.library)
-
-Bug Fixes
-- Fixed Function Keys window not saving changes when switching fields with
-  the mouse.
-- Improved DNS resolution robustness when establishing TCP connections
-- The Speed Test is now reliable on very fast machines.
-- DCTelnet now notifies the user when XEmulator.library is not configured.
-- The installer now warns when attempting to create a "DCTelnet" subdrawer
-  inside an existing DCTelnet directory.
-
-Internal Improvements
-- Refactored menu handling for improved maintainability.
-- Improved string-safety throughout the application with strlcpy() and
-  strlcat().
-- Improved date and time handling, including protection against the Year
-  2038 limitation for last connection timestamps.
-
-Build & Packaging
-- Updated installer to follow Installer v42 naming guidelines.
+TODO
 
 ---
 

@@ -1,4 +1,4 @@
-; $VER: DCTelnet Installscript 1.9.1 (29.8.26)
+; $VER: DCTelnet Installscript 2.0-dev (xx.x.2x)
 
 (SET @app-name "DCTelnet")
 (SET @default-dest "SYS:")
