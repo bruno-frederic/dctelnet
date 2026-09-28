@@ -157,6 +157,10 @@ BOOL InitializeXemLibrary(CONST_STRPTR libName)
         goto clean_and_return;
     }
 
+    // The options the user chose for this connection (an Address Book entry's own,
+    // or the global ones); no file yet = the library's defaults.
+    XEmulatorPreferences(xemIO, (STRPTR)CurrentXemOptionsPath(), XEM_PREFS_LOAD);
+
     // XEmulatorOpenConsole has to be called after a comm-proggy has opened (or changed) its screen
     // and/or window. XEmulatorOpenConsole resets its internal data structure and sets custom-fonts,
     // special drawing modes, etc..
@@ -188,6 +192,19 @@ clean_and_return:
     }
 
     return FALSE;
+}
+
+// Load the options file for the current connection into a running XEM library.
+void ReloadXemOptions(void)
+{
+    if (xemIO)
+        XEmulatorPreferences(xemIO, (STRPTR)CurrentXemOptionsPath(), XEM_PREFS_LOAD);
+}
+
+// Save the running XEM library's options to a file; FALSE when XEM is not in use.
+BOOL SaveXemOptions(const char *path)
+{
+    return xemIO && XEmulatorPreferences(xemIO, (STRPTR)path, XEM_PREFS_SAVE);
 }
 
 // Unitilize XEM library if it was initialized (does nothing if it was not initialized)

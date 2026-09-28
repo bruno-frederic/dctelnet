@@ -46,4 +46,11 @@ int Prefs_Decode(const UBYTE *file, size_t len, struct PrefsStruct *out);
  */
 BOOL Prefs_FromLegacy(const UBYTE *old, size_t len, struct PrefsStruct *out);
 
+/*
+ * The palette settings p's renderer shows: AnsiColors (ANSI order) for the
+ * built-in renderer and XEM, DeviceColors (the console's pen order) for
+ * console.device and ibmcon.device.
+ */
+UWORD *Prefs_Palette(struct PrefsStruct *p);
+
 #endif /* PREFS_FILE_H */

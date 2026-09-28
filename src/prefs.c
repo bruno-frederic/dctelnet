@@ -17,6 +17,7 @@
 #include <graphics/modeid.h>            // PAL_MONITOR_ID, HIRES_KEY
 #include "prefs.h"
 #include "prefs_file.h"
+#include "site_prefs.h"
 #include "dctelnet.h"                   // ChooseScreen(), SimpleReq()
 #include "utils.h"
 #include "requesters.h"
@@ -261,8 +262,14 @@ void SavePrefs(void)
             sizeof(struct PrefsStruct)
         };
 
+        // Only ever the global settings: during an Address Book entry session
+        // the live settings are the entry's, and menu changes made then are
+        // session-only (site_prefs.c).
+        static struct PrefsStruct toSave;
+
+        SitePrefs_ForSave(&toSave, &prefs, &globalPrefs, sessionSettingsId != 0);
         lenHeaderWritten = Write(fileHandle, &header, sizeof(header));
-        lenPrefsWritten  = Write(fileHandle, &prefs,  sizeof(prefs));
+        lenPrefsWritten  = Write(fileHandle, &toSave, sizeof(toSave));
 
         Close(fileHandle);
     }

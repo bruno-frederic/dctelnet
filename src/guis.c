@@ -24,6 +24,9 @@
 #include "requesters.h"
 #include "utils.h"
 #include "prefs.h"
+#include "site_prefs.h"
+#include "prefs_file.h"             // Prefs_Palette()
+#include "Xem_wrapper.h"                 // SaveXemOptions()
 
 struct BookStruct
 {
@@ -33,10 +36,233 @@ struct BookStruct
     ULONG   lastConnect;
     char    username[42];
     char    password[42];
-    char    res[82];
+    ULONG   settingsId;     // PROGDIR:Sites/<id>.prefs holds this entry's own settings, 0 = global
+    char    comment[64];    // free-text note (was reserved space: old versions keep it)
+    char    res[14];        // reserved; old versions write it back byte for byte
 };
 
-static BOOL EditProfile(struct BookStruct *book);
+// DCTelnet.Book is a headerless run of 256-byte records: a different size
+// would misread every existing book. Fails to compile if a field changes it.
+typedef char BookStructMustBe256Bytes[sizeof(struct BookStruct) == 256 ? 1 : -1];
+
+static BOOL EditProfile(struct BookStruct *book, struct List *list);
+
+/*
+ * Per-entry settings files (issue #10). An entry that has settings of its own
+ * stores an id in BookStruct.settingsId; the settings live in
+ * PROGDIR:Sites/<id>.prefs, so DCTelnet.Book keeps its 256-byte record and
+ * still loads in versions that know nothing about entry settings.
+ */
+#define SITES_DIR "PROGDIR:Sites"
+
+static void EntrySettingsPath(ULONG id, char *path)
+{
+    mysprintf(path, SITES_DIR "/%lu.prefs", id);
+}
+
+// An entry's XEM options (Terminal group), in the XEM library's own format.
+void EntryXemOptionsPath(ULONG id, char *path)
+{
+    mysprintf(path, SITES_DIR "/%lu.xem", id);
+}
+
+BOOL LoadEntrySettings(ULONG id, struct SiteSettings *out)
+{
+    char path[40];
+    UBYTE *file;
+    LONG len;
+    BOOL ok;
+
+    if (!id) return FALSE;
+    EntrySettingsPath(id, path);
+    // The whole file: an old build's (DCS2-4) is longer than this build's
+    // own, and a newer build's has fields appended.
+    file = ReadWholeFile(path, &len, SITE_FILE_READ_MAX);
+    if (!file) return FALSE;
+    // A DCTelnet 'DCS1' snapshot has no function keys: it gets the global ones.
+    ok = SitePrefs_Decode(out, file, (size_t)len, fKeys);
+    FreeVec(file);
+    return ok;
+}
+
+BOOL SaveEntrySettings(ULONG id, const struct SiteSettings *settings)
+{
+    static UBYTE fileBuf[SITE_FILE_SIZE_MAX];
+    char path[40];
+    BPTR fh, lock;
+    size_t len;
+    BOOL ok = FALSE;
+
+    if (!id) return FALSE;
+    lock = Lock(SITES_DIR, SHARED_LOCK);
+    if (!lock) lock = CreateDir(SITES_DIR);
+    if (!lock) return FALSE;
+    UnLock(lock);
+
+    len = SitePrefs_Encode(settings, fileBuf, sizeof(fileBuf));
+    EntrySettingsPath(id, path);
+    fh = Open(path, MODE_NEWFILE);
+    if (fh)
+    {
+        ok = Write(fh, fileBuf, (LONG)len) == (LONG)len;
+        Close(fh);
+    }
+    return ok;
+}
+
+static void DeleteEntrySettings(ULONG id)
+{
+    char path[40];
+
+    if (!id) return;
+    EntrySettingsPath(id, path);
+    DeleteFile(path);
+    EntryXemOptionsPath(id, path);
+    DeleteFile(path);
+}
+
+/*
+ * The Address Book entry the current connection came from, so
+ * Settings > Save Settings to Address Book Entry knows which record to
+ * update. Matched in DCTelnet.Book by name, host and port.
+ */
+static struct
+{
+    BOOL  valid;
+    char  name[32];
+    char  host[52];
+    UWORD port;
+} connectedEntry;
+
+void RememberConnectedEntry(const char *name, const char *host, UWORD port)
+{
+    strlcpy(connectedEntry.name, name, sizeof(connectedEntry.name));
+    strlcpy(connectedEntry.host, host, sizeof(connectedEntry.host));
+    connectedEntry.port = port;
+    connectedEntry.valid = TRUE;
+}
+
+void ForgetConnectedEntry(void)
+{
+    connectedEntry.valid = FALSE;
+}
+
+// Offset of the connected entry's record in DCTelnet.Book (fh positioned at
+// the start), -1 if absent. *maxId receives the highest settings id seen.
+static LONG FindConnectedRecord(BPTR fh, struct BookStruct *record, ULONG *maxId)
+{
+    LONG offset = -1, pos = 0;
+
+    *maxId = 0;
+    while (Read(fh, record, sizeof(*record)) == sizeof(*record))
+    {
+        if (record->settingsId > *maxId) *maxId = record->settingsId;
+        if (offset < 0 && record->port == connectedEntry.port
+            && !strcmp(record->name, connectedEntry.name) && !strcmp(record->host, connectedEntry.host))
+            offset = pos;
+        pos += sizeof(*record);
+    }
+    return offset;
+}
+
+/*
+ * Stamp lastConnect on the connected entry's DCTelnet.Book record. Used when
+ * the connect ran after the Address Book window had closed (it waited for the
+ * display to reopen), so the in-memory list the window normally updates is gone.
+ */
+void StampConnectedEntry(void)
+{
+    static struct BookStruct record;
+    ULONG maxId;
+    LONG offset;
+    BPTR fh;
+
+    if (!connectedEntry.valid) return;
+    fh = Open(bookFilename, MODE_OLDFILE);
+    if (!fh) return;
+    offset = FindConnectedRecord(fh, &record, &maxId);
+    if (offset >= 0)
+    {
+        Seek(fh, offset, OFFSET_BEGINNING);
+        if (Read(fh, &record, sizeof(record)) == sizeof(record))
+        {
+            record.lastConnect = mytime();
+            Seek(fh, offset, OFFSET_BEGINNING);
+            Write(fh, &record, sizeof(record));
+        }
+    }
+    Close(fh);
+}
+
+/*
+ * Settings > Save Settings to Address Book Entry: the live settings become
+ * the connected entry's own (creating its settings file and id if it had
+ * none), and from here on menu changes in this connection are session-only.
+ * Returns FALSE when not connected through the Address Book or on a write
+ * error.
+ */
+enum SaveEntryResult SaveSettingsToConnectedEntry(void)
+{
+    static struct BookStruct record;
+    static struct SiteSettings settings;
+    enum SaveEntryResult result = SAVE_ENTRY_WRITE_ERROR;
+    BPTR fh;
+    LONG offset;
+    ULONG maxId, id = 0;
+
+    if (!connectedEntry.valid) return SAVE_ENTRY_NOT_CONNECTED;
+    fh = Open(bookFilename, MODE_OLDFILE);
+    if (!fh) return SAVE_ENTRY_WRITE_ERROR;
+    offset = FindConnectedRecord(fh, &record, &maxId);
+    if (offset < 0)
+    {
+        Close(fh);
+        return SAVE_ENTRY_NOT_CONNECTED;       // the entry was deleted meanwhile
+    }
+    Seek(fh, offset, OFFSET_BEGINNING);
+    if (Read(fh, &record, sizeof(record)) == sizeof(record))
+        id = record.settingsId;
+
+    // The groups changed since connecting, plus the ones the entry already
+    // overrides; the entry's login macro is kept.
+    memset(&settings, 0, sizeof(settings));
+    LoadEntrySettings(id, &settings);
+    settings.groups |= SitePrefs_DifferingGroups(ConnectBaseSettings(), &prefs,
+                                                 ConnectBaseFKeys(), fKeys);
+    if (!settings.groups)
+    {
+        Close(fh);
+        return SAVE_ENTRY_NOTHING_CHANGED;
+    }
+    settings.prefs = prefs;
+    memcpy(settings.fKeys, fKeys, sizeof(settings.fKeys));
+
+    if (!id) id = maxId + 1;
+    if (SaveEntrySettings(id, &settings))
+    {
+        if (settings.groups & SITE_GROUP_TERMINAL)
+        {
+            char xemPath[40];
+
+            EntryXemOptionsPath(id, xemPath);
+            SaveXemOptions(xemPath);            // no-op when XEM is not in use
+        }
+        if (record.settingsId != id)
+        {
+            record.settingsId = id;
+            Seek(fh, offset, OFFSET_BEGINNING);
+            Write(fh, &record, sizeof(record));
+        }
+        result = SAVE_ENTRY_SAVED;
+    }
+    Close(fh);
+
+    // From here on this connection is the entry's session: later menu changes
+    // stay out of the global settings, which go back to how they were.
+    if (result == SAVE_ENTRY_SAVED) AdoptEntrySession(id, settings.groups);
+    return result;
+}
+
 
 
 static struct Window         *aBookWnd;           // "Address Book" window
@@ -463,6 +689,7 @@ delete:
                             //if(rtEZRequestA(buf, "Delete|Cancel", NULL, NULL, (struct TagItem *)&reqtoolsTags))
                             {
                                 Remove(worknode);
+                                DeleteEntrySettings(((struct BookStruct *)worknode->ln_Name)->settingsId);
                                 FreeMem(worknode->ln_Name, sizeof(struct BookStruct));
                                 FreeMem(worknode, sizeof(struct Node));
                                 lastcode--;
@@ -478,7 +705,7 @@ delete:
 edit:
                         if(worknode = FindNode(listviewlist, lastcode))
                         {
-                            if(EditProfile((struct BookStruct *)worknode->ln_Name))
+                            if(EditProfile((struct BookStruct *)worknode->ln_Name, listviewlist))
                             {
                                 GT_SetGadgetAttrs(aBookGadgets[GD_LIST],aBookWnd,0,GTLV_Labels,listviewlist,GTLV_Selected,lastcode,TAG_DONE);
                                 save = TRUE;
@@ -494,7 +721,7 @@ add:
                             strlcpy(book->name, "*new site*", sizeof(book->name));
                             strlcpy(book->host, "*ip/host here*", sizeof(book->host));
                             book->port = 23;
-                            if(EditProfile(book))
+                            if(EditProfile(book, listviewlist))
                             {
                                 worknode = AllocMem(sizeof(struct Node), MEMF_PUBLIC|MEMF_CLEAR);
                                 if(worknode)
@@ -522,12 +749,35 @@ add:
     // Initiate connection if requested
     if(ret)
     {
-        tcpPort = conbook->port;
-        if(BeginServerConnection(conbook->host, conbook->port) == RETURN_OK)
+        static struct SiteSettings entrySettings;
+        BOOL hasFile = LoadEntrySettings(conbook->settingsId, &entrySettings);
+        BOOL hasSettings = hasFile && entrySettings.groups != 0;
+        const char *loginMacro = hasFile ? entrySettings.loginMacro : "";
+
+        // When the settings for this connect change the display (the entry's own,
+        // or the global ones coming back after another entry's session), the
+        // display must be reopened BEFORE connecting, which only the main loop
+        // can do -- this runs inside GetWindowMsg(win). The connect is queued and
+        // runs right after the reopen.
+        if (BeginEntrySession(hasSettings ? conbook->settingsId : 0,
+                              hasSettings ? &entrySettings : NULL))
         {
-            conbook->lastConnect = mytime();
-            strlcpy(username, conbook->username, sizeof(username));
-            strlcpy(password, conbook->password, sizeof(password));
+            DeferConnect(conbook->name, conbook->host, conbook->port, conbook->settingsId,
+                         conbook->username, conbook->password, loginMacro);
+        }
+        else
+        {
+            tcpPort = conbook->port;
+            if(BeginServerConnection(conbook->host, conbook->port) == RETURN_OK)
+            {
+                conbook->lastConnect = mytime();
+                strlcpy(username, conbook->username, sizeof(username));
+                strlcpy(password, conbook->password, sizeof(password));
+                RememberConnectedEntry(conbook->name, conbook->host, conbook->port);
+                SendLoginMacro(loginMacro);
+            }
+            else
+                EndEntrySession();
         }
     }
 
@@ -553,9 +803,9 @@ add:
 
 static struct Window         *editProfileWnd;           // "Edit Address Book Profile" window
 static struct Gadget         *editProfileGList;         // "Edit Address Book Profile" window GList
-static struct Gadget         *editProfileGadgets[8];    // "Edit Address Book Profile" window gadgets
+static struct Gadget         *editProfileGadgets[editProfile_CNT]; // "Edit Address Book Profile" window gadgets
 #define editProfileWidth 450
-#define editProfileHeight 103
+#define editProfileHeight 181
 
 static UBYTE editProfileGTypes[] = {
     STRING_KIND,
@@ -565,18 +815,30 @@ static UBYTE editProfileGTypes[] = {
     BUTTON_KIND,
     INTEGER_KIND,
     STRING_KIND,
-    STRING_KIND
+    STRING_KIND,
+    TEXT_KIND,
+    BUTTON_KIND,
+    BUTTON_KIND,
+    STRING_KIND,
+    STRING_KIND,
+    TEXT_KIND
 };
 
 static struct MyNewGadget editProfileNGad[] = {
     120, 5, 317, 13, (UBYTE *)"_Site Name:",
     120, 21, 317, 13, (UBYTE *)"_Address:",
     121, 37, 177, 13, (UBYTE *)"Last Called:",
-    3, 88, 101, 13, (UBYTE *)"_Ok",
-    345, 88, 101, 13, (UBYTE *)"_Cancel",
+    3, 166, 101, 13, (UBYTE *)"_Ok",
+    345, 166, 101, 13, (UBYTE *)"_Cancel",
     365, 37, 72, 13, (UBYTE *)"_Port:",
     120, 53, 317, 13, (UBYTE *)"_Username:",
     120, 68, 317, 13, (UBYTE *)"Pass_word:",
+    120, 130, 317, 13, (UBYTE *)"Settings:",
+    3, 146, 218, 13, (UBYTE *)"Se_ttings...",
+    228, 146, 218, 13, (UBYTE *)"Use _Global Settings",
+    120, 84, 317, 13, (UBYTE *)"Co_mment:",
+    120, 100, 317, 13, (UBYTE *)"_Login Macro:",
+    3, 114, 443, 12, NULL,
 };
 
 static ULONG editProfileGTags[] = {
@@ -587,8 +849,28 @@ static ULONG editProfileGTags[] = {
     (GT_Underscore), '_', (TAG_DONE),
     (GTIN_Number), 0, (GTIN_MaxChars), 9, (GT_Underscore), '_', (TAG_DONE),
     GTST_String, 0, (GTST_MaxChars), 41, (GT_Underscore), '_', (TAG_DONE),
-    GTST_String, 0, (GTST_MaxChars), 41, (GT_Underscore), '_', (TAG_DONE)
+    GTST_String, 0, (GTST_MaxChars), 41, (GT_Underscore), '_', (TAG_DONE),
+    GTTX_Text, 0, (GTTX_Border), TRUE, (TAG_DONE),
+    (GT_Underscore), '_', (TAG_DONE),
+    (GT_Underscore), '_', (TAG_DONE),
+    GTST_String, 0, (GTST_MaxChars), 63, (GT_Underscore), '_', (TAG_DONE),
+    GTST_String, 0, (GTST_MaxChars), 127, (GT_Underscore), '_', (TAG_DONE),
+    GTTX_Text, 0, (TAG_DONE)
 };
+
+// Where each gadget's initial value sits in editProfileGTags[] above (the
+// value slot after GTST_String / GTTX_Text / GTIN_Number). Keep in step with
+// the array when gadgets are added.
+#define EP_TAG_SITE      1
+#define EP_TAG_ADDRESS   8
+#define EP_TAG_LAST     15
+#define EP_TAG_PORT     26
+#define EP_TAG_USERNAME 33
+#define EP_TAG_PASSWORD 40
+#define EP_TAG_SETTINGS 47
+#define EP_TAG_COMMENT  58
+#define EP_TAG_LOGIN_MACRO 65
+#define EP_TAG_MACRO_HELP  72
 
 // Draw the Edit Address Book Profile window
 static int OpenEditProfileWindow( void )
@@ -656,9 +938,400 @@ Updates the book structure only if the user validates the changes.
 return TRUE  if the user validated the changes (OK)
        FALSE if the user cancelled or closed the window
  */
-static BOOL EditProfile(struct BookStruct *book)
+// Next free settings id: one above the highest id in the Address Book list.
+static ULONG NextSettingsId(struct List *list)
+{
+    struct Node *node;
+    ULONG maxId = 0;
+
+    for (node = list->lh_Head; node->ln_Succ; node = node->ln_Succ)
+    {
+        ULONG id = ((struct BookStruct *)node->ln_Name)->settingsId;
+        if (id > maxId) maxId = id;
+    }
+    return maxId + 1;
+}
+
+/*
+ * Per-entry Settings window (Term 4.x style groups). One block per group: an
+ * Override checkbox, a one-line summary of what the entry will use, a Use
+ * Current button (copy the group from the settings in use now) and the
+ * group's own fields. Changing a field overrides its group. Works on a copy
+ * of the entry's settings; Ok hands it back to the edit window, which saves
+ * it with the entry.
+ */
+enum
+{
+    SG_SCREEN_OVR, SG_SCREEN_SUM, SG_SCREEN_CUR, SG_SCREEN_MODE, SG_SCREEN_FONT, SG_SCREEN_PALETTE, SG_SCREEN_WB,
+    SG_TERM_OVR, SG_TERM_SUM, SG_TERM_CUR, SG_TERM_PETSCII, SG_TERM_XEMLIB, SG_TERM_DISPID,
+    SG_TERM_RAW, SG_TERM_ECHO, SG_TERM_RENDERER,
+    SG_KEY_OVR, SG_KEY_SUM, SG_KEY_CUR, SG_KEY_BSDEL, SG_KEY_CRLF, SG_KEY_FKEYS,
+    SG_XFER_OVR, SG_XFER_SUM, SG_XFER_CUR, SG_XFER_PROTO, SG_XFER_OPTS,
+    SG_OK, SG_CANCEL,
+    SG_COUNT
+};
+
+struct SettingsGadgetDef
+{
+    WORD  x, y, w, h;
+    char  *label;
+    ULONG placeText;
+    UWORD kind;
+};
+
+/* Design grid of 8-pixel characters (topaz 8), scaled by ComputeX/Y: a
+ * button is its label's length * 8 + 16, a checkbox 26 plus its label. */
+#define settingsWidth  616
+#define settingsHeight 202
+
+static const struct SettingsGadgetDef settingsDefs[SG_COUNT] =
+{
+    {  80,   4, 112, 13, "Screen",               PLACETEXT_LEFT,  CYCLE_KIND    },
+    { 196,   4, 300, 13, NULL,                   0,               TEXT_KIND     },
+    { 500,   4, 112, 13, "Use Current",          PLACETEXT_IN,    BUTTON_KIND   },
+    {  80,  20, 128, 13, "Screen Mode...",       PLACETEXT_IN,    BUTTON_KIND   },
+    { 212,  20,  72, 13, "Font...",              PLACETEXT_IN,    BUTTON_KIND   },
+    { 288,  20,  96, 13, "Palette...",           PLACETEXT_IN,    BUTTON_KIND   },
+    { 396,  21,  26, 11, "Use Workbench",        PLACETEXT_RIGHT, CHECKBOX_KIND },
+
+    {  80,  42, 112, 13, "Terminal",             PLACETEXT_LEFT,  CYCLE_KIND    },
+    { 196,  42, 300, 13, NULL,                   0,               TEXT_KIND     },
+    { 500,  42, 112, 13, "Use Current",          PLACETEXT_IN,    BUTTON_KIND   },
+    {  80,  59,  26, 11, "PETSCII Mode",         PLACETEXT_RIGHT, CHECKBOX_KIND },
+    { 316,  58, 136, 13, "XEM Library...",       PLACETEXT_IN,    BUTTON_KIND   },
+    { 456,  58, 120, 13, "Display ID...",        PLACETEXT_IN,    BUTTON_KIND   },
+    {  80,  75,  26, 11, "Raw Connection",       PLACETEXT_RIGHT, CHECKBOX_KIND },
+    { 256,  75,  26, 11, "Local Echoback",       PLACETEXT_RIGHT, CHECKBOX_KIND },
+    {  80,  91, 176, 13, "Renderer",             PLACETEXT_LEFT,  CYCLE_KIND    },
+
+    {  80, 113, 112, 13, "Keyboard",             PLACETEXT_LEFT,  CYCLE_KIND    },
+    { 196, 113, 300, 13, NULL,                   0,               TEXT_KIND     },
+    { 500, 113, 112, 13, "Use Current",          PLACETEXT_IN,    BUTTON_KIND   },
+    {  80, 130,  26, 11, "BS/DEL Swap",          PLACETEXT_RIGHT, CHECKBOX_KIND },
+    { 216, 130,  26, 11, "Return = CR + LF",     PLACETEXT_RIGHT, CHECKBOX_KIND },
+    { 396, 129, 144, 13, "Function Keys...",     PLACETEXT_IN,    BUTTON_KIND   },
+
+    {  80, 151, 112, 13, "Transfer",             PLACETEXT_LEFT,  CYCLE_KIND    },
+    { 196, 151, 300, 13, NULL,                   0,               TEXT_KIND     },
+    { 500, 151, 112, 13, "Use Current",          PLACETEXT_IN,    BUTTON_KIND   },
+    {  80, 167, 104, 13, "Protocol...",          PLACETEXT_IN,    BUTTON_KIND   },
+    { 188, 167, 168, 13, "Protocol Options...",  PLACETEXT_IN,    BUTTON_KIND   },
+
+    {   4, 186, 100, 13, "Ok",                   PLACETEXT_IN,    BUTTON_KIND   },
+    { 512, 186, 100, 13, "Cancel",               PLACETEXT_IN,    BUTTON_KIND   },
+};
+
+// The Override cycle gadget of each group: which settings the entry uses.
+static STRPTR overrideLabels[] = { (STRPTR)"Global", (STRPTR)"This Entry", NULL };
+// The Renderer cycle: APP_RENDERER_BUILTIN .. APP_RENDERER_IBMCON_DEVICE, in bit order.
+static STRPTR rendererLabels[] = { (STRPTR)"Built-in", (STRPTR)"console.device", (STRPTR)"XEM Library",
+                                   (STRPTR)"ibmcon.device", NULL };
+#define RENDERER_FIRST_BIT 9    // APP_RENDERER_BUILTIN (prefs.h)
+typedef char RendererBitsInOrder[(APP_RENDERER_BUILTIN == 1UL << RENDERER_FIRST_BIT
+                                  && APP_RENDERER_IBMCON_DEVICE == 1UL << (RENDERER_FIRST_BIT + 3)) ? 1 : -1];
+
+// The Renderer cycle position for a State (its renderer bit).
+static UWORD RendererIndex(ULONG state)
+{
+    UWORD i;
+    for (i = 0; i < 4; i++)
+        if (state & (1UL << (RENDERER_FIRST_BIT + i))) return i;
+    return 0;
+}
+
+static const ULONG groupOfOverride[4]  = { SITE_GROUP_SCREEN, SITE_GROUP_TERMINAL, SITE_GROUP_KEYBOARD, SITE_GROUP_TRANSFER };
+static const UWORD overrideGadget[4]   = { SG_SCREEN_OVR, SG_TERM_OVR, SG_KEY_OVR, SG_XFER_OVR };
+static const UWORD summaryGadget[4]    = { SG_SCREEN_SUM, SG_TERM_SUM, SG_KEY_SUM, SG_XFER_SUM };
+
+static struct Window *settingsWnd;
+static struct Gadget *settingsGList;
+static struct Gadget *settingsGadgets[SG_COUNT];
+
+static BOOL IsChecked(UWORD id)
+{
+    return (settingsGadgets[id]->Flags & GFLG_SELECTED) != 0;
+}
+
+static void SetChecked(UWORD id, BOOL on)
+{
+    GT_SetGadgetAttrs(settingsGadgets[id], settingsWnd, NULL, GTCB_Checked, on, TAG_DONE);
+}
+
+// Show the values the entry would use: its own for overridden groups, the
+// global ones otherwise.
+static void RefreshSettingsWindow(const struct SiteSettings *work)
+{
+    static char summary[4][80];
+    static struct PrefsStruct shown;
+    UWORD g;
+
+    shown = *GlobalSettings();
+    SitePrefs_ApplyEntry(&shown, GlobalSettings(), work);
+    for (g = 0; g < 4; g++)
+    {
+        GT_SetGadgetAttrs(settingsGadgets[overrideGadget[g]], settingsWnd, NULL,
+                          GTCY_Active, (work->groups & groupOfOverride[g]) ? 1 : 0, TAG_DONE);
+        SitePrefs_GroupSummary(groupOfOverride[g], &shown, summary[g], sizeof(summary[g]));
+        GT_SetGadgetAttrs(settingsGadgets[summaryGadget[g]], settingsWnd, NULL,
+                          GTTX_Text, summary[g], TAG_DONE);
+    }
+    SetChecked(SG_SCREEN_WB,    (shown.State & APP_FULLSCREEN) == 0);
+    SetChecked(SG_TERM_PETSCII, (shown.State & APP_PETSCII_MODE) != 0);
+    SetChecked(SG_TERM_RAW,     (shown.State & APP_RAW_CONNECTION) != 0);
+    SetChecked(SG_TERM_ECHO,    (shown.State & APP_LOCAL_ECHO) != 0);
+    SetChecked(SG_KEY_BSDEL,    (shown.State & APP_BACKSPACE_DEL_SWAPPED) != 0);
+    SetChecked(SG_KEY_CRLF,     (shown.State & APP_RETURN_SENDING_CRLF) != 0);
+    GT_SetGadgetAttrs(settingsGadgets[SG_TERM_RENDERER], settingsWnd, NULL,
+                      GTCY_Active, (ULONG)RendererIndex(shown.State), TAG_DONE);
+}
+
+// A field of a group is about to change: the group becomes overridden, with
+// the values it showed so far (so editing one field keeps the others).
+static void OverrideGroup(struct SiteSettings *work, ULONG group)
+{
+    if (!(work->groups & group))
+    {
+        static struct PrefsStruct shown;
+        static struct SiteSettings one;
+
+        shown = *GlobalSettings();
+        SitePrefs_ApplyEntry(&shown, GlobalSettings(), work);
+        one.groups = group;
+        one.prefs = shown;
+        SitePrefs_ApplyEntry(&work->prefs, &work->prefs, &one);
+        if (group == SITE_GROUP_KEYBOARD)
+            memcpy(work->fKeys, GlobalFKeys(), sizeof(work->fKeys));
+        work->groups |= group;
+    }
+}
+
+// A checkbox into a State bit; inverted: the box shows the bit clear (Use Workbench).
+static void SetFlagFromGadget(struct SiteSettings *work, ULONG group, UWORD id, ULONG flag, BOOL inverted)
+{
+    OverrideGroup(work, group);
+    if (IsChecked(id) != inverted) work->prefs.State |= flag;
+    else                           work->prefs.State &= ~flag;
+}
+
+static void UseCurrentForGroup(struct SiteSettings *work, ULONG group, BOOL *captureXem)
+{
+    static struct SiteSettings one;
+
+    one.groups = group;
+    one.prefs = prefs;
+    SitePrefs_ApplyEntry(&work->prefs, &work->prefs, &one);
+    if (group == SITE_GROUP_KEYBOARD) memcpy(work->fKeys, fKeys, sizeof(work->fKeys));
+    if (group == SITE_GROUP_TERMINAL) *captureXem = TRUE;
+    work->groups |= group;
+}
+
+/**
+ * @brief Edit an Address Book entry's settings groups.
+ * @param entry      in: the entry's settings; out (on TRUE): the edited ones
+ * @param captureXem set TRUE when the Terminal group took the current settings:
+ *                   the caller then saves the running XEM options with the entry
+ */
+static BOOL EditEntrySettings(const char *entryName, struct SiteSettings *entry, BOOL *captureXem)
+{
+    static struct SiteSettings work, undo;
+    static char title[64];
+    struct NewGadget ng;
+    struct Gadget *g;
+    struct IntuiMessage *message;
+    struct Gadget *gad;
+    ULONG class;
+    UWORD code, i, ww, wh;
+    BOOL done = FALSE, ok = FALSE;
+
+    work = *entry;
+    *captureXem = FALSE;
+    mysprintf(title, "Settings for \"%s\"", (char *)entryName);
+
+    ComputeFont(settingsWidth, settingsHeight);
+    ww = ComputeX(settingsWidth);
+    wh = ComputeY(settingsHeight);
+
+    if (!(g = CreateContext(&settingsGList))) return FALSE;
+    for (i = 0; i < SG_COUNT; i++)
+    {
+        const struct SettingsGadgetDef *d = &settingsDefs[i];
+        ULONG tags[5];
+
+        memset(&ng, 0, sizeof(ng));
+        ng.ng_LeftEdge   = OffX + ComputeX(d->x);
+        ng.ng_TopEdge    = OffY + ComputeY(d->y);
+        ng.ng_Width      = ComputeX(d->w);
+        ng.ng_Height     = ComputeY(d->h);
+        ng.ng_GadgetText = (UBYTE *)d->label;
+        ng.ng_TextAttr   = &Attr;
+        ng.ng_GadgetID   = i;
+        ng.ng_Flags      = d->placeText;
+        ng.ng_VisualInfo = visualInfos;
+
+        tags[0] = TAG_DONE;
+        if (d->kind == TEXT_KIND)  { tags[0] = GTTX_Border; tags[1] = TRUE; tags[2] = TAG_DONE; }
+        if (d->kind == CYCLE_KIND) { tags[0] = GTCY_Labels;
+                                     tags[1] = (ULONG)(i == SG_TERM_RENDERER ? rendererLabels : overrideLabels);
+                                     tags[2] = TAG_DONE; }
+        settingsGadgets[i] = g = CreateGadgetA(d->kind, g, &ng, (struct TagItem *)tags);
+        if (!g) break;
+    }
+    if (g)
+    {
+        newWin.LeftEdge    = (scr->Width - (ww + OffX + scr->WBorRight)) / 2;
+        newWin.TopEdge     = (scr->Height - (wh + OffY + scr->WBorBottom)) / 2;
+        newWin.Width       = ww + OffX + scr->WBorRight;
+        newWin.Height      = wh + OffY + scr->WBorBottom;
+        newWin.IDCMPFlags  = BUTTONIDCMP|CHECKBOXIDCMP|CYCLEIDCMP|TEXTIDCMP|IDCMP_CLOSEWINDOW|IDCMP_REFRESHWINDOW;
+        newWin.Flags       = WFLG_DRAGBAR|WFLG_DEPTHGADGET|WFLG_CLOSEGADGET|WFLG_SMART_REFRESH|WFLG_ACTIVATE|WFLG_RMBTRAP;
+        newWin.FirstGadget = settingsGList;
+        newWin.Title       = (UBYTE *)title;
+        settingsWnd = OpenWindow(&newWin);
+    }
+
+    if (settingsWnd)
+    {
+        GT_RefreshWindow(settingsWnd, NULL);
+        RefreshSettingsWindow(&work);
+        SetWaitPointer(editProfileWnd);
+
+        while (!done)
+        {
+            WaitPort(settingsWnd->UserPort);
+            while (!done && (message = GT_GetIMsg(settingsWnd->UserPort)))
+            {
+                gad   = (struct Gadget *)message->IAddress;
+                class = message->Class;
+                code  = message->Code;
+                GT_ReplyIMsg(message);
+
+                if (class == IDCMP_CLOSEWINDOW) { done = TRUE; break; }
+                if (class == IDCMP_REFRESHWINDOW)
+                {
+                    GT_BeginRefresh(settingsWnd);
+                    GT_EndRefresh(settingsWnd, TRUE);
+                    continue;
+                }
+                if (class != IDCMP_GADGETUP) continue;
+
+                switch (gad->GadgetID)
+                {
+                case SG_SCREEN_OVR: case SG_TERM_OVR: case SG_KEY_OVR: case SG_XFER_OVR:
+                {
+                    ULONG group = groupOfOverride[gad->GadgetID == SG_SCREEN_OVR ? 0 :
+                                                  gad->GadgetID == SG_TERM_OVR ? 1 :
+                                                  gad->GadgetID == SG_KEY_OVR ? 2 : 3];
+                    if (code == 1) OverrideGroup(&work, group);     // "This Entry"
+                    else           work.groups &= ~group;           // "Global"
+                    break;
+                }
+                case SG_SCREEN_CUR: UseCurrentForGroup(&work, SITE_GROUP_SCREEN, captureXem);   break;
+                case SG_TERM_CUR:   UseCurrentForGroup(&work, SITE_GROUP_TERMINAL, captureXem); break;
+                case SG_KEY_CUR:    UseCurrentForGroup(&work, SITE_GROUP_KEYBOARD, captureXem); break;
+                case SG_XFER_CUR:   UseCurrentForGroup(&work, SITE_GROUP_TRANSFER, captureXem); break;
+
+                // A requester button seeds the group (so the requester starts from
+                // the values shown) and keeps the change only when not cancelled.
+                case SG_SCREEN_MODE:
+                    undo = work;
+                    OverrideGroup(&work, SITE_GROUP_SCREEN);
+                    if (!ScreenModeInto(&work.prefs)) work = undo;
+                    break;
+                case SG_SCREEN_FONT:
+                    undo = work;
+                    OverrideGroup(&work, SITE_GROUP_SCREEN);
+                    if (!FontRequester(settingsWnd, (STRPTR)work.prefs.FontName, sizeof(work.prefs.FontName),
+                                       &work.prefs.FontSize)) work = undo;
+                    break;
+                case SG_SCREEN_PALETTE:
+                    undo = work;
+                    OverrideGroup(&work, SITE_GROUP_SCREEN);
+                    if (!EditPalette(Prefs_Palette(&work.prefs))) work = undo;
+                    break;
+                case SG_SCREEN_WB:
+                    SetFlagFromGadget(&work, SITE_GROUP_SCREEN, SG_SCREEN_WB, APP_FULLSCREEN, TRUE);
+                    break;
+
+                case SG_TERM_PETSCII:
+                    SetFlagFromGadget(&work, SITE_GROUP_TERMINAL, SG_TERM_PETSCII, APP_PETSCII_MODE, FALSE);
+                    break;
+                case SG_TERM_RENDERER:
+                    OverrideGroup(&work, SITE_GROUP_TERMINAL);
+                    work.prefs.State = (work.prefs.State & ~APP_RENDERER_ALL)
+                                     | (1UL << (RENDERER_FIRST_BIT + (code & 3)));
+                    break;
+                case SG_TERM_RAW:
+                    SetFlagFromGadget(&work, SITE_GROUP_TERMINAL, SG_TERM_RAW, APP_RAW_CONNECTION, FALSE);
+                    break;
+                case SG_TERM_ECHO:
+                    SetFlagFromGadget(&work, SITE_GROUP_TERMINAL, SG_TERM_ECHO, APP_LOCAL_ECHO, FALSE);
+                    break;
+                case SG_TERM_XEMLIB:
+                    undo = work;
+                    OverrideGroup(&work, SITE_GROUP_TERMINAL);
+                    if (!FileRequester(settingsWnd, "LIBS:", 0, (STRPTR)work.prefs.XemLibrary,
+                                       sizeof(work.prefs.XemLibrary), "xem#?.library", FILEREQ_LOAD))
+                        work = undo;
+                    break;
+                case SG_TERM_DISPID:
+                    undo = work;
+                    OverrideGroup(&work, SITE_GROUP_TERMINAL);
+                    if (!GetStringRequester(settingsWnd, "Telnet Display ID...", "Term type:",
+                                            (STRPTR)work.prefs.TelnetTermType, sizeof(work.prefs.TelnetTermType)))
+                        work = undo;
+                    break;
+
+                case SG_KEY_BSDEL:
+                    SetFlagFromGadget(&work, SITE_GROUP_KEYBOARD, SG_KEY_BSDEL, APP_BACKSPACE_DEL_SWAPPED, FALSE);
+                    break;
+                case SG_KEY_CRLF:
+                    SetFlagFromGadget(&work, SITE_GROUP_KEYBOARD, SG_KEY_CRLF, APP_RETURN_SENDING_CRLF, FALSE);
+                    break;
+                case SG_KEY_FKEYS:
+                    undo = work;
+                    OverrideGroup(&work, SITE_GROUP_KEYBOARD);
+                    if (!EditFunctionKeys(work.fKeys, title)) work = undo;
+                    break;
+
+                case SG_XFER_PROTO:
+                    undo = work;
+                    OverrideGroup(&work, SITE_GROUP_TRANSFER);
+                    if (!FileRequester(settingsWnd, "LIBS:", 0, (STRPTR)work.prefs.XferLibrary,
+                                       sizeof(work.prefs.XferLibrary), "xpr#?.library", FILEREQ_LOAD))
+                        work = undo;
+                    break;
+                case SG_XFER_OPTS:
+                    undo = work;
+                    OverrideGroup(&work, SITE_GROUP_TRANSFER);
+                    if (!GetStringRequester(settingsWnd, "XPR Protocol Options..", "Options string:",
+                                            (STRPTR)work.prefs.XferOptions, sizeof(work.prefs.XferOptions)))
+                        work = undo;
+                    break;
+
+                case SG_OK:     done = TRUE; ok = TRUE; break;
+                case SG_CANCEL: done = TRUE;            break;
+                }
+                if (!done) RefreshSettingsWindow(&work);
+            }
+        }
+        ClearPointer(editProfileWnd);
+        CloseWindow(settingsWnd);
+        settingsWnd = NULL;
+    }
+    FreeGadgets(settingsGList);
+    settingsGList = NULL;
+
+    if (ok) *entry = work;
+    return ok;
+}
+
+static BOOL EditProfile(struct BookStruct *book, struct List *list)
 {
     char strLastTime[2 * LEN_DATSTRING];
+    // The settings buttons only stage a change; Ok applies it, Cancel drops it.
+    enum { SETTINGS_KEEP, SETTINGS_EDITED, SETTINGS_USE_GLOBAL } settingsAction = SETTINGS_KEEP;
+    BOOL captureXem = FALSE;
+    static struct SiteSettings snapshot;
     struct IntuiMessage *message;
     struct Gadget *gad;
     ULONG class;
@@ -667,13 +1340,23 @@ static BOOL EditProfile(struct BookStruct *book)
     BOOL ret = FALSE;
 
     // Initialize gadget fields with current book data
-    editProfileGTags[1] = (unsigned long)book->name;
-    editProfileGTags[8] = (unsigned long)book->host;
+    editProfileGTags[EP_TAG_SITE] = (unsigned long)book->name;
+    editProfileGTags[EP_TAG_ADDRESS] = (unsigned long)book->host;
     myctime(book->lastConnect, strLastTime, sizeof(strLastTime));
-    editProfileGTags[15] = (unsigned long)strLastTime;
-    editProfileGTags[26] = (unsigned long)book->port;
-    editProfileGTags[33] = (unsigned long)book->username;
-    editProfileGTags[40] = (unsigned long)book->password;
+    editProfileGTags[EP_TAG_LAST] = (unsigned long)strLastTime;
+    editProfileGTags[EP_TAG_PORT] = (unsigned long)book->port;
+    editProfileGTags[EP_TAG_USERNAME] = (unsigned long)book->username;
+    editProfileGTags[EP_TAG_PASSWORD] = (unsigned long)book->password;
+    // "Own" only when the entry's settings file really loads: a missing,
+    // truncated or foreign file means the entry connects with global settings.
+    memset(&snapshot, 0, sizeof(snapshot));   // no stale macro from another entry
+    editProfileGTags[EP_TAG_SETTINGS] = (unsigned long)(LoadEntrySettings(book->settingsId, &snapshot)
+                                         && snapshot.groups ? "This Entry (some groups)" : "Global");
+    editProfileGTags[EP_TAG_COMMENT] = (unsigned long)book->comment;
+    editProfileGTags[EP_TAG_LOGIN_MACRO] = (unsigned long)snapshot.loginMacro;
+    // Sent after connecting (SendLoginMacro); the codes it understands:
+    editProfileGTags[EP_TAG_MACRO_HELP] =
+        (unsigned long)"\\u Username \\p Password \\r Return \\d Wait 1 s";
 
     // Open the Edit Profile window
     if(OpenEditProfileWindow() == RETURN_OK)
@@ -720,6 +1403,10 @@ static BOOL EditProfile(struct BookStruct *book)
                         case 'P':  vgad = editProfileGadgets[GD_PORT];        break;
                         case 'U':  vgad = editProfileGadgets[GD_USERNAME];    break;
                         case 'W':  vgad = editProfileGadgets[GD_PASSWORD];    break;
+                        case 'T':  goto editSettings;
+                        case 'G':  goto useGlobal;
+                        case 'M':  vgad = editProfileGadgets[GD_COMMENT];     break;
+                        case 'L':  vgad = editProfileGadgets[GD_LOGIN_MACRO]; break;
                     }
                     if(vgad) ActivateGadget(vgad, editProfileWnd, 0); // Focus gadget
                     break;
@@ -734,6 +1421,22 @@ static BOOL EditProfile(struct BookStruct *book)
                     case GD_CANCEL:
                         subdone = TRUE;
                         ret = FALSE;
+                        break;
+                    case GD_USE_CURRENT:        // the "Settings..." button
+editSettings:
+                        if (EditEntrySettings(book->name, &snapshot, &captureXem))
+                        {
+                            settingsAction = SETTINGS_EDITED;
+                            GT_SetGadgetAttrs(editProfileGadgets[GD_SETTINGS], editProfileWnd, NULL,
+                                              GTTX_Text, snapshot.groups ? "This Entry (saved on Ok)" : "Global",
+                                              TAG_DONE);
+                        }
+                        break;
+                    case GD_USE_GLOBAL:
+useGlobal:
+                        settingsAction = SETTINGS_USE_GLOBAL;
+                        GT_SetGadgetAttrs(editProfileGadgets[GD_SETTINGS], editProfileWnd, NULL,
+                                          GTTX_Text, "Global (on Ok)", TAG_DONE);
                         break;
                     }
                     break;
@@ -757,6 +1460,42 @@ static BOOL EditProfile(struct BookStruct *book)
             strlcpy(book->password,
                     ((struct StringInfo *)editProfileGadgets[GD_PASSWORD]->SpecialInfo)->Buffer,
                     sizeof(book->password));
+
+            strlcpy(book->comment,
+                    ((struct StringInfo *)editProfileGadgets[GD_COMMENT]->SpecialInfo)->Buffer,
+                    sizeof(book->comment));
+
+            // The settings file holds the overridden groups AND the login macro:
+            // it exists while either is there.
+            if (settingsAction == SETTINGS_USE_GLOBAL)
+                snapshot.groups = 0;
+            strlcpy(snapshot.loginMacro,
+                    ((struct StringInfo *)editProfileGadgets[GD_LOGIN_MACRO]->SpecialInfo)->Buffer,
+                    sizeof(snapshot.loginMacro));
+
+            if (!snapshot.groups && !snapshot.loginMacro[0])
+            {
+                DeleteEntrySettings(book->settingsId);
+                book->settingsId = 0;
+            }
+            else
+            {
+                ULONG id = book->settingsId ? book->settingsId : NextSettingsId(list);
+
+                if (SaveEntrySettings(id, &snapshot))
+                {
+                    book->settingsId = id;
+                    if (settingsAction == SETTINGS_EDITED && captureXem && (snapshot.groups & SITE_GROUP_TERMINAL))
+                    {
+                        char xemPath[40];
+
+                        EntryXemOptionsPath(id, xemPath);
+                        SaveXemOptions(xemPath);    // no-op when XEM is not in use
+                    }
+                }
+                else
+                    InfoReq(editProfileWnd, "Could not save the settings to " SITES_DIR ".");
+            }
         }
 
         ClearPointer(aBookWnd); // Restore normal pointer
@@ -1039,7 +1778,7 @@ static ULONG fKeysGTags[] = {
     (GT_Underscore), '_', (TAG_DONE)
 };
 
-static int OpenFKeysWindow( void )
+static int OpenFKeysWindow( const char *title )
 {
     struct Gadget    *g;
     UWORD        ww, wh;
@@ -1080,7 +1819,7 @@ static int OpenFKeysWindow( void )
                 WA_IDCMP,    CYCLEIDCMP|STRINGIDCMP|BUTTONIDCMP|IDCMP_CLOSEWINDOW|IDCMP_REFRESHWINDOW|IDCMP_VANILLAKEY,
                 WA_Flags,    WFLG_DRAGBAR|WFLG_DEPTHGADGET|WFLG_CLOSEGADGET|WFLG_SMART_REFRESH|WFLG_ACTIVATE|WFLG_RMBTRAP,
                 WA_Gadgets,    fKeysGList,
-                WA_Title,    "Function Keys",
+                WA_Title,    title,
                 WA_CustomScreen,scr,
                 TAG_DONE )))
     return( 4L );
@@ -1107,7 +1846,13 @@ static int OpenFKeysWindow( void )
  *
  * @note The function updates the in-memory function key table before writing it to disk.
  */
-void FunctionKeys(void)
+/**
+ * @brief Edit a set of F1-F10 macros (the global ones, the live session's, or
+ *        an Address Book entry's) in the Function Keys window.
+ *
+ * @return TRUE when the user saved: `keys` then holds the edited macros.
+ */
+BOOL EditFunctionKeys(TEXT *keys, const char *title)
 {
     struct IntuiMessage *message;
     struct Gadget *gad;
@@ -1119,10 +1864,10 @@ void FunctionKeys(void)
 
     // Initialize gadget fields with current settings:
     for (i = 0; i < F_KEY_COUNT; i++)
-        fKeysGTags[1 + i * 5] = (ULONG)&fKeys[i * F_KEY_SIZE];
+        fKeysGTags[1 + i * 5] = (ULONG)&keys[i * F_KEY_SIZE];
 
     // Open the Functions Keys window
-    if(OpenFKeysWindow() == RETURN_OK)
+    if(OpenFKeysWindow(title) == RETURN_OK)
     {
         while(!subdone)
         {
@@ -1166,20 +1911,42 @@ void FunctionKeys(void)
         }
     }
 
-    // Save gadget values to the Prefs file if user pressed OK:
+    // Copy the gadget values into keys if the user pressed Save:
     if(save)
     {
-        register BPTR fh;
-        LONG l;
-
         for (i=0 ; i < F_KEY_COUNT ; i++)
         {
             // The gadget buffer is expected to be limited by "(GTST_MaxChars), F_KEY_SIZE-1",
             // but this provides additional protection against unexpected gadget behavior.
-            strlcpy(&fKeys[i * F_KEY_SIZE],
+            strlcpy(&keys[i * F_KEY_SIZE],
                     ((struct StringInfo *)fKeysGadgets[i]->SpecialInfo)->Buffer,
                     F_KEY_SIZE);
         }
+    }
+
+    if (fKeysWnd)   { CloseWindow(fKeysWnd);   fKeysWnd   = NULL; }
+    if (fKeysGList) { FreeGadgets(fKeysGList); fKeysGList = NULL; }
+    return save;
+}
+
+/**
+ * @brief Settings > Function Keys. Edits the keys in use; they are written to
+ *        DCTelnet.Keys only when they are the global ones. While connected to an
+ *        entry that overrides the Keyboard group the edit is session-only, like
+ *        every other settings change in an entry session.
+ */
+void FunctionKeys(void)
+{
+    if (SessionOverridesKeyboard())
+    {
+        EditFunctionKeys(fKeys, "Function Keys (this connection only)");
+        return;
+    }
+
+    if (EditFunctionKeys(fKeys, "Function Keys"))
+    {
+        register BPTR fh;
+        LONG l;
 
         fh = Open(keysFilename, MODE_NEWFILE);
         l = 0;
@@ -1194,9 +1961,6 @@ void FunctionKeys(void)
             SimpleReq("ERROR: Failed to save Function keys settings!");
         }
     }
-
-    if (fKeysWnd)   { CloseWindow(fKeysWnd);   fKeysWnd   = NULL; }
-    if (fKeysGList) { FreeGadgets(fKeysGList); fKeysGList = NULL; }
 }
 
 
