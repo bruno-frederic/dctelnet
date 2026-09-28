@@ -34,4 +34,10 @@ enum PetsciiSpecialKey {
  */
 int petscii_translate_key(int ascii_or_special, int is_special);
 
+/*
+ * The Amiga console reports F1-F10 as CSI <digit> ~ with digit '0'-'9'
+ * (F1 = '0'). Returns the C64 function-key byte for F1-F8, -1 otherwise.
+ */
+int petscii_fkey_from_console_digit(char digit);
+
 #endif /* PETSCII_KEYMAP_H */
