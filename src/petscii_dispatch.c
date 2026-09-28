@@ -252,3 +252,42 @@ size_t petscii_stream_to_rawglyphs(struct PetsciiDispatchState *st,
                                     uint8_t *out, size_t out_max) {
     return stream_translate(st, in, in_len, out, out_max, 1);
 }
+
+void petscii_local_text_init(struct PetsciiLocalText *lt, int lowercase_font) {
+    lt->lowercase_font = lowercase_font;
+    lt->escape = 0;
+}
+
+void petscii_local_text(struct PetsciiLocalText *lt, char *buf, size_t len) {
+    size_t i;
+
+    for (i = 0; i < len; i++) {
+        uint8_t c = (uint8_t)buf[i];
+
+        if (lt->escape == 1) {                 /* after ESC */
+            lt->escape = (c == '[') ? 2 : 0;
+            continue;
+        }
+        if (lt->escape == 2) {                 /* CSI parameters, then the final byte */
+            if (c >= 0x40 && c <= 0x7E) lt->escape = 0;
+            continue;
+        }
+        if (c == 0x1B) { lt->escape = 1; continue; }
+        if (c == 0x9B) { lt->escape = 2; continue; }
+
+        if (c >= 'a' && c <= 'z')
+            buf[i] = (char)(c - 'a' + 'A');
+        else if (lt->lowercase_font && c >= 'A' && c <= 'Z')
+            buf[i] = (char)(c - 'A' + 'a');
+    }
+}
+
+size_t petscii_part_length(const uint8_t *in, size_t len)
+{
+    size_t k;
+
+    for (k = 0; k < len; k++)
+        if (in[k] == 14 || in[k] == 142)
+            return k + 1;
+    return len;
+}
