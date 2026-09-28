@@ -29,7 +29,18 @@ static void test_keymap(void) {
     assert(petscii_translate_key(PETSCII_KEY_F8, 1) == 140);
 }
 
+/* The Amiga console reports F1-F10 as CSI <digit> ~ with digit 0-9, F1 = 0.
+ * The mapping started at 1: F1 sent nothing and F2-F8 sent the key below. */
+static void test_console_fkey_digit_0_is_c64_f1(void) {
+    assert(petscii_fkey_from_console_digit('0') == 133);   /* F1 */
+    assert(petscii_fkey_from_console_digit('1') == 137);   /* F2 */
+    assert(petscii_fkey_from_console_digit('7') == 140);   /* F8 */
+    assert(petscii_fkey_from_console_digit('8') == -1);    /* F9: no C64 key */
+    assert(petscii_fkey_from_console_digit('x') == -1);
+}
+
 int main(void) {
+    test_console_fkey_digit_0_is_c64_f1();
     test_screencode_ranges();
     test_fallback_letters_swap_case();
     test_keymap();
