@@ -59,6 +59,20 @@ Workbench@{ub}.
 
 - User-definable screen modes & fonts
 
+- @{b}256-colour AGA and RTG@{ub} (Picasso96/CyberGraphX) screens, with the
+  16 ANSI colours on pens of their own
+
+- @{b}PETSCII Mode@{ub} for Commodore 64 BBSes, with C64 fonts
+
+- @{b}Per-BBS settings@{ub}: each Address Book entry can have its own font,
+  palette, terminal, keyboard and transfer settings, a comment and a
+  login macro
+
+- A palette editor for the 16 ANSI colours
+
+- An 80-column terminal as BBSes expect it, and the @{b}Topaz Pro@{ub} font
+  for square-pixel screen modes
+
 - @{b}Multiple simultaneous@{ub} Telnet connections
 
 - @{b}No@{ub} MUI, ClassAct or ReAction required
@@ -74,6 +88,15 @@ Workbench@{ub}.
 
 - A TCP/IP stack: @{b}AmiTCP@{ub}, @{b}Roadshow@{ub}, @{b}Miami@{ub}, UAE bsdsocket.library or
   compatible
+
+Optional:
+
+- Kickstart / Workbench @{b}3.0 (V39)@{ub} for 256-colour screens, the
+  ANSI colours on the Workbench and the palette editor on the Workbench
+
+- @{b}Picasso96@{ub} or @{b}CyberGraphX@{ub} for RTG screen modes. On a true-colour
+  screen, cybergraphics.library also lets the palette editor recolour
+  the text already on screen.
 
 @EndNode
 
@@ -97,6 +120,18 @@ directories:
 - DCTelnet/Devs/ibmcon.device -> DEVS:
 - Libraries from DCTelnet/Libs -> LIBS:
 - Fonts from DCTelnet/Fonts -> FONTS:
+
+DCTelnet also works without these copies: it looks in its own Devs, Libs
+and Fonts drawers. When ibmcon.device or a library is in both its own
+drawer and DEVS: or LIBS:, DCTelnet opens the newer version. The start-up
+screen tells which ibmcon.device it uses and where it came from.
+
+DCTelnet needs @{b}ibmcon.device 1.10@{ub} or later (included) for all of its
+features. Fonts in the package:
+- Petscii and PetsciiLower: the Commodore 64 upper-case and lower-case
+  character sets, used by PETSCII Mode
+- TopazPro: topaz redrawn for square pixels, used on RTG and other
+  square-pixel screen modes
 
 On AmigaOS / Kickstart @{b}2.00 & 2.02@{ub}, the default versions of
 reqtools.library and xprzmodem.library fail to load.
@@ -227,7 +262,32 @@ Opens a window with a list of the address that you have saved.
      @{b}@{u} Connect @{ub}@{uu} - Connects you to the selected site.
 
      @{b}@{u} Edit @{ub}@{uu}    - Allows you to edit, Site name, Site address, port number
-                Username & Password on a selected site.
+                Username & Password on a selected site, and also:
+
+                Comment:     - A note about the site.
+
+                Login Macro: - Text sent after connecting.
+                               \\u sends the Username, \\p the Password,
+                               \\r a Return, \\d waits one second and
+                               \\\\ sends a backslash.
+                               (ex. "\\d\\u\\r\\p\\r")
+
+                Settings...  - The settings for this site. There are
+                               four groups: Screen (font and palette),
+                               Terminal (PETSCII Mode, renderer, XEM library,
+                               terminal type, raw connection, local echo),
+                               Keyboard (BS/DEL swap, Return = CR+LF,
+                               function keys) and Transfer (XPR library
+                               and its options). Set a group to
+                               "This Entry" to give the site its own
+                               values; "Use Current" copies the values in
+                               use now. Groups left on "Global" use the
+                               global settings.
+
+                Use Global Settings - Removes the site's own settings.
+
+                The site's settings are used while you are connected to
+                it. After disconnecting, the global settings come back.
 
      @{b}@{u} Add @{ub}@{uu}     - Adds a new entry to the address book.  You will need to
                 provide a Site name, Site address, port number, Username
@@ -242,6 +302,12 @@ Opens a window with a list of the address that you have saved.
     and click on the CONNECT button, or click on the close gadget in the
     left, top corner of the window.
 
+                   @{b}@{u} SAVE SETTINGS TO ADDRESS BOOK ENTRY @{ub}@{uu}
+                    ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  While connected to a site from the Address Book: saves the settings you
+changed during this connection into that site's entry, so they are used
+the next time you connect to it. See ADDRESS BOOK, Settings... above.
+
 @EndNode
 
 @node Options "DCTelnet, Options pull down menu."
@@ -250,8 +316,36 @@ Opens a window with a list of the address that you have saved.
                                ~~~~~~~~~~~~~
  If enabled DCTelnet will open a window on your WORKBENCH screen.
 
+ (In DCTelnet 2.0: Display > Full-screen switched off.)
+
+ The window opens 80x25 characters in size, unless SNAPSHOT WINDOWS saved
+a size. You can resize it, but not wider than 80 columns (40 in PETSCII
+Mode): BBS screens are drawn for 80 columns. The BBS is told the new size
+after every resize.
+
+ This option is global: an Address Book entry does not change it.
+
 NOTE:  The packet window and LEDs can not be used if this feature is
        enabled.
+
+                              @{b}@{u} PETSCII MODE @{ub}@{uu}
+                               ~~~~~~~~~~~~
+  (In DCTelnet 2.0: Terminal > PETSCII Mode.)
+
+  For Commodore 64 BBSes. DCTelnet tells the BBS it is a PETSCII terminal
+and shows the BBS with the C64 character set, colours and reverse video
+in a 40-column terminal. The cursor keys, F1-F8, Backspace/Delete and
+the keys you type are sent as C64 codes.
+
+  The C64 display is used only while connected; DCTelnet's own messages
+use the normal font.
+
+  PETSCII Mode needs the Petscii and PetsciiLower fonts (included). Without
+them, lookalike characters of the IBM character set are used and a notice
+is shown on connect.
+
+TIP:   Turn it on in the Terminal group of an Address Book entry's
+       Settings..., so it is only used for C64 BBSes.
 
                               @{b}@{u} DISABLE LEDs @{ub}@{uu}
                                ~~~~~~~~~~~~~
@@ -308,10 +402,14 @@ NOTE: See...@{b}@{u} Preferences menu, XEM LIBRARY @{ub}@{uu}
   Puts icons at the top of the window so you have easier access to
 Connect, Disconnect, Address, Info, Upload, Download & Quit.
 
-  If you wish to change these icons, they are located in the
-   SCIcons and WBIcons directory, and use standard file names.
-   They are Project type icons.  So, you can use your favorate
-   icon editor.
+  The icons are in the ToolBar drawer: ToolBar/Square for screens with
+square pixels, ToolBar/Wide for modes whose pixels are twice as tall
+(such as 640x256). They carry their own colours (the tool type
+DCTELNET_PALETTE), so they look the same on every screen.
+
+  To use icons of your own, replace the files with Project icons of the
+same names; the first tool type is the label under the icon. Icons
+without DCTELNET_PALETTE are drawn with the screen's pens as they are.
 
                               @{b}@{u} Return = CR+LF @{ub}@{uu}
                                ~~~~~~~~~~~~~~
@@ -319,6 +417,18 @@ Connect, Disconnect, Address, Info, Upload, Download & Quit.
 and a Line Feed.
 
 @{b}*  Only good for non-telnet hosts!@{ub}
+
+                                @{b}@{u} VT Keys @{ub}@{uu}
+                                 ~~~~~~~
+  Chooses what Home, End, Page Up, Page Down and Insert send. Off: the
+codes BBSes expect (SyncTERM): ESC[H, ESC[K, ESC[V, ESC[U, ESC[@. On: VT
+codes for Unix hosts: ESC[1~, ESC[4~, ESC[5~, ESC[6~, ESC[2~.
+
+  Keyboards without these keys: Shift+Cursor Up/Down are Page Up/Down,
+Shift+Cursor Left/Right are Home/End. When the host asks for cursor key
+mode (as vi and less do), the cursor keys send ESC O A-D.
+
+  Also in the Keyboard group of an Address Book entry's Settings...
 
                               @{b}@{u} Local EchoBack @{ub}@{uu}
                                ~~~~~~~~~~~~~~
@@ -349,15 +459,45 @@ NOTE:  If you enable this option while connected to a telnet site, you
   Allows you to define what resolution or screen type for DCTelnet to open.
 It can be any Amiga standard screen. (ex. NTSC, PAL, SuperHiRES, ect...)
 
+  With 32 or more colours (AGA 256 colours, or an RTG mode of Picasso96 or
+CyberGraphX), the menus and windows keep the system colours and the 16
+ANSI colours get pens of their own.
+
+  On a screen wider than 80 columns, the terminal is 80 columns wide and
+centred, with black around it.
+
+  The screen mode is global: an Address Book entry does not change it.
+
                                @{b}@{u} SCREEN FONT @{ub}@{uu}
                                 ~~~~~~~~~~~
   Allows you to define which font DCTelnet uses, default is topaz.font.
   But any standard Amiga font can be used, with any size.
 
+  On square-pixel screen modes (every RTG mode, for example) topaz is
+replaced by TopazPro, which is drawn for square pixels. A font that
+cannot be opened falls back to topaz or TopazPro; the start-up screen
+names the font in use.
+
+  With the ibmcon.device and console.device renderers the font changes in
+place, without closing the screen or the window; the built-in and XEM
+renderers reopen the display. The BBS is told the new terminal size.
+
+  While connected, a font or palette you choose is used for the rest of
+the session, but is not saved. To keep it for this BBS, use SAVE
+SETTINGS TO ADDRESS BOOK ENTRY.
+
                               @{b}@{u} SCREEN PALETTE @{ub}@{uu}
                                ~~~~~~~~~~~~~~
-  Allows you to change the colours that DCTelnet uses.  The amout of
-colours that you can define depends on the screen depth set in SCREEN MODE.
+  Opens the palette editor for the 16 ANSI colours: the colours in ANSI
+order with their names and Red, Green and Blue sliders. The terminal
+shows the change at once.
+
+     @{b}@{u} Use @{ub}@{uu}     - Keeps the new colours.
+     @{b}@{u} Default @{ub}@{uu} - Sets the standard ANSI colours.
+     @{b}@{u} Cancel @{ub}@{uu}  - Restores the colours from before.
+
+  On the Workbench the editor needs the ibmcon.device renderer and
+Kickstart 3.0 (V39).
 
                               @{b}@{u} DOWNLOAD PATH @{ub}@{uu}
                                ~~~~~~~~~~~~~
@@ -464,7 +604,21 @@ Rendering issues occur on multiple BBSes, whether using ibmcon.device or
 XemVT340.library for display. Some screens freeze, misalign the UI, or fail
 to display animations.
 
+Improved with ibmcon.device 1.9: DCTelnet now answers the BBS's cursor
+position requests (Device Status Report), Cursor Backward and Forward stop
+at the edge of the line, and CTerm 24-bit colour sequences are ignored
+instead of moving the cursor. Not yet confirmed on every BBS in the report.
+
 Details on GitHub: https://github.com/bruno-frederic/dctelnet/issues/11
+
+---------------------------------------------
+
+@{b}Fullscreen editors leave old lines on screen (fixed in ibmcon.device 1.7)@{ub}
+
+Insert Lines (CSI L) moved only a few pixel lines, so an editor that scrolls
+down, such as on ABBS/MBBS, left old text behind.
+
+Details on GitHub: https://github.com/bruno-frederic/dctelnet/issues/9
 
 ---------------------------------------------
 
@@ -485,6 +639,9 @@ Details on GitHub: https://github.com/bruno-frederic/dctelnet/issues/13
 This issue had existed since DCTelnet 1.1 and occured when used with certain
 versions of "bsdsocket.library", notably UAE bsdsocket.library 4.1 (WinUAE)
 and Amiberry's built-in library.
+
+The cause is fixed in ibmcon.device 1.8: closing the console freed a signal
+of the program that opened it (bit 31, which bsdsocket.library can hold).
 
 Details on GitHub: https://github.com/bruno-frederic/dctelnet/issues/3
 
@@ -518,6 +675,52 @@ Starting with v1.8, a compatible version of the library is included in the
 ---[ DCTelnet 2.0 ]-------------------------------------------------------
 
 TODO
+
+New Features:
+- PETSCII Mode for Commodore 64 BBSes, with the Petscii and PetsciiLower
+  fonts (Terminal menu)
+- Per-BBS settings: each Address Book entry can override four groups of
+  settings (Screen, Terminal, Keyboard, Transfer), and has a comment and
+  a login macro. Connection > Save Settings to Address Book Entry saves what
+  was changed during a connection.
+- 256-colour AGA and RTG (Picasso96/CyberGraphX) screen modes; the 16 ANSI
+  colours get their own pens, also on the Workbench
+- Palette editor for the 16 ANSI colours, with live preview (also on
+  true-colour screens)
+- TopazPro font for square-pixel screen modes
+- 80-column terminal: the Workbench window opens 80x25 and does not grow
+  wider than 80 columns; on a wider screen the terminal is centred
+- The BBS is told the real text area (NAWS), and again after every resize
+  or font change
+- Screen Font changes in place (ibmcon.device and console.device renderers),
+  without closing the screen or the window
+- Home, End, Page Up, Page Down and Insert keys (VT Keys option), and the
+  cursor keys follow the host's cursor key mode
+- DCTelnet uses the newest ibmcon.device and libraries from its own drawer
+  or from DEVS: / LIBS:
+- The start-up screen shows the display engine, screen and text area
+
+ibmcon.device (source now included in the "ibmcon" drawer):
+- 1.5: pens for the ANSI colours (IBMCMD_SETPENS)
+- 1.6: deferred wrap at the last column; CTerm 24-bit colour ignored
+- 1.7: Insert Lines fixed (issue #9)
+- 1.8: closing the console no longer frees the opener's signal (issue #3)
+- 1.9: cursor position for DSR answers; Cursor Backward/Forward stop at
+  the margins (issue #11)
+- 1.10: iCE colours (bright backgrounds), erase characters (CSI X),
+  ESC 7 / ESC 8, application cursor key mode reported to DCTelnet
+
+Bug Fixes:
+- Menu items were grey, as if disabled, on screens with 32+ colours
+- Deleting the first Address Book entry left no selection
+- Typing in a field entered with Tab now replaces its text
+- Finger replies are no longer shown as a staircase
+- F1 in PETSCII Mode sent the code of F2
+- Shift+F1-F10 sent the macro of the next key and a "~"; Shift+Cursor
+  keys and Help sent stray characters
+- The tool bar icons were drawn for fixed pens and showed pink, cyan and
+  blue on most screens. New flat, antialiased icons carry their own
+  colours and are matched to every screen, in a square and a wide set.
 
 
 
@@ -829,6 +1032,13 @@ Build & Toolchain:
 - new 68000-compatible build by @{b}Bruno FREDERIC@{ub}
 
 - ReqTools is Copyright © Nico François and Magnus Holmgren
+
+- PETSCII Mode, per-BBS settings, RTG/256-colour support, the palette
+  editor and ibmcon.device 1.5-1.9 by @{b}spotUP@{ub}. The PETSCII key and
+  fallback tables are from SyncTERM by Rob Swindell (LGPL).
+
+- The Workbench tool bar symbols are Lucide icons (ISC license, see
+  Docs/Lucide-LICENSE.txt).
 
 
 - Thanks to Ray Akey for his help with the file tranfer code,

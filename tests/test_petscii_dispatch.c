@@ -171,7 +171,47 @@ static void test_no_byte_expands_past_the_declared_maximum(void) {
                 }
 }
 
+/* DCTelnet's own messages ("Connection closed", "Looking up ...") are ASCII.
+ * Printed through a C64 font, lower-case ASCII landed on graphics glyphs and
+ * the text was unreadable. Translated, the letters read as intended; CSI and
+ * ESC sequences (their final bytes are letters too) pass untouched. */
+static void test_local_text_reads_in_the_upper_case_set(void) {
+    struct PetsciiLocalText lt;
+    char buf[] = "\x9b" "0mConnection closed\r\n";
+    const char want[] = "\x9b" "0mCONNECTION CLOSED\r\n";
+
+    petscii_local_text_init(&lt, 0);
+    petscii_local_text(&lt, buf, sizeof(buf) - 1);
+    assert(memcmp(buf, want, sizeof(want) - 1) == 0);
+}
+
+static void test_local_text_reads_in_the_lower_case_set(void) {
+    struct PetsciiLocalText lt;
+    /* The lower-case set shows a-z at $41-$5A and A-Z at $61-$7A: swap case. */
+    char buf[] = "\x1b[1mLooking up";
+    const char want[] = "\x1b[1mlOOKING UP";
+
+    petscii_local_text_init(&lt, 1);
+    petscii_local_text(&lt, buf, sizeof(buf) - 1);
+    assert(memcmp(buf, want, sizeof(want) - 1) == 0);
+}
+
+/* A sequence split across two writes is still left alone. */
+static void test_local_text_escape_spans_calls(void) {
+    struct PetsciiLocalText lt;
+    char a[] = "x\x1b[3", b[] = "2mok";
+
+    petscii_local_text_init(&lt, 0);
+    petscii_local_text(&lt, a, 5);
+    petscii_local_text(&lt, b, 4);
+    assert(a[0] == 'X');
+    assert(b[0] == '2' && b[1] == 'm' && b[2] == 'O' && b[3] == 'K');
+}
+
 int main(void) {
+    test_local_text_reads_in_the_upper_case_set();
+    test_local_text_reads_in_the_lower_case_set();
+    test_local_text_escape_spans_calls();
     test_state_tracks_reverse_shift_and_cursor();
     test_cr_starts_a_new_line();
     test_wraps_once_at_column_40();
