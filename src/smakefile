@@ -33,14 +33,14 @@ MAKE=smake
 
 TARGET=DCTelnet
 CPU=68000
-DEPS = abook.h connect.h DCTelnet.h DCTelnet-debug.h DCTelnet-protocol.h third_party/retro32-term/term-engine.c edit.h fkey.h guis.h Xfer.h Xem_wrapper.h requesters.h utils.h prefs.h
+DEPS = abook.h connect.h DCTelnet.h DCTelnet-debug.h DCTelnet-protocol.h third_party/retro32-term/term-engine.c edit.h fkey.h guis.h Xfer.h Xem_wrapper.h requesters.h utils.h prefs.h prefs_file.h site_prefs.h palette.h screenfont.h progdir.h shipped.h listsel.h textedit.h dsr.h iconpens.h keys.h charset.h clip.h ansiscan.h ticks.h rexxcmd.h waitfor.h rlogin.h ansimusic.h sound.h booklist.h knownhosts.h ssh.h sshconn.h crypto/sha256.h crypto/aes.h crypto/bignum.h crypto/rsa.h crypto/x25519.h crypto/random.h
 # The first '/' in the path is equivalent to '../' on other platforms:
 INSTALLDIR=/build/installed/DCTelnet
 
 # final OBJDIR depends on CPU and OBJ_SUFFIX
 # OBJDIR need to be on an Amiga fileystem (too many file access problem on shared WinUAE folder):
 OBJDIR            = RAM:build/sasc-$(CPU)-$(OBJ_SUFFIX)
-OBJS              = $(OBJDIR)/DCTelnet.o $(OBJDIR)/Connect.o $(OBJDIR)/Guis.o $(OBJDIR)/Xfer.o $(OBJDIR)/Xem_wrapper.o $(OBJDIR)/requesters.o $(OBJDIR)/utils.o $(OBJDIR)/prefs.o
+OBJS              = $(OBJDIR)/DCTelnet.o $(OBJDIR)/Connect.o $(OBJDIR)/Guis.o $(OBJDIR)/Xfer.o $(OBJDIR)/Xem_wrapper.o $(OBJDIR)/requesters.o $(OBJDIR)/utils.o $(OBJDIR)/prefs.o $(OBJDIR)/prefs_file.o $(OBJDIR)/site_prefs.o $(OBJDIR)/palette.o $(OBJDIR)/screenfont.o $(OBJDIR)/progdir.o $(OBJDIR)/shipped.o $(OBJDIR)/listsel.o $(OBJDIR)/textedit.o $(OBJDIR)/dsr.o $(OBJDIR)/iconpens.o $(OBJDIR)/keys.o $(OBJDIR)/charset.o $(OBJDIR)/clip.o $(OBJDIR)/ansiscan.o $(OBJDIR)/ticks.o $(OBJDIR)/rexxcmd.o $(OBJDIR)/waitfor.o $(OBJDIR)/rlogin.o $(OBJDIR)/ansimusic.o $(OBJDIR)/sound.o $(OBJDIR)/booklist.o $(OBJDIR)/knownhosts.o $(OBJDIR)/ssh.o $(OBJDIR)/sshconn.o $(OBJDIR)/sha256.o $(OBJDIR)/aes.o $(OBJDIR)/bignum.o $(OBJDIR)/rsa.o $(OBJDIR)/x25519.o $(OBJDIR)/random.o
 TARGET_EXE        = $(OBJDIR)/$(TARGET).$(CPU)
 MAKEFILE_UPTODATE = $(OBJDIR)/Makefile.uptodate
 
@@ -117,6 +117,127 @@ $(OBJDIR)/prefs.o: prefs.c $(DEPS) $(OBJDIR)
 	@echo "------------- $@ --------------------"
 	$(CC) $(CFLAGS) $*.c  ObjectName=$(OBJDIR)/
 
+
+$(OBJDIR)/prefs_file.o: prefs_file.c $(DEPS) $(OBJDIR)
+	@echo "------------- $@ --------------------"
+	$(CC) $(CFLAGS) $*.c  ObjectName=$(OBJDIR)/
+
+$(OBJDIR)/site_prefs.o: site_prefs.c $(DEPS) $(OBJDIR)
+	@echo "------------- $@ --------------------"
+	$(CC) $(CFLAGS) $*.c  ObjectName=$(OBJDIR)/
+
+$(OBJDIR)/palette.o: palette.c $(DEPS) $(OBJDIR)
+	@echo "------------- $@ --------------------"
+	$(CC) $(CFLAGS) $*.c  ObjectName=$(OBJDIR)/
+
+$(OBJDIR)/screenfont.o: screenfont.c $(DEPS) $(OBJDIR)
+	@echo "------------- $@ --------------------"
+	$(CC) $(CFLAGS) $*.c  ObjectName=$(OBJDIR)/
+
+$(OBJDIR)/progdir.o: progdir.c $(DEPS) $(OBJDIR)
+	@echo "------------- $@ --------------------"
+	$(CC) $(CFLAGS) $*.c  ObjectName=$(OBJDIR)/
+
+$(OBJDIR)/shipped.o: shipped.c $(DEPS) $(OBJDIR)
+	@echo "------------- $@ --------------------"
+	$(CC) $(CFLAGS) $*.c  ObjectName=$(OBJDIR)/
+
+$(OBJDIR)/listsel.o: listsel.c $(DEPS) $(OBJDIR)
+	@echo "------------- $@ --------------------"
+	$(CC) $(CFLAGS) $*.c  ObjectName=$(OBJDIR)/
+
+$(OBJDIR)/textedit.o: textedit.c $(DEPS) $(OBJDIR)
+	@echo "------------- $@ --------------------"
+	$(CC) $(CFLAGS) $*.c  ObjectName=$(OBJDIR)/
+
+$(OBJDIR)/dsr.o: dsr.c $(DEPS) $(OBJDIR)
+	@echo "------------- $@ --------------------"
+	$(CC) $(CFLAGS) $*.c  ObjectName=$(OBJDIR)/
+
+$(OBJDIR)/iconpens.o: iconpens.c $(DEPS) $(OBJDIR)
+	@echo "------------- $@ --------------------"
+	$(CC) $(CFLAGS) $*.c  ObjectName=$(OBJDIR)/
+
+$(OBJDIR)/keys.o: keys.c $(DEPS) $(OBJDIR)
+	@echo "------------- $@ --------------------"
+	$(CC) $(CFLAGS) $*.c  ObjectName=$(OBJDIR)/
+
+$(OBJDIR)/charset.o: charset.c $(DEPS) $(OBJDIR)
+	@echo "------------- $@ --------------------"
+	$(CC) $(CFLAGS) $*.c  ObjectName=$(OBJDIR)/
+
+$(OBJDIR)/clip.o: clip.c $(DEPS) $(OBJDIR)
+	@echo "------------- $@ --------------------"
+	$(CC) $(CFLAGS) $*.c  ObjectName=$(OBJDIR)/
+
+$(OBJDIR)/ansiscan.o: ansiscan.c $(DEPS) $(OBJDIR)
+	@echo "------------- $@ --------------------"
+	$(CC) $(CFLAGS) $*.c  ObjectName=$(OBJDIR)/
+
+$(OBJDIR)/ticks.o: ticks.c $(DEPS) $(OBJDIR)
+	@echo "------------- $@ --------------------"
+	$(CC) $(CFLAGS) $*.c  ObjectName=$(OBJDIR)/
+
+$(OBJDIR)/rexxcmd.o: rexxcmd.c $(DEPS) $(OBJDIR)
+	@echo "------------- $@ --------------------"
+	$(CC) $(CFLAGS) $*.c  ObjectName=$(OBJDIR)/
+
+$(OBJDIR)/waitfor.o: waitfor.c $(DEPS) $(OBJDIR)
+	@echo "------------- $@ --------------------"
+	$(CC) $(CFLAGS) $*.c  ObjectName=$(OBJDIR)/
+
+$(OBJDIR)/rlogin.o: rlogin.c $(DEPS) $(OBJDIR)
+	@echo "------------- $@ --------------------"
+	$(CC) $(CFLAGS) $*.c  ObjectName=$(OBJDIR)/
+
+$(OBJDIR)/ansimusic.o: ansimusic.c $(DEPS) $(OBJDIR)
+	@echo "------------- $@ --------------------"
+	$(CC) $(CFLAGS) $*.c  ObjectName=$(OBJDIR)/
+
+$(OBJDIR)/sound.o: sound.c $(DEPS) $(OBJDIR)
+	@echo "------------- $@ --------------------"
+	$(CC) $(CFLAGS) $*.c  ObjectName=$(OBJDIR)/
+
+$(OBJDIR)/booklist.o: booklist.c $(DEPS) $(OBJDIR)
+	@echo "------------- $@ --------------------"
+	$(CC) $(CFLAGS) $*.c  ObjectName=$(OBJDIR)/
+
+$(OBJDIR)/knownhosts.o: knownhosts.c $(DEPS) $(OBJDIR)
+	@echo "------------- $@ --------------------"
+	$(CC) $(CFLAGS) $*.c  ObjectName=$(OBJDIR)/
+
+$(OBJDIR)/ssh.o: ssh.c $(DEPS) $(OBJDIR)
+	@echo "------------- $@ --------------------"
+	$(CC) $(CFLAGS) $*.c  ObjectName=$(OBJDIR)/
+
+$(OBJDIR)/sshconn.o: sshconn.c $(DEPS) $(OBJDIR)
+	@echo "------------- $@ --------------------"
+	$(CC) $(CFLAGS) $*.c  ObjectName=$(OBJDIR)/
+
+# The SSH crypto sources (crypto/): SAS/C builds the C loop of bignum.c (no BN_ASM).
+$(OBJDIR)/sha256.o: crypto/sha256.c $(DEPS) $(OBJDIR)
+	@echo "------------- $@ --------------------"
+	$(CC) $(CFLAGS) crypto/sha256.c  ObjectName=$(OBJDIR)/
+
+$(OBJDIR)/aes.o: crypto/aes.c $(DEPS) $(OBJDIR)
+	@echo "------------- $@ --------------------"
+	$(CC) $(CFLAGS) crypto/aes.c  ObjectName=$(OBJDIR)/
+
+$(OBJDIR)/bignum.o: crypto/bignum.c $(DEPS) $(OBJDIR)
+	@echo "------------- $@ --------------------"
+	$(CC) $(CFLAGS) crypto/bignum.c  ObjectName=$(OBJDIR)/
+
+$(OBJDIR)/rsa.o: crypto/rsa.c $(DEPS) $(OBJDIR)
+	@echo "------------- $@ --------------------"
+	$(CC) $(CFLAGS) crypto/rsa.c  ObjectName=$(OBJDIR)/
+
+$(OBJDIR)/x25519.o: crypto/x25519.c $(DEPS) $(OBJDIR)
+	@echo "------------- $@ --------------------"
+	$(CC) $(CFLAGS) crypto/x25519.c  ObjectName=$(OBJDIR)/
+
+$(OBJDIR)/random.o: crypto/random.c $(DEPS) $(OBJDIR)
+	@echo "------------- $@ --------------------"
+	$(CC) $(CFLAGS) crypto/random.c  ObjectName=$(OBJDIR)/
 
 $(OBJDIR):
 	@echo "------------- mkdir $@ --------------------"

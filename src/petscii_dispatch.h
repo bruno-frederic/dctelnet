@@ -84,4 +84,29 @@ size_t petscii_stream_to_rawglyphs(struct PetsciiDispatchState *st,
                                     const uint8_t *in, size_t in_len,
                                     uint8_t *out, size_t out_max);
 
+/*
+ * DCTelnet's own messages (connect/disconnect notices...) are ASCII. While
+ * the C64 font is on screen, lower-case ASCII would land on graphics glyphs.
+ * petscii_local_text() rewrites the letters in place so they read as
+ * intended in the active charset: the upper-case/graphics set has only
+ * capitals (a-z become A-Z), the lower-case set holds a-z at $41-$5A and A-Z
+ * at $61-$7A (case swapped). ESC [ ... and CSI ($9B) sequences pass
+ * untouched; the state carries one across calls.
+ */
+struct PetsciiLocalText {
+    int lowercase_font;
+    int escape;           /* 0 text, 1 after ESC, 2 inside a CSI sequence */
+};
+
+/*
+ * How much of in to translate and draw before the font may have to change:
+ * up to and including the first charset switch (14 lower case, 142 upper
+ * case), else all of it. A packet with both sets in it is drawn in two
+ * fonts, each part in the one it was sent for.
+ */
+size_t petscii_part_length(const uint8_t *in, size_t len);
+
+void petscii_local_text_init(struct PetsciiLocalText *lt, int lowercase_font);
+void petscii_local_text(struct PetsciiLocalText *lt, char *buf, size_t len);
+
 #endif /* PETSCII_DISPATCH_H */

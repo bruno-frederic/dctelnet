@@ -35,12 +35,18 @@ static char MainWindowTitle[] =
 #include <proto/exec.h>               // OpenLibrary(), GetMsg(), ReplyMsg(), AllocMem()...
 #include <proto/dos.h>                // Open(), Close(), Read(), Write(), PutStr()...
 #include <proto/intuition.h>          // OpenWindow(),CloseWindow(), OnMenu(), OffMenu()...
+#include <graphics/videocontrol.h>    // VTAG_BORDERBLANK_SET
 #include <proto/graphics.h>           // Move(), SetAPen(), Text(), SetFont(), Draw()
+#include <proto/layers.h>             // InstallLayerInfoHook()
+// cybergraphics: vbcc ships the inline calls but not clib/cybergraphics_protos.h
+extern struct Library *CyberGfxBase;
+#include <inline/cybergraphics_protos.h> // ReadPixelArray(), WritePixelArray()
 #include <proto/gadtools.h>           // GT_GetIMsg(), GT_ReplyIMsg()...
 #include <proto/diskfont.h>           // OpenDiskFont()
 #include <proto/utility.h>            // GetTagData()
 #include <proto/icon.h>               // GetDiskObjectNew(), FreeDiskObject()
 #include <proto/wb.h>                 // AddAppIconA(), RemoveAppIcon()
+#include <proto/timer.h>              // ReadEClock()
 #include <proto/keymap.h>             // MapRawKey(), RAWKEY_UP, RAWKEY_DOWN, RAWKEY_F1...
 #include <devices/conunit.h>          // CONU_SNIPMAP, CONU_CHARMAP, CONFLAG_DEFAULT
 #include <libraries/reqtools.h>       // struct rtFileList, RT_FILEREQ, RT_Window
@@ -49,6 +55,27 @@ static char MainWindowTitle[] =
 #include <arpa/telnet.h>
 #include "petscii_dispatch.h"
 #include "petscii_keymap.h"
+#include "site_prefs.h"
+#include "screenfont.h"
+#include "progdir.h"
+#include "dsr.h"
+#include "keys.h"
+#include "clip.h"
+#include "ansiscan.h"
+#include "ticks.h"
+#include "waitfor.h"
+#include "rexxcmd.h"
+#include "rlogin.h"
+#include "sshconn.h"
+#include "charset.h"
+#include "ansimusic.h"
+#include "sound.h"
+#include <rexx/storage.h>
+#include <rexx/rxslib.h>
+#include <proto/rexxsyslib.h>
+#include <devices/timer.h>
+#include <devices/clipboard.h>
+#include "shipped.h"
 #ifdef __VBCC__
     #pragma popwarn
 #endif
@@ -60,6 +87,8 @@ static char MainWindowTitle[] =
 #include "requesters.h"
 #include "utils.h"
 #include "prefs.h"
+#include "prefs_file.h"
+#include "palette.h"
 
 #define ESC_CHAR '\x1B'  // ASCII Escape character (decimal 27, octal 033)
 #define ESC_STR  "\x1B"  // ASCII Escape character (decimal 27, octal 033) as a C string
@@ -88,12 +117,19 @@ static struct NewMenu mainMenuDesc[] =
     {    NM_ITEM, "About",                          "A",             0,               0, (APTR)MENU_ABOUT},
     {    NM_ITEM, NM_BARLABEL,                       0 ,             0,               0, (APTR)MENU_BAR},
     {    NM_ITEM, "Scrollback window",              "X",             0,               0, (APTR)MENU_SCROLLBACK_WIN},
+    {    NM_ITEM, "Capture to File...",              0 ,     CHECKIT|MENUTOGGLE,     0, (APTR)MENU_CAPTURE},
+    {    NM_ITEM, "Save Screen...",                  0 ,             0,               0, (APTR)MENU_SAVE_SCREEN},
     {    NM_ITEM, "Iconify",                        "&",             0,               0, (APTR)MENU_ICONIFY},
     {    NM_ITEM, "Display Speed Test",             "Y",             0,               0, (APTR)MENU_DISPLAY_SPEED_TEST},
     {    NM_ITEM, "Finger",                         "@",             0,               0, (APTR)MENU_FINGER},
     {    NM_ITEM, NM_BARLABEL,                       0 ,             0,               0, (APTR)MENU_BAR},
-    {    NM_ITEM, "Reset Screen",                   "C",             0,               0, (APTR)MENU_RESET_SCREEN},
+    {    NM_ITEM, "Reset Screen",                   "Z",             0,               0, (APTR)MENU_RESET_SCREEN},
     {    NM_ITEM, "Quit",                           "Q",             0,               0, (APTR)MENU_QUIT},
+
+    { NM_TITLE, "Edit",  0 , 0, 0, (APTR)MENU_EDIT},
+    {    NM_ITEM, "Copy",                           "C",             0,               0, (APTR)MENU_COPY},
+    {    NM_ITEM, "Paste",                          "V",             0,               0, (APTR)MENU_PASTE},
+    {    NM_ITEM, "Copy Screen",                     0 ,             0,               0, (APTR)MENU_COPY_SCREEN},
 
     { NM_TITLE, "Transfer",  0 , 0, 0, (APTR)MENU_TRANSFER},
     {    NM_ITEM, "Upload",                         "U",             0,               0, (APTR)MENU_UPLOAD},
@@ -112,18 +148,33 @@ static struct NewMenu mainMenuDesc[] =
     {    NM_ITEM, "Disconnect",                     "H",             0,               0, (APTR)MENU_DISCONNECT},
     {    NM_ITEM, NM_BARLABEL,                       0 ,             0,               0, (APTR)MENU_BAR},
     {    NM_ITEM, "Address Book",                   "B",             0,               0, (APTR)MENU_ADDRESS_BOOK},
+    {    NM_ITEM, "Import Address Book...",          0 ,             0,               0, (APTR)MENU_IMPORT_BOOK},
+    {    NM_ITEM, "Save Settings to Address Book Entry", 0,          0,               0, (APTR)MENU_SAVE_ENTRY_SETTINGS},
+    {    NM_ITEM, "Connection Options..",            0 ,             0,               0, (APTR)MENU_CONNECTION_OPTIONS},
     {    NM_ITEM, NM_BARLABEL,                       0 ,             0,               0, (APTR)MENU_BAR},
     {    NM_ITEM, "Information",                    "^",             0,               0, (APTR)MENU_INFORMATION},
 
     { NM_TITLE, "Terminal",  0, 0, 0, (APTR)MENU_TERMINAL},
     {    NM_ITEM, "Telnet terminal type..",         "9",             0,               0, (APTR)MENU_TELNET_TERM_TYPE},
     {    NM_ITEM, "Raw Connection",                 "7", HIGHCOMP|CHECKIT|MENUTOGGLE, 0, (APTR)MENU_RAW_CONNECTION},
+    {    NM_ITEM, "Rlogin",                          0 , HIGHCOMP|CHECKIT|MENUTOGGLE, 0, (APTR)MENU_RLOGIN},
+    {    NM_ITEM, "SSH",                             0 , HIGHCOMP|CHECKIT|MENUTOGGLE, 0, (APTR)MENU_SSH},
 //  {    NM_ITEM, "Convert incoming LF to CRLF",    "L", HIGHCOMP|CHECKIT|MENUTOGGLE, 0, (APTR)MENU_INCOMING_LF_TO_CRLF},
     {    NM_ITEM, "PETSCII Mode",                    0 , HIGHCOMP|CHECKIT|MENUTOGGLE, 0, (APTR)MENU_PETSCII_MODE},
+    {    NM_ITEM, "Character Set",                   0 ,             0,               0, (APTR)MENU_CHARSET},
+    {       NM_SUB, "IBM PC (CP437)",                0 ,       CHECKIT,       ~1L & 7, (APTR)MENU_CHARSET_CP437},
+    {       NM_SUB, "Amiga (ISO-8859-1)",            0 ,       CHECKIT,       ~2L & 7, (APTR)MENU_CHARSET_LATIN1},
+    {       NM_SUB, "UTF-8",                         0 ,       CHECKIT,       ~4L & 7, (APTR)MENU_CHARSET_UTF8},
+    {    NM_ITEM, "Bell",                            0 ,             0,               0, (APTR)MENU_BELL},
+    {       NM_SUB, "Flash",                         0 ,       CHECKIT,       ~1L & 7, (APTR)MENU_BELL_FLASH},
+    {       NM_SUB, "Sound",                         0 ,       CHECKIT,       ~2L & 7, (APTR)MENU_BELL_SOUND},
+    {       NM_SUB, "Off",                           0 ,       CHECKIT,       ~4L & 7, (APTR)MENU_BELL_OFF},
+    {    NM_ITEM, "ANSI Music",                      0 , HIGHCOMP|CHECKIT|MENUTOGGLE, 0, (APTR)MENU_ANSI_MUSIC},
     {    NM_ITEM, NM_BARLABEL,                       0 ,             0,               0, (APTR)MENU_BAR},
     {    NM_ITEM, "Local Echo",                     "6", HIGHCOMP|CHECKIT|MENUTOGGLE, 0, (APTR)MENU_LOCAL_ECHO},
     {    NM_ITEM, "Swap BackSpace & Del keys",      "/", HIGHCOMP|CHECKIT|MENUTOGGLE, 0, (APTR)MENU_BACKSPACE_DEL_SWAP},
     {    NM_ITEM, "Return key send CR+LF",          "5", HIGHCOMP|CHECKIT|MENUTOGGLE, 0, (APTR)MENU_RETURN_SENDING_CRLF},
+    {    NM_ITEM, "VT Keys",                         0 , HIGHCOMP|CHECKIT|MENUTOGGLE, 0, (APTR)MENU_VT_KEYS},
     {    NM_ITEM, NM_BARLABEL,                       0 ,             0,               0, (APTR)MENU_BAR},
     {    NM_ITEM, "Packet Window",                  "2", HIGHCOMP|CHECKIT|MENUTOGGLE, 0, (APTR)MENU_PACKET_WINDOW},
     {    NM_ITEM, "Scrollback History",              "E", HIGHCOMP|CHECKIT|MENUTOGGLE, 0, (APTR)MENU_SCROLLBACK},
@@ -148,6 +199,7 @@ static struct NewMenu mainMenuDesc[] =
     {    NM_ITEM, "Full-screen",                    "W", HIGHCOMP|CHECKIT|MENUTOGGLE, 0, (APTR)MENU_FULLSCREEN},
     {    NM_ITEM, "Title Bar",                      "R", HIGHCOMP|CHECKIT|MENUTOGGLE, 0, (APTR)MENU_TITLE_BAR},
     {    NM_ITEM, "Tool Bar",                       "4", HIGHCOMP|CHECKIT|MENUTOGGLE, 0, (APTR)MENU_TOOL_BAR},
+    {    NM_ITEM, "132 Columns",                     0 , HIGHCOMP|CHECKIT|MENUTOGGLE, 0, (APTR)MENU_132_COLUMNS},
     {    NM_ITEM, "LEDs",                           "I", HIGHCOMP|CHECKIT|MENUTOGGLE, 0, (APTR)MENU_LEDS},
     {    NM_ITEM, "Snapshot Windows",               "$",             0,               0, (APTR)MENU_SNAPSHOT_WINDOWS},
 
@@ -162,6 +214,26 @@ static struct NewMenu mainMenuDesc[] =
 #endif
 
 static void GetWindowMsg(struct Window *wwin);
+static void RexxOpen(void);
+static void RexxClose(void);
+static ULONG RexxSig(void);
+static void RexxMessages(void);
+static void CancelConnectionJobs(void);
+static UBYTE *DisplayBytes(struct Utf8Decoder *d, UBYTE *data, long *len);
+static UBYTE *SoundFilter(UBYTE *text, long *len);
+static struct AnsiMusic ansiMusic;      // Terminal > ANSI Music: a tune split between reads
+static struct Utf8Decoder utf8In;       // Character Set UTF-8: a character split between reads
+static struct Utf8Decoder utf8Echo;     // the same for the local echo of what is sent
+static BOOL rloginAckPending;         // rlogin: the server's NUL answer is still to come
+static void ScheduleKeepAlive(void);
+static void CaptureWrite(const UBYTE *data, long len);
+static void CaptureStop(void);
+static BOOL SelectionAvailable(void);
+static void SendMisc(char *str, long len);
+static void TerminalSize(UWORD *columns, UWORD *lines);
+static void ReopenTerminal(void);
+static void OpenAnsiFont(void);
+static void RenewWorkbenchPens(void);
 static void ResetTelnetContext(void);
 static void ResetZmodemContext(void);
 static void SetLocalEchoBack(BOOL wantedState);
@@ -176,6 +248,8 @@ struct IntuitionBase *IntuitionBase;
 struct GfxBase *GfxBase;
 struct Library *KeymapBase, *GadToolsBase, *AslBase, *SocketBase;
 struct Library *DiskfontBase, *IconBase, *WorkbenchBase, *UtilityBase;
+struct Library *LayersBase;     // V39, optional: the own screen's black background
+struct Library *CyberGfxBase;   // optional: recolours a true-colour terminal live
 
 struct Window *win, *scrollbackWin, *toolBarWin;
 static struct Window *packetWin;
@@ -188,6 +262,34 @@ static struct TextAttr fontAttr;    // describes the desired font
 struct TextFont *ansiFont;          // actual font loaded via OpenFont(), ready to use
 static struct TextFont *petsciiFont = NULL;      // upper/graphics charset font
 static struct TextFont *petsciiFontLower = NULL; // shifted/lowercase charset font
+// PETSCII only makes sense in a PETSCII BBS session: the C64 fonts and console
+// setup are up only while a connection is being made or live (connectionDisplay)
+// with PETSCII Mode on. Start-up and disconnected text keep the normal font.
+static BOOL connectionDisplay = FALSE;   // a connection is being prepared or is live
+// The Workbench window's place when the display was last closed: a reopen
+// (an entry's settings, a font change) keeps it. The saved place
+// (prefs.win_*) is only what Snapshot Windows stored.
+static struct IBox wbWindowBox;
+static BOOL wbWindowBoxValid = FALSE;
+// The height of the screen title bar's text: the LEDs are drawn inside the
+// bar as the screen made it (BarHeight is its height minus one, text plus
+// two border lines), not from prefs.FontSize, which is only the setting.
+#define BAR_TEXT_HEIGHT (scr->BarHeight - 2)
+
+static const char *consoleFrom = "the system";   // where ibmcon.device came from
+static char fontMissing[48];    // the font setting that could not be opened ("" = none)
+static BOOL displayIsPetscii = FALSE;    // the display was opened for PETSCII
+#define PETSCII_SESSION() (connectionDisplay && STATE_IS(APP_PETSCII_MODE))
+// 32+ colours with ibmcon.device: the 16 ANSI colours get pens of their own
+// (Palette_AnsiPens), handed to ibmcon with IBMCMD_SETPENS; the UI keeps
+// Intuition's pens 0-7. On the Workbench they are 16 shared pens (V39).
+static UBYTE ansiColourPens[16];
+static BOOL  ansiOwnPens = FALSE;
+static BOOL  wbPensObtained = FALSE;    // ansiColourPens came from ObtainBestPen on the Workbench
+static BOOL  wbPenOwned[16];            // this pen was obtained (and is released on close)
+static BYTE  penTableError = 0;         // io_Error of IBMCMD_SETPENS (IOERR_NOCMD: ibmcon < 1.5)
+#define IBMCMD_SETPENS 0x7FE0          // ibmcon.device 1.5
+static const UWORD intuitionPens[] = { 0xFFFF };   // SA_Pens: Intuition's own UI pens
 static BOOL isConDeviceOpened = FALSE;
 static struct IOStdReq *writeConsoleReq = NULL;
 static struct MsgPort  *writeConsoleMP  = NULL;
@@ -207,6 +309,43 @@ enum    {    GAD_SCROLLER,
         GAD_UP,
         GAD_DOWN
     };
+
+// prefs (prefs.c) holds the live settings: what every part of DCTelnet reads.
+// Global settings kept aside while connected to an Address Book entry that has
+// settings of its own (issue #10); only these are ever saved. Valid while
+// sessionSettingsId != 0.
+struct PrefsStruct globalPrefs;
+ULONG sessionSettingsId = 0;      // settings id of the connected entry, 0 = global settings
+// The global function keys, kept aside while an entry's own (Keyboard group) are live.
+static TEXT globalFKeys[F_KEY_COUNT * F_KEY_SIZE];
+static BOOL fKeysFromEntry = FALSE;
+static ULONG sessionGroups = 0;   // SITE_GROUP_* the connected entry overrides
+// The global settings and keys as they were when the current connection was
+// prepared: Save Settings to Address Book Entry moves what changed since into
+// the entry and puts these back.
+static struct PrefsStruct connectBasePrefs;
+static TEXT connectBaseKeys[F_KEY_COUNT * F_KEY_SIZE];
+
+#define XEM_GLOBAL_OPTIONS "PROGDIR:DCTelnet.XEM"
+
+/**
+ * @brief The XEM options file for the current connection: the entry's own
+ *        (PROGDIR:Sites/<id>.xem) when it overrides the Terminal group,
+ *        else the global PROGDIR:DCTelnet.XEM.
+ */
+const char *CurrentXemOptionsPath(void)
+{
+    static char path[40];
+
+    if (sessionSettingsId && (sessionGroups & SITE_GROUP_TERMINAL))
+    {
+        EntryXemOptionsPath(sessionSettingsId, path);
+        return path;
+    }
+    return XEM_GLOBAL_OPTIONS;
+}
+// An entry's settings file stores the function keys with this size.
+typedef char FKeysMatchSiteSettings[SITE_FKEY_BYTES == F_KEY_COUNT * F_KEY_SIZE ? 1 : -1];
 
 static BPTR fileHandle;
 long nScrollbackLines;
@@ -228,6 +367,7 @@ BOOL shouldQuitApp;    // program finished
 static BOOL isConnected;    // tcp connected
 static BOOL shouldRestart;    // prefs changed, restart
 static BOOL shouldReopenScreen;    // flag
+static BOOL shouldReopenConsole;   // only the C64 display changes: reopen the console in place
 static BOOL shouldIconify;        // must iconify
 BOOL shouldUniconify;        // must uniconify
 struct PetsciiDispatchState g_petsciiState;
@@ -242,18 +382,75 @@ BYTE dontUseSig31 = -1; // don't use it, ibmcon.device will destroy it.
 #define send_data(data, len) TCPSend((data), (len))
 #include "term-engine.c"
 
+static void ObtainWorkbenchPens(void);
+
+/**
+ * @brief The built-in renderer's terminal: the text area of the terminal window.
+ *        Below the screen's title bar, so the rows match what the BBS is told.
+ */
+static int BuiltinInit(void)
+{
+    WORD x0 = win->LeftEdge + win->BorderLeft, y0 = win->TopEdge + win->BorderTop;
+    BOOL gzz = (win->Flags & WFLG_GIMMEZEROZERO) != 0;
+    int res;
+
+    // On the Workbench the ANSI colours are on 16 shared pens (the
+    // RastPort path draws with them); on the own screen on pens 0-15.
+    ObtainWorkbenchPens();
+    // A PETSCII session: the C64 font's 16x8 cells, 40 columns (OpenPetsciiFonts).
+    res = term_init_area(scr, win->RPort, gzz ? x0 : win->LeftEdge, gzz ? y0 : win->TopEdge,
+                         x0, y0, win->Width - win->BorderLeft - win->BorderRight,
+                         win->Height - win->BorderTop - win->BorderBottom,
+                         petsciiFont ? petsciiFont : ansiFont);
+    term_set_pens(ansiOwnPens ? ansiColourPens : NULL);
+    return res;
+}
+
+/**
+ * @brief Tell retro32-term whether anything lies over the terminal: a layer in
+ *        front of the terminal window that overlaps it (a requester, another
+ *        DCTelnet window, an open menu). It draws straight into the screen
+ *        bitmap only while nothing does; otherwise through the window's
+ *        RastPort, whose layer keeps what is covered. Before it did, it drew
+ *        over such windows, scrolled them along, and left them behind.
+ */
+static void BuiltinCovered(void)
+{
+    struct Layer *l;
+    WORD x0, y0, x1, y1;
+    BOOL covered = FALSE;
+
+    if (!scr || !win)
+        return;
+    x0 = win->LeftEdge + win->BorderLeft;
+    y0 = win->TopEdge + win->BorderTop;
+    x1 = win->LeftEdge + win->Width - win->BorderRight - 1;
+    y1 = win->TopEdge + win->Height - win->BorderBottom - 1;
+    if (LayersBase) LockLayerInfo(&scr->LayerInfo); else Forbid();
+    for (l = scr->LayerInfo.top_layer; l && l != win->WLayer && !covered; l = l->back)
+        covered = l->bounds.MinX <= x1 && l->bounds.MaxX >= x0
+               && l->bounds.MinY <= y1 && l->bounds.MaxY >= y0;
+    if (LayersBase) UnlockLayerInfo(&scr->LayerInfo); else Permit();
+    term_covered(covered);
+}
+
+
+static void SelectionHide(void);
 
 static void ConWrite(char *data, long len)
 {
+    SelectionHide();                // the text may land on it
     if(STATE_IS_NOT(APP_ICONIFIED))
     {
         if (STATE_IS(APP_RENDERER_BUILTIN))
         {
             // With retro32-term, drawing only ever happens with the cursor hidden, so glyphs never
             // land on an inverted cell.
+            BuiltinCovered();
             cursor_hide();
             while (len-- > 0)
                 term_feed((UBYTE)*data++);
+            term_flush();
             cursor_show();
             return; // direct return because maximal optimization is needed for this frequently called function
         }
@@ -283,9 +480,36 @@ static void ConWrite(char *data, long len)
     }
 }
 
+/*
+ * DCTelnet's own messages. While the C64 display is up they are rewritten so
+ * the letters read as intended in the active C64 charset (petscii_local_text).
+ */
+static void LocalWrite(char *data, long len)
+{
+    static struct PetsciiLocalText lt;
+    static char chunk[256];
+
+    if (!displayIsPetscii || !petsciiFont)
+    {
+        ConWrite(data, len);
+        return;
+    }
+    petscii_local_text_init(&lt, win && win->RPort->Font == petsciiFontLower);
+    while (len > 0)
+    {
+        long n = len < (long)sizeof(chunk) ? len : (long)sizeof(chunk);
+
+        memcpy(chunk, data, n);
+        petscii_local_text(&lt, chunk, (size_t)n);
+        ConWrite(chunk, n);
+        data += n;
+        len -= n;
+    }
+}
+
 void LocalPrint(char *data)
 {
-    ConWrite(data, strlen(data));
+    LocalWrite(data, strlen(data));
 }
 
 // WARNING: This function uses the same global buffer "buf" that is also used by recv() to receive
@@ -299,7 +523,7 @@ void LocalFmt(char *ctl, ...)
     #ifdef __VBCC__
     #pragma popwarn
     #endif
-    ConWrite(buf, strlen(buf));
+    LocalWrite(buf, strlen(buf));
 }
 
 // WARNING: This function uses the same global buffer "buf" that is also used by recv() to receive
@@ -319,6 +543,14 @@ void TextFmt(struct RastPort *rP, char *ctl, ...)
 // Wrapper around send() from bsdsocket.library that maintains the nBytesSent counter.
 long TCPSend(const UBYTE *buf, long len)
 {
+    if (prefs.AntiIdleMinutes)
+        ScheduleKeepAlive();            // idle counts from now (the timer catches up)
+    if (SshConn_Active())               // SSH: encrypted into the session channel
+    {
+        if (SshConn_Write((const UBYTE *)buf, len) < 0) return -1;
+        nBytesSent += len;
+        return len;
+    }
     // Some SDKs declare send() with const buf, others without; this mismatch triggers SAS/C
     // warning 104, temporarily ignored here until properly handled.
     #ifdef __SASC
@@ -330,6 +562,77 @@ long TCPSend(const UBYTE *buf, long len)
     #endif
     nBytesSent += len;
     return len;
+}
+
+#define IBMCMD_GETCURSOR 0x7FE1         // ibmcon.device 1.9: io_Actual = row<<16 | column
+
+// Answer a BBS's Device Status Report request (upstream #11: Absinthe and
+// 20 For Beers stalled waiting for it). CSI 5 n: "OK". CSI 6 n: where the
+// cursor is, asked from ibmcon 1.9; an older ibmcon and console.device
+// cannot tell, and get no answer, as before. The built-in renderer and XEM
+// (xem_swrite, see xpr_swrite) answer both themselves: DCTelnet does not
+// answer twice.
+static void AnswerDsr(int kind)
+{
+    char answer[16];
+    UWORD row = 1, col = 1;
+    size_t n;
+
+    if (STATE_IS(APP_RENDERER_BUILTIN | APP_RENDERER_XEM_LIB))
+        return;
+    if (kind == DSR_POSITION)
+    {
+        if (!STATE_IS(APP_RENDERER_IBMCON_DEVICE) || !isConDeviceOpened || STATE_IS(APP_ICONIFIED))
+            return;
+        writeConsoleReq->io_Command = IBMCMD_GETCURSOR;
+        writeConsoleReq->io_Data    = NULL;
+        writeConsoleReq->io_Length  = 0;
+        DoIO((struct IORequest *)writeConsoleReq);
+        if (writeConsoleReq->io_Error)
+            return;
+        row = (UWORD)(writeConsoleReq->io_Actual >> 16);
+        col = (UWORD)(writeConsoleReq->io_Actual & 0xFFFF);
+    }
+    n = Dsr_Answer(kind, row, col, answer, sizeof(answer));
+    if (n)
+        TCPSend(answer, (long)n);
+}
+
+#define IBMCMD_GETMODES 0x7FE2          // ibmcon.device 1.10: io_Actual = mode word
+#define IBMCMD_READTEXT 0x7FE3          // ibmcon.device 1.11: row io_Offset, 4 bytes a cell
+#define IBMCON_MODE_CURSOR_KEYS 0x08    //   bit 3: cursor key mode (CSI ?1h, DECCKM)
+
+// TRUE when the host asked for cursor key mode (CSI ?1h): the cursor keys
+// then send ESC O A-D. Asked from ibmcon 1.10; any other renderer (the
+// built-in one ignores CSI ?1h), or an older ibmcon, keeps ESC [ A-D.
+static BOOL CursorKeyMode(void)
+{
+    if (!STATE_IS(APP_RENDERER_IBMCON_DEVICE) || !isConDeviceOpened || STATE_IS(APP_ICONIFIED))
+        return FALSE;
+    writeConsoleReq->io_Command = IBMCMD_GETMODES;
+    writeConsoleReq->io_Data    = NULL;
+    writeConsoleReq->io_Length  = 0;
+    DoIO((struct IORequest *)writeConsoleReq);
+    return !writeConsoleReq->io_Error && (writeConsoleReq->io_Actual & IBMCON_MODE_CURSOR_KEYS);
+}
+
+// A BBS's text to the console. The text up to a Device Status Report
+// request is drawn first, so the position answered is the one asked about.
+static struct DsrScan bbsDsr;
+
+static void BbsWrite(char *data, long len)
+{
+    while (len > 0)
+    {
+        int kind;
+        size_t n = Dsr_Find(&bbsDsr, (const UBYTE *)data, (size_t)len, &kind);
+
+        ConWrite(data, (long)n);
+        if (kind != DSR_NONE && isConnected)
+            AnswerDsr(kind);
+        data += n;
+        len  -= (long)n;
+    }
 }
 
 
@@ -448,7 +751,7 @@ struct NewMenu *GetNewMenuItemFromID(enum MenuItemID id)
 {
     int i;
 
-    for (i = 0; i < sizeof(mainMenuDesc); i++)
+    for (i = 0; i < sizeof(mainMenuDesc) / sizeof(mainMenuDesc[0]); i++)   // entries, not bytes
     {
         if ((enum MenuItemID) mainMenuDesc[i].nm_UserData == id)
             return &mainMenuDesc[i];
@@ -489,20 +792,28 @@ WORD GetMenuNumberFromID(enum MenuItemID id)
 }
 
 
+// The disconnect notice, kept when ending the connection reopens the display
+// (the C64 display goes, or an entry's settings end): printed again once the
+// display is back, which clears the console. Empty = nothing to reprint.
+static char disconnectNote[96];
+
 static void DisConnect(char remote, char quiet)
 {
+    CancelConnectionJobs();
     if(isConnected)
     {
+        disconnectNote[0] = 0;
         if(!quiet && STATE_IS_NOT(APP_ICONIFIED))
         {
             register ULONG spent;
-            if(remote)
-                LocalPrint("›m\r\nConnection closed by foreign host");
-            else
-                LocalPrint("›m\r\nConnection closed");
+
             spent = mytime() - conectionTime;
-            LocalFmt(". %02ld:%02ld:%02ld spent online.\r\n", spent/3600, (spent/60)%60, spent%60);
+            mysprintf(disconnectNote, "›m\r\n%s. %02ld:%02ld:%02ld spent online.\r\n",
+                      remote ? "Connection closed by foreign host" : "Connection closed",
+                      spent/3600, (spent/60)%60, spent%60);
+            LocalPrint(disconnectNote);
         }
+        SshConn_End(remote);            // (a closed socket gets no goodbye)
         shutdown(tcpSocket, 2);
         CloseSocket(tcpSocket);
 
@@ -516,6 +827,8 @@ static void DisConnect(char remote, char quiet)
         {
             WORD optionsMenuNumber = GetMenuNumberFromID(MENU_TERMINAL);
 
+            ConWrite("\x1b[20l", 5);          // newline mode off: BBSes send CR LF
+
             if (optionsMenuNumber >= 0)
                 OnMenu(win, FULLMENUNUM(optionsMenuNumber, NOITEM, NOSUB));
 
@@ -523,7 +836,553 @@ static void DisConnect(char remote, char quiet)
         }
 
         LEDs();
+
+        // The connection ends, and with it any Address Book entry's settings.
+        ForgetConnectedEntry();
+        EndEntrySession();
+        if (!shouldRestart && !shouldReopenConsole)
+            disconnectNote[0] = 0;      // the display stays: the notice is still there
     }
+}
+
+// Settings changed by hand while connected: kept for the run, never saved
+// (SavePrefs in prefs.c takes them back).
+struct SiteHandChanges handChanges;
+
+// The settings a menu pick started from: what the pick changed by hand is the
+// difference (IDCMP_MENUPICK). An entry session beginning or ending inside
+// the pick (an Address Book connect, Disconnect) moves it, so the entry's
+// settings coming or going are never taken for a change made by hand.
+static struct PrefsStruct handBaseline;
+
+// Address Book connect that waits for the display to be reopened with the
+// entry's settings (see BeginEntrySession); run by the main loop.
+struct PendingConnect
+{
+    BOOL  active;
+    char  name[32];
+    char  host[52];
+    UWORD port;
+    ULONG settingsId;
+    char  username[42], password[42];
+    char  loginMacro[SITE_LOGIN_MACRO_SIZE];
+    char  finger[64];       // a Finger query ("user@host") instead of a connect
+};
+static struct PendingConnect pendingConnect;
+
+// ---- Timed jobs (ticks.h): the login macro's \d waits, redial, anti-idle -----
+// One timer.device request, sent for exactly the time to the earliest job;
+// its signal is in the main loop's waits. Time is DOS ticks since start, on
+// the E-clock (monotonic: setting the clock does not move the jobs).
+struct Device *TimerBase;               // ReadEClock()
+static struct Ticks ticks;
+static struct MsgPort *tickPort;
+static struct timerequest *tickReq;
+static BOOL tickOpen, tickSent;
+static ULONG tickStart;
+static struct PendingConnect redialConnect;     // the connect a redial repeats
+static UBYTE redialLeft;
+static LONG lastConnectErrno;
+
+static ULONG EClockTicks(void)
+{
+    struct EClockVal ev;
+    ULONG perSecond = ReadEClock(&ev);
+
+    return Ticks_FromEClock(ev.ev_hi, ev.ev_lo, perSecond / TICKS_PER_SECOND);
+}
+
+static ULONG NowTicks(void)
+{
+    return tickOpen ? EClockTicks() - tickStart : 0;
+}
+
+static void TimerOpen(void)
+{
+    Ticks_Init(&ticks);
+    if ((tickPort = CreateMsgPort())
+        && (tickReq = (struct timerequest *)CreateIORequest(tickPort, sizeof(struct timerequest))))
+        tickOpen = !OpenDevice(TIMERNAME, UNIT_VBLANK, (struct IORequest *)tickReq, 0);
+    if (tickOpen)
+    {
+        TimerBase = tickReq->tr_node.io_Device;
+        tickStart = EClockTicks();
+    }
+}
+
+static void TimerClose(void)
+{
+    if (tickOpen)
+    {
+        if (tickSent)
+        {
+            AbortIO((struct IORequest *)tickReq);
+            WaitIO((struct IORequest *)tickReq);
+        }
+        CloseDevice((struct IORequest *)tickReq);
+    }
+    if (tickReq) DeleteIORequest((struct IORequest *)tickReq);
+    if (tickPort) DeleteMsgPort(tickPort);
+    tickReq = NULL; tickPort = NULL; tickOpen = tickSent = FALSE;
+    TimerBase = NULL;
+}
+
+static ULONG TimerSig(void)
+{
+    return tickOpen ? 1UL << tickPort->mp_SigBit : 0;
+}
+
+// The request again, for the time to the earliest job (none: no request).
+static void TimerArm(void)
+{
+    ULONG wait;
+
+    if (!tickOpen)
+        return;
+    if (tickSent)
+    {
+        AbortIO((struct IORequest *)tickReq);
+        WaitIO((struct IORequest *)tickReq);
+        tickSent = FALSE;
+    }
+    SetSignal(0L, TimerSig());
+    if ((wait = Ticks_Wait(&ticks, NowTicks())) == 0)
+        return;
+    tickReq->tr_node.io_Command = TR_ADDREQUEST;
+    tickReq->tr_time.tv_secs    = wait / TICKS_PER_SECOND;
+    tickReq->tr_time.tv_micro   = (wait % TICKS_PER_SECOND) * (1000000 / TICKS_PER_SECOND);
+    SendIO((struct IORequest *)tickReq);
+    tickSent = TRUE;
+}
+
+// The anti-idle NOP: Settings > Connection Options minutes after the last
+// byte sent (TCPSend), while connected.
+static void ScheduleKeepAlive(void)
+{
+    Ticks_Set(&ticks, TICK_NOP, (isConnected && prefs.AntiIdleMinutes)
+              ? NowTicks() + (ULONG)prefs.AntiIdleMinutes * 60 * TICKS_PER_SECOND : 0);
+}
+
+// Reopen the display when the C64 display it shows no longer matches what
+// the connection state and PETSCII Mode want.
+static void SyncPetsciiDisplay(void)
+{
+    if ((PETSCII_SESSION() != 0) != displayIsPetscii)
+        shouldReopenConsole = TRUE;     // ReopenTerminal() in the main loop
+}
+
+// The screen mode's pixel shape (DisplayInfo.Resolution), from OpenAppScreen:
+// which of topaz and Topaz Pro a font setting opens as (ScreenFont_ForMode).
+UWORD modeResX, modeResY;      // the display mode's resolution ticks (0: unknown)
+
+// The font a setting actually opens on the current mode.
+static void EffectiveFont(struct PrefsStruct *p)
+{
+    struct ScreenFontChoice pick;
+
+    // (The built-in renderer keeps its 8x8 font: OpenAnsiFont.)
+    if (p->State & APP_RENDERER_BUILTIN)
+        return;
+    ScreenFont_ForMode((const char *)p->FontName, p->FontSize, modeResX, modeResY, &pick);
+    if (pick.name != (const char *)p->FontName)
+        strlcpy((char *)p->FontName, pick.name, sizeof(p->FontName));
+    p->FontSize = pick.size;
+}
+
+static void RequestDisplayReopen(const struct PrefsStruct *before)
+{
+    // Compared as they open: topaz and Topaz Pro are one face, so an entry
+    // naming the other one reopens nothing.
+    static struct PrefsStruct was, now;
+    BOOL reopenScreen;
+
+    was = *before;
+    now = prefs;
+    EffectiveFont(&was);
+    EffectiveFont(&now);
+    if (SitePrefs_DisplayDiffers(&was, &now, &reopenScreen))
+    {
+        // A new font or palette needs only the console reopened
+        // (ReopenTerminal): the window, and DCTelnet's own screen, stay. On
+        // the own screen the title bar and menus keep the screen's font
+        // until the screen is next opened.
+        if (SitePrefs_OnlyLookDiffers(&was, &now))
+        {
+            shouldReopenConsole = TRUE;
+            return;
+        }
+        shouldRestart = TRUE;
+        if (reopenScreen) shouldReopenScreen = TRUE;
+    }
+}
+
+/**
+ * @brief Prepare the settings for the next connect; call before every
+ *        user-initiated connect.
+ *
+ * Ends any current connection (and with it any previous entry session). With
+ * an entry (settingsId != 0), keeps the global settings aside in globalPrefs
+ * and applies the entry's (window geometry stays global); menu changes from
+ * now on are session-only and only globalPrefs is saved. With entry == NULL
+ * the connect uses the global settings.
+ *
+ * @return TRUE when the display must be reopened before connecting: the
+ *         caller queues the connect with DeferConnect().
+ */
+BOOL BeginEntrySession(ULONG settingsId, const struct SiteSettings *entry)
+{
+    static struct PrefsStruct before;
+
+    if (isConnected) DisConnect(FALSE, FALSE);
+    EndEntrySession();
+
+    connectBasePrefs = prefs;
+    memcpy(connectBaseKeys, fKeys, sizeof(connectBaseKeys));
+
+    connectionDisplay = TRUE;
+    if (entry)
+    {
+        before = prefs;
+        globalPrefs = prefs;
+        SitePrefs_ApplyEntry(&prefs, &globalPrefs, entry);
+        fKeysFromEntry = SitePrefs_SwapInKeys(fKeys, globalFKeys, entry);
+        sessionSettingsId = settingsId;
+        sessionGroups = entry->groups;
+        ReloadXemOptions();
+        RequestDisplayReopen(&before);
+    }
+    SyncPetsciiDisplay();
+    handBaseline = prefs;
+    return shouldRestart || shouldReopenConsole;
+}
+
+/**
+ * @brief The live settings were just saved as an entry's own (Settings > Save
+ *        Settings to Address Book Entry): treat the rest of this connection as
+ *        that entry's session. A session already running for it only takes
+ *        the new group set.
+ */
+void AdoptEntrySession(ULONG settingsId, ULONG groups)
+{
+    if (!sessionSettingsId)
+    {
+        // What was changed since connecting now belongs to the entry: the
+        // global settings go back to how they were then.
+        globalPrefs = connectBasePrefs;
+    }
+    sessionSettingsId = settingsId;
+    sessionGroups = groups;
+    if ((groups & SITE_GROUP_KEYBOARD) && !fKeysFromEntry)
+    {
+        memcpy(globalFKeys, connectBaseKeys, sizeof(globalFKeys));
+        fKeysFromEntry = TRUE;
+    }
+}
+
+// The settings and keys the current connection started from (see AdoptEntrySession).
+const struct PrefsStruct *ConnectBaseSettings(void)
+{
+    return &connectBasePrefs;
+}
+
+const TEXT *ConnectBaseFKeys(void)
+{
+    return connectBaseKeys;
+}
+
+// The global settings and function keys, also while an entry's are live.
+const struct PrefsStruct *GlobalSettings(void)
+{
+    return sessionSettingsId ? &globalPrefs : &prefs;
+}
+
+const TEXT *GlobalFKeys(void)
+{
+    return fKeysFromEntry ? globalFKeys : fKeys;
+}
+
+BOOL SessionOverridesKeyboard(void)
+{
+    return fKeysFromEntry;
+}
+
+/**
+ * @brief End a connection's settings (disconnect or a failed connect): the
+ *        global settings come back after an entry session, and the C64
+ *        display goes. Requests a display reopen when anything visible changes.
+ */
+void EndEntrySession(void)
+{
+    static struct PrefsStruct before;
+
+    if (fKeysFromEntry)
+    {
+        SitePrefs_SwapOutKeys(fKeys, globalFKeys);
+        fKeysFromEntry = FALSE;
+    }
+
+    connectionDisplay = FALSE;
+    if (sessionSettingsId)
+    {
+        ULONG endedGroups = sessionGroups;
+
+        before = prefs;
+        SitePrefs_Restore(&prefs, &globalPrefs);
+        sessionSettingsId = 0;
+        sessionGroups = 0;
+        if (endedGroups & SITE_GROUP_TERMINAL)
+            ReloadXemOptions();
+        RequestDisplayReopen(&before);
+    }
+    SyncPetsciiDisplay();
+    handBaseline = prefs;
+}
+
+void DeferConnect(const char *name, const char *host, UWORD port, ULONG settingsId,
+                  const char *user, const char *pass, const char *loginMacro)
+{
+    strlcpy(pendingConnect.loginMacro, loginMacro, sizeof(pendingConnect.loginMacro));
+    strlcpy(pendingConnect.name, name, sizeof(pendingConnect.name));
+    strlcpy(pendingConnect.host, host, sizeof(pendingConnect.host));
+    pendingConnect.port = port;
+    pendingConnect.settingsId = settingsId;
+    strlcpy(pendingConnect.username, user, sizeof(pendingConnect.username));
+    strlcpy(pendingConnect.password, pass, sizeof(pendingConnect.password));
+    pendingConnect.active = TRUE;
+    redialLeft = prefs.RedialTries;             // a new connect: all the tries
+    Ticks_Set(&ticks, TICK_REDIAL, 0);          //   (and none left pending)
+}
+
+/**
+ * @brief Send an Address Book entry's login macro after connecting: \u, \p
+ *        are the entry's username and password, \r Return, \d a one-second
+ *        wait (SitePrefs_NextMacroSegment).
+ */
+static char macroText[SITE_LOGIN_MACRO_SIZE];
+static const char *macroCursor;
+
+// Waiting for a text from the BBS (waitfor.h): the login macro's \w"text"
+// or ARexx WAITFOR. Fed the BBS's bytes in Receive().
+enum { WAIT_NONE, WAIT_MACRO, WAIT_REXX };
+static struct WaitFor waitFor;
+static int waitOwner = WAIT_NONE;
+static struct RexxMsg *waitRexxMsg;         // replied when the text comes
+#define MACRO_WAIT_SECONDS 30
+
+static void RexxReply(struct RexxMsg *msg, LONG rc, const char *result);
+static void SendLoginMacroStep(void);
+
+// The wait ended: the text came, it timed out, or the connection went (or
+// the ARexx port closed).
+#define WAIT_FOUND      0
+#define WAIT_TIMED_OUT  1
+#define WAIT_CANCELLED  2
+static void WaitForDone(int how)
+{
+    BOOL found = how == WAIT_FOUND;
+    int owner = waitOwner;
+
+    WaitFor_Stop(&waitFor);
+    waitOwner = WAIT_NONE;
+    Ticks_Set(&ticks, TICK_WAITFOR, 0);
+    if (owner == WAIT_REXX && waitRexxMsg)
+    {
+        struct RexxMsg *msg = waitRexxMsg;
+
+        waitRexxMsg = NULL;
+        RexxReply(msg, found ? 0 : 5, NULL);    // RC 5: the text did not come
+    }
+    else if (owner == WAIT_MACRO)
+    {
+        if (found)
+            SendLoginMacroStep();
+        else
+        {
+            macroCursor = NULL;
+            if (how == WAIT_TIMED_OUT)
+                LocalPrint("Login macro stopped: the text it waited for did not come.\r\n");
+        }
+    }
+}
+
+// The BBS's bytes, for a wait (Receive()).
+static void WaitForFeed(const UBYTE *data, long len)
+{
+    if (WaitFor_Active(&waitFor) && WaitFor_Feed(&waitFor, data, (size_t)len))
+        WaitForDone(WAIT_FOUND);
+}
+
+static void WaitForStart(int owner, const char *text, ULONG seconds)
+{
+    WaitFor_Start(&waitFor, text, strlen(text));
+    waitOwner = owner;
+    Ticks_Set(&ticks, TICK_WAITFOR, NowTicks() + seconds * TICKS_PER_SECOND);
+    TimerArm();
+}
+
+// Sends the macro up to its next \d; the timer continues it a second later,
+// so the window stays live meanwhile (it waited with Delay()).
+static void SendLoginMacroStep(void)
+{
+    static char segment[256], waitText[WAITFOR_MAX];
+    BOOL wait;
+    size_t n;
+
+    while (macroCursor && *macroCursor && isConnected)
+    {
+        n = SitePrefs_NextMacroSegment(&macroCursor, username, password, segment, sizeof(segment), &wait,
+                                       waitText, sizeof(waitText));
+        if (n) SendMisc(segment, (long)n);
+        if (waitText[0])
+        {
+            WaitForStart(WAIT_MACRO, waitText, MACRO_WAIT_SECONDS);
+            return;
+        }
+        if (wait)
+        {
+            Ticks_Set(&ticks, TICK_MACRO, NowTicks() + TICKS_PER_SECOND);
+            TimerArm();
+            return;
+        }
+    }
+    macroCursor = NULL;
+}
+
+void SendLoginMacro(const char *macro)
+{
+    strlcpy(macroText, macro, sizeof(macroText));
+    macroCursor = macroText;
+    SendLoginMacroStep();
+}
+
+static void StartFinger(char *query);
+
+static void RunPendingConnect(void)
+{
+    pendingConnect.active = FALSE;
+    if (pendingConnect.finger[0])       // queued behind the display reopen
+    {
+        static char query[64];
+
+        strlcpy(query, pendingConnect.finger, sizeof(query));
+        pendingConnect.finger[0] = 0;
+        StartFinger(query);
+        return;
+    }
+    tcpPort = pendingConnect.port;
+    redialConnect = pendingConnect;
+    lastConnectErrno = 0;               // a failed lookup sets none: no redial on an old one
+    if (BeginServerConnection(pendingConnect.host, pendingConnect.port) == RETURN_OK)
+    {
+        Charset_Utf8Init(&utf8In);
+        Charset_Utf8Init(&utf8Echo);
+        AnsiMusic_Init(&ansiMusic);
+        if (STATE_IS(APP_SSH))                  // SSH: the encrypted login first
+        {
+            UWORD cols, rows;
+
+            TerminalSize(&cols, &rows);
+            if (!SshConn_Start(pendingConnect.host, pendingConnect.port,
+                               pendingConnect.username, pendingConnect.password,
+                               PETSCII_SESSION() ? "PETSCII" : (const char *)prefs.TelnetTermType,
+                               cols, rows))
+            {
+                DisConnect(FALSE, TRUE);
+                return;
+            }
+        }
+        else if (STATE_IS(APP_RLOGIN))          // rlogin: the login message first
+        {
+            char hello[160];
+            size_t n = Rlogin_Handshake(pendingConnect.username, pendingConnect.password,
+                                        PETSCII_SESSION() ? "PETSCII" : (const char *)prefs.TelnetTermType,
+                                        "38400", hello, sizeof(hello));
+            if (n) TCPSend(hello, (long)n);
+            rloginAckPending = TRUE;
+        }
+        ScheduleKeepAlive();
+        TimerArm();
+        if (pendingConnect.name[0])     // "" = Connection > Connect, not an entry
+        {
+            RememberConnectedEntry(pendingConnect.name, pendingConnect.host, pendingConnect.port);
+            StampConnectedEntry();
+            strlcpy(username, pendingConnect.username, sizeof(username));
+            strlcpy(password, pendingConnect.password, sizeof(password));
+            SendLoginMacro(pendingConnect.loginMacro);
+        }
+    }
+    else if (Ticks_ShouldRedial(lastConnectErrno, isConnectionAborted == CONNECT_TIMED_OUT, redialLeft))
+    {
+        // The entry's session stays: the redial connects with its settings.
+        ULONG delay = prefs.RedialDelay ? prefs.RedialDelay : 10;
+
+        redialLeft--;
+        LocalFmt("Trying again in %ld seconds (%ld more after that). Disconnect stops it.\r\n",
+                 delay, (LONG)redialLeft);
+        Ticks_Set(&ticks, TICK_REDIAL, NowTicks() + delay * TICKS_PER_SECOND);
+        TimerArm();
+    }
+    else
+        EndEntrySession();
+}
+
+// A connection's timed jobs end with it: the rest of the login macro, the
+// anti-idle NOP.
+static void CancelConnectionJobs(void)
+{
+    if (waitOwner != WAIT_NONE)
+        WaitForDone(WAIT_CANCELLED);
+    macroCursor = NULL;
+    Ticks_Set(&ticks, TICK_MACRO, 0);
+    Ticks_Set(&ticks, TICK_NOP, 0);
+    TimerArm();
+}
+
+// Stops a redial waiting for its time (Connection > Disconnect).
+static BOOL StopRedial(void)
+{
+    if (!Ticks_IsSet(&ticks, TICK_REDIAL))
+        return FALSE;
+    Ticks_Set(&ticks, TICK_REDIAL, 0);
+    TimerArm();
+    EndEntrySession();
+    LocalPrint("Redial stopped.\r\n");
+    return TRUE;
+}
+
+// The timer's reply: runs what is due and asks for the next.
+static void TimerTick(void)
+{
+    ULONG due;
+
+    if (!tickSent || !CheckIO((struct IORequest *)tickReq))
+        return;
+    WaitIO((struct IORequest *)tickReq);
+    tickSent = FALSE;
+    due = Ticks_Due(&ticks, NowTicks());
+    if (due & TICK_MACRO)
+        SendLoginMacroStep();
+    if (due & TICK_WAITFOR)
+        WaitForDone(WAIT_TIMED_OUT);
+    if ((due & TICK_REDIAL) && !isConnected)
+    {
+        LocalPrint("Redialling...\r\n");
+        pendingConnect = redialConnect;
+        pendingConnect.active = TRUE;           // the main loop connects
+    }
+    if ((due & TICK_NOP) && isConnected)
+    {
+        if (SshConn_Active())
+        {
+            SshConn_KeepAlive();            // SSH_MSG_IGNORE: nothing shows either
+            ScheduleKeepAlive();
+        }
+        else if (TELNET_DATA())
+            TCPSend("\377\361", 2);           // IAC NOP: the BBS shows nothing
+        else
+            ScheduleKeepAlive();
+    }
+    TimerArm();
 }
 
 
@@ -539,7 +1398,7 @@ static BOOL InitializeReqToolsLib(ULONG reqtoolsTags[5])
     }
     else // ReqTools needs to be loaded now.
     {
-        ReqToolsBase = (struct ReqToolsBase *)OpenLibrary (REQTOOLSNAME, 0);
+        ReqToolsBase = (struct ReqToolsBase *)OpenNewestLibrary(REQTOOLSNAME, 0);
 
         if (ReqToolsBase)
         {
@@ -580,14 +1439,19 @@ static BOOL InitializeReqToolsLib(ULONG reqtoolsTags[5])
     return result;
 }
 
-BOOL ChooseScreen(void)
+/**
+ * @brief Screen mode requester writing into target (the live settings, or an
+ *        Address Book entry's copy). TRUE when the user chose a mode.
+ */
+BOOL ScreenModeInto(struct PrefsStruct *target)
 {
     BOOL result = FALSE;
 
     if (AslBase && AslBase->lib_Version >= 38) // ASL screen mode requester introduced with AmigaOS 2.1
     {
-        result = ScreenModeRequester(win, &prefs.DisplayID,
-                                    &prefs.DisplayWidth, &prefs.DisplayHeight, &prefs.DisplayDepth);
+        result = ScreenModeRequester(win, &target->DisplayID,
+                                    &target->DisplayWidth, &target->DisplayHeight, &target->DisplayDepth,
+                                    32);
     }
     else    // fallback to legacy ReqTools library
     {
@@ -598,56 +1462,532 @@ BOOL ChooseScreen(void)
 
         if(scrmodereq = rtAllocRequestA (RT_SCREENMODEREQ, NULL))
         {
-            scrmodereq->DisplayID     = prefs.DisplayID;
-            scrmodereq->DisplayWidth  = prefs.DisplayWidth;
-            scrmodereq->DisplayHeight = prefs.DisplayHeight;
-            scrmodereq->DisplayDepth  = prefs.DisplayDepth;
+            scrmodereq->DisplayID     = target->DisplayID;
+            scrmodereq->DisplayWidth  = target->DisplayWidth;
+            scrmodereq->DisplayHeight = target->DisplayHeight;
+            scrmodereq->DisplayDepth  = target->DisplayDepth;
 
             if (rtScreenModeRequest (scrmodereq, "Screen Mode..",
                                      RT_Window,    win,
                                      RTSC_Flags,    SCREQF_DEPTHGAD|SCREQF_SIZEGADS|SCREQF_GUIMODES,
-                                     RTSC_MaxDepth,    4,
+                                     RTSC_MaxDepth,    8,
                                      TAG_END))
             {
-                prefs.DisplayID     = scrmodereq->DisplayID;
-                prefs.DisplayWidth  = scrmodereq->DisplayWidth;
-                prefs.DisplayHeight = scrmodereq->DisplayHeight;
-                prefs.DisplayDepth  = scrmodereq->DisplayDepth;
+                target->DisplayID     = scrmodereq->DisplayID;
+                target->DisplayWidth  = scrmodereq->DisplayWidth;
+                target->DisplayHeight = scrmodereq->DisplayHeight;
+                target->DisplayDepth  = scrmodereq->DisplayDepth;
                 result = TRUE;
             }
             rtFreeRequest (scrmodereq);
         }
     }
-
-    // On first time init, returning FALSE prevents the preferences from being written to disk.
     return result;
+}
+
+// The screen mode requester for the live settings (exported: LoadPrefs asks
+// for a mode on first run).
+BOOL ChooseScreen(void)
+{
+    // On first time init, returning FALSE prevents the preferences from being written to disk.
+    return ScreenModeInto(&prefs);
+}
+
+/**
+ * @brief The depth of a screen: GetBitMapAttr() on V39+ (an RTG bitmap's
+ *        struct fields are not to be read), struct BitMap below.
+ */
+UWORD AppScreenDepth(struct Screen *s)
+{
+    if (GfxBase->LibNode.lib_Version >= 39)
+        return (UWORD)GetBitMapAttr(s->RastPort.BitMap, BMA_DEPTH);
+    return s->BitMap.Depth;
+}
+
+/**
+ * @brief The text grid of the terminal window, as ibmcon draws it: the
+ *        window's text area (inside a Workbench window's title bar and
+ *        borders) divided by the font cell.
+ */
+static void TerminalGrid(UWORD *cols, UWORD *rows)
+{
+    struct TextFont *cell = win->RPort->Font;
+
+    // The built-in renderer's grid is the engine's: at most 80 columns
+    // however wide the window (term_init_area).
+    if (STATE_IS(APP_RENDERER_BUILTIN) && term_rows > 0)
+    {
+        *cols = (UWORD)term_cols;
+        *rows = (UWORD)term_rows;
+        return;
+    }
+    ScreenFont_Grid(win->Width, win->Height, win->GZZWidth, win->GZZHeight,
+                    (win->Flags & WFLG_GIMMEZEROZERO) != 0,
+                    cell->tf_XSize, cell->tf_YSize, cols, rows);
+}
+
+// The columns BBS art is drawn for in this font: 40 in the C64 fonts, 132
+// with Display > 132 Columns (ibmcon.device only), else 80.
+static UWORD ArtColumns(struct TextFont *cell)
+{
+    if (cell == petsciiFont || cell == petsciiFontLower)
+        return SCREENFONT_PETSCII_COLUMNS;
+    return STATE_ARE_ALL(APP_132_COLUMNS | APP_RENDERER_IBMCON_DEVICE)
+         ? SCREENFONT_WIDE_COLUMNS : SCREENFONT_ANSI_COLUMNS;
+}
+
+/**
+ * @brief Size the Workbench window to cols x rows characters of its current
+ *        font (the BBS size is 80x25), kept on the screen. Waits for
+ *        Intuition to apply it (at most a second).
+ */
+static void SizeWorkbenchWindow(UWORD cols, UWORD rows)
+{
+    struct TextFont *cell = win->RPort->Font;
+    WORD width  = (WORD)(cols * cell->tf_XSize + win->BorderLeft + win->BorderRight);
+    WORD height = (WORD)(rows * cell->tf_YSize + win->BorderTop + win->BorderBottom);
+    WORD left = win->LeftEdge, top = win->TopEdge;
+    int wait;
+
+    if (width > scr->Width)   width = scr->Width;
+    if (height > scr->Height) height = scr->Height;
+    if (left + width > scr->Width)   left = scr->Width - width;
+    if (top + height > scr->Height)  top = scr->Height - height;
+    // Room to grow: the width up to this one (LimitTerminalWidth sets it again),
+    // the height up to the screen's -- a maximum of this height kept the window
+    // from being made taller by hand afterwards.
+    WindowLimits(win, 0, 0, (UWORD)width, (UWORD)scr->Height);
+    ChangeWindowBox(win, left, top, width, height);
+    for (wait = 0; wait < 50 && (win->Width != width || win->Height != height); wait++)
+        Delay(1);
+}
+
+static void LimitTerminalWidth(void);
+static void TelnetSendWindowSize(void);
+
+// Display > 132 Columns: the Workbench window widens (or narrows) to the
+// width -- at most the screen's -- and the own screen's terminal is centred
+// at it; the BBS is told the grid it got (on the own screen here: no window
+// resize message comes there).
+static void ApplyTerminalWidth(void)
+{
+    UWORD cols, rows;
+
+    if (!win)
+        return;
+    if (STATE_IS_NOT(APP_FULLSCREEN))
+    {
+        TerminalGrid(&cols, &rows);
+        WindowLimits(win, 0, 0, scr->Width, 0);         // the new width may be wider
+        SizeWorkbenchWindow(ArtColumns(win->RPort->Font), rows);
+    }
+    LimitTerminalWidth();
+    if (isConnected && STATE_IS(APP_FULLSCREEN))    // (the Workbench window's resize sends it)
+        TelnetSendWindowSize();
+}
+
+/**
+ * @brief Keep the terminal at most ArtColumns() text columns wide (80, 132
+ *        with Display > 132 Columns, 40 in PETSCII Mode): BBS art is drawn
+ *        for exactly that width and wraps at its edge. A Workbench window
+ *        stops there (WindowLimits); on DCTelnet's own screen the window is
+ *        that wide and centred, the screen's background around it ANSI black
+ *        (see OpenAppWindow). Called once the console's font is final and
+ *        after every Workbench resize.
+ */
+static void LimitTerminalWidth(void)
+{
+    struct TextFont *cell;
+    UWORD columns, maxWidth, width, left;
+    int wait;
+
+    if (!win)
+        return;
+    cell = win->RPort->Font;
+    columns = ArtColumns(cell);
+    maxWidth = ScreenFont_MaxWindowWidth(columns, cell->tf_XSize,
+                                         (UWORD)(win->BorderLeft + win->BorderRight));
+    if (STATE_IS_NOT(APP_FULLSCREEN))
+    {
+        width = win->Width > maxWidth ? maxWidth : win->Width;
+        left  = win->LeftEdge;
+    }
+    else
+    {
+        width = maxWidth > scr->Width ? scr->Width : maxWidth;
+        left  = (UWORD)((scr->Width - width) / 2);
+    }
+    if (win->Width != width || win->LeftEdge != left)
+    {
+        ChangeWindowBox(win, left, win->TopEdge, width, win->Height);
+        // Intuition applies it asynchronously: wait, so the console measures
+        // the new width before the next write (at most a second).
+        for (wait = 0; wait < 50 && (win->Width != width || win->LeftEdge != left); wait++)
+            Delay(1);
+    }
+    // WindowLimits() ignores a maximum below the current width: after the
+    // shrink above (or on the IDCMP_NEWSIZE that follows) it takes.
+    if (STATE_IS_NOT(APP_FULLSCREEN))
+        WindowLimits(win, 0, 0, maxWidth, 0);
+}
+
+/*
+ * Backfill hook of the terminal window (layers.library protocol: A0 hook,
+ * A2 RastPort, A1 message; the NDK's __REG__ macros say it for every
+ * compiler, as Xfer.c's XPR callbacks do). Whatever the window exposes -- a resize on the
+ * Workbench, a depth arrange -- is terminal background: ANSI black on its
+ * own pen, not the Workbench's grey pen 0 (ibmcon clears to ANSI black).
+ */
+struct LayerBackFillMsg
+{
+    struct Layer    *layer;
+    struct Rectangle bounds;
+    LONG             offsetX, offsetY;
+};
+
+static ULONG __SAVE_DS__ __ASM__ TerminalBackFill(__REG__(a0, struct Hook *hook),
+                                                  __REG__(a2, struct RastPort *rp),
+                                                  __REG__(a1, struct LayerBackFillMsg *msg))
+{
+    struct RastPort crp = *rp;
+
+    crp.Layer = NULL;           // straight into the bitmap: layers holds the lock
+    SetDrMd(&crp, JAM2);
+    SetAPen(&crp, ansiOwnPens ? ansiColourPens[0] : 0);
+    RectFill(&crp, msg->bounds.MinX, msg->bounds.MinY, msg->bounds.MaxX, msg->bounds.MaxY);
+    return 0;
+}
+
+static struct Hook terminalBackFill = { { NULL, NULL }, (HOOKFUNC)TerminalBackFill, NULL, NULL };
+
+// A pen DCTelnet draws with itself (LEDs, the Quit item), given as an ANSI
+// colour in ibmcon's order: on 32+ colours it lives on the ANSI pens, with the
+// built-in and XEM renderers pens 0-15 hold the ANSI palette in ANSI order.
+static UWORD LegacyPen(UWORD ibmconIndex)
+{
+    if (ansiOwnPens)
+        return ansiColourPens[Palette_IbmconToAnsi(ibmconIndex)];
+    if (STATE_IS(APP_RENDERER_BUILTIN | APP_RENDERER_XEM_LIB))
+        return (UWORD)Palette_IbmconToAnsi(ibmconIndex);
+    return ibmconIndex;
+}
+
+// Load target's palette onto the screen: the ANSI pens (in ANSI order, 8 bits
+// a gun) on 32+ colours, pens 0-15 otherwise.
+static void LoadAnsiPalette(struct PrefsStruct *target)
+{
+    if (STATE_IS_NOT(APP_FULLSCREEN))
+        return;                 // the Workbench's pens are shared: never recolour them
+    if (ansiOwnPens && GfxBase->LibNode.lib_Version >= 39)
+    {
+        UWORD i;
+
+        for (i = 0; i < 16; i++)
+        {
+            ULONG c = Palette_AnsiColour(target->DeviceColors, i);
+            SetRGB32(&scr->ViewPort, ansiColourPens[i], ((c >> 16) & 0xFF) * 0x01010101UL,
+                     ((c >> 8) & 0xFF) * 0x01010101UL, (c & 0xFF) * 0x01010101UL);
+        }
+    }
+    else
+        LoadRGB4(&scr->ViewPort, Prefs_Palette(target), 16);
+}
+
+/*
+ * The 16 ANSI colours editor: a colour picker holding exactly the 16 ANSI
+ * colours in ANSI order, their name, and Red/Green/Blue sliders (0-15, the
+ * RGB4 the settings keep). It edits the palette target's renderer shows
+ * (Palette_Get/Put: AnsiColors or DeviceColors) of the live settings, or of
+ * an Address Book entry's copy. On DCTelnet's own screen the colours are
+ * shown on the terminal's own pens, so the terminal recolours while the
+ * sliders move; on the Workbench on 16 exclusive pens borrowed for the
+ * preview (the shared pens the terminal uses are never recoloured) and
+ * given back.
+ */
+#define RECTFMT_ARGB 2          // cybergraphics: 4 bytes per pixel, 0xAARRGGBB
+#define RECOLOUR_STRIP 16       // rows read and written at a time
+
+// TRUE when the terminal's pixels hold colours rather than pen numbers (an
+// RTG screen deeper than 8 bits): recolouring a pen then changes nothing
+// already drawn, and RecolourTerminal() rewrites the pixels instead.
+static BOOL TerminalIsTrueColour(void)
+{
+    return CyberGfxBase && win && AppScreenDepth(scr) > 8;
+}
+
+// Every pixel of the terminal in colour from (0x00RRGGBB) becomes to.
+static void RecolourTerminal(ULONG from, ULONG to)
+{
+    BOOL gzz = (win->Flags & WFLG_GIMMEZEROZERO) != 0;
+    UWORD w = gzz ? win->GZZWidth : win->Width;
+    UWORD h = gzz ? win->GZZHeight : win->Height;
+    ULONG *px = AllocVec((ULONG)w * RECOLOUR_STRIP * 4, MEMF_ANY);
+    UWORD y, n;
+    ULONG i;
+
+    if (!px || from == to)
+    {
+        if (px) FreeVec(px);
+        return;
+    }
+    for (y = 0; y < h; y += RECOLOUR_STRIP)
+    {
+        n = (UWORD)(h - y < RECOLOUR_STRIP ? h - y : RECOLOUR_STRIP);
+        ReadPixelArray(px, 0, 0, (UWORD)(w * 4), win->RPort, 0, y, w, n, RECTFMT_ARGB);
+        for (i = 0; i < (ULONG)w * n; i++)
+            if ((px[i] & 0xFFFFFF) == from)
+                px[i] = (px[i] & 0xFF000000) | to;
+        WritePixelArray(px, 0, 0, (UWORD)(w * 4), win->RPort, 0, y, w, n, RECTFMT_ARGB);
+    }
+    FreeVec(px);
+}
+
+enum { PE_PALETTE, PE_NAME, PE_RED, PE_GREEN, PE_BLUE, PE_USE, PE_DEFAULT, PE_CANCEL, PE_COUNT };
+
+static UBYTE editPens[16];          // pen of each ANSI colour in the editor
+static BOOL  editPenOwned[16];      // borrowed for the preview: given back on close
+static BOOL  editLive;              // SetRGB32/SetRGB4 on editPens shows the colour
+
+static void ShowEditedColour(int ansi, UWORD rgb4)
+{
+    if (!editLive)
+        return;
+    SetRGB4(&scr->ViewPort, editPens[ansi], (rgb4 >> 8) & 0xF, (rgb4 >> 4) & 0xF, rgb4 & 0xF);
+}
+
+// The preview swatch right of the colour's name. On a true-colour screen
+// (RTG 15-bit and up) recolouring a pen does not change what is already
+// drawn, so the swatch and the colour picker are drawn again after every
+// change; on 256 colours and fewer they recolour by themselves.
+static struct { WORD x0, y0, x1, y1; } editSwatch;
+
+static void DrawEditPreview(struct Window *w, struct Gadget *picker, int sel)
+{
+    SetAPen(w->RPort, editPens[sel]);
+    SetDrMd(w->RPort, JAM1);
+    RectFill(w->RPort, editSwatch.x0, editSwatch.y0, editSwatch.x1, editSwatch.y1);
+    RefreshGList(picker, w, NULL, 1);
+}
+
+static void ShowSelectedColour(struct Window *w, struct Gadget **gads, const UWORD *pal, int sel)
+{
+    DrawEditPreview(w, gads[PE_PALETTE], sel);
+    GT_SetGadgetAttrs(gads[PE_NAME], w, NULL, GTTX_Text, (ULONG)Palette_Name(sel), TAG_DONE);
+    GT_SetGadgetAttrs(gads[PE_RED],   w, NULL, GTSL_Level, Palette_Channel(pal[sel], 0), TAG_DONE);
+    GT_SetGadgetAttrs(gads[PE_GREEN], w, NULL, GTSL_Level, Palette_Channel(pal[sel], 1), TAG_DONE);
+    GT_SetGadgetAttrs(gads[PE_BLUE],  w, NULL, GTSL_Level, Palette_Channel(pal[sel], 2), TAG_DONE);
+}
+
+BOOL EditPalette(struct PrefsStruct *target)
+{
+    static UWORD pal[16], inUse[16];
+    static const char *labels[PE_COUNT] = { NULL, NULL, "Red", "Green", "Blue", "Use", "Default", "Cancel" };
+    struct Gadget *glist = NULL, *g, *gads[PE_COUNT];
+    struct NewGadget ng;
+    struct Window *pw = NULL;
+    struct TextFont *font = scr->RastPort.Font;
+    WORD fh = font->tf_YSize, cw = font->tf_XSize;
+    WORD x0 = cw, width = 34 * cw, labelW = 7 * cw, levelW = 4 * cw, y;
+    BOOL v39 = GfxBase->LibNode.lib_Version >= 39, done = FALSE, kept = FALSE;
+    BOOL onWorkbench = STATE_IS_NOT(APP_FULLSCREEN);
+    BOOL live = target == &prefs && TerminalIsTrueColour();  // recolour the terminal's pixels
+    BOOL deviceOrder = Prefs_Palette(&prefs) == prefs.DeviceColors;  // pens 0-15 hold ibmcon order
+    BOOL recolour = FALSE;
+    static ULONG shown[16];     // the colours the terminal's pixels have now
+    int sel = 0, i;
+
+    if (!v39 && onWorkbench)
+    {
+        InfoReq(win, "The ANSI colours can be edited on the Workbench from OS 3.0 on.");
+        return FALSE;
+    }
+    Palette_Get(target, pal);
+    Palette_Get(&prefs, inUse);
+    for (i = 0; i < 16; i++)
+        shown[i] = Palette_RGB32(pal[i]);
+
+    // The pens the editor shows the colours on.
+    editLive = TRUE;
+    for (i = 0; i < 16; i++)
+    {
+        editPenOwned[i] = FALSE;
+        if (onWorkbench)
+        {
+            ULONG c = Palette_RGB32(pal[i]);
+            LONG pen = ObtainPen(scr->ViewPort.ColorMap, (ULONG)-1, ((c >> 16) & 0xFF) * 0x01010101UL,
+                                 ((c >> 8) & 0xFF) * 0x01010101UL, (c & 0xFF) * 0x01010101UL,
+                                 PEN_EXCLUSIVE);
+            editPenOwned[i] = pen >= 0;
+            if (pen >= 0) editPens[i] = (UBYTE)pen;
+            else
+            {
+                // No free pen: the nearest colour already there, which cannot
+                // be recoloured and is not ours to give back.
+                editPens[i] = (UBYTE)FindColor(scr->ViewPort.ColorMap,
+                                  ((c >> 16) & 0xFF) * 0x01010101UL, ((c >> 8) & 0xFF) * 0x01010101UL,
+                                  (c & 0xFF) * 0x01010101UL, -1);
+                editLive = FALSE;
+            }
+        }
+        else
+            editPens[i] = ansiOwnPens ? ansiColourPens[i]
+                        : (UBYTE)(deviceOrder ? Palette_IbmconToAnsi(i) : i);
+    }
+    for (i = 0; i < 16; i++)
+        ShowEditedColour(i, pal[i]);
+
+    // The gadgets, laid out in the screen font's cells.
+    y = scr->WBorTop + scr->Font->ta_YSize + 1 + fh / 2;
+    g = CreateContext(&glist);
+    for (i = 0; g && i < PE_COUNT; i++)
+    {
+        memset(&ng, 0, sizeof(ng));
+        ng.ng_TextAttr   = scr->Font;
+        ng.ng_VisualInfo = visualInfos;
+        ng.ng_GadgetID   = i;
+        ng.ng_GadgetText = (UBYTE *)labels[i];
+        switch (i)
+        {
+        case PE_PALETTE:
+            ng.ng_LeftEdge = x0; ng.ng_TopEdge = y; ng.ng_Width = width; ng.ng_Height = 2 * fh + 4;
+            g = v39 ? CreateGadget(PALETTE_KIND, g, &ng, GTPA_ColorTable, (ULONG)editPens,
+                                   GTPA_NumColors, 16, GTPA_Color, editPens[0], TAG_DONE)
+                    : CreateGadget(PALETTE_KIND, g, &ng, GTPA_Depth, 4, GTPA_Color, editPens[0], TAG_DONE);
+            y += 2 * fh + 4 + fh / 2;
+            break;
+        case PE_NAME:
+            ng.ng_LeftEdge = x0; ng.ng_TopEdge = y; ng.ng_Width = width - 9 * cw; ng.ng_Height = fh + 4;
+            editSwatch.x0 = x0 + width - 8 * cw; editSwatch.x1 = x0 + width - 1;
+            editSwatch.y0 = y;                   editSwatch.y1 = y + fh + 3;
+            g = CreateGadget(TEXT_KIND, g, &ng, GTTX_Text, (ULONG)Palette_Name(0), GTTX_Border, TRUE, TAG_DONE);
+            y += fh + 4 + fh / 2;
+            break;
+        case PE_RED: case PE_GREEN: case PE_BLUE:
+            ng.ng_LeftEdge = x0 + labelW; ng.ng_TopEdge = y;
+            ng.ng_Width = width - labelW - levelW; ng.ng_Height = fh + 2;
+            ng.ng_Flags = PLACETEXT_LEFT;
+            g = CreateGadget(SLIDER_KIND, g, &ng, GTSL_Min, 0, GTSL_Max, 15,
+                             GTSL_Level, Palette_Channel(pal[0], i - PE_RED),
+                             GTSL_MaxLevelLen, 2, GTSL_LevelFormat, (ULONG)"%2ld",
+                             GTSL_LevelPlace, PLACETEXT_RIGHT, GA_RelVerify, TRUE,
+                             GA_Immediate, TRUE, TAG_DONE);
+            y += fh + 2 + fh / 2;
+            break;
+        default:        // Use, Default, Cancel in one row
+            ng.ng_Width = (width - 2 * cw) / 3; ng.ng_Height = fh + 6;
+            ng.ng_LeftEdge = x0 + (i - PE_USE) * (ng.ng_Width + cw); ng.ng_TopEdge = y;
+            ng.ng_Flags = PLACETEXT_IN;
+            g = CreateGadget(BUTTON_KIND, g, &ng, TAG_DONE);
+            break;
+        }
+        gads[i] = g;
+    }
+    if (g)
+        pw = OpenWindowTags(NULL, WA_CustomScreen, (ULONG)scr, WA_Gadgets, (ULONG)glist,
+                            WA_Title, (ULONG)"ANSI Colours",
+                            WA_InnerWidth, width + 2 * cw, WA_InnerHeight, y + fh + 6 + fh / 2 - scr->WBorTop - scr->Font->ta_YSize - 1,
+                            WA_Left, (scr->Width - width) / 2, WA_Top, scr->BarHeight + 20,
+                            WA_IDCMP, PALETTEIDCMP | SLIDERIDCMP | BUTTONIDCMP | TEXTIDCMP
+                                      | IDCMP_CLOSEWINDOW | IDCMP_REFRESHWINDOW,
+                            WA_DragBar, TRUE, WA_DepthGadget, TRUE, WA_CloseGadget, TRUE,
+                            WA_Activate, TRUE, WA_RMBTrap, TRUE, WA_AutoAdjust, TRUE, TAG_DONE);
+    if (pw)
+    {
+        GT_RefreshWindow(pw, NULL);
+        DrawEditPreview(pw, gads[PE_PALETTE], sel);
+        while (!done)
+        {
+            struct IntuiMessage *m;
+
+            WaitPort(pw->UserPort);
+            while (!done && (m = GT_GetIMsg(pw->UserPort)))
+            {
+                ULONG class = m->Class;
+                UWORD code = m->Code;
+                struct Gadget *gad = (struct Gadget *)m->IAddress;
+
+                GT_ReplyIMsg(m);
+                if (class == IDCMP_CLOSEWINDOW) done = TRUE;
+                else if (class == IDCMP_REFRESHWINDOW)
+                {
+                    GT_BeginRefresh(pw);
+                    GT_EndRefresh(pw, TRUE);
+                    DrawEditPreview(pw, gads[PE_PALETTE], sel);
+                }
+                else if (class == IDCMP_GADGETUP || class == IDCMP_MOUSEMOVE || class == IDCMP_GADGETDOWN)
+                {
+                    switch (gad->GadgetID)
+                    {
+                    case PE_PALETTE:            // code = the pen clicked
+                        for (i = 0; i < 16; i++)
+                            if (editPens[i] == code) { sel = i; break; }
+                        if (!v39) sel = deviceOrder ? Palette_IbmconToAnsi(code) : code;
+                        ShowSelectedColour(pw, gads, pal, sel);
+                        break;
+                    case PE_RED: case PE_GREEN: case PE_BLUE:
+                        pal[sel] = Palette_WithChannel(pal[sel], gad->GadgetID - PE_RED, (UBYTE)code);
+                        ShowEditedColour(sel, pal[sel]);
+                        DrawEditPreview(pw, gads[PE_PALETTE], sel);
+                        recolour = live;        // once the queued moves are read
+                        break;
+                    case PE_DEFAULT:
+                        Palette_DefaultFor(target, pal);
+                        for (i = 0; i < 16; i++) ShowEditedColour(i, pal[i]);
+                        for (i = 0; live && i < 16; i++)
+                            if (Palette_SafeRecolour(shown, i, Palette_RGB32(pal[i])))
+                            {
+                                RecolourTerminal(shown[i], Palette_RGB32(pal[i]));
+                                shown[i] = Palette_RGB32(pal[i]);
+                            }
+                        ShowSelectedColour(pw, gads, pal, sel);     // redraws the preview
+                        break;
+                    case PE_USE:
+                        Palette_Put(target, pal);
+                        kept = done = TRUE;
+                        break;
+                    case PE_CANCEL:
+                        done = TRUE;
+                        break;
+                    }
+                }
+            }
+            // A drag queues many moves: the pixels follow once they are read.
+            if (recolour && Palette_SafeRecolour(shown, sel, Palette_RGB32(pal[sel])))
+            {
+                RecolourTerminal(shown[sel], Palette_RGB32(pal[sel]));
+                shown[sel] = Palette_RGB32(pal[sel]);
+            }
+            recolour = FALSE;
+        }
+        CloseWindow(pw);
+    }
+    FreeGadgets(glist);
+
+    // Not kept: the terminal's pixels get the colours in use back.
+    for (i = 0; live && !kept && i < 16; i++)
+        if (Palette_SafeRecolour(shown, i, Palette_RGB32(inUse[i])))
+        {
+            RecolourTerminal(shown[i], Palette_RGB32(inUse[i]));
+            shown[i] = Palette_RGB32(inUse[i]);
+        }
+
+    // Back to the live colours: the borrowed pens go back, and on the own
+    // screen the terminal's pens show the settings in use.
+    for (i = 0; i < 16; i++)
+        if (editPenOwned[i])
+            ReleasePen(scr->ViewPort.ColorMap, editPens[i]);
+    if (!onWorkbench)
+        LoadAnsiPalette(&prefs);
+    return kept;
 }
 
 static void ChoosePalette(void)
 {
-    APTR reqinfo;
-    ULONG reqtoolsTags[5];
-
-    InitializeReqToolsLib(reqtoolsTags);
-
-    reqinfo = rtAllocRequestA(RT_REQINFO, NULL);
-    if(reqinfo)
-    {
-        if(rtPaletteRequestA("Screen Palette..", reqinfo, (struct TagItem *)&reqtoolsTags) != -1)
-        {
-            UWORD i = 0;
-            UWORD *colors = STATE_IS(APP_RENDERER_BUILTIN | APP_RENDERER_XEM_LIB) ?
-                            prefs.AnsiColors : prefs.DeviceColors;
-
-            while(i < 16)
-            {
-                colors[i] = GetRGB4(scr->ViewPort.ColorMap, i);
-                i++;
-            }
-        }
-        rtFreeRequest(reqinfo);
-    }
-
+    // On the own screen the terminal already shows the new colours; on the
+    // Workbench the running console takes new shared pens for them (a
+    // reopen would clear it).
+    if (EditPalette(&prefs) && STATE_IS_NOT(APP_FULLSCREEN))
+        RenewWorkbenchPens();
 }
 
 
@@ -737,12 +2077,15 @@ add:
             case CSI_CHAR:   // Amiga console CSI
                 n = 0;
                 i++;
-                while(i < size && str[i]>='0' && str[i]<=';')
                 {
-                    numb[n] = str[i];
-                    i++;
-                    n++;
-                    if(n > 30) n = 0;
+                    // Every parameter byte, '?' of CSI ?25h too (it stopped
+                    // at ';' and kept the rest as text).
+                    long end = (long)Ansi_ParamsEnd(str, (size_t)i, (size_t)size);
+
+                    n = end - i;
+                    if (n > 30) n = 30;
+                    memcpy(numb, str + i, n);
+                    i = end;
                 }
                 switch(str[i])
                 {
@@ -783,15 +2126,21 @@ static void Receive(void)
     LONG i;
     LONG outLen = 0;
 
-    len = recv(tcpSocket, recvBuffer, sizeof(recvBuffer), 0);
+    // SSH: the session's decrypted bytes (none yet while the protocol talks)
+    len = SshConn_Active() ? SshConn_Read(recvBuffer, sizeof(recvBuffer))
+                           : recv(tcpSocket, recvBuffer, sizeof(recvBuffer), 0);
 
     #ifdef _DEBUG_WAITSELECT
         Printf("   --> Receive() => %ld\n", len);
     #endif
 
+    if (len == SSHCONN_AGAIN)
+        return;
+
     if (len <= 0) // Connection closed or error
     {
-        DisConnect(TRUE, FALSE);
+        // (SSH: DCTelnet itself may have ended it -- a refused key, a cancelled login)
+        DisConnect(!SshConn_Active() || SshConn_ClosedByServer(), FALSE);
         return;
     }
 
@@ -808,11 +2157,27 @@ static void Receive(void)
         }
     #endif
 
-    if (STATE_IS(APP_RAW_CONNECTION))
+    if (!TELNET_DATA())
     {
-        ConWrite(recvBuffer, len);
-        if (STATE_IS(APP_SCROLLBACK_ENABLED))
-            AddBuf(recvBuffer, len);
+        if (rloginAckPending && len > 0)        // rlogin: the server's NUL answer to
+        {                                       //   the login message is no text
+            rloginAckPending = FALSE;
+            if (recvBuffer[0] == 0 && --len > 0)
+                memmove(recvBuffer, recvBuffer + 1, len);
+            if (len <= 0) return;
+        }
+        CaptureWrite(recvBuffer, len);
+        WaitForFeed(recvBuffer, len);
+        {
+            long shown = len;
+            UBYTE *text = DisplayBytes(&utf8In, recvBuffer, &shown);
+
+            text = SoundFilter(text, &shown);
+
+            BbsWrite((char *)text, shown);
+            if (STATE_IS(APP_SCROLLBACK_ENABLED))
+                AddBuf(text, shown);
+        }
 
         for (i = 0; i < len; i++)
         {
@@ -855,45 +2220,71 @@ static void Receive(void)
 
         if (outLen > 0)
         {
-            if (STATE_IS(APP_PETSCII_MODE))
+            CaptureWrite(outBuffer, outLen);
+            WaitForFeed(outBuffer, outLen);
+        }
+        if (outLen > 0)
+        {
+            if (PETSCII_SESSION())
             {
                 /* Translated in chunks sized so even the worst-case expansion
                  * (PETSCII_MAX_OUT_PER_BYTE) fits: output is never truncated. */
                 static UBYTE petsciiOut[sizeof(recvBuffer)];
                 const LONG chunkMax = sizeof(petsciiOut) / PETSCII_MAX_OUT_PER_BYTE;
-                LONG done;
+                LONG done, chunk;
 
-                for (done = 0; done < outLen; done += chunkMax)
+                for (done = 0; done < outLen; done += chunk)
                 {
-                    LONG chunk = (outLen - done < chunkMax) ? outLen - done : chunkMax;
                     LONG petsciiOutLen;
 
+                    chunk = (outLen - done < chunkMax) ? outLen - done : chunkMax;
                     if (petsciiFont) {
+                        // A part ends after a charset switch (14 lower case,
+                        // 142 upper case): what came before it is drawn in the
+                        // font it was sent for, then the font changes.
+                        if (petsciiFontLower)
+                            chunk = (LONG)petscii_part_length(outBuffer + done, (size_t)chunk);
                         petsciiOutLen = (LONG)petscii_stream_to_rawglyphs(&g_petsciiState,
                                                                              outBuffer + done, (size_t)chunk,
                                                                              petsciiOut, sizeof(petsciiOut));
-                        /* Charset-shift control code (14/142) toggles between the
-                         * upper/graphics and shifted/lowercase C64 charsets --
-                         * swap the active console font to match. */
-                        if (win && petsciiFontLower) {
-                            struct TextFont *wanted = g_petsciiState.shift_lowercase ? petsciiFontLower : petsciiFont;
-                            if (win->RPort->Font != wanted) SetFont(win->RPort, wanted);
-                        }
                     } else {
                         petsciiOutLen = (LONG)petscii_stream_to_ansi(&g_petsciiState,
                                                                       outBuffer + done, (size_t)chunk,
                                                                       petsciiOut, sizeof(petsciiOut));
                     }
-                    ConWrite((char *)petsciiOut, petsciiOutLen);
+                    {
+                        UBYTE *played = SoundFilter(petsciiOut, &petsciiOutLen);   // the Bell
+
+                        ConWrite((char *)played, petsciiOutLen);
+                    }
                     if (STATE_IS(APP_SCROLLBACK_ENABLED))
                         AddBuf((char *)petsciiOut, petsciiOutLen);
+
+                    /* Charset-shift control code (14/142) toggles between the
+                     * upper/graphics and shifted/lowercase C64 charsets --
+                     * swap the active font to match, for what follows. */
+                    if (win && petsciiFont && petsciiFontLower) {
+                        struct TextFont *wanted = g_petsciiState.shift_lowercase ? petsciiFontLower : petsciiFont;
+                        if (win->RPort->Font != wanted)
+                        {
+                            if (STATE_IS(APP_RENDERER_BUILTIN))
+                                term_set_font(wanted);      // (sets the RastPort's too)
+                            else
+                                SetFont(win->RPort, wanted);
+                        }
+                    }
                 }
             }
             else
             {
-                ConWrite(outBuffer, outLen);
+                long shown = outLen;
+                UBYTE *text = DisplayBytes(&utf8In, outBuffer, &shown);
+
+                text = SoundFilter(text, &shown);
+
+                BbsWrite((char *)text, shown);
                 if (STATE_IS(APP_SCROLLBACK_ENABLED))
-                    AddBuf(outBuffer, outLen);
+                    AddBuf(text, shown);
             }
         }
 
@@ -912,7 +2303,7 @@ static void Receive(void)
     {
         // Some BBSes never respond to Telnet option negotiation; this is for informational purposes
         // only:
-        if (STATE_IS_NOT(APP_RAW_CONNECTION))
+        if (TELNET_DATA())
             IsTelnetSessionReadyForXfer();
 
         if (zmodemCtx.state == ZMODEM_DOWNLOAD) Download(prefs.XferLibrary);
@@ -980,7 +2371,10 @@ cont:
                 }
                 break;
             default:
-norm:                buf[j] = str[i];
+norm:                // Typed text in PETSCII Mode goes out case-swapped (petscii_keymap);
+                // a macro's text is typed text too. Escapes (\r, \123) stay raw.
+                buf[j] = PETSCII_SESSION()
+                         ? (char)petscii_translate_key((unsigned char)str[i], 0) : str[i];
                 j++;
         }
         i++;
@@ -994,12 +2388,12 @@ void LEDs(void)
     // Draw connection activity indicator when Title bar AND LEDs are enabled AND NOT iconified
     if (STATE_ARE_ALL(APP_TITLE_BAR_ENABLED | APP_LEDS_ENABLED)  &&  STATE_IS_NOT(APP_ICONIFIED))
     {
-        EraseRect(&scr->RastPort, scr->Width-72, 2, scr->Width-60, prefs.FontSize-1);
-        EraseRect(&scr->RastPort, scr->Width-86, 2, scr->Width-74, prefs.FontSize-1);
+        EraseRect(&scr->RastPort, scr->Width-72, 2, scr->Width-60, BAR_TEXT_HEIGHT-1);
+        EraseRect(&scr->RastPort, scr->Width-86, 2, scr->Width-74, BAR_TEXT_HEIGHT-1);
         if(isConnected)
         {
-            SetAPen(&scr->RastPort, 15);
-            RectFill(&scr->RastPort, scr->Width-84, 3, scr->Width-76, prefs.FontSize-2);
+            SetAPen(&scr->RastPort, LegacyPen(15));
+            RectFill(&scr->RastPort, scr->Width-84, 3, scr->Width-76, BAR_TEXT_HEIGHT-2);
         }
     }
 }
@@ -1133,48 +2527,76 @@ static void ClearScrollBack(void)
     scrollbackList->lh_Head = (struct Node *)&scrollbackList->lh_Tail;
 }
 
+// Send a Finger query ("user@host", modified in place) to host port 79 as a
+// raw connection: plain text, no telnet negotiation.
+static void StartFinger(char *query)
+{
+    char *host = strchr(query, '@');
+    BOOL originalState;
+
+    if (!host)
+        return;
+    originalState = STATE_IS(APP_RAW_CONNECTION);
+    *host++ = 0;
+
+    STATE_SET(APP_RAW_CONNECTION);     // Enable flag (NO telnet negotiation)
+    if(BeginServerConnection(host, 79) == RETURN_OK)
+    {
+        WORD optionsMenuNumber = GetMenuNumberFromID(MENU_TERMINAL);
+
+        mysprintf(buf, "/W %s\r\n", query);
+        send(tcpSocket, buf, strlen(buf), 0);
+
+        // Finger servers end lines with a bare LF (Unix), which on a
+        // terminal only moves down: the reply came out as a staircase.
+        // Newline mode (LNM, CSI 20 h) makes LF return to column 1 too,
+        // for the reply only.
+        ConWrite("\x1b[20h", 5);
+
+        // Prevent the user from toggling Raw Connection (or any other Terminal option)
+        // while this finger exchange relies on it. Re-enabled in DisConnect().
+        if (optionsMenuNumber >= 0)
+            OffMenu(win, FULLMENUNUM(optionsMenuNumber, NOITEM, NOSUB));
+
+        isFingerRequest = TRUE;
+    }
+    if (!originalState)
+        STATE_UNSET(APP_RAW_CONNECTION);    // Restore state
+}
+
 static void Finger(void)
 {
-    char tbuf[64] = "reiver@plan.cat";
+    static char tbuf[64] = "reiver@plan.cat";
 
     if (GetStringRequester(win,
                               "Finger",
                               "Enter EMail Address:",
                               tbuf, sizeof(tbuf))
-       )
+       && strchr(tbuf, '@'))
     {
-        char * host = strchr(tbuf, '@');
-        if(host)
+        // End any entry session (and its connection) BEFORE touching the
+        // flag: ending it later, inside the connect, would restore the
+        // global settings over APP_RAW_CONNECTION.
+        // Finger is plain text: no C64 display, whatever PETSCII Mode says.
+        if (isConnected) DisConnect(FALSE, FALSE);
+        EndEntrySession();
+        if (shouldRestart || shouldReopenConsole)
         {
-            BOOL originalState = STATE_IS(APP_RAW_CONNECTION);
+            // The display reopens for the global settings first; a finger
+            // sent now would have its answer wiped by that reopen.
+            strlcpy(pendingConnect.finger, tbuf, sizeof(pendingConnect.finger));
+            pendingConnect.active = TRUE;
+        }
+        else
+        {
+            static char query[64];
 
-            host[0] = 0;
-            *host++;
-
-            STATE_SET(APP_RAW_CONNECTION);     // Enable flag (NO telnet negotiation)
-            if(BeginServerConnection(host, 79) == RETURN_OK)
-            {
-                WORD optionsMenuNumber = GetMenuNumberFromID(MENU_TERMINAL);
-
-                mysprintf(buf, "/W %s\r\n", tbuf);
-                send(tcpSocket, buf, strlen(buf), 0);
-
-                // Prevent the user from toggling Raw Connection (or any other Terminal option)
-                // while this finger exchange relies on it. Re-enabled in DisConnect().
-                if (optionsMenuNumber >= 0)
-                    OffMenu(win, FULLMENUNUM(optionsMenuNumber, NOITEM, NOSUB));
-
-                isFingerRequest = TRUE;
-            }
-
-            // Restore state
-            if (originalState)
-                STATE_SET(APP_RAW_CONNECTION);
-            else
-                STATE_UNSET(APP_RAW_CONNECTION);
+            strlcpy(query, tbuf, sizeof(query));
+            StartFinger(query);
         }
     }
 }
+
 
 
 int main(int argc, char *argv[])
@@ -1260,9 +2682,11 @@ int main(int argc, char *argv[])
     }
 
 
-    // Workaround for connection freeze after changing display settings: ibmcon.device improperly
-    // frees signal bit 31 when being closed. We explicitly allocate signal 31 here to prevent it
-    // from being assigned elsewhere and accidentally released.
+    // Workaround for connection freeze after changing display settings: ibmcon.device before
+    // 1.8 frees signal bit 31 when being closed (its UnitClose deleted the handler's port in our
+    // task, issue #3). ibmcon 1.8 and later (built from ibmcon/) fix it; the reservation stays
+    // for every older ibmcon -- the one in the package's Devs drawer, one in DEVS:, one still
+    // in memory and in use elsewhere, which DCTelnet then shares.
     dontUseSig31 = AllocSignal(31L);
     if (dontUseSig31 != 31)
         InfoReq(NULL, "ERROR: cannot allocate sigbit 31!");
@@ -1283,6 +2707,9 @@ int main(int argc, char *argv[])
         goto clean_exit;
     }
 
+    LayersBase = OpenLibrary("layers.library", 39);
+    CyberGfxBase = OpenLibrary("cybergraphics.library", 40);   // Picasso96 / CyberGraphX
+
     UtilityBase = OpenLibrary("utility.library", 0);
     if (UtilityBase == NULL)
     {
@@ -1293,6 +2720,9 @@ int main(int argc, char *argv[])
 
 
     if (! LoadPrefs()) goto clean_exit;
+    TimerOpen();                        // timed jobs (none pending: no request)
+    RexxOpen();                         // the ARexx port, when ARexx is there
+    SitePrefs_HandInit(&handChanges, &prefs);
 
     scrollbackList = AllocMem(sizeof(struct List), MEMF_CLEAR|MEMF_PUBLIC);
     if(!scrollbackList) goto clean_exit;
@@ -1336,12 +2766,16 @@ int main(int argc, char *argv[])
         LogWindowsSigBit();
     #endif
 
-    // Connect to server if it was specified in the command line. It needs an opened display.
-    if (server[0] != '\0')
-        BeginServerConnection(server, tcpPort);
-
     shouldRestart = FALSE;
     shouldReopenScreen = FALSE;
+
+    // Connect to server if it was specified in the command line. It needs an opened display,
+    // and in PETSCII Mode the C64 one: the main loop reopens it, then connects.
+    if (server[0] != '\0')
+    {
+        BeginEntrySession(0, NULL);     // (a reopen, if any, runs first)
+        DeferConnect("", server, tcpPort, 0, "", "", "");
+    }
 
 /* ------ main loop ------ */
     shouldQuitApp = FALSE;
@@ -1383,7 +2817,7 @@ int main(int argc, char *argv[])
             {
                 FD_ZERO(&rd);
                 FD_SET(tcpSocket, &rd);
-                sigmask = SIGBREAKF_CTRL_C | SIGBREAKF_CTRL_F | iconsig;
+                sigmask = SIGBREAKF_CTRL_C | SIGBREAKF_CTRL_F | iconsig | TimerSig() | RexxSig();
 
                 // https://wiki.amigaos.net/amiga/autodocs/bsdsocket.doc.txt (tout à la fin)
                 // WaitSelect() should probably return the time remaining from the original timeout,
@@ -1396,7 +2830,8 @@ int main(int argc, char *argv[])
                 // If the time limit expires, WaitSelect() returns 0.
                 // Reception of a user signal with no socket ready will cause WaitSelect() to stop
                 // and to return 0.
-                timeout.tv_sec = 30; timeout.tv_usec = 0;
+                // SSH bytes already decrypted: the socket will not wake us for them
+                timeout.tv_sec = SshConn_Buffered() ? 0 : 30; timeout.tv_usec = 0;
                 i = WaitSelect(tcpSocket + 1, &rd, 0, 0, &timeout, &sigmask);
 
                 #ifdef _DEBUG
@@ -1406,9 +2841,11 @@ int main(int argc, char *argv[])
 
             } else {
                 i = 0;
-                sigmask = Wait( SIGBREAKF_CTRL_C | SIGBREAKF_CTRL_F | iconsig );
+                sigmask = Wait( SIGBREAKF_CTRL_C | SIGBREAKF_CTRL_F | iconsig | TimerSig() | RexxSig() );
             }
 
+            if (sigmask & TimerSig()) TimerTick();     // redial, macro, anti-idle run on
+            if (sigmask & RexxSig()) RexxMessages();   // scripts too
             if(sigmask&SIGBREAKF_CTRL_F) shouldUniconify = TRUE;
 
             if(sigmask&SIGBREAKF_CTRL_C) shouldQuitApp = TRUE;
@@ -1427,9 +2864,13 @@ int main(int argc, char *argv[])
                 }
             }
 
-            if(i != 0) Receive();
+            if(i != 0 || SshConn_Buffered()) Receive();
 
         } else { // app is not iconified
+
+            // Windows opened or closed over the built-in renderer's terminal since the last time
+            if (STATE_IS(APP_RENDERER_BUILTIN))
+                BuiltinCovered();
 
             winsig = 1L << win->UserPort->mp_SigBit;
             if(isConnected)
@@ -1442,8 +2883,10 @@ int main(int argc, char *argv[])
                 if(scrollbackWin) sigmask |= 1L << scrollbackWin->UserPort->mp_SigBit;
                 if(packetWin) sigmask |= 1L << packetWin->UserPort->mp_SigBit;
                 if (toolBarWin) sigmask |= 1L << toolBarWin->UserPort->mp_SigBit;
+                sigmask |= TimerSig() | RexxSig();
 
-                timeout.tv_sec = 30; timeout.tv_usec = 0;
+                // SSH bytes already decrypted: the socket will not wake us for them
+                timeout.tv_sec = SshConn_Buffered() ? 0 : 30; timeout.tv_usec = 0;
                 i = WaitSelect(tcpSocket + 1, &rd, 0, 0, &timeout, &sigmask);
 
                 #ifdef _DEBUG_WAITSELECT
@@ -1467,23 +2910,25 @@ int main(int argc, char *argv[])
                     }
                 #endif
 
+                if (sigmask & TimerSig()) TimerTick();
+                if (sigmask & RexxSig()) RexxMessages();
                 GetWindowMsg(win);
 
                 if(scrollbackWin) GetWindowMsg(scrollbackWin);
                 if(packetWin) GetWindowMsg(packetWin);
                 if (toolBarWin) GetWindowMsg(toolBarWin);
 
-                if(i != 0)
+                if(i != 0 || SshConn_Buffered())
                 {
                     // Draw when Title bar AND LEDs are enabled :
                     if (STATE_ARE_ALL(APP_TITLE_BAR_ENABLED | APP_LEDS_ENABLED))
                     {
-                        SetAPen(&scr->RastPort, 10);
-                        RectFill(&scr->RastPort, scr->Width-70, 3, scr->Width-62, prefs.FontSize-2);
+                        SetAPen(&scr->RastPort, LegacyPen(10));
+                        RectFill(&scr->RastPort, scr->Width-70, 3, scr->Width-62, BAR_TEXT_HEIGHT-2);
                     }
                     Receive();
                     if (STATE_ARE_ALL(APP_TITLE_BAR_ENABLED | APP_LEDS_ENABLED))
-                        EraseRect(&scr->RastPort, scr->Width-72, 2, scr->Width-60, prefs.FontSize-1);
+                        EraseRect(&scr->RastPort, scr->Width-72, 2, scr->Width-60, BAR_TEXT_HEIGHT-1);
                 }
 
             } else {  // not connected
@@ -1492,8 +2937,15 @@ int main(int argc, char *argv[])
                 if(scrollbackWin)  sig = 1L << scrollbackWin->UserPort->mp_SigBit; else sig = 0;
                 if(packetWin) sig |= 1L << packetWin->UserPort->mp_SigBit;
                 if (toolBarWin) sig |= 1L << toolBarWin->UserPort->mp_SigBit;
+                sig |= TimerSig() | RexxSig();
 
-                sigmask = Wait( sig | winsig | SIGBREAKF_CTRL_C );
+                // A display reopen or a connect already queued (an entry's
+                // settings, PETSCII Mode) runs now, not after the next event.
+                if (shouldRestart || shouldReopenConsole || pendingConnect.active)
+                    sigmask = SetSignal(0L, sig | winsig | SIGBREAKF_CTRL_C)
+                            & (sig | winsig | SIGBREAKF_CTRL_C);
+                else
+                    sigmask = Wait( sig | winsig | SIGBREAKF_CTRL_C );
 
                 if(scrollbackWin)
                 {
@@ -1510,8 +2962,20 @@ int main(int argc, char *argv[])
 
                 if(sigmask&winsig) GetWindowMsg(win);
                 if(sigmask&SIGBREAKF_CTRL_C) shouldQuitApp = TRUE;
+                if (sigmask & TimerSig()) TimerTick();
+                if (sigmask & RexxSig()) RexxMessages();
             }
 
+            // The C64 display in place first: the built-in and XEM renderers
+            // (and a console that will not reopen) ask for the full reopen
+            // instead, which must also come before the pending connect below
+            // -- else the BBS's first screen was drawn on the old display and
+            // then cleared.
+            if (shouldReopenConsole && !shouldRestart)
+            {
+                ReopenTerminal();
+                shouldReopenConsole = FALSE;
+            }
             if(shouldRestart)
             {
                 CloseDisplay(shouldReopenScreen);
@@ -1520,7 +2984,19 @@ int main(int argc, char *argv[])
 
                 shouldRestart = FALSE;
                 shouldReopenScreen = FALSE;
+                shouldReopenConsole = FALSE;    // the full reopen covered it
             }
+
+            // A disconnect that reopened the display: its notice again.
+            if (disconnectNote[0] && !shouldRestart && !shouldReopenConsole && !isConnected)
+            {
+                LocalPrint(disconnectNote);
+                disconnectNote[0] = 0;
+            }
+
+            // After the reopen, so the connect sees the entry's display settings.
+            if (pendingConnect.active)
+                RunPendingConnect();
         }
     } /* -- end of main loop -- */
 
@@ -1532,6 +3008,10 @@ int main(int argc, char *argv[])
 
 clean_exit:
     DisConnect(FALSE, TRUE);
+    RexxClose();
+    TimerClose();
+    Sound_Close();
+    CaptureStop();                  // the capture file is complete
     CloseDisplay(TRUE);
 
     ClearScrollBack();
@@ -1543,6 +3023,8 @@ clean_exit:
     if (DiskfontBase)  CloseLibrary(DiskfontBase);
     if (WorkbenchBase) CloseLibrary(WorkbenchBase);
     if (UtilityBase)   CloseLibrary(UtilityBase);
+    if (LayersBase)    CloseLibrary(LayersBase);
+    if (CyberGfxBase)  CloseLibrary(CyberGfxBase);
     if (GadToolsBase)  CloseLibrary(GadToolsBase);
     if (ReqToolsBase)  CloseLibrary((struct Library *) ReqToolsBase);
     if (AslBase)       CloseLibrary(AslBase);
@@ -1563,18 +3045,163 @@ clean_exit:
     return returnCode;
 }
 
+// A file requester for a file to save, opened on DCTelnet's drawer: path
+// gets directory and file name.
+static BOOL AskSavePath(char *path, size_t max, const char *defaultName)
+{
+    char name[108];
+
+    strlcpy(path, "PROGDIR:", max);
+    strlcpy(name, defaultName, sizeof(name));
+    if (!FileRequester(win, path, (UWORD)max, name, sizeof(name),
+                       "#?", FILEREQ_SAVE))
+        return FALSE;
+    AddPart(path, name, (ULONG)max);
+    return TRUE;
+}
+
+// A new file at fname, asking first when one is there. 0: not opened.
+static BPTR OpenNewFileAsking(const char *fname)
+{
+    BPTR lock = Lock((STRPTR)fname, SHARED_LOCK);
+
+    if (lock)
+    {
+        UnLock(lock);
+        if (!ConfirmRequester(win, "OverWrite|Cancel",
+                              "File Already Exists."))
+            return 0;
+    }
+    return Open((STRPTR)fname, MODE_NEWFILE);
+}
+
+// The BBS's text as the terminal shows it: with Character Set UTF-8 in the
+// IBM set (box drawing exact); anything else as it comes. d: the stream's
+// decoder (the BBS's, or the local echo's).
+#define DISPLAY_BYTES_MAX 4096
+static UBYTE *DisplayBytes(struct Utf8Decoder *d, UBYTE *data, long *len)
+{
+    static UBYTE decoded[DISPLAY_BYTES_MAX + 1];    // + 1: Charset_Utf8ToCp437
+
+    if (prefs.Charset != CHARSET_UTF8 || PETSCII_SESSION() || *len > DISPLAY_BYTES_MAX)
+        return data;
+    *len = (long)Charset_Utf8ToCp437(d, data, (size_t)*len, decoded);
+    return decoded;
+}
+
+// What is sent, shown by the local echo (or typed offline) as the BBS's text
+// is: a typed accented letter goes out as UTF-8 and shows as one character.
+static void EchoWrite(UBYTE *data, long len)
+{
+    while (len > 0)
+    {
+        long part = len < DISPLAY_BYTES_MAX ? len : DISPLAY_BYTES_MAX, shown = part;
+        UBYTE *text = DisplayBytes(&utf8Echo, data, &shown);
+
+        ConWrite((char *)text, shown);
+        data += part;
+        len -= part;
+    }
+}
+
+// What DCTelnet plays itself leaves the text for the console: ANSI music
+// (Terminal > ANSI Music) and, unless the Bell is Flash, BEL.
+
+static UBYTE *SoundFilter(UBYTE *text, long *len)
+{
+    static UBYTE played[4096 + 3];     // + 3: AnsiMusic_Filter
+    static struct Note notes[48];
+    size_t n = (size_t)*len;
+    int count;
+
+    if (prefs.AnsiMusic && !PETSCII_SESSION() && n <= 4096)
+    {
+        n = AnsiMusic_Filter(&ansiMusic, text, n, played, notes, 48, &count);
+        text = played;
+        if (count) Sound_Play(notes, count);
+    }
+    if (prefs.Bell != BELL_FLASH && Ansi_StripByte(text, &n, 7) && prefs.Bell == BELL_SOUND)
+        Sound_Beep();
+    *len = (long)n;
+    return text;
+}
+
+// DC Telnet > Capture to File: everything the BBS sends -- after the telnet
+// codes are taken out, before any translation -- goes on to a file as it
+// arrives, until the item is chosen again.
+static BPTR captureFile;
+
+static void CaptureWrite(const UBYTE *data, long len)
+{
+    if (captureFile && len > 0)
+        Write(captureFile, (APTR)data, len);
+}
+
+static void CaptureStop(void)
+{
+    struct MenuItem *item = GetMenuItemFromID(MENU_CAPTURE);
+
+    if (captureFile)
+    {
+        Close(captureFile);
+        captureFile = 0;
+    }
+    if (item) item->Flags &= ~CHECKED;
+}
+
+static void CaptureToggle(struct MenuItem *item)
+{
+    char path[256];
+
+    if (captureFile || !(item->Flags & CHECKED))
+    {
+        CaptureStop();
+        return;
+    }
+    item->Flags &= ~CHECKED;                    // checked once the file is open
+    if (AskSavePath(path, sizeof(path), "DCTelnet.ans") && (captureFile = OpenNewFileAsking(path)))
+        item->Flags |= CHECKED;
+}
+
+// DC Telnet > Save Screen: the terminal as it is, as ANSI (a .ans file):
+// the characters and colours read back from ibmcon's screen buffer (1.11).
+static void SaveScreen(void)
+{
+    static UBYTE cells[CLIP_CELL * SCREENFONT_MAX_COLS];
+    static char line[24 * SCREENFONT_MAX_COLS + 8];
+    char path[256];
+    ULONG attr = ANSI_ATTR_RESET;
+    UWORD cols, rows, row;
+    BPTR file;
+
+    if (!SelectionAvailable())
+    {
+        InfoReq(win, "Saving the screen needs the ibmcon.device renderer, 1.11 or later.");
+        return;
+    }
+    if (!AskSavePath(path, sizeof(path), "Screen.ans") || !(file = OpenNewFileAsking(path)))
+        return;
+    TerminalGrid(&cols, &rows);
+    for (row = 1; row <= rows; row++)
+    {
+        writeConsoleReq->io_Command = IBMCMD_READTEXT;
+        writeConsoleReq->io_Data    = cells;
+        writeConsoleReq->io_Length  = sizeof(cells);
+        writeConsoleReq->io_Offset  = row;
+        DoIO((struct IORequest *)writeConsoleReq);
+        if (writeConsoleReq->io_Error)
+            break;
+        Write(file, line, (LONG)Ansi_ScreenRow(cells, (UWORD)(writeConsoleReq->io_Actual / CLIP_CELL),
+                                               !ansiOwnPens, &attr, line));
+    }
+    Write(file, "\033[0m", 4);
+    Close(file);
+}
+
 static void SaveScrollBack(char *fname)
 {
     struct Scroll *worknode, *nextnode;
-    fileHandle = Lock(fname, SHARED_LOCK);
-    if(fileHandle)
-    {
-        UnLock(fileHandle);
-        if (! ConfirmRequester(win, "OverWrite|Cancel",
-                               "File Already Exists."))
-            return;
-    }
-    fileHandle = Open(fname, MODE_NEWFILE);
+    fileHandle = OpenNewFileAsking(fname);
     if(fileHandle)
     {
         worknode = (struct Scroll *)scrollbackList->lh_Head;
@@ -1653,8 +3280,10 @@ static void OnConnectClicked(char spawnInstance)
                 // This function attempts to execute the string commandString as a Shell command
                 Execute(buf, (BPTR) 0, (BPTR) 0);
             } else {
-                tcpPort = port;
-                BeginServerConnection(tbuf, tcpPort);
+                // Every connect runs from the main loop (RunPendingConnect):
+                // after a display reopen, and again on a redial.
+                BeginEntrySession(0, NULL);
+                DeferConnect("", tbuf, port, 0, "", "", "");
             }
         }
     }
@@ -1787,15 +3416,471 @@ static void OutKey(unsigned char key)
         // If you want to send 0xff then you must double it (0xff, 0xff) to tell telnet that you
         // don't intend to send it a command.
         if(key == (unsigned char) IAC)
-            if (STATE_IS_NOT(APP_RAW_CONNECTION))
+            if (TELNET_DATA())
                 TCPSend((void *)&key, 1);
 
         if(STATE_IS(APP_LOCAL_ECHO))
-            goto cwrite;
+            EchoWrite(&key, 1);
     } else
-cwrite:        ConWrite(&key, 1);
+        EchoWrite(&key, 1);
 }
 
+// One byte of typed text. In PETSCII Mode: BS and DEL are PETSCII's own DEL
+// (APP_BACKSPACE_DEL_SWAPPED is an ASCII-only concept), the rest case-swapped.
+static void SendTypedChar(UBYTE c)
+{
+    if (c >= 0x80 && prefs.Charset == CHARSET_UTF8 && !PETSCII_SESSION())
+    {
+        UBYTE utf8[2];
+
+        Charset_Latin1ToUtf8(&c, 1, utf8);      // an accented letter, as UTF-8
+        OutKey(utf8[0]);
+        OutKey(utf8[1]);
+        return;
+    }
+    if (PETSCII_SESSION() && (c == DEL_CHAR || c == '\b'))
+        OutKey((unsigned char)petscii_translate_key(PETSCII_KEY_DEL, 1));
+    else if (PETSCII_SESSION() && c != '\r')
+        OutKey((unsigned char)petscii_translate_key(c, 0));
+    else
+        OutKey(c);
+    if (c == '\r' && STATE_IS(APP_RETURN_SENDING_CRLF)) OutKey('\n');
+}
+
+// A key that is not text (keys.h). F1-F10 send their macro; in PETSCII Mode
+// a key without one sends the C64 function-key byte (F1-F8). Cursor and
+// navigation keys send what the BBS expects: PETSCII codes, or ANSI-BBS /
+// VT codes (Terminal > VT Keys), cursor keys in the host's cursor key mode.
+static void SendKey(int id)
+{
+    char out[KEYS_MAX_BYTES];
+    size_t n;
+
+    if (id >= KEY_F1 && id < KEY_F1 + 10)
+    {
+        char digit = (char)('0' + (id - KEY_F1));
+
+        if (fKeys[(id - KEY_F1) * F_KEY_SIZE] != 0)
+            SendMacro(&fKeys[(id - KEY_F1) * F_KEY_SIZE]);
+        else if (PETSCII_SESSION() && petscii_fkey_from_console_digit(digit) >= 0)
+            OutKey((unsigned char)petscii_fkey_from_console_digit(digit));
+        return;
+    }
+    if (PETSCII_SESSION())
+    {
+        switch (id)
+        {
+        case KEY_UP:     OutKey((unsigned char)petscii_translate_key(PETSCII_KEY_UP, 1));     break;
+        case KEY_DOWN:   OutKey((unsigned char)petscii_translate_key(PETSCII_KEY_DOWN, 1));   break;
+        case KEY_RIGHT:  OutKey((unsigned char)petscii_translate_key(PETSCII_KEY_RIGHT, 1));  break;
+        case KEY_LEFT:   OutKey((unsigned char)petscii_translate_key(PETSCII_KEY_LEFT, 1));   break;
+        case KEY_HOME:   OutKey((unsigned char)petscii_translate_key(PETSCII_KEY_HOME, 1));   break;
+        case KEY_INSERT: OutKey((unsigned char)petscii_translate_key(PETSCII_KEY_INSERT, 1)); break;
+        }
+        return;
+    }
+    n = Keys_Bytes(id, STATE_IS(APP_VT_KEYS),
+                   id >= KEY_UP && id <= KEY_LEFT && CursorKeyMode(), out);
+    if (n)
+        SendMisc(out, (long)n);
+}
+
+
+// ---- ARexx port (rexxcmd.h): DCTELNET.1, .2 ... one per running DCTelnet --
+struct RxsLib *RexxSysBase;
+static struct MsgPort *rexxPort;
+static char rexxPortName[16];
+
+static void RexxOpen(void)
+{
+    int n;
+
+    if (!(RexxSysBase = (struct RxsLib *)OpenLibrary("rexxsyslib.library", 36)))
+        return;                                 // no ARexx: no port
+    if (!(rexxPort = CreateMsgPort()))
+        return;
+    Forbid();
+    for (n = 1; n <= 9; n++)
+    {
+        mysprintf(rexxPortName, "DCTELNET.%ld", (LONG)n);
+        if (!FindPort(rexxPortName))
+        {
+            rexxPort->mp_Node.ln_Name = rexxPortName;
+            rexxPort->mp_Node.ln_Pri  = 0;
+            AddPort(rexxPort);
+            break;
+        }
+    }
+    Permit();
+    if (n > 9)
+    {
+        DeleteMsgPort(rexxPort);
+        rexxPort = NULL;
+    }
+}
+
+static ULONG RexxSig(void)
+{
+    return rexxPort ? 1UL << rexxPort->mp_SigBit : 0;
+}
+
+static void RexxReply(struct RexxMsg *msg, LONG rc, const char *result)
+{
+    msg->rm_Result1 = rc;
+    msg->rm_Result2 = 0;
+    if (rc == 0 && result && (msg->rm_Action & RXFF_RESULT))
+        msg->rm_Result2 = (LONG)CreateArgstring((STRPTR)result, (ULONG)strlen(result));
+    ReplyMsg((struct Message *)msg);
+}
+
+static void RexxClose(void)
+{
+    struct Message *msg;
+
+    if (rexxPort)
+    {
+        if (waitRexxMsg)
+            WaitForDone(WAIT_CANCELLED);
+        Forbid();
+        RemPort(rexxPort);
+        while ((msg = GetMsg(rexxPort)))
+            RexxReply((struct RexxMsg *)msg, 20, NULL);
+        Permit();
+        DeleteMsgPort(rexxPort);
+        rexxPort = NULL;
+    }
+    if (RexxSysBase)
+    {
+        CloseLibrary((struct Library *)RexxSysBase);
+        RexxSysBase = NULL;
+    }
+}
+
+static void RexxCommand(struct RexxMsg *msg)
+{
+    static char text[512];
+    struct RexxCmd cmd;
+    char status[128];
+    size_t n;
+
+    if (!RexxCmd_Parse((char *)ARG0(msg), &cmd))
+    {
+        RexxReply(msg, 10, NULL);               // unknown command or argument missing
+        return;
+    }
+    switch (cmd.verb)
+    {
+    case REXX_CONNECT:
+        BeginEntrySession(0, NULL);
+        DeferConnect("", cmd.arg1, (UWORD)(cmd.arg2[0] ? atoi(cmd.arg2) : 23), 0, "", "", "");
+        RexxReply(msg, 0, NULL);                // connects from the main loop
+        return;
+    case REXX_DISCONNECT:
+        if (!StopRedial() && isConnected)
+            DisConnect(FALSE, FALSE);
+        RexxReply(msg, 0, NULL);
+        return;
+    case REXX_SEND:
+    case REXX_SENDLN:
+        if (!isConnected) { RexxReply(msg, 10, NULL); return; }
+        n = RexxCmd_Unescape(cmd.arg1, text, sizeof(text) - 2);
+        if (cmd.verb == REXX_SENDLN)
+        {
+            text[n++] = '\r';
+            if (STATE_IS(APP_RETURN_SENDING_CRLF)) text[n++] = '\n';
+        }
+        SendMisc(text, (long)n);
+        RexxReply(msg, 0, NULL);
+        return;
+    case REXX_WAITFOR:
+        if (!isConnected || waitOwner != WAIT_NONE) { RexxReply(msg, 10, NULL); return; }
+        waitRexxMsg = msg;                      // replied when the text comes
+        WaitForStart(WAIT_REXX, cmd.arg1, cmd.arg2[0] ? (ULONG)atoi(cmd.arg2) : 30);
+        return;
+    case REXX_CAPTURE:
+    {
+        struct MenuItem *item = GetMenuItemFromID(MENU_CAPTURE);
+
+        CaptureStop();
+        if (stricmp(cmd.arg1, "OFF") != 0)
+        {
+            if (!(captureFile = Open((STRPTR)cmd.arg1, MODE_NEWFILE)))
+            {
+                RexxReply(msg, 10, NULL);
+                return;
+            }
+            if (item) item->Flags |= CHECKED;
+        }
+        RexxReply(msg, 0, NULL);
+        return;
+    }
+    case REXX_GETSTATUS:
+        if (isConnected)
+            mysprintf(status, "CONNECTED %s %ld", server, (LONG)tcpPort);
+        else
+            strlcpy(status, "DISCONNECTED", sizeof(status));
+        RexxReply(msg, 0, status);
+        return;
+    case REXX_QUIT:
+        shouldQuitApp = TRUE;
+        RexxReply(msg, 0, NULL);
+        return;
+    }
+    RexxReply(msg, 10, NULL);
+}
+
+static void RexxMessages(void)
+{
+    struct Message *msg;
+
+    while (rexxPort && (msg = GetMsg(rexxPort)))
+    {
+        if (IsRexxMsg((struct RexxMsg *)msg))
+            RexxCommand((struct RexxMsg *)msg);
+        else
+            ReplyMsg(msg);
+    }
+}
+
+// ---- Mouse selection, the clipboard (ibmcon 1.11) --------------------------
+// The left mouse button dragged over the terminal selects text; it is shown
+// inverted until the next click or the next text. Edit > Copy (Amiga-C, as
+// in a Shell window) puts it in the clipboard, Edit > Paste (Amiga-V) types
+// the clipboard's text, Edit > Copy Screen copies the whole screen. The text is
+// read back from ibmcon's screen buffer (IBMCMD_READTEXT): an older ibmcon,
+// XEM or console.device cannot select.
+#define CLIP_READ_MAX   16384           // the most of a clip that is pasted
+
+static struct ClipRange selShownRange;
+static BOOL  selShown, selDragging;
+static UWORD selDownRow, selDownCol, selRow, selCol;
+
+static BOOL SelectionAvailable(void)
+{
+    return win && STATE_IS(APP_RENDERER_IBMCON_DEVICE) && isConDeviceOpened && STATE_IS_NOT(APP_ICONIFIED);
+}
+
+// The terminal cell under the pointer (window coordinates), in the grid.
+static void SelectionCell(WORD mx, WORD my, UWORD *row, UWORD *col)
+{
+    struct TextFont *cell = win->RPort->Font;
+    UWORD cols, rows;
+
+    if (win->Flags & WFLG_GIMMEZEROZERO)
+    {
+        mx -= win->BorderLeft;
+        my -= win->BorderTop;
+    }
+    if (mx < 0) mx = 0;
+    if (my < 0) my = 0;
+    TerminalGrid(&cols, &rows);
+    *col = (UWORD)(mx / cell->tf_XSize + 1);
+    *row = (UWORD)(my / cell->tf_YSize + 1);
+    if (*col > cols) *col = cols;
+    if (*row > rows) *row = rows;
+}
+
+// Inverts the cells of r; twice restores them. On a copy of the window's
+// RastPort: ibmcon's blink timer draws on the window's own, from its task.
+static void SelectionInvert(const struct ClipRange *r)
+{
+    struct RastPort rp = *win->RPort;
+    UWORD xs = rp.Font->tf_XSize, ys = rp.Font->tf_YSize;
+    UWORD cols, rows, row, from, to;
+
+    TerminalGrid(&cols, &rows);
+    SetDrMd(&rp, COMPLEMENT);
+    for (row = r->startRow; row <= r->endRow; row++)
+        if (Clip_RowSpan(r, row, cols, &from, &to))
+            RectFill(&rp, (from - 1) * xs, (row - 1) * ys, to * xs - 1, row * ys - 1);
+}
+
+// Takes the selection off the screen (before any text is drawn).
+static void SelectionHide(void)
+{
+    if (selShown && win)
+        SelectionInvert(&selShownRange);
+    selShown = FALSE;
+}
+
+static BOOL ClipboardIO(UWORD command, UBYTE *data, ULONG length, ULONG *actual, BOOL toEnd)
+{
+    struct MsgPort *port = CreateMsgPort();
+    struct IOClipReq *io = port ? (struct IOClipReq *)CreateIORequest(port, sizeof(*io)) : NULL;
+    BOOL ok = FALSE;
+
+    *actual = 0;
+    if (io && !OpenDevice("clipboard.device", PRIMARY_CLIP, (struct IORequest *)io, 0))
+    {
+        static UBYTE rest[256];
+
+        io->io_Offset = 0;
+        io->io_ClipID = 0;
+        io->io_Command = command;
+        io->io_Data = (STRPTR)data;
+        io->io_Length = length;
+        DoIO((struct IORequest *)io);
+        ok = !io->io_Error;
+        *actual = io->io_Actual;
+        if (command == CMD_WRITE)
+        {
+            io->io_Command = CMD_UPDATE;        // the clip is complete
+            DoIO((struct IORequest *)io);
+        }
+        else
+            while (toEnd && io->io_Actual && !io->io_Error)
+            {
+                io->io_Command = CMD_READ;      // read to the end: that ends the read
+                io->io_Data = (STRPTR)rest;
+                io->io_Length = sizeof(rest);
+                DoIO((struct IORequest *)io);
+            }
+        CloseDevice((struct IORequest *)io);
+    }
+    if (io) DeleteIORequest((struct IORequest *)io);
+    if (port) DeleteMsgPort(port);
+    return ok;
+}
+
+// The text of r, read back from the screen, to the clipboard.
+static void CopyRange(const struct ClipRange *r)
+{
+    static UBYTE cells[CLIP_CELL * SCREENFONT_MAX_COLS];
+    UWORD cols, rows, row, from, to;
+    ULONG max, actual;
+    char *text;
+    UBYTE *iff;
+    size_t n = 0;
+
+    TerminalGrid(&cols, &rows);
+    max = (ULONG)(r->endRow - r->startRow + 1) * (cols + 1);
+    text = AllocVec(max, MEMF_ANY);
+    iff = AllocVec(max + 32, MEMF_ANY);
+    if (text && iff)
+    {
+        for (row = r->startRow; row <= r->endRow; row++)
+        {
+            if (!Clip_RowSpan(r, row, cols, &from, &to))
+                continue;
+            writeConsoleReq->io_Command = IBMCMD_READTEXT;
+            writeConsoleReq->io_Data    = cells;
+            writeConsoleReq->io_Length  = sizeof(cells);
+            writeConsoleReq->io_Offset  = row;
+            DoIO((struct IORequest *)writeConsoleReq);
+            if (writeConsoleReq->io_Error)
+                break;                          // no screen buffer (ibmcon < 1.11)
+            n += Clip_RowText(cells, (UWORD)(writeConsoleReq->io_Actual / CLIP_CELL), from, to,
+                              !PETSCII_SESSION() ? (prefs.Charset == CHARSET_LATIN1 ? CLIP_LATIN1 : CLIP_CP437)
+                              : win->RPort->Font == petsciiFontLower ? CLIP_PETSCII_LOWER : CLIP_PETSCII_UPPER,
+                              text + n);
+            if (row < r->endRow)
+                text[n++] = '\n';
+        }
+        n = Clip_TrimEmptyLines(text, n);
+        if (!writeConsoleReq->io_Error)
+            ClipboardIO(CMD_WRITE, iff, Clip_BuildFtxt(text, n, iff, max + 32), &actual, FALSE);
+    }
+    if (text) FreeVec(text);
+    if (iff) FreeVec(iff);
+}
+
+static void SelectionDown(WORD mx, WORD my)
+{
+    if (!SelectionAvailable())
+        return;
+    SelectionHide();
+    SelectionCell(mx, my, &selDownRow, &selDownCol);
+    selRow = selDownRow;
+    selCol = selDownCol;
+    selDragging = TRUE;
+    ReportMouse(TRUE, win);
+}
+
+static void SelectionMove(WORD mx, WORD my)
+{
+    struct ClipRange r;
+    UWORD row, col;
+
+    if (!selDragging)
+        return;
+    SelectionCell(mx, my, &row, &col);
+    if (row == selRow && col == selCol)
+        return;
+    selRow = row;
+    selCol = col;
+    SelectionHide();
+    Clip_Order(selDownRow, selDownCol, row, col, &r);
+    SelectionInvert(&r);
+    selShownRange = r;
+    selShown = TRUE;
+}
+
+static void SelectionUp(void)
+{
+    if (!selDragging)
+        return;
+    selDragging = FALSE;
+    ReportMouse(FALSE, win);                    // the selection waits for Amiga-C
+}
+
+static void CopyScreen(void)
+{
+    struct ClipRange r;
+    UWORD cols, rows;
+
+    if (!SelectionAvailable())
+        return;
+    TerminalGrid(&cols, &rows);
+    r.startRow = 1; r.startCol = 1; r.endRow = rows; r.endCol = cols;
+    CopyRange(&r);
+}
+
+static void OutKey(unsigned char key);
+static void SendTypedChar(UBYTE c);
+
+// Edit > Paste: the clipboard's text, typed.
+static void PasteClipboard(void)
+{
+    UBYTE *iff = AllocVec(CLIP_READ_MAX, MEMF_ANY);
+    char *text = AllocVec(CLIP_READ_MAX, MEMF_ANY);
+    char *out = AllocVec(2 * CLIP_READ_MAX, MEMF_ANY);
+    ULONG len;
+    size_t n, i;
+
+    if (iff && text && out && ClipboardIO(CMD_READ, iff, CLIP_READ_MAX, &len, TRUE))
+    {
+        n = Clip_ParseFtxt(iff, len, text, CLIP_READ_MAX);
+        if (PETSCII_SESSION())
+        {
+            n = Clip_PasteBytes(text, n, FALSE, FALSE, out);    // line ends: one Return
+            for (i = 0; i < n; i++)
+                SendTypedChar((UBYTE)out[i]);   // C64 case and codes, as typed
+        }
+        else
+        {
+            size_t m;
+
+            if (prefs.Charset == CHARSET_UTF8 && 2 * n <= CLIP_READ_MAX)
+            {
+                n = Charset_Latin1ToUtf8((UBYTE *)text, n, iff);    // iff is free now
+                memcpy(text, iff, n);
+            }
+            m = Clip_PasteBytes(text, n, STATE_IS(APP_RETURN_SENDING_CRLF),
+                                       isConnected && TELNET_DATA(), out);
+            if (isConnected)
+            {
+                TCPSend(out, (long)m);
+                if (STATE_IS(APP_LOCAL_ECHO))
+                    EchoWrite((UBYTE *)out, (long)m);
+            }
+            else
+                EchoWrite((UBYTE *)out, (long)m);
+        }
+    }
+    if (iff) FreeVec(iff);
+    if (text) FreeVec(text);
+    if (out) FreeVec(out);
+}
 
 static void GetWindowMsg(struct Window *wwin)
 {
@@ -1808,6 +3893,7 @@ static void GetWindowMsg(struct Window *wwin)
     char close = FALSE;
     char resize = FALSE;
     BOOL shouldCloseToolbarWin = FALSE;
+    WORD mouseX, mouseY;
 
     while (message = GT_GetIMsg(wwin->UserPort))
     {
@@ -1815,10 +3901,27 @@ static void GetWindowMsg(struct Window *wwin)
         code = message->Code;
         gad = (struct Gadget *)message->IAddress;
         qual = message->Qualifier;
+        mouseX = message->MouseX;
+        mouseY = message->MouseY;
         GT_ReplyIMsg(message);
 
         switch (class)
         {
+        case IDCMP_MOUSEBUTTONS:
+            if (wwin == win)
+            {
+                if (code == SELECTDOWN)
+                    SelectionDown(mouseX, mouseY);
+                else if (code == SELECTUP)
+                    SelectionUp();
+            }
+            break;
+
+        case IDCMP_MOUSEMOVE:
+            if (wwin == win)
+                SelectionMove(mouseX, mouseY);
+            break;
+
         case IDCMP_GADGETUP:
             if(wwin == packetWin)  // A line has been validated in the packet window;
             {                      // send it to the server.
@@ -1881,6 +3984,14 @@ static void GetWindowMsg(struct Window *wwin)
         case IDCMP_NEWSIZE:
             //LocalPrint("\017\233\164\233\165\233\166\233\167");
             if(wwin == scrollbackWin) resize = TRUE;
+            else if (wwin == win)
+            {
+                // A Workbench resize: keep the width limit, and tell the BBS
+                // the new grid so its next screen fits (the console does not
+                // reflow what is already drawn).
+                LimitTerminalWidth();
+                if (isConnected) TelnetSendWindowSize();
+            }
             break;
 
 
@@ -1899,23 +4010,19 @@ static void GetWindowMsg(struct Window *wwin)
                 case RAWKEY_CRSRDOWN:
                     goto down;
                 case RAWKEY_F5:
-                    buf[0] = '\0';
-                    strlcpy(fbuf, "DCTelnet.Cap", sizeof(fbuf));
-                    if (FileRequester(win,
-                                      buf,  sizeof(buf),
-                                      fbuf, sizeof(fbuf),
-                                      "#?",
-                                      FILEREQ_SAVE))
-                    {
-                        AddPart(buf, fbuf, sizeof(buf));
-                        //strcat(buf, fbuf);
+                    if (AskSavePath(buf, sizeof(buf), "DCTelnet.Cap"))
                         SaveScrollBack(buf);
-                    }
                     break;
                 case RAWKEY_F3:
                     if (ConfirmRequester(win, "Print|Cancel",
                                          "Print Scrollback?"))
                         SaveScrollBack("PRT:");
+                    break;
+                case RAWKEY_F2:
+                    if (FindInScrollBack(&lasttop))
+                        SetGadgetAttrs((struct Gadget *)Scroller, scrollbackWin, NULL,
+                            PGA_Top,    lasttop,
+                        TAG_DONE);
                     break;
                 case RAWKEY_F1:
                     ClearScrollBack();
@@ -1933,102 +4040,30 @@ static void GetWindowMsg(struct Window *wwin)
                 struct InputEvent ie;
                 register ULONG i, length;
 
-                if(!(message->Code & IECODE_UP_PREFIX))
+                if(!(code & IECODE_UP_PREFIX))
                 {
-                    static char key_csi;
-                    static char key_macro;
+                    int id = Keys_FromRawCode(code);
 
-                    ie.ie_Class        = IECLASS_RAWKEY;
-                    ie.ie_SubClass        = 0;
-                    ie.ie_Code        = code;
-                    ie.ie_Qualifier        = qual;
-                    ie.ie_position.ie_addr    = gad;
-
-                    length = MapRawKey(&ie, conbuf, 16, NULL);
-
-                    for(i=0; i<length; i++)
+                    if (id != KEY_NONE)
+                        SendKey(id);
+                    else
                     {
-                        switch(conbuf[i])
+                        ie.ie_Class        = IECLASS_RAWKEY;
+                        ie.ie_SubClass        = 0;
+                        ie.ie_Code        = code;
+                        ie.ie_Qualifier        = qual;
+                        ie.ie_position.ie_addr    = gad;
+
+                        length = MapRawKey(&ie, conbuf, 16, NULL);
+                        for (i = 0; i < length; )
                         {
-                        case CSI_CHAR:   // Amiga console CSI
-                            key_csi = TRUE;
-                            break;
-                        /*case 'v':
-                        case 'V':
-                            if(qual&IEQUALIFIER_RCOMMAND)
-                            {
-                                ConWrite("› v", 3);
-                                break;
-                            }*/
-                        default:
-                            if(key_csi)
-                            {
-                                key_csi = FALSE;
-                                if (conbuf[i] >= '0' && conbuf[i] <= '9' && STATE_IS_NOT(APP_PETSCII_MODE))
-                                {
-                                    key_macro = TRUE;
-                                    SendMacro(&fKeys[(conbuf[i] - '0') * F_KEY_SIZE]);
-                                }
-                                /* PETSCII mode: F1-F8 send the real PETSCII function-key bytes
-                                 * instead of triggering a user macro -- Amiga's console CSI encodes
-                                 * F1-F10 as ESC [ <digit> per the digit branch above (0-9); only
-                                 * 1-8 have a PETSCII counterpart (F9/F10/F0 have none). */
-                                else if (STATE_IS(APP_PETSCII_MODE)
-                                         && conbuf[i] >= '1' && conbuf[i] <= '8')
-                                {
-                                    static const int fkeys[8] = {
-                                        PETSCII_KEY_F1, PETSCII_KEY_F2, PETSCII_KEY_F3, PETSCII_KEY_F4,
-                                        PETSCII_KEY_F5, PETSCII_KEY_F6, PETSCII_KEY_F7, PETSCII_KEY_F8
-                                    };
-                                    key_macro = TRUE;
-                                    OutKey((unsigned char)petscii_translate_key(fkeys[conbuf[i] - '1'], 1));
-                                }
+                            UBYTE ch = 0;
 
-                                if (STATE_IS(APP_PETSCII_MODE))
-                                {
-                                    switch(conbuf[i])
-                                    {
-                                    case 'A': OutKey((unsigned char)petscii_translate_key(PETSCII_KEY_UP, 1));    break;
-                                    case 'B': OutKey((unsigned char)petscii_translate_key(PETSCII_KEY_DOWN, 1));  break;
-                                    case 'C': OutKey((unsigned char)petscii_translate_key(PETSCII_KEY_RIGHT, 1)); break;
-                                    case 'D': OutKey((unsigned char)petscii_translate_key(PETSCII_KEY_LEFT, 1));  break;
-                                    }
-                                }
-                                else switch(conbuf[i])
-                                {
-                                case 'A':
-                                    SendMisc(ESC_STR "[A", 3);
-                                    break;
-                                case 'B':
-                                    SendMisc(ESC_STR "[B", 3);
-                                    break;
-                                case 'C':
-                                    SendMisc(ESC_STR "[C", 3);
-                                    break;
-                                case 'D':
-                                    SendMisc(ESC_STR "[D", 3);
-                                    break;
-                                }
-
-                            } else {
-                                if(key_macro)
-                                    key_macro = FALSE;
-                                else
-                                {
-                                    if (STATE_IS(APP_PETSCII_MODE)
-                                        && (conbuf[i] == DEL_CHAR || conbuf[i] == '\b'))
-                                        /* PETSCII's own DEL byte (20), not ASCII BS/DEL --
-                                         * FLAG_BS_DEL_SWAP is an ASCII-only concept and
-                                         * does not apply here. */
-                                        OutKey((unsigned char)petscii_translate_key(PETSCII_KEY_DEL, 1));
-                                    else if (STATE_IS(APP_PETSCII_MODE) && conbuf[i] != '\r')
-                                        OutKey((unsigned char)petscii_translate_key(conbuf[i], 0));
-                                    else
-                                        OutKey(conbuf[i]);
-                                    if(conbuf[i] == '\r' && STATE_IS(APP_RETURN_SENDING_CRLF))
-                                        OutKey('\n');
-                                }
-                            }
+                            i += Keys_Next((UBYTE *)conbuf + i, length - i, &id, &ch);
+                            if (id == KEY_TEXT)
+                                SendTypedChar(ch);
+                            else
+                                SendKey(id);
                         }
                     }
                 }
@@ -2042,7 +4077,9 @@ static void GetWindowMsg(struct Window *wwin)
             struct MenuItem *item = NULL;
             UWORD nextMenuNumber = MENUNULL;
             enum MenuItemID menuID;
-
+            // What the user changes by hand while connected to an entry
+            // stays for the rest of the run, but is not saved (below).
+            handBaseline = prefs;
             LEDs();
 
             while (menuNumber != MENUNULL)
@@ -2163,8 +4200,24 @@ static void GetWindowMsg(struct Window *wwin)
                         break;
 
                     case MENU_DISCONNECT:
-                        DisConnect(FALSE, FALSE);
+                        if (!StopRedial())
+                            DisConnect(FALSE, FALSE);
                         break;
+
+                    case MENU_IMPORT_BOOK:
+                    {
+                        char dir[256], name[108];
+
+                        dir[0] = 0;
+                        strlcpy(name, "syncterm.lst", sizeof(name));
+                        if (FileRequester(STATE_IS(APP_FULLSCREEN) ? win : NULL, dir, sizeof(dir), name, sizeof(name),
+                                          "#?.lst", FILEREQ_LOAD))
+                        {
+                            AddPart(dir, name, sizeof(dir));
+                            ImportBookList(dir);
+                        }
+                        break;
+                    }
 
                     case MENU_ADDRESS_BOOK:
                         WindowSub(AddressBook);
@@ -2190,8 +4243,8 @@ static void GetWindowMsg(struct Window *wwin)
                         {
                             if(STATE_IS(APP_TITLE_BAR_ENABLED))
                             {
-                                SetAPen(&scr->RastPort, 1);
-                                RectFill(&scr->RastPort, scr->Width-86, 2, scr->Width-60, prefs.FontSize-1);
+                                SetAPen(&scr->RastPort, drawInfo->dri_Pens[BARBLOCKPEN]);
+                                RectFill(&scr->RastPort, scr->Width-86, 2, scr->Width-60, BAR_TEXT_HEIGHT-1);
                             }
                         }
                         break;
@@ -2239,12 +4292,78 @@ static void GetWindowMsg(struct Window *wwin)
                         UpdatePrefsFromMenu(item, APP_RETURN_SENDING_CRLF);
                         break;
 
+                    case MENU_VT_KEYS:
+                        UpdatePrefsFromMenu(item, APP_VT_KEYS);
+                        break;
+
+                    case MENU_132_COLUMNS:
+                        UpdatePrefsFromMenu(item, APP_132_COLUMNS);
+                        ApplyTerminalWidth();
+                        break;
+
+                    case MENU_BELL_FLASH:
+                    case MENU_BELL_SOUND:
+                    case MENU_BELL_OFF:
+                        prefs.Bell = (UBYTE)((ULONG)GTMENUITEM_USERDATA(item) - MENU_BELL_FLASH);
+                        if (prefs.Bell == BELL_SOUND) Sound_Beep();      // how it sounds
+                        break;
+
+                    case MENU_ANSI_MUSIC:
+                        prefs.AnsiMusic = (item->Flags & CHECKED) != 0;
+                        AnsiMusic_Init(&ansiMusic);
+                        break;
+
+                    case MENU_CHARSET_CP437:
+                    case MENU_CHARSET_LATIN1:
+                    case MENU_CHARSET_UTF8:
+                        prefs.Charset = (UBYTE)((ULONG)GTMENUITEM_USERDATA(item) - MENU_CHARSET_CP437);
+                        Charset_Utf8Init(&utf8In);
+                        Charset_Utf8Init(&utf8Echo);
+                        break;
+
+                    case MENU_COPY:
+                        if (selShown)
+                            CopyRange(&selShownRange);
+                        break;
+
+                    case MENU_PASTE:
+                        PasteClipboard();
+                        break;
+
+                    case MENU_CAPTURE:
+                        CaptureToggle(item);
+                        break;
+
+                    case MENU_SAVE_SCREEN:
+                        SaveScreen();
+                        break;
+
+                    case MENU_CONNECTION_OPTIONS:
+                        if (EditConnectionOptions(&prefs))
+                        {
+                            ScheduleKeepAlive();        // the new minutes count from now
+                            TimerArm();
+                        }
+                        break;
+
+                    case MENU_COPY_SCREEN:
+                        CopyScreen();
+                        break;
+
                     case MENU_LOCAL_ECHO:
                         UpdatePrefsFromMenu(item, APP_LOCAL_ECHO);
                         break;
 
                     case MENU_RAW_CONNECTION:
                         UpdatePrefsFromMenu(item, APP_RAW_CONNECTION);
+                        break;
+
+                    case MENU_RLOGIN:
+                        UpdatePrefsFromMenu(item, APP_RLOGIN);
+                        break;
+
+                    case MENU_SSH:
+                        UpdatePrefsFromMenu(item, APP_SSH);
                         break;
 
                     case MENU_FAST_SCROLL:
@@ -2260,27 +4379,57 @@ static void GetWindowMsg(struct Window *wwin)
                     case MENU_BUILTIN_RENDERER:
                         if (STATE_IS_NOT(APP_RENDERER_BUILTIN))
                         {
+                            ULONG was = prefs.State & APP_RENDERER_ALL;
+
                             // Update Prefs State bits:
                             STATE_UNSET(APP_RENDERER_ALL);
                             STATE_SET(APP_RENDERER_BUILTIN);
 
                             // Changing the pen mapping requires reopening the screen,
-                            // because Intuition only applies SA_Pens during screen creation.
-                            shouldReopenScreen = STATE_IS(APP_RENDERER_CONSOLE_DEVICE
-                                                           | APP_RENDERER_IBMCON_DEVICE);
-                            shouldRestart = TRUE;
+                            // because Intuition only applies SA_Pens during screen creation
+                            // (was: the renderer being left).
+                            shouldReopenScreen = (was & (APP_RENDERER_CONSOLE_DEVICE
+                                                         | APP_RENDERER_IBMCON_DEVICE)) != 0;
+
+                            // A screen mode chosen for another renderer may be one the
+                            // built-in renderer cannot hold 80x25 cells in.
+                            if (STATE_IS(APP_FULLSCREEN) && !Prefs_ScreenFits(&prefs))
+                            {
+                                ULONG oldID = prefs.DisplayID;
+                                UWORD oldW = prefs.DisplayWidth, oldH = prefs.DisplayHeight;
+                                UWORD oldD = prefs.DisplayDepth;
+
+                                if (ChooseScreen() && Prefs_ScreenFits(&prefs))
+                                    shouldReopenScreen = TRUE;
+                                else
+                                {
+                                    // (the requester wrote its choice into prefs: undone)
+                                    prefs.DisplayID = oldID;
+                                    prefs.DisplayWidth = oldW;
+                                    prefs.DisplayHeight = oldH;
+                                    prefs.DisplayDepth = oldD;
+                                    SimpleReq("The built-in renderer needs a screen of at least\n"
+                                              "640x200 pixels with 16 colours or more.");
+                                    STATE_UNSET(APP_RENDERER_ALL);
+                                    STATE_SET(was);
+                                    shouldReopenScreen = FALSE;
+                                }
+                            }
+                            shouldRestart = TRUE;       // (also puts the menu check back)
                         }
                     break;
 
                     case MENU_CONSOLE_DEVICE:
                         if (STATE_IS_NOT(APP_RENDERER_CONSOLE_DEVICE))
                         {
+                            ULONG was = prefs.State & APP_RENDERER_ALL;
+
                             // Update Prefs State bits:
                             STATE_UNSET(APP_RENDERER_ALL);
                             STATE_SET(APP_RENDERER_CONSOLE_DEVICE);
 
-                            shouldReopenScreen = STATE_IS(APP_RENDERER_BUILTIN
-                                                           | APP_RENDERER_XEM_LIB);
+                            shouldReopenScreen = (was & (APP_RENDERER_BUILTIN
+                                                         | APP_RENDERER_XEM_LIB)) != 0;
                             shouldRestart = TRUE;
                         }
                     break;
@@ -2293,12 +4442,14 @@ static void GetWindowMsg(struct Window *wwin)
                         }
                         else
                         {
+                            ULONG was = prefs.State & APP_RENDERER_ALL;
+
                             // Update Prefs State bits:
                             STATE_UNSET(APP_RENDERER_ALL);
                             STATE_SET(APP_RENDERER_XEM_LIB);
 
-                            shouldReopenScreen = STATE_IS(APP_RENDERER_CONSOLE_DEVICE
-                                                          | APP_RENDERER_IBMCON_DEVICE);
+                            shouldReopenScreen = (was & (APP_RENDERER_CONSOLE_DEVICE
+                                                         | APP_RENDERER_IBMCON_DEVICE)) != 0;
                         }
 
                         // Restart even when prefs.displaydriver[0] == '\0', this forces a menu
@@ -2309,12 +4460,14 @@ static void GetWindowMsg(struct Window *wwin)
                     case MENU_IBMCON_DEVICE:
                         if (STATE_IS_NOT(APP_RENDERER_IBMCON_DEVICE))
                         {
+                            ULONG was = prefs.State & APP_RENDERER_ALL;
+
                             // Update Prefs State bits:
                             STATE_UNSET(APP_RENDERER_ALL);
                             STATE_SET(APP_RENDERER_IBMCON_DEVICE);
 
-                            shouldReopenScreen = STATE_IS(APP_RENDERER_BUILTIN
-                                                          | APP_RENDERER_XEM_LIB);
+                            shouldReopenScreen = (was & (APP_RENDERER_BUILTIN
+                                                         | APP_RENDERER_XEM_LIB)) != 0;
                             shouldRestart = TRUE;
                         }
                     break;
@@ -2322,12 +4475,11 @@ static void GetWindowMsg(struct Window *wwin)
                     case MENU_PETSCII_MODE:
                         UpdatePrefsFromMenu(item, APP_PETSCII_MODE);
                         petscii_dispatch_init(&g_petsciiState, 40, 25);
-                        /* The console device fixes its cell size from the RastPort
-                         * font at OpenDevice() time, so a font swap needs the same
-                         * close/reopen as MENU_SCREEN_FONT -- OpenAppScreen() picks
-                         * the PETSCII fonts from APP_PETSCII_MODE. */
-                        shouldRestart = TRUE;
-                        shouldReopenScreen = TRUE;
+                        /* The C64 display is up only during a connection. Toggled
+                         * while connected, the display reopens (the console fixes its
+                         * cell size at OpenDevice() time, as for MENU_SCREEN_FONT);
+                         * toggled while disconnected, nothing visible changes. */
+                        SyncPetsciiDisplay();
                         break;
 
                     case MENU_SCREEN_MODE:
@@ -2343,14 +4495,20 @@ static void GetWindowMsg(struct Window *wwin)
                         break;
 
                     case MENU_SCREEN_FONT:
+                    {
+                        // The same reopen as an entry's font: on the Workbench
+                        // the console only, and a window at the BBS size stays
+                        // 80x25 in the new font (a 7x11 font came back in the
+                        // old 8x16 window: 91x36, cut to 80 columns).
+                        static struct PrefsStruct before;
+
+                        before = prefs;
                         if (FontRequester(win,
                                           prefs.FontName, sizeof(prefs.FontName),
                                           &prefs.FontSize))
-                        {
-                            shouldRestart = TRUE;
-                            shouldReopenScreen = TRUE;
-                        }
+                            RequestDisplayReopen(&before);
                         break;
+                    }
 
                     case MENU_SCREEN_PALETTE:
                         ChoosePalette();
@@ -2394,7 +4552,13 @@ static void GetWindowMsg(struct Window *wwin)
 
                     case MENU_XEM_LIB_OPTIONS:
                         if (xemIO)
+                        {
                             XEmulatorOptions(xemIO);
+                            // Saved as the global options unless an entry's own Terminal
+                            // settings are live: then the change is session-only.
+                            if (!(sessionSettingsId && (sessionGroups & SITE_GROUP_TERMINAL)))
+                                SaveXemOptions(XEM_GLOBAL_OPTIONS);
+                        }
                         else
                             InfoReq(win, "The XEM library is currently "
                                            "disabled, so related functionality is unavailable.");
@@ -2413,6 +4577,8 @@ static void GetWindowMsg(struct Window *wwin)
                         break;
 
                     case MENU_SNAPSHOT_WINDOWS:
+                        if (STATE_IS_NOT(APP_FULLSCREEN))   // this size, not the 80x25 BBS default
+                            STATE_SET(APP_WINDOW_SNAPSHOT);
                         prefs.MainWinTopEdge  = win->TopEdge;
                         prefs.MainWinLeftEdge = win->LeftEdge;
                         prefs.MainWinHeight   = win->Height;
@@ -2433,6 +4599,27 @@ static void GetWindowMsg(struct Window *wwin)
 
                         break;
 
+                    case MENU_SAVE_ENTRY_SETTINGS:
+                        switch (SaveSettingsToConnectedEntry())
+                        {
+                            case SAVE_ENTRY_NOT_CONNECTED:
+                                InfoReq(win,
+                                        "Connect to an Address Book entry first.");
+                                break;
+                            case SAVE_ENTRY_NOTHING_CHANGED:
+                                InfoReq(win,
+                                        "Nothing was changed since connecting,\n"
+                                        "so there is nothing to save to this entry.");
+                                break;
+                            case SAVE_ENTRY_WRITE_ERROR:
+                                InfoReq(win,
+                                        "Could not save the settings to PROGDIR:Sites.");
+                                break;
+                            default:
+                                break;
+                        }
+                        break;
+
                     case MENU_SEND_USERNAME:
                         SendMisc(username, -1);
                         SendMisc("\r", 1);
@@ -2449,6 +4636,9 @@ static void GetWindowMsg(struct Window *wwin)
 
                 menuNumber = nextMenuNumber;
             } // while
+            // Changed while connected to an entry: kept for this run, not saved.
+            SitePrefs_HandChange(&handChanges, &globalPrefs, &handBaseline, &prefs,
+                                 sessionSettingsId != 0);
             break;
         }  // case IDCMP_MENUPICK
 
@@ -2468,7 +4658,7 @@ up:                if(lasttop > 0) lasttop--;
                 break;
 
             case GAD_DOWN:
-down:                if(lasttop+((scrollbackWin->Height - (prefs.FontSize + scr->WBorTop + 2)) / prefs.FontSize) < nScrollbackLines) lasttop++;
+down:                if(lasttop+((scrollbackWin->Height - (scr->Font->ta_YSize + scr->WBorTop + 2)) / scr->Font->ta_YSize) < nScrollbackLines) lasttop++;
                 break;
             }
             SetGadgetAttrs((struct Gadget *)Scroller, scrollbackWin, NULL,
@@ -2488,7 +4678,7 @@ down:                if(lasttop+((scrollbackWin->Height - (prefs.FontSize + scr-
         RefreshWindowFrame(scrollbackWin);
         RefreshListView(lasttop);
         SetGadgetAttrs((struct Gadget *)Scroller, scrollbackWin, NULL,
-            PGA_Visible,    (scrollbackWin->Height - (prefs.FontSize + scr->WBorTop + 2)) / prefs.FontSize,
+            PGA_Visible,    (scrollbackWin->Height - (scr->Font->ta_YSize + scr->WBorTop + 2)) / scr->Font->ta_YSize,
         TAG_END);
     }
     if(close) CloseScrollBack();
@@ -2503,10 +4693,15 @@ static void CheckError(void)
 {
     register long en = Errno();
 
+    lastConnectErrno = en;
     switch(en)
     {
         case EINTR:
-            LocalPrint("ERROR: Interrupted system call.\r\n"); break;
+            if (isConnectionAborted == CONNECT_TIMED_OUT)
+                LocalFmt("ERROR: No answer in %ld seconds.\r\n", (LONG)prefs.ConnectTimeout);
+            else
+                LocalPrint("ERROR: Interrupted system call.\r\n");
+            break;
         case EHOSTUNREACH:
             LocalPrint("ERROR: No route to host.\r\n"); break;
         case ECONNREFUSED:
@@ -2597,8 +4792,8 @@ static UWORD EstablishTCPConnection(char *servername, UWORD port)
     //  Draw connection activity indicator when Title bar AND LEDs are enabled
     if (STATE_ARE_ALL(APP_TITLE_BAR_ENABLED | APP_LEDS_ENABLED))
     {
-        SetAPen(&scr->RastPort, 11);
-        RectFill(&scr->RastPort, scr->Width-84, 3, scr->Width-76, prefs.FontSize-2);
+        SetAPen(&scr->RastPort, LegacyPen(11));
+        RectFill(&scr->RastPort, scr->Width-84, 3, scr->Width-76, BAR_TEXT_HEIGHT-2);
     }
 
     DisConnect(FALSE, FALSE);
@@ -2694,10 +4889,11 @@ static UWORD EstablishTCPConnection(char *servername, UWORD port)
      * mode already saved in prefs ran on a zeroed state (cols = 0), so
      * every printable byte "wrapped" and got its own line. */
     petscii_dispatch_init(&g_petsciiState, 40, 25);
-    if (STATE_IS(APP_PETSCII_MODE) && !petsciiFont)
+    if (PETSCII_SESSION() && !petsciiFont)
         LocalPrint("\r\nPETSCII Mode: Petscii.font not found in FONTS: or PROGDIR:Fonts/, "
                    "showing CP437 lookalikes.\r\n");
 
+    Dsr_Init(&bbsDsr);      // a request cut off by the last disconnect is not this BBS's
     isConnected = TRUE;
 
     LEDs();
@@ -2707,53 +4903,400 @@ static UWORD EstablishTCPConnection(char *servername, UWORD port)
 
 
 /**
- * @brief Open a PETSCII font from FONTS:, else from the Fonts drawer next to the program.
+ * @brief Open a font DCTelnet ships (Petscii, PetsciiLower, TopazPro) from
+ *        FONTS:, else from the Fonts drawer next to the program.
  *
- * The release archive carries Petscii.font/PetsciiLower.font in DCTelnet/Fonts/, and not every
- * user copies them into FONTS:. diskfont.library accepts a path in ta_Name.
+ * The release archive carries them in DCTelnet/Fonts/, and not every user copies them into
+ * FONTS:. diskfont.library accepts a path in ta_Name.
  */
-static struct TextFont *OpenPetsciiFont(STRPTR name, STRPTR progdirPath)
+static struct TextFont *OpenBundledFont(STRPTR name, STRPTR progdirPath, UWORD ysize)
 {
     struct TextAttr attr;
     struct TextFont *font;
 
-    attr.ta_Name  = name;
-    attr.ta_YSize = 8;
+    attr.ta_Name  = progdirPath;     // DCTelnet's own drawer first
+    attr.ta_YSize = ysize;
     attr.ta_Style = FS_NORMAL;
     attr.ta_Flags = 0;
     font = OpenDiskFont(&attr);
     if (!font)
     {
-        attr.ta_Name = progdirPath;
+        attr.ta_Name = name;         // then FONTS:
         font = OpenDiskFont(&attr);
     }
     return font;
+}
+
+/**
+ * @brief Open the C64 fonts when the display should be the C64 one (a PETSCII
+ *        session on a console device or the built-in renderer), and record
+ *        which display this is. XEM draws with its own glyphs: there the
+ *        PETSCII stream is translated to ANSI (Receive) and no C64 font opens.
+ */
+static void OpenPetsciiFonts(void)
+{
+    displayIsPetscii = PETSCII_SESSION() != 0;
+    if (displayIsPetscii && STATE_IS(APP_RENDERER_IBMCON_DEVICE | APP_RENDERER_CONSOLE_DEVICE
+                                     | APP_RENDERER_BUILTIN))
+    {
+        /* Petscii/PetsciiLower.font: real C64 glyphs indexed by raw PETSCII
+         * byte, double-width (16x8) cells so 40 columns fill roughly the
+         * physical width the normal 80-column font needs. Not installed:
+         * both stay NULL and Receive() renders CP437 lookalikes instead. */
+        petsciiFont = OpenBundledFont("Petscii.font", "PROGDIR:Fonts/Petscii.font", 8);
+        petsciiFontLower = petsciiFont
+            ? OpenBundledFont("PetsciiLower.font", "PROGDIR:Fonts/PetsciiLower.font", 8) : NULL;
+    }
+}
+
+static void ClosePetsciiFonts(void)
+{
+    if(petsciiFont)           { CloseFont(petsciiFont);             petsciiFont = NULL; }
+    if(petsciiFontLower)      { CloseFont(petsciiFontLower);        petsciiFontLower = NULL; }
+}
+
+// The ANSI colours for ibmcon and the built-in renderer on the Workbench: 16
+// shared pens of exactly the renderer's colours (Palette_Get) from its palette
+// (V39), given back with ReleaseWorkbenchPens().
+static void ObtainWorkbenchPens(void)
+{
+    UWORD i, colours[16];
+
+    if (!STATE_IS(APP_RENDERER_IBMCON_DEVICE | APP_RENDERER_BUILTIN) || STATE_IS(APP_FULLSCREEN)
+        || GfxBase->LibNode.lib_Version < 39 || wbPensObtained)
+        return;
+    Palette_Get(&prefs, colours);
+    for (i = 0; i < 16; i++)
+        ansiColourPens[i] = ObtainNearestPen(scr->ViewPort.ColorMap, Palette_RGB32(colours[i]),
+                                             PRECISION_EXACT, &wbPenOwned[i]);
+    wbPensObtained = TRUE;
+    ansiOwnPens = TRUE;
+}
+
+static void ReleaseWorkbenchPens(void)
+{
+    UWORD i;
+
+    if (!wbPensObtained)
+        return;
+    for (i = 0; i < 16; i++)
+        if (wbPenOwned[i])
+            ReleasePen(scr->ViewPort.ColorMap, ansiColourPens[i]);
+    wbPensObtained = FALSE;
+    ansiOwnPens = FALSE;
+}
+
+// ibmcon 1.5: the ANSI colours' own pens. An older ibmcon answers
+// IOERR_NOCMD and keeps pens 0-15. Also sent to an open console.
+static void SendPenTable(void)
+{
+    if (!ansiOwnPens || !STATE_IS(APP_RENDERER_IBMCON_DEVICE))
+        return;
+    writeConsoleReq->io_Command = IBMCMD_SETPENS;
+    writeConsoleReq->io_Data    = ansiColourPens;
+    writeConsoleReq->io_Length  = sizeof(ansiColourPens);
+    DoIO((struct IORequest *)writeConsoleReq);
+    penTableError = writeConsoleReq->io_Error;
+}
+
+// New ANSI colours on the Workbench without reopening the console (which
+// would clear it): new shared pens, handed to the running ibmcon.
+static void RenewWorkbenchPens(void)
+{
+    if (!wbPensObtained || (!isConDeviceOpened && STATE_IS_NOT(APP_RENDERER_BUILTIN)))
+        return;
+    ReleaseWorkbenchPens();
+    ObtainWorkbenchPens();
+    SendPenTable();
+    if (STATE_IS(APP_RENDERER_BUILTIN))
+        term_set_pens(ansiOwnPens ? ansiColourPens : NULL);
+}
+
+/**
+ * @brief Open the renderer's console device (ibmcon.device, or console.device)
+ *        on the main window, with the RastPort's current font.
+ */
+static BOOL OpenConsoleDevice(void)
+{
+    #ifdef _DEBUG
+        ULONG beforeSigAlloc;
+        ULONG afterSigAlloc;
+        UBYTE conDeviceSigBit;
+    #endif
+    UWORD unitNumber;
+    char *devName = STATE_IS(APP_RENDERER_CONSOLE_DEVICE) ? "console.device" : "ibmcon.device";
+    BOOL b;
+
+    // Exec Device I/O Functions docs:
+    // https://amigadev.elowar.com/read/ADCD_2.1/Libraries_Manual_guide/node02A5.html
+
+    // CreateIORequest() requires a message port.
+    writeConsoleMP = CreateMsgPort();
+    if (!writeConsoleMP) { InfoReq(win,
+                                 "Unable to create message port for console device!");
+                         return FALSE; }
+
+    // https://amigadev.elowar.com/read/ADCD_2.1/Includes_and_Autodocs_2._guide/node0344.html
+    writeConsoleReq = CreateIORequest(writeConsoleMP, sizeof(struct IOStdReq));
+    if (!writeConsoleReq)       // the console is reopened at run time too
+    {
+        DeleteMsgPort(writeConsoleMP);
+        writeConsoleMP = NULL;
+        InfoReq(win, "Unable to create the console device request!");
+        return FALSE;
+    }
+
+    // The unit number that is a standard parameter for an open call is used
+    // specially by this device.
+    if (STATE_IS(APP_RENDERER_CONSOLE_DEVICE))
+    {
+        unitNumber = CONU_SNIPMAP;
+    } else {
+        if(STATE_IS(APP_FAST_SCROLL_ENABLED))
+            unitNumber = 2; // Unit 2 is a non-standard unit specific to ibmcon.device
+        else
+            unitNumber = CONU_CHARMAP;
+    }
+
+    // ibmcon on the Workbench: the ANSI colours take 16 shared pens of exactly
+    // their colours from its palette (V39); they go back in CloseConsoleDevice().
+    ObtainWorkbenchPens();
+
+    //the window that is used by the console device for output:
+    writeConsoleReq->io_Data = win;
+    writeConsoleReq->io_Length = sizeof(struct Window);
+
+    #ifdef _DEBUG
+        PutStr("   --> OpenDevice()\n");
+        beforeSigAlloc = mainTask->tc_SigAlloc;
+        PutStr("SigAlloc:"); PrintBitsULONG(mainTask->tc_SigAlloc);
+        LogWindowsSigBit();
+    #endif
+
+    b = OpenNewestDevice(devName, unitNumber, (struct IORequest *)writeConsoleReq, CONFLAG_DEFAULT);
+    consoleFrom = ShippedFrom;      // for the start-up line
+
+    #ifdef _DEBUG
+        PutStr("   <-- OpenDevice()\n");
+        PutStr("SigAlloc:"); PrintBitsULONG(mainTask->tc_SigAlloc);
+        afterSigAlloc = mainTask->tc_SigAlloc;
+        conDeviceSigBit = BitPosition(beforeSigAlloc ^ afterSigAlloc); // XOR help detect the difference
+        Printf("                   conDeviceSigBit = %lu\n", (LONG) conDeviceSigBit);
+        LogWindowsSigBit();
+    #endif
+
+    if(b == RETURN_OK)
+    {
+        isConDeviceOpened = TRUE;
+        LimitTerminalWidth();       // the font is final now
+
+        SendPenTable();
+    }
+    else
+    {
+        // Device open failed; falling back to console.device for the next DCTelnet launch.
+        // console.device is the most compatible renderer.
+        STATE_UNSET(APP_RENDERER_ALL);
+        STATE_SET(APP_RENDERER_CONSOLE_DEVICE);
+
+        isConDeviceOpened = FALSE;
+
+        InfoReq(win, "Failed to open device: %s", devName);
+
+        return FALSE;
+    }
+    return TRUE;
+}
+
+/**
+ * @brief Close the console device and free its request and port (and give
+ *        the Workbench back its pens).
+ */
+static void CloseConsoleDevice(void)
+{
+    ReleaseWorkbenchPens();
+
+    // https://amigadev.elowar.com/read/ADCD_2.1/Devices_Manual_guide/node0190.html
+    if (isConDeviceOpened)
+    {
+        #ifdef _DEBUG
+            PutStr("   --> CloseDevice(&writeConsoleReq)\n");
+            PutStr("SigAlloc:"); PrintBitsULONG(mainTask->tc_SigAlloc);
+            LogWindowsSigBit();
+
+            if (! (mainTask->tc_SigAlloc & (1L << 31)))
+            {
+                InfoReq(win,
+                        "ERROR: sigbit 31 has disappeared before CloseDevice()! Why???");
+            }
+        #endif
+
+        CloseDevice((struct IORequest *)writeConsoleReq);
+
+        if (mainTask->tc_SigAlloc & (1L << 31))
+        {
+            #ifdef _DEBUG
+                PutStr("   <-- CloseDevice(&writeConsoleReq) => sigbit 31 preserved.\n");
+                PutStr("SigAlloc:"); PrintBitsULONG(mainTask->tc_SigAlloc);
+            #endif
+        }
+        else
+        {
+            #ifdef _DEBUG
+                PutStr("   <-- CloseDevice(&writeConsoleReq) => ERROR: sigbit 31 destroyed!!!\n");
+                PutStr("SigAlloc:"); PrintBitsULONG(mainTask->tc_SigAlloc);
+                PutStr("   --> AllocSignal(31L)\n");
+            #endif
+
+            dontUseSig31 = AllocSignal(31L);
+            if (dontUseSig31 != 31)
+                InfoReq(win, "ERROR: cannot allocate sigbit 31!");
+
+            #ifdef _DEBUG
+                PutStr("SigAlloc:"); PrintBitsULONG(mainTask->tc_SigAlloc);
+            #endif
+        }
+
+        isConDeviceOpened = FALSE;
+    }
+
+    if (writeConsoleReq)
+    {
+        DeleteIORequest(writeConsoleReq);
+        writeConsoleReq=NULL;
+    }
+
+    if (writeConsoleMP)
+    {
+        DeleteMsgPort(writeConsoleMP);
+        writeConsoleMP = NULL;
+    }
+}
+
+/**
+ * @brief Switch between the normal and the C64 display without closing the
+ *        screen or the window: the console fixes its cell size at OpenDevice()
+ *        time, so only the console is reopened after the fonts change (ibmcon
+ *        reads the RastPort font live). The built-in and XEM renderers take
+ *        their font at setup: they get the full reopen instead.
+ */
+static void ReopenTerminal(void)
+{
+    if (!STATE_IS(APP_RENDERER_IBMCON_DEVICE | APP_RENDERER_CONSOLE_DEVICE) || !win)
+    {
+        shouldRestart = TRUE;
+        shouldReopenScreen = TRUE;
+        return;
+    }
+    {
+        struct TextFont *oldAnsi = ansiFont;
+        UWORD cols, rows;
+        BOOL bbsSize;
+
+        TerminalGrid(&cols, &rows);
+        bbsSize = STATE_IS_NOT(APP_FULLSCREEN) && cols == ArtColumns(win->RPort->Font) && rows == SCREENFONT_BBS_ROWS;
+        CloseConsoleDevice();
+        OpenAnsiFont();                 // the settings' font (an entry's, the global one)
+        if (!STATE_IS_NOT(APP_FULLSCREEN))
+            LoadAnsiPalette(&prefs);    // the settings' colours on the terminal's pens
+        ClosePetsciiFonts();
+        OpenPetsciiFonts();
+        SetFont(win->RPort, petsciiFont ? petsciiFont : ansiFont);
+        if (oldAnsi) CloseFont(oldAnsi);
+        if (bbsSize)                    // still the BBS size: stays it in the new font
+            SizeWorkbenchWindow(ArtColumns(win->RPort->Font), SCREENFONT_BBS_ROWS);
+    }
+    if (!OpenConsoleDevice())
+    {
+        shouldRestart = TRUE;       // could not reopen it in place: reopen everything
+        shouldReopenScreen = TRUE;
+        return;
+    }
+    if (displayIsPetscii)
+        ConWrite(PETSCII_CONSOLE_SETUP, sizeof(PETSCII_CONSOLE_SETUP) - 1);
+    // The grid changed with the font: tell the BBS (on the Workbench the
+    // window's resize does it too, on the own screen nothing else would).
+    if (isConnected)
+        TelnetSendWindowSize();
+}
+
+/**
+ * @brief Open the terminal's ANSI font for the settings in use (ansiFont,
+ *        fontAttr): topaz and Topaz Pro are one face -- Topaz Pro on square
+ *        pixels (every RTG mode), topaz on the Amiga's tall ones -- for the
+ *        screen (title bar, menus) and the terminal alike.
+ */
+static void OpenAnsiFont(void)
+{
+    fontAttr.ta_Name = prefs.FontName;
+    fontAttr.ta_YSize = prefs.FontSize;
+    ansiFont = NULL;
+    {
+        struct DisplayInfo di;
+        struct ScreenFontChoice pick;
+        UWORD resX = 0, resY = 0;
+        ULONG modeID = prefs.DisplayID;
+
+        if (STATE_IS_NOT(APP_FULLSCREEN))
+        {
+            struct Screen *wb = LockPubScreen(NULL);
+
+            modeID = wb ? GetVPModeID(&wb->ViewPort) : INVALID_ID;
+            if (wb) UnlockPubScreen(NULL, wb);
+        }
+        if (modeID != INVALID_ID
+            && GetDisplayInfoData(NULL, (UBYTE *)&di, sizeof(di), DTAG_DISP, modeID))
+        {
+            resX = (UWORD)di.Resolution.x;
+            resY = (UWORD)di.Resolution.y;
+        }
+        modeResX = resX;
+        modeResY = resY;
+        // The built-in renderer draws 8x8 cells from the font it is given:
+        // the font stays as chosen (ValidateAndInitPrefs keeps it at 8).
+        if (STATE_IS_NOT(APP_RENDERER_BUILTIN))
+        {
+            ScreenFont_ForMode((const char *)prefs.FontName, prefs.FontSize, resX, resY, &pick);
+            fontAttr.ta_Name  = (STRPTR)pick.name;
+            fontAttr.ta_YSize = pick.size;
+            if (pick.topazPro)      // bundled: in the font list once open, so OpenScreen finds it
+                ansiFont = OpenBundledFont(TOPAZ_PRO_NAME, "PROGDIR:Fonts/" TOPAZ_PRO_NAME, TOPAZ_PRO_SIZE);
+        }
+    }
+    if (!ansiFont)
+    {
+        // DCTelnet's Fonts drawer first (the fonts it ships), then FONTS:
+        static char own[64];
+
+        if (ProgDir_Path("Fonts", (const char *)fontAttr.ta_Name, own, sizeof(own)))
+            ansiFont = OpenBundledFont(fontAttr.ta_Name, own, fontAttr.ta_YSize);
+        else
+            ansiFont = OpenDiskFont(&fontAttr);
+    }
+    fontMissing[0] = 0;
+    if(!ansiFont)
+    {
+        // The chosen font could not be opened: topaz, in the form the
+        // screen's pixels want (Topaz Pro on square ones), and say so.
+        struct ScreenFontChoice pick;
+
+        mysprintf(fontMissing, "%s %ld", prefs.FontName, (LONG)prefs.FontSize);
+        ScreenFont_ForMode("topaz.font", 8, modeResX, modeResY, &pick);
+        if (pick.topazPro)
+            ansiFont = OpenBundledFont(TOPAZ_PRO_NAME, "PROGDIR:Fonts/" TOPAZ_PRO_NAME, TOPAZ_PRO_SIZE);
+        fontAttr.ta_Name  = ansiFont ? (STRPTR)TOPAZ_PRO_NAME : (STRPTR)"topaz.font";
+        fontAttr.ta_YSize = ansiFont ? TOPAZ_PRO_SIZE : 8;
+        if (!ansiFont)
+            ansiFont = OpenFont(&fontAttr);
+    }
 }
 
 struct Screen* OpenAppScreen(void)
 {
     struct Screen *scr;
 
-    fontAttr.ta_Name = prefs.FontName;
-    fontAttr.ta_YSize = prefs.FontSize;
-    ansiFont = OpenDiskFont(&fontAttr);
-    if(!ansiFont)
-    {
-        fontAttr.ta_Name = "topaz.font";
-        fontAttr.ta_YSize = 8;
-        ansiFont = OpenFont(&fontAttr);
-    }
-
-    if (STATE_IS(APP_PETSCII_MODE))
-    {
-        /* Petscii/PetsciiLower.font: real C64 glyphs indexed by raw PETSCII
-         * byte, double-width (16x8) cells so 40 columns fill roughly the
-         * physical width the normal 80-column font needs. Not installed:
-         * both stay NULL and Receive() renders CP437 lookalikes instead. */
-        petsciiFont = OpenPetsciiFont("Petscii.font", "PROGDIR:Fonts/Petscii.font");
-        petsciiFontLower = petsciiFont
-            ? OpenPetsciiFont("PetsciiLower.font", "PROGDIR:Fonts/PetsciiLower.font") : NULL;
-    }
+    OpenAnsiFont();
+    OpenPetsciiFonts();
 
     if (STATE_IS_NOT(APP_FULLSCREEN))
     {
@@ -2779,6 +5322,10 @@ struct Screen* OpenAppScreen(void)
         struct ColorSpec colors[17];
         int i;
 
+        UBYTE deepPens[16];
+        BOOL  deep = STATE_IS(APP_RENDERER_IBMCON_DEVICE)
+                  && Palette_AnsiPens(prefs.DisplayDepth, deepPens);
+
         if (STATE_IS(APP_RENDERER_BUILTIN | APP_RENDERER_XEM_LIB))
         {
             colorsRGB4 = prefs.AnsiColors;
@@ -2791,13 +5338,19 @@ struct Screen* OpenAppScreen(void)
         }
 
         pens = (prefs.DisplayDepth < 3) ? defaultPens : pens;
+        // ibmcon with 32+ colours: the UI keeps Intuition's own pens and
+        // colours, the ANSI colours get pens of their own (in ANSI order).
+        if (deep)
+            pens = intuitionPens;
 
         // Convert RGB4 colors array to ColorSpec array needed for SA_Colors during screen open:
         for (i = 0; i < 16; i++) {
-            colors[i].ColorIndex = i;
-            colors[i].Red   = (colorsRGB4[i] >> 8) & 0xF;
-            colors[i].Green = (colorsRGB4[i] >> 4) & 0xF;
-            colors[i].Blue  =  colorsRGB4[i]       & 0xF;
+            UWORD c = deep ? colorsRGB4[Palette_IbmconToAnsi(i)] : colorsRGB4[i];
+
+            colors[i].ColorIndex = deep ? deepPens[i] : i;
+            colors[i].Red   = (c >> 8) & 0xF;
+            colors[i].Green = (c >> 4) & 0xF;
+            colors[i].Blue  =  c       & 0xF;
         }
         colors[16].ColorIndex = -1; /* -1 terminates an array of ColorSpec	*/
         colors[16].Red = colors[16].Green = colors[16].Blue = 0;
@@ -2816,6 +5369,8 @@ struct Screen* OpenAppScreen(void)
             SA_ShowTitle,     STATE_IS(APP_TITLE_BAR_ENABLED),
             SA_AutoScroll,    TRUE,
             SA_Interleaved,   TRUE,
+            SA_SharePens,     TRUE,        // V39: pens beyond the UI stay free
+            SA_FullPalette,   TRUE,        // V39: all colours initialised
             TAG_END);
 
         if (scr == NULL)
@@ -2824,6 +5379,32 @@ struct Screen* OpenAppScreen(void)
             STATE_SET(APP_CUSTOM_SCREEN_OPENED);
     }
 
+    // Own screen with 32+ colours and ibmcon: the ANSI colours on pens of their own.
+    ansiOwnPens = scr && STATE_IS(APP_FULLSCREEN) && STATE_IS(APP_RENDERER_IBMCON_DEVICE)
+               && Palette_AnsiPens(AppScreenDepth(scr), ansiColourPens);
+
+    // The screen shares its free pens (SA_SharePens): the terminal's ANSI
+    // pens and the AGA pointer pens 16-19 are ours, so that no ObtainBestPen()
+    // (the tool bar's icons) takes one and recolours it. They go with the
+    // screen.
+    if (ansiOwnPens && GfxBase->LibNode.lib_Version >= 39)
+    {
+        UWORD i;
+
+        for (i = 0; i < 16; i++)
+            ObtainPen(scr->ViewPort.ColorMap, ansiColourPens[i], 0, 0, 0, PEN_EXCLUSIVE | PEN_NO_SETCOLOR);
+        for (i = 16; i < 20; i++)
+            ObtainPen(scr->ViewPort.ColorMap, i, 0, 0, 0, PEN_EXCLUSIVE | PEN_NO_SETCOLOR);
+    }
+
+    // Border blank (V39, ECS/AGA): the overscan border shows colour 0, which
+    // on 32+ colours is the UI's grey pen 0 -- keep it black like the terminal.
+    if (scr && STATE_IS(APP_FULLSCREEN) && GfxBase->LibNode.lib_Version >= 39)
+    {
+        VideoControlTags(scr->ViewPort.ColorMap, VTAG_BORDERBLANK_SET, TRUE, TAG_DONE);
+        MakeScreen(scr);
+        RethinkDisplay();
+    }
     return scr;
 }
 
@@ -2849,13 +5430,23 @@ void OpenAppWindow(void)
         newWin.TopEdge    = prefs.MainWinTopEdge;
         newWin.Width      = prefs.MainWinWidth;
         newWin.Height     = prefs.MainWinHeight;
+        if (wbWindowBoxValid)   // a reopen: where the window was, not the snapshot
+        {
+            newWin.LeftEdge = wbWindowBox.Left;
+            newWin.TopEdge  = wbWindowBox.Top;
+            newWin.Width    = wbWindowBox.Width;
+            newWin.Height   = wbWindowBox.Height;
+        }
         newWin.MinWidth   = WIN_MIN_WIDTH;
         newWin.MinHeight  = WIN_MIN_HEIGHT;
         newWin.MaxWidth   = DISP_MAX_WIDTH;
         newWin.MaxHeight  = DISP_MAX_HEIGHT;
         newWin.IDCMPFlags = IDCMP_RAWKEY
                           | IDCMP_CLOSEWINDOW
-                          | IDCMP_MENUPICK;
+                          | IDCMP_MENUPICK
+                          | IDCMP_NEWSIZE       // the BBS is told the new text area
+                          | IDCMP_MOUSEBUTTONS  // text selection
+                          | IDCMP_MOUSEMOVE;
         newWin.Flags      = WFLG_GIMMEZEROZERO
                           | WFLG_NEWLOOKMENUS   // Requests new-look menu treatment (V39)
                           | WFLG_SMART_REFRESH  // WFLG_SIMPLE_REFRESH
@@ -2870,7 +5461,20 @@ void OpenAppWindow(void)
 
         CheckDimensions(&newWin);
 
-        win = OpenWindow(&newWin);
+        {
+            // No snapshot and not a reopen: the BBS size, 80x25 characters
+            // (40x25 in PETSCII Mode) of the terminal's font, on any mode.
+            struct TextFont *cell = petsciiFont ? petsciiFont : ansiFont;
+            BOOL bbsSize = !wbWindowBoxValid && STATE_IS_NOT(APP_WINDOW_SNAPSHOT);
+
+            win = OpenWindowTags(&newWin, WA_BackFill, (ULONG)&terminalBackFill,
+                                 bbsSize ? WA_InnerWidth : TAG_IGNORE,
+                                     (ULONG)(ArtColumns(cell) * cell->tf_XSize),
+                                 bbsSize ? WA_InnerHeight : TAG_IGNORE,
+                                     (ULONG)(SCREENFONT_BBS_ROWS * cell->tf_YSize),
+                                 WA_AutoAdjust, TRUE,
+                                 TAG_END);
+        }
 
         // Be sure to unlock the public screen when done with it.  Note that once a window is open
         // on the screen the program does not need to hold the screen lock, as the window acts as a
@@ -2887,6 +5491,8 @@ void OpenAppWindow(void)
         struct Gadget *backgad;
         UWORD top, height;
 
+        LoadAnsiPalette(&prefs);        // an entry's palette may differ from the screen's
+
         if (STATE_IS(APP_TOOL_BAR_ENABLED))
             OpenToolBarWindow(FALSE);
 
@@ -2902,8 +5508,11 @@ void OpenAppWindow(void)
             screenToBackGadget.LeftEdge = scr->Width - 20;
             screenToBackGadget.GadgetID = GADGET_SCREEN_TO_BACK;
         } else {
-            top = prefs.FontSize + 3;
-            height = scr->Height - (prefs.FontSize + 3);
+            // Below the title bar as the screen draws it: prefs.FontSize is the
+            // setting, not the opened font (Topaz Pro 16 for topaz 8), and the
+            // first rows went under the bar.
+            top = scr->BarHeight + 1;
+            height = scr->Height - top;
             backgad = 0;
         }
 
@@ -2922,22 +5531,26 @@ void OpenAppWindow(void)
         newWin.Title = 0;
         newWin.Width = scr->Width;
 
+        // The terminal window is 80 columns wide and centred
+        // (LimitTerminalWidth): the screen around it is terminal background,
+        // ANSI black, not the UI's pen 0 (grey on 32+ colours).
+        if (LayersBase)
+            InstallLayerInfoHook(&scr->LayerInfo, &terminalBackFill);
+
         if(STATE_IS(APP_PACKET_WINDOW_ENABLED))
         {
-            height -= (prefs.FontSize + 2);
-
-            strInfo.Buffer     = strBuffer;
-            strInfo.MaxChars   = BUFSIZE;
-
-            strGad.TopEdge     = 2;
-            strGad.Activation  = GACT_RELVERIFY | GACT_STRINGLEFT;
-            strGad.GadgetType  = GTYP_STRGADGET;
+            height -= (scr->Font->ta_YSize + 2);
+            strInfo.Buffer = strBuffer;
+            strInfo.MaxChars = BUFSIZE;
+            strGad.TopEdge = 2;
+            strGad.Activation = GACT_RELVERIFY | GACT_STRINGLEFT;
+            strGad.GadgetType = GTYP_STRGADGET;
             strGad.SpecialInfo = &strInfo;
-            strGad.Width       = scr->Width;
-            strGad.Height      = prefs.FontSize;
+            strGad.Width = scr->Width;
+            strGad.Height = scr->Font->ta_YSize;
 
-            newWin.TopEdge     = top+height;
-            newWin.Height      = prefs.FontSize+2,
+            newWin.TopEdge = top+height;
+            newWin.Height = scr->Font->ta_YSize + 2,
             newWin.FirstGadget = &strGad;
             newWin.IDCMPFlags  = IDCMP_MENUPICK
                                | IDCMP_GADGETUP;
@@ -2957,14 +5570,16 @@ void OpenAppWindow(void)
         newWin.IDCMPFlags  = IDCMP_GADGETUP
                            | IDCMP_RAWKEY
                            | IDCMP_CLOSEWINDOW
-                           | IDCMP_MENUPICK;
+                           | IDCMP_MENUPICK
+                           | IDCMP_MOUSEBUTTONS     // text selection
+                           | IDCMP_MOUSEMOVE;
         newWin.Flags       = WFLG_SMART_REFRESH
                            | WFLG_NEWLOOKMENUS
                            | WFLG_BORDERLESS
                            | WFLG_ACTIVATE
                            | WFLG_BACKDROP;
 
-        win = OpenWindow(&newWin);
+        win = OpenWindowTags(&newWin, WA_BackFill, (ULONG)&terminalBackFill, TAG_END);
     }
 
     SetFont(win->RPort, petsciiFont ? petsciiFont : ansiFont);
@@ -2991,7 +5606,10 @@ void CreateAppMenus(void)
     else
     {
         GetNewMenuItemFromID(MENU_SCREEN_MODE   )->nm_Flags = NM_ITEMDISABLED;
-        GetNewMenuItemFromID(MENU_SCREEN_PALETTE)->nm_Flags = NM_ITEMDISABLED;
+        // The ANSI colours editor works on the Workbench too with ibmcon (OS
+        // 3.0): its colours are on shared pens of their own, not the Workbench's.
+        GetNewMenuItemFromID(MENU_SCREEN_PALETTE)->nm_Flags =
+            (STATE_IS(APP_RENDERER_IBMCON_DEVICE) && GfxBase->LibNode.lib_Version >= 39) ? 0 : NM_ITEMDISABLED;
     }
 
 
@@ -3002,7 +5620,15 @@ void CreateAppMenus(void)
 
     // Disable menu items that are only relevant for specific renderers.
     GetNewMenuItemFromID(MENU_FAST_SCROLL     )->nm_Flags = NM_ITEMDISABLED;
+    // The screen's text is read back from ibmcon's screen buffer: without
+    // it (another renderer) Copy, Copy Screen, Save Screen and selecting with the
+    // mouse cannot work.
+    GetNewMenuItemFromID(MENU_COPY            )->nm_Flags = NM_ITEMDISABLED;
+    GetNewMenuItemFromID(MENU_COPY_SCREEN     )->nm_Flags = NM_ITEMDISABLED;
+    GetNewMenuItemFromID(MENU_SAVE_SCREEN     )->nm_Flags = NM_ITEMDISABLED;
     GetNewMenuItemFromID(MENU_XEM_LIB_OPTIONS )->nm_Flags = NM_ITEMDISABLED;
+    // A grid wider than 80 columns needs ibmcon.device (up to 199 columns).
+    GetNewMenuItemFromID(MENU_132_COLUMNS     )->nm_Flags = NM_ITEMDISABLED;
 
     if (STATE_IS(APP_RENDERER_BUILTIN))
     {
@@ -3024,6 +5650,11 @@ void CreateAppMenus(void)
         GetNewMenuItemFromID(MENU_IBMCON_DEVICE)->nm_Flags |= CHECKED;
 
         GetNewMenuItemFromID(MENU_FAST_SCROLL)->nm_Flags = HIGHCOMP|CHECKIT|MENUTOGGLE;
+        GetNewMenuItemFromID(MENU_COPY)->nm_Flags = 0;
+        GetNewMenuItemFromID(MENU_COPY_SCREEN)->nm_Flags = 0;
+        GetNewMenuItemFromID(MENU_SAVE_SCREEN)->nm_Flags = 0;
+        GetNewMenuItemFromID(MENU_132_COLUMNS)->nm_Flags = HIGHCOMP|CHECKIT|MENUTOGGLE
+                                                         | (STATE_IS(APP_132_COLUMNS) ? CHECKED : 0);
     }
 
     // The NewMenu item CHECKED flag will be set according to saved Prefs flags. Note: these flags
@@ -3036,14 +5667,40 @@ void CreateAppMenus(void)
     SetNewMenuCheckFromPref(MENU_PACKET_WINDOW,           APP_PACKET_WINDOW_ENABLED);
     SetNewMenuCheckFromPref(MENU_TOOL_BAR,                APP_TOOL_BAR_ENABLED);
     SetNewMenuCheckFromPref(MENU_RETURN_SENDING_CRLF,     APP_RETURN_SENDING_CRLF);
+    SetNewMenuCheckFromPref(MENU_VT_KEYS,                 APP_VT_KEYS);
     SetNewMenuCheckFromPref(MENU_LOCAL_ECHO,              APP_LOCAL_ECHO);
     SetNewMenuCheckFromPref(MENU_RAW_CONNECTION,          APP_RAW_CONNECTION);
+    SetNewMenuCheckFromPref(MENU_RLOGIN,                  APP_RLOGIN);
+    SetNewMenuCheckFromPref(MENU_SSH,                     APP_SSH);
     SetNewMenuCheckFromPref(MENU_FAST_SCROLL,             APP_FAST_SCROLL_ENABLED);
     SetNewMenuCheckFromPref(MENU_PETSCII_MODE,            APP_PETSCII_MODE);
+    GetNewMenuItemFromID(MENU_CHARSET_CP437)->nm_Flags  = CHECKIT | (prefs.Charset == CHARSET_CP437 ? CHECKED : 0);
+    GetNewMenuItemFromID(MENU_CHARSET_LATIN1)->nm_Flags = CHECKIT | (prefs.Charset == CHARSET_LATIN1 ? CHECKED : 0);
+    GetNewMenuItemFromID(MENU_CHARSET_UTF8)->nm_Flags   = CHECKIT | (prefs.Charset == CHARSET_UTF8 ? CHECKED : 0);
+    GetNewMenuItemFromID(MENU_BELL_FLASH)->nm_Flags = CHECKIT | (prefs.Bell == BELL_FLASH ? CHECKED : 0);
+    GetNewMenuItemFromID(MENU_BELL_SOUND)->nm_Flags = CHECKIT | (prefs.Bell == BELL_SOUND ? CHECKED : 0);
+    GetNewMenuItemFromID(MENU_BELL_OFF)->nm_Flags   = CHECKIT | (prefs.Bell == BELL_OFF ? CHECKED : 0);
+    GetNewMenuItemFromID(MENU_ANSI_MUSIC)->nm_Flags = HIGHCOMP | CHECKIT | MENUTOGGLE | (prefs.AnsiMusic ? CHECKED : 0);
+
+    // A capture runs on over a display reopen: its item keeps the check mark.
+    if (captureFile)
+        GetNewMenuItemFromID(MENU_CAPTURE)->nm_Flags |= CHECKED;
+    else
+        GetNewMenuItemFromID(MENU_CAPTURE)->nm_Flags &= ~CHECKED;
 
 
     // Gadtools CreateMenuA() generates a list of Intuition Menu structs.
-    mainMenuStrip = CreateMenusA(mainMenuDesc, 0);
+    // Menu item text in the screen's menu text pen: without it GadTools
+    // uses pen 0, which on 16 colours is ANSI black but on 32+ colours the
+    // UI's grey -- every item looked disabled.
+    {
+        static ULONG ctags[] = { GTMN_FrontPen, 1, TAG_END };
+
+        // BARDETAILPEN is a V39 DrawInfo pen (dri_Version 2): OS 2.x keeps the default.
+        if (drawInfo && drawInfo->dri_Version >= 2)
+            ctags[1] = drawInfo->dri_Pens[BARDETAILPEN];
+        mainMenuStrip = CreateMenusA(mainMenuDesc, (struct TagItem *)ctags);
+    }
     #ifdef _DEBUG
         Printf("   <-- CreateMenusA() => %s\n", (mainMenuStrip != NULL) ? "succeeded" : "failed");
     #endif
@@ -3055,7 +5712,7 @@ void CreateAppMenus(void)
     if (item != NULL)
     {
         if (prefs.DisplayDepth > 1)
-            ((struct IntuiText *)item->ItemFill)->FrontPen = 15;
+            ((struct IntuiText *)item->ItemFill)->FrontPen = LegacyPen(15);
 
         item->Flags = (item->Flags & ~HIGHFLAGS) | HIGHBOX;
     }
@@ -3100,9 +5757,6 @@ void CreateAppMenus(void)
 BOOL OpenDisplay(void)
 {
     #ifdef _DEBUG
-        ULONG beforeSigAlloc;
-        ULONG afterSigAlloc;
-        UBYTE conDeviceSigBit;
         PutStr("--> OpenDisplay()\n");
     #endif
 
@@ -3160,7 +5814,7 @@ BOOL OpenDisplay(void)
 
     if (STATE_IS(APP_RENDERER_BUILTIN))
     {
-        int res = term_init(scr, ansiFont);
+        int res = BuiltinInit();
 
         // If it fails fallback to console.device.
         if (res != RETURN_OK)
@@ -3195,81 +5849,13 @@ BOOL OpenDisplay(void)
     // Doc about OpenDevice() to open a console device :
     // https://amigadev.elowar.com/read/ADCD_2.1/Libraries_Manual_guide/node029E.html
     // https://amigadev.elowar.com/read/ADCD_2.1/Includes_and_Autodocs_2._guide/node0509.html
-    if(STATE_IS(APP_RENDERER_IBMCON_DEVICE | APP_RENDERER_CONSOLE_DEVICE))
-    {
-        UWORD unitNumber;
-        char *devName = STATE_IS(APP_RENDERER_CONSOLE_DEVICE) ? "console.device" : "ibmcon.device";
-        BOOL b;
-
-        // Exec Device I/O Functions docs:
-        // https://amigadev.elowar.com/read/ADCD_2.1/Libraries_Manual_guide/node02A5.html
-
-        // CreateIORequest() requires a message port.
-        writeConsoleMP = CreateMsgPort();
-        if (!writeConsoleMP) { InfoReq(win,
-                                     "Unable to create message port for console device!");
-                             goto clean_and_return; }
-
-        // https://amigadev.elowar.com/read/ADCD_2.1/Includes_and_Autodocs_2._guide/node0344.html
-        writeConsoleReq = CreateIORequest(writeConsoleMP, sizeof(struct IOStdReq));
-
-        // The unit number that is a standard parameter for an open call is used
-        // specially by this device.
-        if (STATE_IS(APP_RENDERER_CONSOLE_DEVICE))
-        {
-            unitNumber = CONU_SNIPMAP;
-        } else {
-            if(STATE_IS(APP_FAST_SCROLL_ENABLED))
-                unitNumber = 2; // Unit 2 is a non-standard unit specific to ibmcon.device
-            else
-                unitNumber = CONU_CHARMAP;
-        }
-
-        //the window that is used by the console device for output:
-        writeConsoleReq->io_Data = win;
-        writeConsoleReq->io_Length = sizeof(struct Window);
-
-        #ifdef _DEBUG
-            PutStr("   --> OpenDevice()\n");
-            beforeSigAlloc = mainTask->tc_SigAlloc;
-            PutStr("SigAlloc:"); PrintBitsULONG(mainTask->tc_SigAlloc);
-            LogWindowsSigBit();
-        #endif
-
-        b = OpenDevice(devName, unitNumber, (struct IORequest *)writeConsoleReq, CONFLAG_DEFAULT);
-
-        #ifdef _DEBUG
-            PutStr("   <-- OpenDevice()\n");
-            PutStr("SigAlloc:"); PrintBitsULONG(mainTask->tc_SigAlloc);
-            afterSigAlloc = mainTask->tc_SigAlloc;
-            conDeviceSigBit = BitPosition(beforeSigAlloc ^ afterSigAlloc); // XOR help detect the difference
-            Printf("                   conDeviceSigBit = %lu\n", (LONG) conDeviceSigBit);
-            LogWindowsSigBit();
-        #endif
-
-        if(b == RETURN_OK)
-        {
-            isConDeviceOpened = TRUE;
-        }
-        else
-        {
-            // Device open failed; falling back to console.device for the next DCTelnet launch.
-            // console.device is the most compatible renderer.
-            STATE_UNSET(APP_RENDERER_ALL);
-            STATE_SET(APP_RENDERER_CONSOLE_DEVICE);
-
-            isConDeviceOpened = FALSE;
-
-            InfoReq(win, "Failed to open device: %s", devName);
-
-            goto clean_and_return;
-        }
-    }
+    if (STATE_IS(APP_RENDERER_IBMCON_DEVICE | APP_RENDERER_CONSOLE_DEVICE) && !OpenConsoleDevice())
+        goto clean_and_return;
 
     STATE_UNSET(APP_ICONIFIED);
 
     /* After isAppIconified is cleared: ConWrite() drops writes while it is set. */
-    if (isConDeviceOpened && STATE_IS(APP_PETSCII_MODE))
+    if (isConDeviceOpened && displayIsPetscii)
         ConWrite(PETSCII_CONSOLE_SETUP, sizeof(PETSCII_CONSOLE_SETUP) - 1);
 
     LEDs();
@@ -3287,34 +5873,70 @@ BOOL OpenDisplay(void)
         if(flags & AFF_68040) cpu = '4';
         if(flags & AFF_68060) cpu = '6';
 
+        // One labelled line per fact, each shorter than 80 columns: the
+        // renderer, the screen, and the grid the console measured.
+        static char details[200];
+
+        details[0] = 0;
         switch (renderer)
         {
             case APP_RENDERER_BUILTIN:
-                strRenderer = "retro32-term";
-            break;
-
-            case APP_RENDERER_CONSOLE_DEVICE:
-                strRenderer = "console.device";
+                strRenderer = "retro32-term (built-in)";
             break;
 
             case APP_RENDERER_XEM_LIB:
                 strRenderer = prefs.XemLibrary;
             break;
 
+            case APP_RENDERER_CONSOLE_DEVICE:
             case APP_RENDERER_IBMCON_DEVICE:
-                strRenderer = "ibmcon.device";
+            if (isConDeviceOpened)
+            {
+                static char engine[80];
+                char screenInfo[80];
+                struct TextFont *cell = win->RPort->Font;
+                UWORD cols, rows;
+                struct Library *dev = (struct Library *)writeConsoleReq->io_Device;
+
+                if (renderer == APP_RENDERER_IBMCON_DEVICE)
+                    mysprintf(engine, "ibmcon.device %ld.%ld from %s",
+                              (LONG)dev->lib_Version, (LONG)dev->lib_Revision, consoleFrom);
+                else
+                    mysprintf(engine, "console.device %ld.%ld",
+                              (LONG)dev->lib_Version, (LONG)dev->lib_Revision);
+                mysprintf(screenInfo, "%ld bit planes", (LONG)AppScreenDepth(scr));
+                if (ansiOwnPens && penTableError)
+                    strlcat(screenInfo, ", ANSI colours on pens 0-15 (old ibmcon)", sizeof(screenInfo));
+                else if (ansiOwnPens)
+                    strlcat(screenInfo, ", ANSI colours on their own pens", sizeof(screenInfo));
+                TerminalGrid(&cols, &rows);
+                mysprintf(details, "›0;1;36mScreen: ›37m%s\r\n\r\n"
+                                   "›36mText area: ›37m%ld x %ld characters, font %ld x %ld\r\n\r\n",
+                          screenInfo, (LONG)cols, (LONG)rows, (LONG)cell->tf_XSize, (LONG)cell->tf_YSize);
+                if (fontMissing[0])
+                {
+                    char note[80];
+
+                    mysprintf(note, "›31mFont %s could not be opened\r\n\r\n", fontMissing);
+                    strlcat(details, note, sizeof(details));
+                }
+                strRenderer = engine;
+            }
+            else
+                strRenderer = (renderer == APP_RENDERER_IBMCON_DEVICE) ? "ibmcon.device" : "console.device";
             break;
         }
 
         LocalFmt("›0;1;36m\f\r\n\r\n"
                 "Processor: ›37m680%lc0\r\n\r\n›36m"
                 "Kickstart: ›37m%ld.%ld\r\n\r\n›36m"
-                "Renderer: ›37m%s\r\n\r\n›36m"
+                "Renderer: ›37m%s\r\n\r\n"
+                "%s›36m"
                 "TCP Stack: ›37m",
                 cpu,
                 (LONG)((struct Library *)SysBase)->lib_Version,
                 (LONG)SysBase->SoftVer,
-                strRenderer);
+                strRenderer, details);
 
         if(SocketBase)
         {
@@ -3372,61 +5994,7 @@ void CloseDisplay(BOOL manageScreen)
     // Unitilize XEM library if it was initialized (does nothing if it was not initialized)
     UninitializeXemLibrary();
 
-    // https://amigadev.elowar.com/read/ADCD_2.1/Devices_Manual_guide/node0190.html
-    if (isConDeviceOpened)
-    {
-        #ifdef _DEBUG
-            PutStr("   --> CloseDevice(&writeConsoleReq)\n");
-            PutStr("SigAlloc:"); PrintBitsULONG(mainTask->tc_SigAlloc);
-            LogWindowsSigBit();
-
-            if (! (mainTask->tc_SigAlloc & (1L << 31)))
-            {
-                InfoReq(win,
-                        "ERROR: sigbit 31 has disappeared before CloseDevice()! Why???");
-            }
-        #endif
-
-        CloseDevice((struct IORequest *)writeConsoleReq);
-
-        if (mainTask->tc_SigAlloc & (1L << 31))
-        {
-            #ifdef _DEBUG
-                PutStr("   <-- CloseDevice(&writeConsoleReq) => sigbit 31 preserved.\n");
-                PutStr("SigAlloc:"); PrintBitsULONG(mainTask->tc_SigAlloc);
-            #endif
-        }
-        else
-        {
-            #ifdef _DEBUG
-                PutStr("   <-- CloseDevice(&writeConsoleReq) => ERROR: sigbit 31 destroyed!!!\n");
-                PutStr("SigAlloc:"); PrintBitsULONG(mainTask->tc_SigAlloc);
-                PutStr("   --> AllocSignal(31L)\n");
-            #endif
-
-            dontUseSig31 = AllocSignal(31L);
-            if (dontUseSig31 != 31)
-                InfoReq(win, "ERROR: cannot allocate sigbit 31!");
-
-            #ifdef _DEBUG
-                PutStr("SigAlloc:"); PrintBitsULONG(mainTask->tc_SigAlloc);
-            #endif
-        }
-
-        isConDeviceOpened = FALSE;
-    }
-
-    if (writeConsoleReq)
-    {
-        DeleteIORequest(writeConsoleReq);
-        writeConsoleReq=NULL;
-    }
-
-    if (writeConsoleMP)
-    {
-        DeleteMsgPort(writeConsoleMP);
-        writeConsoleMP = NULL;
-    }
+    CloseConsoleDevice();
 
     if(packetWin)
     {
@@ -3437,9 +6005,18 @@ void CloseDisplay(BOOL manageScreen)
 
     if(win)
     {
+        if (STATE_IS_NOT(APP_FULLSCREEN))      // a reopen puts it back here (Snapshot Windows saves it)
+        {
+            wbWindowBox.Left   = win->LeftEdge;
+            wbWindowBox.Top    = win->TopEdge;
+            wbWindowBox.Width  = win->Width;
+            wbWindowBox.Height = win->Height;
+            wbWindowBoxValid = TRUE;
+        }
         ClearMenuStrip(win);
         CloseWindow(win);
         win = NULL;
+        selShown = selDragging = FALSE;         // the selection goes with the window
     }
 
     CloseScrollBack();
@@ -3469,8 +6046,7 @@ void CloseDisplay(BOOL manageScreen)
             scr = NULL;
         }
         if(ansiFont)              { CloseFont(ansiFont);                ansiFont = NULL; }
-        if(petsciiFont)           { CloseFont(petsciiFont);             petsciiFont = NULL; }
-        if(petsciiFontLower)      { CloseFont(petsciiFontLower);        petsciiFontLower = NULL; }
+        ClosePetsciiFonts();
     }
 
     STATE_SET(APP_ICONIFIED);

@@ -14,8 +14,10 @@
     #pragma dontwarn 306
 #endif
 #include <proto/exec.h>               // RawDoFmt()
+#include <exec/memory.h>              // MEMF_ANY
 #include <proto/dos.h>                // DateToStr(), LEN_DATSTRING, TICKS_PER_SECOND
 #include <proto/intuition.h>          // CurrentTime()
+#include <proto/graphics.h>           // ObtainBestPen(), FindColor()
 #ifdef __VBCC__
     #pragma popwarn
 #endif
@@ -238,6 +240,63 @@ size_t strlcat(char *dst, const char *src, size_t dstSize)
 }
 
 
+/**
+ * @brief The whole file at path, read into memory: settings files are read
+ *        whole because their size is not fixed -- an older version's file
+ *        is converted, a newer one has fields appended.
+ *
+ * @param path File to read.
+ * @param size Set to the bytes read (0 when there is no buffer).
+ * @param max  A longer file is refused (NULL).
+ * @return A buffer of *size bytes plus a NUL, to FreeVec(); NULL when the file
+ *         cannot be opened or read, is empty, or is longer than max.
+ */
+// The length of the file at path: 0 when there is none (or it is empty).
+// With ReadWholeFile(): a NULL for a file with a length means it is there
+// but was not read (too large, no memory).
+LONG FileLength(const char *path)
+{
+    BPTR fh = Open((STRPTR)path, MODE_OLDFILE);
+    LONG len = 0;
+
+    if (fh)
+    {
+        Seek(fh, 0, OFFSET_END);
+        len = Seek(fh, 0, OFFSET_BEGINNING);            // Seek returns the old position
+        Close(fh);
+    }
+    return len;
+}
+
+UBYTE *ReadWholeFile(const char *path, LONG *size, LONG max)
+{
+    BPTR fh = Open((STRPTR)path, MODE_OLDFILE);
+    UBYTE *data = NULL;
+    LONG len;
+
+    *size = 0;
+    if (!fh)
+        return NULL;
+    Seek(fh, 0, OFFSET_END);
+    len = Seek(fh, 0, OFFSET_BEGINNING);                // Seek returns the old position
+    if (len > 0 && len <= max && (data = AllocVec((ULONG)len + 1, MEMF_ANY)) != NULL)
+    {
+        if (Read(fh, data, len) == len)
+        {
+            data[len] = 0;
+            *size = len;
+        }
+        else
+        {
+            FreeVec(data);
+            data = NULL;
+        }
+    }
+    Close(fh);
+    return data;
+}
+
+
 #ifdef __VBCC__
 #include <ctype.h>                      // tolower()
 
@@ -271,3 +330,16 @@ int stricmp(const char *a, const char *b)
     return (unsigned char)*a - (unsigned char)*b;
 }
 #endif
+
+UBYTE ObtainNearestPen(struct ColorMap *cm, ULONG rgb, LONG precision, BOOL *owned)
+{
+    ULONG r = ((rgb >> 16) & 0xFF) * 0x01010101UL, g = ((rgb >> 8) & 0xFF) * 0x01010101UL,
+          b = (rgb & 0xFF) * 0x01010101UL;
+    LONG pen = ObtainBestPen(cm, r, g, b, OBP_Precision, precision, TAG_DONE);
+
+    // -1 cast to UBYTE was pen 255.
+    *owned = pen >= 0;
+    if (pen < 0)
+        pen = FindColor(cm, r, g, b, -1);
+    return (UBYTE)pen;
+}

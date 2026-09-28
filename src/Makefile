@@ -52,6 +52,10 @@ ifeq ($(TOOLCHAIN),vbcc)
 	CFLAGS          := +aos68k $(WARN) -cpu=$(CPU)
 		DEBUG_CFLAGS    := -g -D_DEBUG -stack-check
 		RELEASE_CFLAGS  := -O3 -speed
+	# The SSH bignum multiply in 68000/68020 assembly (vasm syntax); other
+	# toolchains build the C loop of crypto/bignum.c.
+	CFLAGS          += -DBN_ASM
+	ASRCS           := crypto/bn_muladd.s
 else ifeq ($(TOOLCHAIN),gcc)
 	COMPILER_STRING := GCC $(shell m68k-amigaos-gcc -dumpversion)
 	CC              := m68k-amigaos-gcc
@@ -61,6 +65,7 @@ else ifeq ($(TOOLCHAIN),gcc)
 	CFLAGS          := -noixemul -fbaserel $(WARN) -m$(CPU) -D__AMIGADATE__=__DATE__
 		DEBUG_CFLAGS    := -g -D_DEBUG -fstack-check
 		RELEASE_CFLAGS  := -O3
+	ASRCS           :=
 else
 	$(error Invalid TOOLCHAIN value '$(TOOLCHAIN)'; choose 'vbcc' or 'gcc')
 endif
@@ -71,9 +76,10 @@ CFLAGS += -D"COMPILER_STRING=$(COMPILER_STRING)" -DBUILD_HASH=$(BUILD_HASH) $(IN
 
 
 TARGET     := DCTelnet
-SRCS       := DCTelnet.c connect.c guis.c Xfer.c Xem_wrapper.c requesters.c utils.c prefs.c \
-              petscii_screencode.c petscii_fallback.c petscii_keymap.c petscii_dispatch.c
-DEPS       := abook.h connect.h DCTelnet.h DCTelnet-debug.h DCTelnet-protocol.h third_party/retro32-term/term-engine.c edit.h fkey.h guis.h Xfer.h Xem_wrapper.h requesters.h utils.h prefs.h
+SRCS       := DCTelnet.c connect.c guis.c Xfer.c Xem_wrapper.c requesters.c utils.c prefs.c prefs_file.c \
+              petscii_screencode.c petscii_fallback.c petscii_keymap.c petscii_dispatch.c site_prefs.c palette.c \
+              screenfont.c progdir.c shipped.c listsel.c textedit.c dsr.c iconpens.c keys.c clip.c charset.c ansiscan.c ticks.c waitfor.c rexxcmd.c rlogin.c ansimusic.c sound.c booklist.c ssh.c sshconn.c knownhosts.c crypto/sha256.c crypto/aes.c crypto/bignum.c crypto/rsa.c crypto/x25519.c crypto/random.c
+DEPS       := abook.h connect.h DCTelnet.h DCTelnet-debug.h DCTelnet-protocol.h third_party/retro32-term/term-engine.c edit.h fkey.h guis.h Xfer.h Xem_wrapper.h requesters.h utils.h prefs.h prefs_file.h site_prefs.h palette.h screenfont.h progdir.h shipped.h listsel.h textedit.h dsr.h iconpens.h keys.h clip.h charset.h ansiscan.h ticks.h waitfor.h rexxcmd.h rlogin.h ansimusic.h sound.h booklist.h ssh.h sshconn.h knownhosts.h crypto/sha256.h crypto/aes.h crypto/bignum.h crypto/rsa.h crypto/x25519.h crypto/random.h
 INSTALLDIR := ../build/installed/DCTelnet
 
 # OBJ subdir depends on TOOLCHAIN and DEBUG flag (use DEBUG=yes to enable)
@@ -88,7 +94,7 @@ endif
 
 # final OBJDIR depends on TOOLCHAIN, CPU and OBJ_SUFFIX
 OBJDIR     := ../build/$(TOOLCHAIN)-$(CPU)-$(OBJ_SUFFIX)
-OBJS       := $(SRCS:%.c=$(OBJDIR)/%.o)
+OBJS       := $(SRCS:%.c=$(OBJDIR)/%.o) $(ASRCS:%.s=$(OBJDIR)/%.o)
 TARGET_EXE := $(OBJDIR)/$(TARGET).$(CPU)
 MAKEFILE_UPTODATE=$(OBJDIR)/Makefile.uptodate
 
@@ -143,8 +149,25 @@ $(OBJDIR)/%.o: %.c $(DEPS) | $(OBJDIR)
 	$(CC) $(CFLAGS) -o $@  -c $<
 
 
+$(OBJDIR)/%.o: %.s | $(OBJDIR)
+	@echo "------------- $@ --------------------"
+	$(CC) $(CFLAGS) -o $@  -c $<
+
+
 $(OBJDIR):
 	@echo "------------- mkdir $@ --------------------"
+	$(MKDIR) $@
+
+# The SSH crypto sources build into a subdirectory of their own.
+$(OBJS): | $(OBJDIR)/crypto
+
+# vbcc stops at 30 optimizer passes (warning 172, an error here); the SSH
+# code needs more at -speed, and AES runs for every byte of a session.
+ifeq ($(TOOLCHAIN),vbcc)
+$(OBJDIR)/ssh.o $(ASRCS:%.s=$(OBJDIR)/%.o) $(patsubst %.c,$(OBJDIR)/%.o,$(filter crypto/%,$(SRCS))): CFLAGS += -maxoptpasses=100
+endif
+
+$(OBJDIR)/crypto: | $(OBJDIR)
 	$(MKDIR) $@
 
 
