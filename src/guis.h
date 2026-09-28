@@ -63,6 +63,7 @@ enum SaveEntryResult SaveSettingsToConnectedEntry(void);
 void RefreshListView(UWORD top);
 BOOL FindInScrollBack(ULONG *top);
 BOOL EditConnectionOptions(struct PrefsStruct *p);
+void ImportBookList(const char *path);
 void OpenToolBarWindow(char setmenus);
 void CloseToolBarWindow(void);
 char MakeGadgets(struct MyNewGadget ProjectNGad[], struct Gadget *ProjectGadgets[], ULONG ProjectGTags[], struct Gadget *g, UBYTE ProjectGTypes[], UWORD Count);

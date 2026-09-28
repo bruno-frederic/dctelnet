@@ -251,6 +251,23 @@ size_t strlcat(char *dst, const char *src, size_t dstSize)
  * @return A buffer of *size bytes plus a NUL, to FreeVec(); NULL when the file
  *         cannot be opened or read, is empty, or is longer than max.
  */
+// The length of the file at path: 0 when there is none (or it is empty).
+// With ReadWholeFile(): a NULL for a file with a length means it is there
+// but was not read (too large, no memory).
+LONG FileLength(const char *path)
+{
+    BPTR fh = Open((STRPTR)path, MODE_OLDFILE);
+    LONG len = 0;
+
+    if (fh)
+    {
+        Seek(fh, 0, OFFSET_END);
+        len = Seek(fh, 0, OFFSET_BEGINNING);            // Seek returns the old position
+        Close(fh);
+    }
+    return len;
+}
+
 UBYTE *ReadWholeFile(const char *path, LONG *size, LONG max)
 {
     BPTR fh = Open((STRPTR)path, MODE_OLDFILE);
