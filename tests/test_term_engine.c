@@ -13,7 +13,7 @@ typedef char *STRPTR;
 struct Library { UWORD lib_Version; };
 struct GfxBase { struct Library LibNode; };
 struct BitMap { UWORD BytesPerRow, Rows; UBYTE Flags, Depth; UWORD pad; UBYTE *Planes[8]; };
-struct TextFont { UWORD tf_YSize, tf_Baseline; UBYTE tf_LoChar, tf_HiChar; void *tf_CharData; UWORD tf_Modulo; void *tf_CharLoc; };
+struct TextFont { UWORD tf_YSize, tf_XSize, tf_Baseline; UBYTE tf_LoChar, tf_HiChar; void *tf_CharData; UWORD tf_Modulo; void *tf_CharLoc; };
 struct RastPort { struct BitMap *BitMap; UBYTE Mask, FgPen, BgPen, DrawMode; WORD cx, cy; struct TextFont *Font; };
 struct Screen { WORD Width, Height; struct RastPort RastPort; };
 #define JAM1 0
@@ -99,7 +99,11 @@ static void send_data_(const UBYTE *d, LONG n) { (void)d; (void)n; }
 /* A font whose glyphs all differ: row r of character c is c ^ (r * 37). */
 static UBYTE fontData[8][256];
 static ULONG fontLoc[256];
-static struct TextFont font = { 8, 6, 0, 255, fontData, 256, fontLoc };
+static struct TextFont font = { 8, 8, 6, 0, 255, fontData, 256, fontLoc };
+/* The C64's size: 16x8 cells. Row r of character c is c << 8 | (c ^ r). */
+static UBYTE wideData[8][512];
+static ULONG wideLoc[256];
+static struct TextFont wide = { 8, 16, 6, 0, 255, wideData, 512, wideLoc };
 static struct Screen screen = { W, H, { &bm, 0xFF, 0, 0, 0, 0, 0, NULL } };
 static struct RastPort winRp;
 
@@ -111,8 +115,12 @@ static void setup(void)
 
     for (c = 0; c < 256; c++) {
         fontLoc[c] = (ULONG)(c * 8) << 16 | 8;
-        for (r = 0; r < 8; r++)
+        wideLoc[c] = (ULONG)(c * 16) << 16 | 16;
+        for (r = 0; r < 8; r++) {
             fontData[r][c] = (UBYTE)(c ^ (r * 37));
+            wideData[r][2 * c] = (UBYTE)c;
+            wideData[r][2 * c + 1] = (UBYTE)(c ^ r);
+        }
     }
     bm.BytesPerRow = BPR; bm.Rows = H; bm.Depth = 4;
     for (p = 0; p < 4; p++) bm.Planes[p] = planes[p];
@@ -237,6 +245,32 @@ static void test_an_8_plane_screen_takes_the_rastport(void)
     bm.Depth = 4;
 }
 
+/* The C64 fonts (Petscii.font) have 16x8 cells: 40 columns in 640 pixels,
+ * two bytes per plane row, the wrap at column 40, a cursor two bytes wide. */
+static void test_a_16_pixel_font_gives_40_columns(void)
+{
+    setup();
+    assert(term_init_area(&screen, &winRp, 0, TOP, 0, TOP, W, H - TOP, &wide) == 0);
+    assert(term_cols == 40);
+    feed("\x41");
+    assert(planes[0][TOP * BPR] == 0x41 && planes[0][TOP * BPR + 1] == 0x41);    /* row 0: c, c ^ 0 */
+    assert(planes[0][(TOP + 3) * BPR + 1] == (0x41 ^ 3));
+    assert(planes[1][TOP * BPR] == 0x41);                                         /* pen 7: planes 0-2 */
+    assert(planes[3][TOP * BPR] == 0x00);
+    {
+        int i;
+        for (i = 0; i < 39; i++) feed("B");
+        feed("C");                                  /* column 41: the next row */
+        assert(planes[0][(TOP + 8) * BPR] == 'C');
+    }
+    cursor_show();
+    assert(planes[0][(TOP + 8) * BPR + 2] == 0xFF && planes[0][(TOP + 8) * BPR + 3] == 0xFF);
+    cursor_hide();
+    term_set_font(&wide);   /* the other C64 charset: new glyphs from here, the screen stays */
+    assert(planes[0][TOP * BPR] == 0x41 && term_cols == 40);
+    assert(calls[0] == 0);
+}
+
 int main(void)
 {
     test_the_terminal_starts_below_the_title_bar_and_matches_the_window_rows();
@@ -245,6 +279,7 @@ int main(void)
     test_an_rtg_bitmap_always_takes_the_rastport();
     test_the_pen_map_colours_the_rastport_path_and_stops_direct_drawing();
     test_an_8_plane_screen_takes_the_rastport();
+    test_a_16_pixel_font_gives_40_columns();
     printf("term_engine: all assertions passed\n");
     return 0;
 }
