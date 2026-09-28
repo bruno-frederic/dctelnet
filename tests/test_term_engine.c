@@ -162,7 +162,9 @@ static void test_a_covered_terminal_draws_only_through_the_rastport(void)
     assert(memcmp(before, planes, sizeof(planes)) == 0);   /* another window's pixels are untouched */
     assert(strstr(calls, "Text(0,6 fg7 bg0 \"Hello \")"));  /* runs, at the window's coordinates */
     assert(strstr(calls, "Text(48,6 fg1 bg0 \"red\")"));
-    assert(strstr(calls, "ScrollRaster(0,8 0,0,639,239 bg0)"));      /* the line feed at the bottom */
+    assert(strstr(calls, "ScrollRaster(0,8 0,0,639,239 bg0)\nRectFill(0,232,639,239 pen0)"));
+                                  /* the line feed at the bottom, and the new row cleared (a
+                                     backfill hook, not BgPen, would fill it otherwise) */
     assert(strstr(calls, "Complement(0,232,7,239 mask15)"));        /* the cursor: pen XOR 15 */
     assert(strstr(calls, "ScrollRaster(0,-16 0,32,639,239 bg0)"));   /* insert 2 lines at row 5 */
     assert(strstr(calls, "ScrollRaster(24,0 72,32,639,39 bg0)"));    /* delete 3 characters */
@@ -198,15 +200,41 @@ static void test_an_rtg_bitmap_always_takes_the_rastport(void)
     bitmapFlags = BMF_STANDARD;
 }
 
-static void test_the_pen_map_colours_the_rastport_path(void)
+static void test_the_pen_map_colours_the_rastport_path_and_stops_direct_drawing(void)
 {
     static const UBYTE pens[16] = { 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55 };
 
+    static UBYTE before[sizeof(planes)];
+
     setup();
-    term_set_pens(pens);
-    term_covered(1);
+    term_set_pens(pens);            /* the Workbench's shared pens: never written as numbers */
+    term_covered(0);
+    memcpy(before, planes, sizeof(planes));
     feed("\x1b[1;33mY");
+    assert(memcmp(before, planes, sizeof(planes)) == 0);
     assert(strstr(calls, "Text(0,6 fg51 bg40 \"Y\")"));    /* bright yellow = ANSI 11 */
+    term_set_pens(NULL);
+    term_covered(0);
+    calls[0] = 0;
+    feed("\rZ");
+    assert(calls[0] == 0 && planes[0][TOP * BPR] != before[TOP * BPR]);  /* pens 0-15: direct again */
+}
+
+/* 8 bitplanes (AGA): direct drawing writes planes 0-3 only and the upper
+ * planes' bits showed through (a grey background), so the RastPort draws. */
+static void test_an_8_plane_screen_takes_the_rastport(void)
+{
+    static UBYTE before[sizeof(planes)];
+
+    setup();
+    bm.Depth = 8;
+    assert(term_init_area(&screen, &winRp, 0, TOP, 0, TOP, W, H - TOP, &font) == 0);
+    calls[0] = 0;
+    memcpy(before, planes, sizeof(planes));
+    feed("aga");
+    assert(memcmp(before, planes, sizeof(planes)) == 0);
+    assert(strstr(calls, "Text(0,6 fg7 bg0 \"aga\")"));
+    bm.Depth = 4;
 }
 
 int main(void)
@@ -215,7 +243,8 @@ int main(void)
     test_a_covered_terminal_draws_only_through_the_rastport();
     test_uncovered_again_it_draws_directly();
     test_an_rtg_bitmap_always_takes_the_rastport();
-    test_the_pen_map_colours_the_rastport_path();
+    test_the_pen_map_colours_the_rastport_path_and_stops_direct_drawing();
+    test_an_8_plane_screen_takes_the_rastport();
     printf("term_engine: all assertions passed\n");
     return 0;
 }
