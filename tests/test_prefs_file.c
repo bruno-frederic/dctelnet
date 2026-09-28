@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <string.h>
 #include "prefs_file.h"
+#include "palette.h"
 
 static UBYTE file[2048];
 
@@ -176,6 +177,22 @@ static void test_the_built_in_renderer_fits_any_screen_of_80x25_cells(void)
     assert(!Prefs_ScreenFits(&p));             /* ibmcon.device crashes there */
 }
 
+/* A 1.x file has one palette, the console's (ibmcon order): the built-in
+ * and XEM renderers' ANSI palette is made from it, not left black -- an
+ * entry converted from 1.x drew black text on black with the built-in one. */
+static void test_a_1x_file_gives_the_built_in_renderer_its_colours(void)
+{
+    struct PrefsStruct got;
+    int i;
+
+    legacy_file(0);
+    assert(Prefs_FromLegacy(file, 376, &got));
+    assert(got.DeviceColors[1] == 0xFFF && got.DeviceColors[7] == 0xF00);
+    for (i = 0; i < 16; i++)
+        assert(got.AnsiColors[i] == got.DeviceColors[Palette_IbmconToAnsi(i)]);
+    assert(got.AnsiColors[7] == 0xFFF && got.AnsiColors[1] == 0xF00);   /* white, red: ANSI order */
+}
+
 int main(void)
 {
     test_a_v2_file_round_trips();
@@ -188,6 +205,7 @@ int main(void)
     test_the_extension_block_of_the_builds_before_v2_carries();
     test_a_short_old_file_keeps_the_essentials();
     test_the_built_in_renderer_fits_any_screen_of_80x25_cells();
+    test_a_1x_file_gives_the_built_in_renderer_its_colours();
     printf("prefs_file: all assertions passed\n");
     return 0;
 }

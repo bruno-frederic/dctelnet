@@ -3,6 +3,7 @@
  * @brief The DCTelnet.Prefs file as bytes (see prefs_file.h).
  */
 #include "prefs_file.h"
+#include "palette.h"
 
 // DCTelnet 1.x PrefsStruct: byte offsets of its fields (68000 layout, no padding).
 enum
@@ -80,7 +81,7 @@ static ULONG StateFromOldFlags(ULONG f)
     return s;
 }
 
-BOOL Prefs_FromLegacy(const UBYTE *old, size_t len, struct PrefsStruct *out)
+static BOOL FromLegacy(const UBYTE *old, size_t len, struct PrefsStruct *out)
 {
     int i;
 
@@ -126,6 +127,14 @@ BOOL Prefs_FromLegacy(const UBYTE *old, size_t len, struct PrefsStruct *out)
     out->Charset         = old[OLD_CHARSET];
     out->Bell            = old[OLD_BELL];
     out->AnsiMusic       = old[OLD_ANSI_MUSIC];
+    return TRUE;
+}
+
+BOOL Prefs_FromLegacy(const UBYTE *old, size_t len, struct PrefsStruct *out)
+{
+    if (!FromLegacy(old, len, out))
+        return FALSE;
+    Palette_Repair(out);        // 1.x had one palette, the console's: the built-in/XEM one from it
     return TRUE;
 }
 

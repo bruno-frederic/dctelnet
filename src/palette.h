@@ -20,6 +20,15 @@ BOOL Palette_AnsiPens(UWORD depth, UBYTE pens[16]);
 /* ibmcon's unit-1 order <-> ANSI order (the swap is its own inverse). */
 int Palette_IbmconToAnsi(int index);
 
+/* TRUE when all 16 entries are RGB4 and not all black: a palette in use. */
+BOOL Palette_Valid(const UWORD palette[16]);
+
+/* Makes both of p's palettes usable. One that is not (a DCTelnet 1.x file
+ * has only the console's; zeroes; damage) becomes the other in its colour
+ * order, or the default when neither is: the built-in renderer drew black
+ * text on black with an Address Book entry converted from 1.x. */
+void Palette_Repair(struct PrefsStruct *p);
+
 /* ANSI colour `ansi` of a device palette, as 0x00RRGGBB. */
 ULONG Palette_AnsiColour(const UWORD deviceColors[16], int ansi);
 

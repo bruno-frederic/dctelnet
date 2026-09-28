@@ -144,3 +144,32 @@ BOOL Palette_SafeRecolour(const ULONG shown[16], int sel, ULONG newRGB)
             return FALSE;
     return TRUE;
 }
+
+BOOL Palette_Valid(const UWORD palette[16])
+{
+    BOOL nonZero = FALSE;
+    int i;
+
+    for (i = 0; i < 16; i++)
+    {
+        if (palette[i] & 0xF000)
+            return FALSE;
+        if (palette[i])
+            nonZero = TRUE;
+    }
+    return nonZero;
+}
+
+void Palette_Repair(struct PrefsStruct *p)
+{
+    BOOL ansiOk = Palette_Valid(p->AnsiColors), deviceOk = Palette_Valid(p->DeviceColors);
+    int i;
+
+    for (i = 0; i < 16; i++)       /* (the order swap is its own inverse) */
+    {
+        if (!ansiOk)
+            p->AnsiColors[i] = deviceOk ? p->DeviceColors[Palette_IbmconToAnsi(i)] : defaultAnsiColors[i];
+        if (!deviceOk)
+            p->DeviceColors[i] = ansiOk ? p->AnsiColors[Palette_IbmconToAnsi(i)] : defaultDeviceColors[i];
+    }
+}
