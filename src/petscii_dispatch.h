@@ -98,6 +98,14 @@ struct PetsciiLocalText {
     int escape;           /* 0 text, 1 after ESC, 2 inside a CSI sequence */
 };
 
+/*
+ * How much of in to translate and draw before the font may have to change:
+ * up to and including the first charset switch (14 lower case, 142 upper
+ * case), else all of it. A packet with both sets in it is drawn in two
+ * fonts, each part in the one it was sent for.
+ */
+size_t petscii_part_length(const uint8_t *in, size_t len);
+
 void petscii_local_text_init(struct PetsciiLocalText *lt, int lowercase_font);
 void petscii_local_text(struct PetsciiLocalText *lt, char *buf, size_t len);
 
