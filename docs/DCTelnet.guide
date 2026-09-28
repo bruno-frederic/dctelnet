@@ -505,6 +505,24 @@ Starting with v1.8, a compatible version of the library is included in the
                                  @{b}@{u} History @{ub}@{uu}
                                  ~~~~~~~~~
 
+---[ DCTelnet 2.0 ]-------------------------------------------------------
+
+TODO
+
+New Features:
+
+ibmcon.device (source now included in the "ibmcon" drawer):
+- 1.5: pens for the ANSI colours (IBMCMD_SETPENS)
+- 1.6: deferred wrap at the last column; CTerm 24-bit colour ignored
+- 1.7: Insert Lines fixed (issue #9)
+- 1.8: closing the console no longer frees the opener's signal (issue #3)
+- 1.9: cursor position for DSR answers; Cursor Backward/Forward stop at
+  the margins (issue #11)
+- 1.10: iCE colours (bright backgrounds), erase characters (CSI X),
+  ESC 7 / ESC 8, application cursor key mode reported to DCTelnet
+
+
+
 ---[ DCTelnet 1.9.1 ]-------------------------------------------------------
 
 New Features:
