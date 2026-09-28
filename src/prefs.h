@@ -110,6 +110,13 @@ struct PrefsStruct
     UBYTE RedialDelay;          // seconds between tries; 0: 10
     UBYTE AntiIdleMinutes;      // a keep-alive after this long without a key sent; 0: never
     UBYTE ConnectTimeout;       // seconds a connect may take; 0: the TCP stack's own limit
+
+    UBYTE Charset;              // what the BBS sends: CHARSET_CP437 (0), _LATIN1, _UTF8 (charset.h)
+
+    // Keeps the struct a multiple of 4 bytes with no padding a compiler adds
+    // on its own (every byte is a field: site_prefs.c carries them all). A
+    // new UBYTE field takes one of these.
+    UBYTE Reserved[3];
 };
 
 /*

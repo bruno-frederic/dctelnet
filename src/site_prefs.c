@@ -1,6 +1,7 @@
 /* src/site_prefs.c -- per-Address-Book-entry settings (issue #10). */
 #include "site_prefs.h"
 #include "prefs_file.h"
+#include "charset.h"
 
 /* Flags whose change needs the screen reopened (OpenAppScreen reads them).
  * APP_PETSCII_MODE is not one: the C64 display is up only during a
@@ -58,6 +59,7 @@ void SitePrefs_ApplyEntry(struct PrefsStruct *live, const struct PrefsStruct *gl
     {
         memcpy(result.XemLibrary, e->XemLibrary, sizeof(result.XemLibrary));
         memcpy(result.TelnetTermType, e->TelnetTermType, sizeof(result.TelnetTermType));
+        result.Charset = e->Charset;
         copy_flags(&result, e, TERMINAL_GROUP_FLAGS);
     }
     if (entry->groups & SITE_GROUP_KEYBOARD)
@@ -124,7 +126,8 @@ static const struct { size_t offset, size; } prefsFields[] =
     F(ToolBarWinLeftEdge), F(ToolBarWinTopEdge),
     F(nScrollbackLines), F(TelnetTermType), F(XemLibrary),
     F(XferLibrary), F(DownloadPath), F(UploadPath), F(XferOptions),
-    F(RedialTries), F(RedialDelay), F(AntiIdleMinutes), F(ConnectTimeout)
+    F(RedialTries), F(RedialDelay), F(AntiIdleMinutes), F(ConnectTimeout), F(Charset),
+    F(Reserved)
 #undef F
 };
 
@@ -411,6 +414,8 @@ void SitePrefs_GroupSummary(ULONG group, const struct PrefsStruct *p, char *out,
         // always says "PETSCII", whatever Display ID holds.
         put(out, &len, max, ", type ");
         put(out, &len, max, (p->State & APP_PETSCII_MODE) ? "PETSCII" : (const char *)p->TelnetTermType);
+        if (p->Charset == CHARSET_UTF8)        put(out, &len, max, ", UTF-8");
+        else if (p->Charset == CHARSET_LATIN1) put(out, &len, max, ", Amiga characters");
         if (p->State & APP_RAW_CONNECTION) put(out, &len, max, ", Raw Connection");
         if (p->State & APP_RLOGIN)         put(out, &len, max, ", Rlogin");
         if (p->State & APP_LOCAL_ECHO)     put(out, &len, max, ", Local Echo");
