@@ -397,9 +397,11 @@ static int BuiltinInit(void)
     // On the Workbench the ANSI colours are on 16 shared pens (the
     // RastPort path draws with them); on the own screen on pens 0-15.
     ObtainWorkbenchPens();
+    // A PETSCII session: the C64 font's 16x8 cells, 40 columns (OpenPetsciiFonts).
     res = term_init_area(scr, win->RPort, gzz ? x0 : win->LeftEdge, gzz ? y0 : win->TopEdge,
                          x0, y0, win->Width - win->BorderLeft - win->BorderRight,
-                         win->Height - win->BorderTop - win->BorderBottom, ansiFont);
+                         win->Height - win->BorderTop - win->BorderBottom,
+                         petsciiFont ? petsciiFont : ansiFont);
     term_set_pens(ansiOwnPens ? ansiColourPens : NULL);
     return res;
 }
@@ -2229,24 +2231,22 @@ static void Receive(void)
                  * (PETSCII_MAX_OUT_PER_BYTE) fits: output is never truncated. */
                 static UBYTE petsciiOut[sizeof(recvBuffer)];
                 const LONG chunkMax = sizeof(petsciiOut) / PETSCII_MAX_OUT_PER_BYTE;
-                LONG done;
+                LONG done, chunk;
 
-                for (done = 0; done < outLen; done += chunkMax)
+                for (done = 0; done < outLen; done += chunk)
                 {
-                    LONG chunk = (outLen - done < chunkMax) ? outLen - done : chunkMax;
                     LONG petsciiOutLen;
 
+                    chunk = (outLen - done < chunkMax) ? outLen - done : chunkMax;
                     if (petsciiFont) {
+                        // A part ends after a charset switch (14 lower case,
+                        // 142 upper case): what came before it is drawn in the
+                        // font it was sent for, then the font changes.
+                        if (petsciiFontLower)
+                            chunk = (LONG)petscii_part_length(outBuffer + done, (size_t)chunk);
                         petsciiOutLen = (LONG)petscii_stream_to_rawglyphs(&g_petsciiState,
                                                                              outBuffer + done, (size_t)chunk,
                                                                              petsciiOut, sizeof(petsciiOut));
-                        /* Charset-shift control code (14/142) toggles between the
-                         * upper/graphics and shifted/lowercase C64 charsets --
-                         * swap the active console font to match. */
-                        if (win && petsciiFontLower) {
-                            struct TextFont *wanted = g_petsciiState.shift_lowercase ? petsciiFontLower : petsciiFont;
-                            if (win->RPort->Font != wanted) SetFont(win->RPort, wanted);
-                        }
                     } else {
                         petsciiOutLen = (LONG)petscii_stream_to_ansi(&g_petsciiState,
                                                                       outBuffer + done, (size_t)chunk,
@@ -2259,6 +2259,20 @@ static void Receive(void)
                     }
                     if (STATE_IS(APP_SCROLLBACK_ENABLED))
                         AddBuf((char *)petsciiOut, petsciiOutLen);
+
+                    /* Charset-shift control code (14/142) toggles between the
+                     * upper/graphics and shifted/lowercase C64 charsets --
+                     * swap the active font to match, for what follows. */
+                    if (win && petsciiFont && petsciiFontLower) {
+                        struct TextFont *wanted = g_petsciiState.shift_lowercase ? petsciiFontLower : petsciiFont;
+                        if (win->RPort->Font != wanted)
+                        {
+                            if (STATE_IS(APP_RENDERER_BUILTIN))
+                                term_set_font(wanted);      // (sets the RastPort's too)
+                            else
+                                SetFont(win->RPort, wanted);
+                        }
+                    }
                 }
             }
             else
@@ -2967,6 +2981,16 @@ int main(int argc, char *argv[])
                 if (sigmask & RexxSig()) RexxMessages();
             }
 
+            // The C64 display in place first: the built-in and XEM renderers
+            // (and a console that will not reopen) ask for the full reopen
+            // instead, which must also come before the pending connect below
+            // -- else the BBS's first screen was drawn on the old display and
+            // then cleared.
+            if (shouldReopenConsole && !shouldRestart)
+            {
+                ReopenTerminal();
+                shouldReopenConsole = FALSE;
+            }
             if(shouldRestart)
             {
                 CloseDisplay(shouldReopenScreen);
@@ -2976,11 +3000,6 @@ int main(int argc, char *argv[])
                 shouldRestart = FALSE;
                 shouldReopenScreen = FALSE;
                 shouldReopenConsole = FALSE;    // the full reopen covered it
-            }
-            else if (shouldReopenConsole)
-            {
-                ReopenTerminal();
-                shouldReopenConsole = FALSE;
             }
 
             // A disconnect that reopened the display: its notice again.
@@ -4925,14 +4944,15 @@ static struct TextFont *OpenBundledFont(STRPTR name, STRPTR progdirPath, UWORD y
 
 /**
  * @brief Open the C64 fonts when the display should be the C64 one (a PETSCII
- *        session on a console device), and record which display this is. The
- *        built-in renderer and XEM draw with their own glyphs: there the
+ *        session on a console device or the built-in renderer), and record
+ *        which display this is. XEM draws with its own glyphs: there the
  *        PETSCII stream is translated to ANSI (Receive) and no C64 font opens.
  */
 static void OpenPetsciiFonts(void)
 {
     displayIsPetscii = PETSCII_SESSION() != 0;
-    if (displayIsPetscii && STATE_IS(APP_RENDERER_IBMCON_DEVICE | APP_RENDERER_CONSOLE_DEVICE))
+    if (displayIsPetscii && STATE_IS(APP_RENDERER_IBMCON_DEVICE | APP_RENDERER_CONSOLE_DEVICE
+                                     | APP_RENDERER_BUILTIN))
     {
         /* Petscii/PetsciiLower.font: real C64 glyphs indexed by raw PETSCII
          * byte, double-width (16x8) cells so 40 columns fill roughly the
