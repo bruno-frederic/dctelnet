@@ -22,7 +22,7 @@
  *             and Full-screen are app-wide: an entry never changes where or
  *             in which mode DCTelnet runs)
  *   Terminal: APP_PETSCII_MODE, the renderer (APP_RENDERER_*), XemLibrary,
- *             TelnetTermType, APP_RAW_CONNECTION, APP_LOCAL_ECHO (+ XEM options)
+ *             TelnetTermType, APP_RAW_CONNECTION, APP_LOCAL_ECHO, APP_RLOGIN (+ XEM options)
  *   Keyboard: APP_BACKSPACE_DEL_SWAPPED, APP_RETURN_SENDING_CRLF, APP_VT_KEYS (+ function keys)
  *   Transfer: XferLibrary, XferOptions
  * Everything else is app-wide and never comes from an entry.

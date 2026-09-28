@@ -1022,7 +1022,7 @@ enum
 {
     SG_SCREEN_OVR, SG_SCREEN_SUM, SG_SCREEN_CUR, SG_SCREEN_FONT, SG_SCREEN_PALETTE,
     SG_TERM_OVR, SG_TERM_SUM, SG_TERM_CUR, SG_TERM_PETSCII, SG_TERM_XEMLIB, SG_TERM_DISPID,
-    SG_TERM_RAW, SG_TERM_ECHO, SG_TERM_RENDERER,
+    SG_TERM_RAW, SG_TERM_ECHO, SG_TERM_RENDERER, SG_TERM_RLOGIN,
     SG_KEY_OVR, SG_KEY_SUM, SG_KEY_CUR, SG_KEY_BSDEL, SG_KEY_CRLF, SG_KEY_FKEYS, SG_KEY_VT,
     SG_XFER_OVR, SG_XFER_SUM, SG_XFER_CUR, SG_XFER_PROTO, SG_XFER_OPTS,
     SG_OK, SG_CANCEL,
@@ -1059,6 +1059,7 @@ static const struct SettingsGadgetDef settingsDefs[SG_COUNT] =
     {  80,  75,  26, 11, "Raw Connection",       PLACETEXT_RIGHT, CHECKBOX_KIND },
     { 256,  75,  26, 11, "Local Echoback",       PLACETEXT_RIGHT, CHECKBOX_KIND },
     {  80,  91, 176, 13, "Renderer",             PLACETEXT_LEFT,  CYCLE_KIND    },
+    { 432,  75,  26, 11, "Rlogin",               PLACETEXT_RIGHT, CHECKBOX_KIND },
 
     {  80, 113, 112, 13, "Keyboard",             PLACETEXT_LEFT,  CYCLE_KIND    },
     { 196, 113, 300, 13, NULL,                   0,               TEXT_KIND     },
@@ -1135,6 +1136,7 @@ static void RefreshSettingsWindow(const struct SiteSettings *work)
     SetChecked(SG_TERM_PETSCII, (shown.State & APP_PETSCII_MODE) != 0);
     SetChecked(SG_TERM_RAW,     (shown.State & APP_RAW_CONNECTION) != 0);
     SetChecked(SG_TERM_ECHO,    (shown.State & APP_LOCAL_ECHO) != 0);
+    SetChecked(SG_TERM_RLOGIN,  (shown.State & APP_RLOGIN) != 0);
     SetChecked(SG_KEY_BSDEL,    (shown.State & APP_BACKSPACE_DEL_SWAPPED) != 0);
     SetChecked(SG_KEY_CRLF,     (shown.State & APP_RETURN_SENDING_CRLF) != 0);
     SetChecked(SG_KEY_VT,       (shown.State & APP_VT_KEYS) != 0);
@@ -1429,6 +1431,9 @@ static BOOL EditEntrySettings(const char *entryName, struct SiteSettings *entry,
                     break;
                 case SG_TERM_RAW:
                     SetFlagFromGadget(&work, SITE_GROUP_TERMINAL, SG_TERM_RAW, APP_RAW_CONNECTION, FALSE);
+                    break;
+                case SG_TERM_RLOGIN:
+                    SetFlagFromGadget(&work, SITE_GROUP_TERMINAL, SG_TERM_RLOGIN, APP_RLOGIN, FALSE);
                     break;
                 case SG_TERM_ECHO:
                     SetFlagFromGadget(&work, SITE_GROUP_TERMINAL, SG_TERM_ECHO, APP_LOCAL_ECHO, FALSE);
