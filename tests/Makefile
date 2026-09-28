@@ -3,7 +3,7 @@
 CC := cc
 CFLAGS := -std=c99 -Wall -Wextra -Werror -I../src
 
-TESTS := test_petscii_modules test_petscii_dispatch test_prefs_file test_site_prefs test_palette test_screenfont test_progdir test_listsel test_textedit test_dsr test_iconpens
+TESTS := test_petscii_modules test_petscii_dispatch test_prefs_file test_site_prefs test_palette test_screenfont test_progdir test_listsel test_textedit test_dsr test_iconpens test_keys
 
 .PHONY: all clean check-encoding check-fonts check-icons
 all: $(TESTS) check-encoding check-fonts check-icons
@@ -64,6 +64,9 @@ test_dsr: test_dsr.c ../src/dsr.c ../src/dsr.h
 	$(CC) $(CFLAGS) -Ishim -o $@ $(filter %.c,$^)
 
 test_iconpens: test_iconpens.c ../src/iconpens.c ../src/iconpens.h
+	$(CC) $(CFLAGS) -Ishim -o $@ $(filter %.c,$^)
+
+test_keys: test_keys.c ../src/keys.c ../src/keys.h
 	$(CC) $(CFLAGS) -Ishim -o $@ $(filter %.c,$^)
 
 clean:

@@ -1036,7 +1036,7 @@ enum
     SG_SCREEN_OVR, SG_SCREEN_SUM, SG_SCREEN_CUR, SG_SCREEN_FONT, SG_SCREEN_PALETTE,
     SG_TERM_OVR, SG_TERM_SUM, SG_TERM_CUR, SG_TERM_PETSCII, SG_TERM_XEMLIB, SG_TERM_DISPID,
     SG_TERM_RAW, SG_TERM_ECHO, SG_TERM_RENDERER,
-    SG_KEY_OVR, SG_KEY_SUM, SG_KEY_CUR, SG_KEY_BSDEL, SG_KEY_CRLF, SG_KEY_FKEYS,
+    SG_KEY_OVR, SG_KEY_SUM, SG_KEY_CUR, SG_KEY_BSDEL, SG_KEY_CRLF, SG_KEY_FKEYS, SG_KEY_VT,
     SG_XFER_OVR, SG_XFER_SUM, SG_XFER_CUR, SG_XFER_PROTO, SG_XFER_OPTS,
     SG_OK, SG_CANCEL,
     SG_COUNT
@@ -1053,7 +1053,7 @@ struct SettingsGadgetDef
 /* Design grid of 8-pixel characters (topaz 8), scaled by ComputeX/Y: a
  * button is its label's length * 8 + 16, a checkbox 26 plus its label. */
 #define settingsWidth  616
-#define settingsHeight 202
+#define settingsHeight 218
 
 static const struct SettingsGadgetDef settingsDefs[SG_COUNT] =
 {
@@ -1079,15 +1079,16 @@ static const struct SettingsGadgetDef settingsDefs[SG_COUNT] =
     {  80, 130,  26, 11, "BS/DEL Swap",          PLACETEXT_RIGHT, CHECKBOX_KIND },
     { 216, 130,  26, 11, "Return = CR + LF",     PLACETEXT_RIGHT, CHECKBOX_KIND },
     { 396, 129, 144, 13, "Function Keys...",     PLACETEXT_IN,    BUTTON_KIND   },
+    {  80, 146,  26, 11, "VT Keys",              PLACETEXT_RIGHT, CHECKBOX_KIND },
 
-    {  80, 151, 112, 13, "Transfer",             PLACETEXT_LEFT,  CYCLE_KIND    },
-    { 196, 151, 300, 13, NULL,                   0,               TEXT_KIND     },
-    { 500, 151, 112, 13, "Use Current",          PLACETEXT_IN,    BUTTON_KIND   },
-    {  80, 167, 104, 13, "Protocol...",          PLACETEXT_IN,    BUTTON_KIND   },
-    { 188, 167, 168, 13, "Protocol Options...",  PLACETEXT_IN,    BUTTON_KIND   },
+    {  80, 167, 112, 13, "Transfer",             PLACETEXT_LEFT,  CYCLE_KIND    },
+    { 196, 167, 300, 13, NULL,                   0,               TEXT_KIND     },
+    { 500, 167, 112, 13, "Use Current",          PLACETEXT_IN,    BUTTON_KIND   },
+    {  80, 183, 104, 13, "Protocol...",          PLACETEXT_IN,    BUTTON_KIND   },
+    { 188, 183, 168, 13, "Protocol Options...",  PLACETEXT_IN,    BUTTON_KIND   },
 
-    {   4, 186, 100, 13, "Ok",                   PLACETEXT_IN,    BUTTON_KIND   },
-    { 512, 186, 100, 13, "Cancel",               PLACETEXT_IN,    BUTTON_KIND   },
+    {   4, 202, 100, 13, "Ok",                   PLACETEXT_IN,    BUTTON_KIND   },
+    { 512, 202, 100, 13, "Cancel",               PLACETEXT_IN,    BUTTON_KIND   },
 };
 
 // The Override cycle gadget of each group: which settings the entry uses.
@@ -1149,6 +1150,7 @@ static void RefreshSettingsWindow(const struct SiteSettings *work)
     SetChecked(SG_TERM_ECHO,    (shown.State & APP_LOCAL_ECHO) != 0);
     SetChecked(SG_KEY_BSDEL,    (shown.State & APP_BACKSPACE_DEL_SWAPPED) != 0);
     SetChecked(SG_KEY_CRLF,     (shown.State & APP_RETURN_SENDING_CRLF) != 0);
+    SetChecked(SG_KEY_VT,       (shown.State & APP_VT_KEYS) != 0);
     GT_SetGadgetAttrs(settingsGadgets[SG_TERM_RENDERER], settingsWnd, NULL,
                       GTCY_Active, (ULONG)RendererIndex(shown.State), TAG_DONE);
 }
@@ -1346,6 +1348,9 @@ static BOOL EditEntrySettings(const char *entryName, struct SiteSettings *entry,
                     break;
                 case SG_KEY_CRLF:
                     SetFlagFromGadget(&work, SITE_GROUP_KEYBOARD, SG_KEY_CRLF, APP_RETURN_SENDING_CRLF, FALSE);
+                    break;
+                case SG_KEY_VT:
+                    SetFlagFromGadget(&work, SITE_GROUP_KEYBOARD, SG_KEY_VT, APP_VT_KEYS, FALSE);
                     break;
                 case SG_KEY_FKEYS:
                     undo = work;
