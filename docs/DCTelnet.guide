@@ -149,6 +149,7 @@ use them...
 Pressing the right mouse button you will see.
 
  @{"   DCTelnet   " LINK MM} DCTelnet menu options.
+ @{"     Edit     " LINK EDIT} Selecting text, Copy and Paste.
  @{"   Transfer   " LINK TRANSFER} Transfer menu options.
  @{"  Connection  " LINK CONNECTION} Connection menu options.
  @{"    Options   " LINK OPTIONS} Options menu.
@@ -214,6 +215,31 @@ you.
                                   @{b}@{u} QUIT @{ub}@{uu}
                                    ~~~~
    Will immediatly EXIT/QUIT the program.
+
+@EndNode
+
+@node EDIT "DCTelnet, Edit pull down menu and text selection."
+
+                              @{b}@{u} SELECTING TEXT @{ub}@{uu}
+                               ~~~~~~~~~~~~~~
+  Drag over the terminal with the left mouse button: the text is shown
+inverted and copied to the clipboard when you let go. It stays shown until
+the next click or until new text arrives.
+
+  Line-drawing characters of BBS screens are copied as the closest ASCII
+characters (+ - | #).
+
+                                  @{b}@{u} PASTE @{ub}@{uu}
+                                   ~~~~~
+  Types the text in the clipboard, as if you typed it: each line ends with
+Return (see Return = CR + LF).
+
+                               @{b}@{u} COPY SCREEN @{ub}@{uu}
+                                ~~~~~~~~~~~
+  Copies the whole terminal screen to the clipboard.
+
+NOTE:  Selecting and copying need ibmcon.device 1.11 or later. They are
+       not available with an XEM library.
 
 @EndNode
 
@@ -694,6 +720,9 @@ New Features:
   or font change
 - Screen Font changes in place (ibmcon.device and console.device renderers),
   without closing the screen or the window
+- Select text with the mouse to copy it; Edit > Paste and Edit > Copy
+  Screen
+- Blinking text (ibmcon.device 1.11)
 - Home, End, Page Up, Page Down and Insert keys (VT Keys option), and the
   cursor keys follow the host's cursor key mode
 - DCTelnet uses the newest ibmcon.device and libraries from its own drawer
