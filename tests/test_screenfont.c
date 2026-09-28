@@ -64,6 +64,16 @@ static void test_window_stops_at_80_columns(void) {
     assert(ScreenFont_MaxWindowWidth(SCREENFONT_PETSCII_COLUMNS, 16, 22) == 662);
 }
 
+/* Options > 132 Columns: the window may be as wide as 132 cells. */
+static void test_window_may_be_132_columns_wide(void) {
+    UWORD max = ScreenFont_MaxWindowWidth(SCREENFONT_WIDE_COLUMNS, 8, 22);
+    UWORD cols, rows;
+
+    assert(max == 132 * 8 + 22);
+    ScreenFont_Grid(max, 200, max - 22, 184, TRUE, 8, 16, &cols, &rows);
+    assert(cols == 132);
+}
+
 /* 24x24 tool bar symbols drawn for square pixels looked tall and thin on
  * DCTelnet's own 640x256 screen (hires: ticks 22 x 44). */
 static void test_hires_without_interlace_has_tall_pixels(void) {
@@ -77,6 +87,7 @@ static void test_hires_without_interlace_has_tall_pixels(void) {
 int main(void) {
     test_hires_without_interlace_has_tall_pixels();
     test_window_stops_at_80_columns();
+    test_window_may_be_132_columns_wide();
     test_topaz_on_square_pixels_becomes_topaz_pro();
     test_topaz_pro_on_tall_pixels_becomes_topaz();
     test_window_size_sent_to_the_bbs_is_the_text_area();

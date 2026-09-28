@@ -195,6 +195,7 @@ static struct NewMenu mainMenuDesc[] =
     {    NM_ITEM, "Full-screen",                    "W", HIGHCOMP|CHECKIT|MENUTOGGLE, 0, (APTR)MENU_FULLSCREEN},
     {    NM_ITEM, "Title Bar",                      "R", HIGHCOMP|CHECKIT|MENUTOGGLE, 0, (APTR)MENU_TITLE_BAR},
     {    NM_ITEM, "Tool Bar",                       "4", HIGHCOMP|CHECKIT|MENUTOGGLE, 0, (APTR)MENU_TOOL_BAR},
+    {    NM_ITEM, "132 Columns",                     0 , HIGHCOMP|CHECKIT|MENUTOGGLE, 0, (APTR)MENU_132_COLUMNS},
     {    NM_ITEM, "LEDs",                           "I", HIGHCOMP|CHECKIT|MENUTOGGLE, 0, (APTR)MENU_LEDS},
     {    NM_ITEM, "Snapshot Windows",               "$",             0,               0, (APTR)MENU_SNAPSHOT_WINDOWS},
 
@@ -1432,11 +1433,14 @@ static void TerminalGrid(UWORD *cols, UWORD *rows)
                     cell->tf_XSize, cell->tf_YSize, cols, rows);
 }
 
-// The columns BBS art is drawn for in this font: 40 in the C64 fonts, else 80.
+// The columns BBS art is drawn for in this font: 40 in the C64 fonts, 132
+// with Display > 132 Columns (ibmcon.device only), else 80.
 static UWORD ArtColumns(struct TextFont *cell)
 {
-    return (cell == petsciiFont || cell == petsciiFontLower)
-         ? SCREENFONT_PETSCII_COLUMNS : SCREENFONT_ANSI_COLUMNS;
+    if (cell == petsciiFont || cell == petsciiFontLower)
+        return SCREENFONT_PETSCII_COLUMNS;
+    return STATE_ARE_ALL(APP_132_COLUMNS | APP_RENDERER_IBMCON_DEVICE)
+         ? SCREENFONT_WIDE_COLUMNS : SCREENFONT_ANSI_COLUMNS;
 }
 
 /**
@@ -1465,13 +1469,38 @@ static void SizeWorkbenchWindow(UWORD cols, UWORD rows)
         Delay(1);
 }
 
+static void LimitTerminalWidth(void);
+static void TelnetSendWindowSize(void);
+
+// Display > 132 Columns: the Workbench window widens (or narrows) to the
+// width -- at most the screen's -- and the own screen's terminal is centred
+// at it; the BBS is told the grid it got (on the own screen here: no window
+// resize message comes there).
+static void ApplyTerminalWidth(void)
+{
+    UWORD cols, rows;
+
+    if (!win)
+        return;
+    if (STATE_IS_NOT(APP_FULLSCREEN))
+    {
+        TerminalGrid(&cols, &rows);
+        WindowLimits(win, 0, 0, scr->Width, 0);         // the new width may be wider
+        SizeWorkbenchWindow(ArtColumns(win->RPort->Font), rows);
+    }
+    LimitTerminalWidth();
+    if (isConnected && STATE_IS(APP_FULLSCREEN))    // (the Workbench window's resize sends it)
+        TelnetSendWindowSize();
+}
+
 /**
- * @brief Keep the terminal at most 80 text columns wide (40 in PETSCII
- *        Mode): BBS art is drawn for exactly that width and wraps at its
- *        edge. A Workbench window stops there (WindowLimits); on DCTelnet's
- *        own screen the window is that wide and centred, the screen's
- *        background around it ANSI black (see OpenAppWindow). Called once the
- *        console's font is final and after every Workbench resize.
+ * @brief Keep the terminal at most ArtColumns() text columns wide (80, 132
+ *        with Display > 132 Columns, 40 in PETSCII Mode): BBS art is drawn
+ *        for exactly that width and wraps at its edge. A Workbench window
+ *        stops there (WindowLimits); on DCTelnet's own screen the window is
+ *        that wide and centred, the screen's background around it ANSI black
+ *        (see OpenAppWindow). Called once the console's font is final and
+ *        after every Workbench resize.
  */
 static void LimitTerminalWidth(void)
 {
@@ -4147,6 +4176,11 @@ static void GetWindowMsg(struct Window *wwin)
                         UpdatePrefsFromMenu(item, APP_VT_KEYS);
                         break;
 
+                    case MENU_132_COLUMNS:
+                        UpdatePrefsFromMenu(item, APP_132_COLUMNS);
+                        ApplyTerminalWidth();
+                        break;
+
                     case MENU_BELL_FLASH:
                     case MENU_BELL_SOUND:
                     case MENU_BELL_OFF:
@@ -5459,6 +5493,8 @@ void CreateAppMenus(void)
     GetNewMenuItemFromID(MENU_COPY_SCREEN     )->nm_Flags = NM_ITEMDISABLED;
     GetNewMenuItemFromID(MENU_SAVE_SCREEN     )->nm_Flags = NM_ITEMDISABLED;
     GetNewMenuItemFromID(MENU_XEM_LIB_OPTIONS )->nm_Flags = NM_ITEMDISABLED;
+    // A grid wider than 80 columns needs ibmcon.device (up to 199 columns).
+    GetNewMenuItemFromID(MENU_132_COLUMNS     )->nm_Flags = NM_ITEMDISABLED;
 
     if (STATE_IS(APP_RENDERER_BUILTIN))
     {
@@ -5482,6 +5518,8 @@ void CreateAppMenus(void)
         GetNewMenuItemFromID(MENU_FAST_SCROLL)->nm_Flags = HIGHCOMP|CHECKIT|MENUTOGGLE;
         GetNewMenuItemFromID(MENU_COPY_SCREEN)->nm_Flags = 0;
         GetNewMenuItemFromID(MENU_SAVE_SCREEN)->nm_Flags = 0;
+        GetNewMenuItemFromID(MENU_132_COLUMNS)->nm_Flags = HIGHCOMP|CHECKIT|MENUTOGGLE
+                                                         | (STATE_IS(APP_132_COLUMNS) ? CHECKED : 0);
     }
 
     // The NewMenu item CHECKED flag will be set according to saved Prefs flags. Note: these flags

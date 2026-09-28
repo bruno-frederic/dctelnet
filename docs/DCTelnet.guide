@@ -462,6 +462,14 @@ and a Line Feed.
 
 @{b}*  Only good for non-telnet hosts!@{ub}
 
+                              @{b}@{u} 132 COLUMNS @{ub}@{uu}
+                               ~~~~~~~~~~~
+  Makes the terminal 132 columns wide instead of 80 (Unix hosts, wide
+BBS menus). The Workbench window widens as far as the screen allows; on
+DCTelnet's own screen the terminal is centred. The BBS is told the width.
+It is in the Display menu, and needs the ibmcon.device renderer: with
+another renderer the item is disabled and the terminal stays 80 columns.
+
                                 @{b}@{u} VT Keys @{ub}@{uu}
                                  ~~~~~~~
   Chooses what Home, End, Page Up, Page Down and Insert send. Off: the
@@ -828,6 +836,7 @@ New Features:
   Synchronet
 - Character Set: UTF-8 BBSes and hosts, Amiga BBS text copied as it is
 - Bell as a sound or off; ANSI music
+- 132 Columns
 - An ARexx port (DCTELNET.1) with CONNECT, SEND, WAITFOR and more; the
   login macro can wait for a text (\\w"Password:")
 - Blinking text (ibmcon.device 1.11)
