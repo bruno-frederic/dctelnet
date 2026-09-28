@@ -129,3 +129,22 @@ UWORD *Prefs_Palette(struct PrefsStruct *p)
 {
     return (p->State & (APP_RENDERER_BUILTIN | APP_RENDERER_XEM_LIB)) ? p->AnsiColors : p->DeviceColors;
 }
+
+BOOL Prefs_ScreenFits(const struct PrefsStruct *p)
+{
+    if (p->State & APP_RENDERER_BUILTIN)
+        return p->DisplayWidth == 640 && p->DisplayHeight >= 200 && p->DisplayHeight <= 256
+            && p->DisplayDepth == 4;
+    if (p->State & APP_RENDERER_IBMCON_DEVICE)             // ibmcon.device crashes at 1920x1200
+        return p->DisplayWidth >= WIN_MIN_WIDTH && p->DisplayWidth <= 1920
+            && p->DisplayHeight >= WIN_MIN_HEIGHT && p->DisplayHeight <= 1080
+            && p->DisplayDepth != 0 && p->DisplayDepth <= 32;
+    return p->DisplayWidth >= WIN_MIN_WIDTH && p->DisplayWidth <= DISP_MAX_WIDTH
+        && p->DisplayHeight >= WIN_MIN_HEIGHT && p->DisplayHeight <= DISP_MAX_HEIGHT
+        && p->DisplayDepth != 0 && p->DisplayDepth <= 32;
+}
+
+UWORD Prefs_MaxDepth(const struct PrefsStruct *p)
+{
+    return (p->State & APP_RENDERER_BUILTIN) ? 4 : 32;
+}

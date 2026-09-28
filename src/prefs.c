@@ -171,38 +171,13 @@ static void ValidateAndInitPrefs(BOOL *userMustChooseAScreenMode)
     if (!ValidatePalette(prefs.DeviceColors))
         memcpy(prefs.DeviceColors, defaultDeviceColors, sizeof(defaultDeviceColors));
 
-    // Full-screen geometry / font: bounds depend on the active renderer.
-    if (STATE_IS(APP_RENDERER_BUILTIN))
-    {
-        // built-in renderer is, for now, very strict:
-        if (prefs.DisplayWidth  != 640
-         || prefs.DisplayHeight <  200 || prefs.DisplayHeight > 256
-         || prefs.DisplayDepth  != 4)
-        {
-            *userMustChooseAScreenMode = TRUE;
-        }
+    // Full-screen geometry: bounds depend on the active renderer.
+    if (!Prefs_ScreenFits(&prefs))
+        *userMustChooseAScreenMode = TRUE;
 
-        if (prefs.FontSize      != 8)                                 prefs.FontSize      = 8;
-    }
-    else if (STATE_IS(APP_RENDERER_IBMCON_DEVICE))
-    {
-        // ibmcon.device crashes at 1920x1200 resolution
-        if (prefs.DisplayWidth  < WIN_MIN_WIDTH  || prefs.DisplayWidth  > 1920
-         || prefs.DisplayHeight < WIN_MIN_HEIGHT || prefs.DisplayHeight > 1080
-         || prefs.DisplayDepth  == 0             || prefs.DisplayDepth  > 32)
-        {
-            *userMustChooseAScreenMode = TRUE;
-        }
-    }
-    else
-    {
-        if (prefs.DisplayWidth  < WIN_MIN_WIDTH  || prefs.DisplayWidth  > DISP_MAX_WIDTH
-         || prefs.DisplayHeight < WIN_MIN_HEIGHT || prefs.DisplayHeight > DISP_MAX_HEIGHT
-         || prefs.DisplayDepth  == 0             || prefs.DisplayDepth  > 32)
-        {
-            *userMustChooseAScreenMode = TRUE;
-        }
-    }
+    // The built-in renderer draws 8x8 cells.
+    if (STATE_IS(APP_RENDERER_BUILTIN) && prefs.FontSize != 8)
+        prefs.FontSize = 8;
 
     if (prefs.FontSize < 6 || prefs.FontSize > 72)  prefs.FontSize  = 8;
 

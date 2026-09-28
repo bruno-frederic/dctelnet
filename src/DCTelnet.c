@@ -35,6 +35,7 @@ static char MainWindowTitle[] =
 #include <proto/exec.h>               // OpenLibrary(), GetMsg(), ReplyMsg(), AllocMem()...
 #include <proto/dos.h>                // Open(), Close(), Read(), Write(), PutStr()...
 #include <proto/intuition.h>          // OpenWindow(),CloseWindow(), OnMenu(), OffMenu()...
+#include <graphics/videocontrol.h>    // VTAG_BORDERBLANK_SET
 #include <proto/graphics.h>           // Move(), SetAPen(), Text(), SetFont(), Draw()
 #include <proto/gadtools.h>           // GT_GetIMsg(), GT_ReplyIMsg()...
 #include <proto/diskfont.h>           // OpenDiskFont()
@@ -62,6 +63,7 @@ static char MainWindowTitle[] =
 #include "utils.h"
 #include "prefs.h"
 #include "prefs_file.h"
+#include "palette.h"
 
 #define ESC_CHAR '\x1B'  // ASCII Escape character (decimal 27, octal 033)
 #define ESC_STR  "\x1B"  // ASCII Escape character (decimal 27, octal 033) as a C string
@@ -199,6 +201,16 @@ static struct TextFont *petsciiFontLower = NULL; // shifted/lowercase charset fo
 static BOOL connectionDisplay = FALSE;   // a connection is being prepared or is live
 static BOOL displayIsPetscii = FALSE;    // the display was opened for PETSCII
 #define PETSCII_SESSION() (connectionDisplay && STATE_IS(APP_PETSCII_MODE))
+// 32+ colours with ibmcon.device: the 16 ANSI colours get pens of their own
+// (Palette_AnsiPens), handed to ibmcon with IBMCMD_SETPENS; the UI keeps
+// Intuition's pens 0-7. On the Workbench they are 16 shared pens (V39).
+static UBYTE ansiColourPens[16];
+static BOOL  ansiOwnPens = FALSE;
+static BOOL  wbPensObtained = FALSE;    // ansiColourPens came from ObtainBestPen on the Workbench
+static BOOL  wbPenOwned[16];            // this pen was obtained (and is released on close)
+static BYTE  penTableError = 0;         // io_Error of IBMCMD_SETPENS (IOERR_NOCMD: ibmcon < 1.5)
+#define IBMCMD_SETPENS 0x7FE0          // ibmcon.device 1.5
+static const UWORD intuitionPens[] = { 0xFFFF };   // SA_Pens: Intuition's own UI pens
 static BOOL isConDeviceOpened = FALSE;
 static struct IOStdReq *writeConsoleReq = NULL;
 static struct MsgPort  *writeConsoleMP  = NULL;
@@ -883,7 +895,8 @@ BOOL ScreenModeInto(struct PrefsStruct *target)
     if (AslBase && AslBase->lib_Version >= 38) // ASL screen mode requester introduced with AmigaOS 2.1
     {
         result = ScreenModeRequester(win, &target->DisplayID,
-                                    &target->DisplayWidth, &target->DisplayHeight, &target->DisplayDepth);
+                                    &target->DisplayWidth, &target->DisplayHeight, &target->DisplayDepth,
+                                    Prefs_MaxDepth(target));
     }
     else    // fallback to legacy ReqTools library
     {
@@ -902,7 +915,7 @@ BOOL ScreenModeInto(struct PrefsStruct *target)
             if (rtScreenModeRequest (scrmodereq, "Screen Mode..",
                                      RT_Window,    win,
                                      RTSC_Flags,    SCREQF_DEPTHGAD|SCREQF_SIZEGADS|SCREQF_GUIMODES,
-                                     RTSC_MaxDepth,    4,
+                                     RTSC_MaxDepth,    Prefs_MaxDepth(target) < 8 ? Prefs_MaxDepth(target) : 8,
                                      TAG_END))
             {
                 target->DisplayID     = scrmodereq->DisplayID;
@@ -926,17 +939,90 @@ BOOL ChooseScreen(void)
 }
 
 /**
- * @brief Palette requester for colors[16] (the live palette, or an Address
- *        Book entry's copy). The requester edits the screen itself, so the
- *        screen shows colors while it is open and gets the live palette back
- *        afterwards when colors is someone else's. TRUE when the user kept it.
+ * @brief The depth of a screen: GetBitMapAttr() on V39+ (an RTG bitmap's
+ *        struct fields are not to be read), struct BitMap below.
  */
-BOOL EditPalette(UWORD colors[16])
+UWORD AppScreenDepth(struct Screen *s)
+{
+    if (GfxBase->LibNode.lib_Version >= 39)
+        return (UWORD)GetBitMapAttr(s->RastPort.BitMap, BMA_DEPTH);
+    return s->BitMap.Depth;
+}
+
+/*
+ * Backfill hook of the terminal window (layers.library protocol: A0 hook,
+ * A2 RastPort, A1 message; the NDK's __REG__ macros say it for every
+ * compiler, as Xfer.c's XPR callbacks do). Whatever the window exposes -- a resize on the
+ * Workbench, a depth arrange -- is terminal background: ANSI black on its
+ * own pen, not the Workbench's grey pen 0 (ibmcon clears to ANSI black).
+ */
+struct LayerBackFillMsg
+{
+    struct Layer    *layer;
+    struct Rectangle bounds;
+    LONG             offsetX, offsetY;
+};
+
+static ULONG __SAVE_DS__ __ASM__ TerminalBackFill(__REG__(a0, struct Hook *hook),
+                                                  __REG__(a2, struct RastPort *rp),
+                                                  __REG__(a1, struct LayerBackFillMsg *msg))
+{
+    struct RastPort crp = *rp;
+
+    crp.Layer = NULL;           // straight into the bitmap: layers holds the lock
+    SetDrMd(&crp, JAM2);
+    SetAPen(&crp, ansiOwnPens ? ansiColourPens[0] : 0);
+    RectFill(&crp, msg->bounds.MinX, msg->bounds.MinY, msg->bounds.MaxX, msg->bounds.MaxY);
+    return 0;
+}
+
+static struct Hook terminalBackFill = { { NULL, NULL }, (HOOKFUNC)TerminalBackFill, NULL, NULL };
+
+// A pen DCTelnet draws with itself (LEDs, the Quit item), given as an ANSI
+// colour in ibmcon's order: on 32+ colours it lives on the ANSI pens, with the
+// built-in and XEM renderers pens 0-15 hold the ANSI palette in ANSI order.
+static UWORD LegacyPen(UWORD ibmconIndex)
+{
+    if (ansiOwnPens)
+        return ansiColourPens[Palette_IbmconToAnsi(ibmconIndex)];
+    if (STATE_IS(APP_RENDERER_BUILTIN | APP_RENDERER_XEM_LIB))
+        return (UWORD)Palette_IbmconToAnsi(ibmconIndex);
+    return ibmconIndex;
+}
+
+// Load target's palette onto the screen: the ANSI pens (in ANSI order, 8 bits
+// a gun) on 32+ colours, pens 0-15 otherwise.
+static void LoadAnsiPalette(struct PrefsStruct *target)
+{
+    if (STATE_IS_NOT(APP_FULLSCREEN))
+        return;                 // the Workbench's pens are shared: never recolour them
+    if (ansiOwnPens && GfxBase->LibNode.lib_Version >= 39)
+    {
+        UWORD i;
+
+        for (i = 0; i < 16; i++)
+        {
+            ULONG c = Palette_AnsiColour(target->DeviceColors, i);
+            SetRGB32(&scr->ViewPort, ansiColourPens[i], ((c >> 16) & 0xFF) * 0x01010101UL,
+                     ((c >> 8) & 0xFF) * 0x01010101UL, (c & 0xFF) * 0x01010101UL);
+        }
+    }
+    else
+        LoadRGB4(&scr->ViewPort, Prefs_Palette(target), 16);
+}
+
+/**
+ * @brief Palette requester for target's colours (the live settings, or an
+ *        Address Book entry's copy): the renderer's palette (Prefs_Palette).
+ *        The requester edits the screen itself, so the screen shows target's
+ *        colours while it is open and gets the live ones back afterwards.
+ *        TRUE when the user kept them.
+ */
+BOOL EditPalette(struct PrefsStruct *target)
 {
     APTR reqinfo;
     ULONG reqtoolsTags[5];
     BOOL kept = FALSE;
-    UWORD *live = Prefs_Palette(&prefs);
 
     if (STATE_IS_NOT(APP_FULLSCREEN))
     {
@@ -949,20 +1035,33 @@ BOOL EditPalette(UWORD colors[16])
     reqinfo = rtAllocRequestA(RT_REQINFO, NULL);
     if(reqinfo)
     {
-        LoadRGB4(&scr->ViewPort, colors, 16);
+        LoadAnsiPalette(target);
         if(rtPaletteRequestA("Screen Palette..", reqinfo, (struct TagItem *)&reqtoolsTags) != -1)
         {
-            UWORD i = 0;
+            UWORD i;
 
-            while(i < 16)
+            if (ansiOwnPens && GfxBase->LibNode.lib_Version >= 39)
             {
-                colors[i] = GetRGB4(scr->ViewPort.ColorMap, i);
-                i++;
+                ULONG rgb[3];
+
+                for (i = 0; i < 16; i++)
+                {
+                    GetRGB32(scr->ViewPort.ColorMap, ansiColourPens[i], 1, rgb);
+                    Palette_SetAnsiColour(target->DeviceColors, i,
+                                          (rgb[0] >> 24) << 16 | (rgb[1] >> 24) << 8 | (rgb[2] >> 24));
+                }
+            }
+            else
+            {
+                UWORD *colors = Prefs_Palette(target);
+
+                for (i = 0; i < 16; i++)
+                    colors[i] = GetRGB4(scr->ViewPort.ColorMap, i);
             }
             kept = TRUE;
         }
-        if (colors != live)
-            LoadRGB4(&scr->ViewPort, live, 16);
+        if (target != &prefs)
+            LoadAnsiPalette(&prefs);
         rtFreeRequest(reqinfo);
     }
     return kept;
@@ -970,7 +1069,7 @@ BOOL EditPalette(UWORD colors[16])
 
 static void ChoosePalette(void)
 {
-    EditPalette(Prefs_Palette(&prefs));
+    EditPalette(&prefs);
 }
 
 
@@ -1324,7 +1423,7 @@ void LEDs(void)
         EraseRect(&scr->RastPort, scr->Width-86, 2, scr->Width-74, prefs.FontSize-1);
         if(isConnected)
         {
-            SetAPen(&scr->RastPort, 15);
+            SetAPen(&scr->RastPort, LegacyPen(15));
             RectFill(&scr->RastPort, scr->Width-84, 3, scr->Width-76, prefs.FontSize-2);
         }
     }
@@ -1818,7 +1917,7 @@ int main(int argc, char *argv[])
                     // Draw when Title bar AND LEDs are enabled :
                     if (STATE_ARE_ALL(APP_TITLE_BAR_ENABLED | APP_LEDS_ENABLED))
                     {
-                        SetAPen(&scr->RastPort, 10);
+                        SetAPen(&scr->RastPort, LegacyPen(10));
                         RectFill(&scr->RastPort, scr->Width-70, 3, scr->Width-62, prefs.FontSize-2);
                     }
                     Receive();
@@ -2548,7 +2647,7 @@ static void GetWindowMsg(struct Window *wwin)
                         {
                             if(STATE_IS(APP_TITLE_BAR_ENABLED))
                             {
-                                SetAPen(&scr->RastPort, 1);
+                                SetAPen(&scr->RastPort, drawInfo->dri_Pens[BARBLOCKPEN]);
                                 RectFill(&scr->RastPort, scr->Width-86, 2, scr->Width-60, prefs.FontSize-1);
                             }
                         }
@@ -2618,27 +2717,58 @@ static void GetWindowMsg(struct Window *wwin)
                     case MENU_BUILTIN_RENDERER:
                         if (STATE_IS_NOT(APP_RENDERER_BUILTIN))
                         {
+                            ULONG was = prefs.State & APP_RENDERER_ALL;
+
                             // Update Prefs State bits:
                             STATE_UNSET(APP_RENDERER_ALL);
                             STATE_SET(APP_RENDERER_BUILTIN);
 
                             // Changing the pen mapping requires reopening the screen,
-                            // because Intuition only applies SA_Pens during screen creation.
-                            shouldReopenScreen = STATE_IS(APP_RENDERER_CONSOLE_DEVICE
-                                                           | APP_RENDERER_IBMCON_DEVICE);
-                            shouldRestart = TRUE;
+                            // because Intuition only applies SA_Pens during screen creation
+                            // (was: the renderer being left).
+                            shouldReopenScreen = (was & (APP_RENDERER_CONSOLE_DEVICE
+                                                         | APP_RENDERER_IBMCON_DEVICE)) != 0;
+
+                            // A screen mode chosen for another renderer (a 256-colour
+                            // ibmcon screen) is not one the built-in renderer can draw:
+                            // it draws 4 bitplanes, so pen 0 was not ANSI black.
+                            if (STATE_IS(APP_FULLSCREEN) && !Prefs_ScreenFits(&prefs))
+                            {
+                                ULONG oldID = prefs.DisplayID;
+                                UWORD oldW = prefs.DisplayWidth, oldH = prefs.DisplayHeight;
+                                UWORD oldD = prefs.DisplayDepth;
+
+                                if (ChooseScreen() && Prefs_ScreenFits(&prefs))
+                                    shouldReopenScreen = TRUE;
+                                else
+                                {
+                                    // (the requester wrote its choice into prefs: undone)
+                                    prefs.DisplayID = oldID;
+                                    prefs.DisplayWidth = oldW;
+                                    prefs.DisplayHeight = oldH;
+                                    prefs.DisplayDepth = oldD;
+                                    SimpleReq("The built-in renderer needs a 640 pixel wide\n"
+                                              "screen of 200 to 256 lines with 16 colours.");
+                                    STATE_UNSET(APP_RENDERER_ALL);
+                                    STATE_SET(was);
+                                    shouldReopenScreen = FALSE;
+                                }
+                            }
+                            shouldRestart = TRUE;       // (also puts the menu check back)
                         }
                     break;
 
                     case MENU_CONSOLE_DEVICE:
                         if (STATE_IS_NOT(APP_RENDERER_CONSOLE_DEVICE))
                         {
+                            ULONG was = prefs.State & APP_RENDERER_ALL;
+
                             // Update Prefs State bits:
                             STATE_UNSET(APP_RENDERER_ALL);
                             STATE_SET(APP_RENDERER_CONSOLE_DEVICE);
 
-                            shouldReopenScreen = STATE_IS(APP_RENDERER_BUILTIN
-                                                           | APP_RENDERER_XEM_LIB);
+                            shouldReopenScreen = (was & (APP_RENDERER_BUILTIN
+                                                         | APP_RENDERER_XEM_LIB)) != 0;
                             shouldRestart = TRUE;
                         }
                     break;
@@ -2651,12 +2781,14 @@ static void GetWindowMsg(struct Window *wwin)
                         }
                         else
                         {
+                            ULONG was = prefs.State & APP_RENDERER_ALL;
+
                             // Update Prefs State bits:
                             STATE_UNSET(APP_RENDERER_ALL);
                             STATE_SET(APP_RENDERER_XEM_LIB);
 
-                            shouldReopenScreen = STATE_IS(APP_RENDERER_CONSOLE_DEVICE
-                                                          | APP_RENDERER_IBMCON_DEVICE);
+                            shouldReopenScreen = (was & (APP_RENDERER_CONSOLE_DEVICE
+                                                         | APP_RENDERER_IBMCON_DEVICE)) != 0;
                         }
 
                         // Restart even when prefs.displaydriver[0] == '\0', this forces a menu
@@ -2667,12 +2799,14 @@ static void GetWindowMsg(struct Window *wwin)
                     case MENU_IBMCON_DEVICE:
                         if (STATE_IS_NOT(APP_RENDERER_IBMCON_DEVICE))
                         {
+                            ULONG was = prefs.State & APP_RENDERER_ALL;
+
                             // Update Prefs State bits:
                             STATE_UNSET(APP_RENDERER_ALL);
                             STATE_SET(APP_RENDERER_IBMCON_DEVICE);
 
-                            shouldReopenScreen = STATE_IS(APP_RENDERER_BUILTIN
-                                                          | APP_RENDERER_XEM_LIB);
+                            shouldReopenScreen = (was & (APP_RENDERER_BUILTIN
+                                                         | APP_RENDERER_XEM_LIB)) != 0;
                             shouldRestart = TRUE;
                         }
                     break;
@@ -2981,7 +3115,7 @@ static UWORD EstablishTCPConnection(char *servername, UWORD port)
     //  Draw connection activity indicator when Title bar AND LEDs are enabled
     if (STATE_ARE_ALL(APP_TITLE_BAR_ENABLED | APP_LEDS_ENABLED))
     {
-        SetAPen(&scr->RastPort, 11);
+        SetAPen(&scr->RastPort, LegacyPen(11));
         RectFill(&scr->RastPort, scr->Width-84, 3, scr->Width-76, prefs.FontSize-2);
     }
 
@@ -3187,6 +3321,32 @@ static BOOL OpenConsoleDevice(void)
             unitNumber = CONU_CHARMAP;
     }
 
+    // ibmcon on the Workbench: the ANSI colours take 16 shared pens of exactly
+    // their colours from its palette (V39); they go back in CloseConsoleDevice().
+    if (STATE_IS(APP_RENDERER_IBMCON_DEVICE) && STATE_IS_NOT(APP_FULLSCREEN)
+        && GfxBase->LibNode.lib_Version >= 39)
+    {
+        UWORD i;
+
+        for (i = 0; i < 16; i++)
+        {
+            ULONG c = Palette_AnsiColour(prefs.DeviceColors, i);
+            ULONG r = ((c >> 16) & 0xFF) * 0x01010101UL, g = ((c >> 8) & 0xFF) * 0x01010101UL,
+                  bl = (c & 0xFF) * 0x01010101UL;
+            LONG pen = ObtainBestPen(scr->ViewPort.ColorMap, r, g, bl,
+                                     OBP_Precision, PRECISION_EXACT, TAG_DONE);
+
+            // No pen to share (-1): the nearest colour already there, which
+            // is not ours to release. -1 cast to UBYTE was pen 255.
+            wbPenOwned[i] = pen >= 0;
+            if (pen < 0)
+                pen = FindColor(scr->ViewPort.ColorMap, r, g, bl, -1);
+            ansiColourPens[i] = (UBYTE)pen;
+        }
+        wbPensObtained = TRUE;
+        ansiOwnPens = TRUE;
+    }
+
     //the window that is used by the console device for output:
     writeConsoleReq->io_Data = win;
     writeConsoleReq->io_Length = sizeof(struct Window);
@@ -3212,6 +3372,17 @@ static BOOL OpenConsoleDevice(void)
     if(b == RETURN_OK)
     {
         isConDeviceOpened = TRUE;
+
+        // ibmcon 1.5: the ANSI colours' own pens. An older ibmcon answers
+        // IOERR_NOCMD and keeps pens 0-15.
+        if (ansiOwnPens && STATE_IS(APP_RENDERER_IBMCON_DEVICE))
+        {
+            writeConsoleReq->io_Command = IBMCMD_SETPENS;
+            writeConsoleReq->io_Data    = ansiColourPens;
+            writeConsoleReq->io_Length  = sizeof(ansiColourPens);
+            DoIO((struct IORequest *)writeConsoleReq);
+            penTableError = writeConsoleReq->io_Error;
+        }
     }
     else
     {
@@ -3230,10 +3401,22 @@ static BOOL OpenConsoleDevice(void)
 }
 
 /**
- * @brief Close the console device and free its request and port.
+ * @brief Close the console device and free its request and port (and give
+ *        the Workbench back its pens).
  */
 static void CloseConsoleDevice(void)
 {
+    if (wbPensObtained)
+    {
+        UWORD i;
+
+        for (i = 0; i < 16; i++)
+            if (wbPenOwned[i])
+                ReleasePen(scr->ViewPort.ColorMap, ansiColourPens[i]);
+        wbPensObtained = FALSE;
+        ansiOwnPens = FALSE;
+    }
+
     // https://amigadev.elowar.com/read/ADCD_2.1/Devices_Manual_guide/node0190.html
     if (isConDeviceOpened)
     {
@@ -3360,6 +3543,10 @@ struct Screen* OpenAppScreen(void)
         struct ColorSpec colors[17];
         int i;
 
+        UBYTE deepPens[16];
+        BOOL  deep = STATE_IS(APP_RENDERER_IBMCON_DEVICE)
+                  && Palette_AnsiPens(prefs.DisplayDepth, deepPens);
+
         if (STATE_IS(APP_RENDERER_BUILTIN | APP_RENDERER_XEM_LIB))
         {
             colorsRGB4 = prefs.AnsiColors;
@@ -3372,13 +3559,19 @@ struct Screen* OpenAppScreen(void)
         }
 
         pens = (prefs.DisplayDepth < 3) ? defaultPens : pens;
+        // ibmcon with 32+ colours: the UI keeps Intuition's own pens and
+        // colours, the ANSI colours get pens of their own (in ANSI order).
+        if (deep)
+            pens = intuitionPens;
 
         // Convert RGB4 colors array to ColorSpec array needed for SA_Colors during screen open:
         for (i = 0; i < 16; i++) {
-            colors[i].ColorIndex = i;
-            colors[i].Red   = (colorsRGB4[i] >> 8) & 0xF;
-            colors[i].Green = (colorsRGB4[i] >> 4) & 0xF;
-            colors[i].Blue  =  colorsRGB4[i]       & 0xF;
+            UWORD c = deep ? colorsRGB4[Palette_IbmconToAnsi(i)] : colorsRGB4[i];
+
+            colors[i].ColorIndex = deep ? deepPens[i] : i;
+            colors[i].Red   = (c >> 8) & 0xF;
+            colors[i].Green = (c >> 4) & 0xF;
+            colors[i].Blue  =  c       & 0xF;
         }
         colors[16].ColorIndex = -1; /* -1 terminates an array of ColorSpec	*/
         colors[16].Red = colors[16].Green = colors[16].Blue = 0;
@@ -3397,6 +3590,8 @@ struct Screen* OpenAppScreen(void)
             SA_ShowTitle,     STATE_IS(APP_TITLE_BAR_ENABLED),
             SA_AutoScroll,    TRUE,
             SA_Interleaved,   TRUE,
+            SA_SharePens,     TRUE,        // V39: pens beyond the UI stay free
+            SA_FullPalette,   TRUE,        // V39: all colours initialised
             TAG_END);
 
         if (scr == NULL)
@@ -3405,6 +3600,18 @@ struct Screen* OpenAppScreen(void)
             STATE_SET(APP_CUSTOM_SCREEN_OPENED);
     }
 
+    // Own screen with 32+ colours and ibmcon: the ANSI colours on pens of their own.
+    ansiOwnPens = scr && STATE_IS(APP_FULLSCREEN) && STATE_IS(APP_RENDERER_IBMCON_DEVICE)
+               && Palette_AnsiPens(AppScreenDepth(scr), ansiColourPens);
+
+    // Border blank (V39, ECS/AGA): the overscan border shows colour 0, which
+    // on 32+ colours is the UI's grey pen 0 -- keep it black like the terminal.
+    if (scr && STATE_IS(APP_FULLSCREEN) && GfxBase->LibNode.lib_Version >= 39)
+    {
+        VideoControlTags(scr->ViewPort.ColorMap, VTAG_BORDERBLANK_SET, TRUE, TAG_DONE);
+        MakeScreen(scr);
+        RethinkDisplay();
+    }
     return scr;
 }
 
@@ -3451,7 +3658,7 @@ void OpenAppWindow(void)
 
         CheckDimensions(&newWin);
 
-        win = OpenWindow(&newWin);
+        win = OpenWindowTags(&newWin, WA_BackFill, (ULONG)&terminalBackFill, TAG_END);
 
         // Be sure to unlock the public screen when done with it.  Note that once a window is open
         // on the screen the program does not need to hold the screen lock, as the window acts as a
@@ -3467,6 +3674,8 @@ void OpenAppWindow(void)
     {
         struct Gadget *backgad;
         UWORD top, height;
+
+        LoadAnsiPalette(&prefs);        // an entry's palette may differ from the screen's
 
         if (STATE_IS(APP_TOOL_BAR_ENABLED))
             OpenToolBarWindow(FALSE);
@@ -3545,7 +3754,7 @@ void OpenAppWindow(void)
                            | WFLG_ACTIVATE
                            | WFLG_BACKDROP;
 
-        win = OpenWindow(&newWin);
+        win = OpenWindowTags(&newWin, WA_BackFill, (ULONG)&terminalBackFill, TAG_END);
     }
 
     SetFont(win->RPort, petsciiFont ? petsciiFont : ansiFont);
@@ -3636,7 +3845,7 @@ void CreateAppMenus(void)
     if (item != NULL)
     {
         if (prefs.DisplayDepth > 1)
-            ((struct IntuiText *)item->ItemFill)->FrontPen = 15;
+            ((struct IntuiText *)item->ItemFill)->FrontPen = LegacyPen(15);
 
         item->Flags = (item->Flags & ~HIGHFLAGS) | HIGHBOX;
     }
@@ -3812,6 +4021,25 @@ BOOL OpenDisplay(void)
             break;
 
             case APP_RENDERER_IBMCON_DEVICE:
+            if (isConDeviceOpened)
+            {
+                // Which ibmcon runs and how it draws the ANSI colours: it is
+                // opened from DEVS:, not from the Devs drawer next to DCTelnet.
+                static char engine[140];
+                struct Library *dev = (struct Library *)writeConsoleReq->io_Device;
+
+                mysprintf(engine, "ibmcon.device %ld.%ld, %ld bit planes",
+                          (LONG)dev->lib_Version, (LONG)dev->lib_Revision,
+                          (LONG)AppScreenDepth(scr));
+                if (ansiOwnPens && penTableError)
+                    strlcat(engine, "\r\n  ANSI colours NOT on their own pens: this ibmcon is\r\n"
+                                    "  older than 1.5 -- copy Devs/ibmcon.device to DEVS:",
+                            sizeof(engine));
+                else if (ansiOwnPens)
+                    strlcat(engine, ", ANSI colours on their own pens", sizeof(engine));
+                strRenderer = engine;
+            }
+            else
                 strRenderer = "ibmcon.device";
             break;
         }
