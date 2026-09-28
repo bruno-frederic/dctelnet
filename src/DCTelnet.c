@@ -38,6 +38,9 @@ static char MainWindowTitle[] =
 #include <graphics/videocontrol.h>    // VTAG_BORDERBLANK_SET
 #include <proto/graphics.h>           // Move(), SetAPen(), Text(), SetFont(), Draw()
 #include <proto/layers.h>             // InstallLayerInfoHook()
+// cybergraphics: vbcc ships the inline calls but not clib/cybergraphics_protos.h
+extern struct Library *CyberGfxBase;
+#include <inline/cybergraphics_protos.h> // ReadPixelArray(), WritePixelArray()
 #include <proto/gadtools.h>           // GT_GetIMsg(), GT_ReplyIMsg()...
 #include <proto/diskfont.h>           // OpenDiskFont()
 #include <proto/utility.h>            // GetTagData()
@@ -174,6 +177,7 @@ static void GetWindowMsg(struct Window *wwin);
 static void SendMisc(char *str, long len);
 static void ReopenTerminal(void);
 static void OpenAnsiFont(void);
+static void RenewWorkbenchPens(void);
 static void ResetTelnetContext(void);
 static void ResetZmodemContext(void);
 static void SetLocalEchoBack(BOOL wantedState);
@@ -189,6 +193,7 @@ struct GfxBase *GfxBase;
 struct Library *KeymapBase, *GadToolsBase, *AslBase, *SocketBase;
 struct Library *DiskfontBase, *IconBase, *WorkbenchBase, *UtilityBase;
 struct Library *LayersBase;     // V39, optional: the own screen's black background
+struct Library *CyberGfxBase;   // optional: recolours a true-colour terminal live
 
 struct Window *win, *scrollbackWin, *toolBarWin;
 static struct Window *packetWin;
@@ -1178,65 +1183,301 @@ static void LoadAnsiPalette(struct PrefsStruct *target)
         LoadRGB4(&scr->ViewPort, Prefs_Palette(target), 16);
 }
 
-/**
- * @brief Palette requester for target's colours (the live settings, or an
- *        Address Book entry's copy): the renderer's palette (Prefs_Palette).
- *        The requester edits the screen itself, so the screen shows target's
- *        colours while it is open and gets the live ones back afterwards.
- *        TRUE when the user kept them.
+/*
+ * The 16 ANSI colours editor: a colour picker holding exactly the 16 ANSI
+ * colours in ANSI order, their name, and Red/Green/Blue sliders (0-15, the
+ * RGB4 the settings keep). It edits the palette target's renderer shows
+ * (Palette_Get/Put: AnsiColors or DeviceColors) of the live settings, or of
+ * an Address Book entry's copy. On DCTelnet's own screen the colours are
+ * shown on the terminal's own pens, so the terminal recolours while the
+ * sliders move; on the Workbench on 16 exclusive pens borrowed for the
+ * preview (the shared pens the terminal uses are never recoloured) and
+ * given back.
  */
+#define RECTFMT_ARGB 2          // cybergraphics: 4 bytes per pixel, 0xAARRGGBB
+#define RECOLOUR_STRIP 16       // rows read and written at a time
+
+// TRUE when the terminal's pixels hold colours rather than pen numbers (an
+// RTG screen deeper than 8 bits): recolouring a pen then changes nothing
+// already drawn, and RecolourTerminal() rewrites the pixels instead.
+static BOOL TerminalIsTrueColour(void)
+{
+    return CyberGfxBase && win && AppScreenDepth(scr) > 8;
+}
+
+// Every pixel of the terminal in colour from (0x00RRGGBB) becomes to.
+static void RecolourTerminal(ULONG from, ULONG to)
+{
+    BOOL gzz = (win->Flags & WFLG_GIMMEZEROZERO) != 0;
+    UWORD w = gzz ? win->GZZWidth : win->Width;
+    UWORD h = gzz ? win->GZZHeight : win->Height;
+    ULONG *px = AllocVec((ULONG)w * RECOLOUR_STRIP * 4, MEMF_ANY);
+    UWORD y, n;
+    ULONG i;
+
+    if (!px || from == to)
+    {
+        if (px) FreeVec(px);
+        return;
+    }
+    for (y = 0; y < h; y += RECOLOUR_STRIP)
+    {
+        n = (UWORD)(h - y < RECOLOUR_STRIP ? h - y : RECOLOUR_STRIP);
+        ReadPixelArray(px, 0, 0, (UWORD)(w * 4), win->RPort, 0, y, w, n, RECTFMT_ARGB);
+        for (i = 0; i < (ULONG)w * n; i++)
+            if ((px[i] & 0xFFFFFF) == from)
+                px[i] = (px[i] & 0xFF000000) | to;
+        WritePixelArray(px, 0, 0, (UWORD)(w * 4), win->RPort, 0, y, w, n, RECTFMT_ARGB);
+    }
+    FreeVec(px);
+}
+
+enum { PE_PALETTE, PE_NAME, PE_RED, PE_GREEN, PE_BLUE, PE_USE, PE_DEFAULT, PE_CANCEL, PE_COUNT };
+
+static UBYTE editPens[16];          // pen of each ANSI colour in the editor
+static BOOL  editPenOwned[16];      // borrowed for the preview: given back on close
+static BOOL  editLive;              // SetRGB32/SetRGB4 on editPens shows the colour
+
+static void ShowEditedColour(int ansi, UWORD rgb4)
+{
+    if (!editLive)
+        return;
+    SetRGB4(&scr->ViewPort, editPens[ansi], (rgb4 >> 8) & 0xF, (rgb4 >> 4) & 0xF, rgb4 & 0xF);
+}
+
+// The preview swatch right of the colour's name. On a true-colour screen
+// (RTG 15-bit and up) recolouring a pen does not change what is already
+// drawn, so the swatch and the colour picker are drawn again after every
+// change; on 256 colours and fewer they recolour by themselves.
+static struct { WORD x0, y0, x1, y1; } editSwatch;
+
+static void DrawEditPreview(struct Window *w, struct Gadget *picker, int sel)
+{
+    SetAPen(w->RPort, editPens[sel]);
+    SetDrMd(w->RPort, JAM1);
+    RectFill(w->RPort, editSwatch.x0, editSwatch.y0, editSwatch.x1, editSwatch.y1);
+    RefreshGList(picker, w, NULL, 1);
+}
+
+static void ShowSelectedColour(struct Window *w, struct Gadget **gads, const UWORD *pal, int sel)
+{
+    DrawEditPreview(w, gads[PE_PALETTE], sel);
+    GT_SetGadgetAttrs(gads[PE_NAME], w, NULL, GTTX_Text, (ULONG)Palette_Name(sel), TAG_DONE);
+    GT_SetGadgetAttrs(gads[PE_RED],   w, NULL, GTSL_Level, Palette_Channel(pal[sel], 0), TAG_DONE);
+    GT_SetGadgetAttrs(gads[PE_GREEN], w, NULL, GTSL_Level, Palette_Channel(pal[sel], 1), TAG_DONE);
+    GT_SetGadgetAttrs(gads[PE_BLUE],  w, NULL, GTSL_Level, Palette_Channel(pal[sel], 2), TAG_DONE);
+}
+
 BOOL EditPalette(struct PrefsStruct *target)
 {
-    APTR reqinfo;
-    ULONG reqtoolsTags[5];
-    BOOL kept = FALSE;
+    static UWORD pal[16], inUse[16];
+    static const char *labels[PE_COUNT] = { NULL, NULL, "Red", "Green", "Blue", "Use", "Default", "Cancel" };
+    struct Gadget *glist = NULL, *g, *gads[PE_COUNT];
+    struct NewGadget ng;
+    struct Window *pw = NULL;
+    struct TextFont *font = scr->RastPort.Font;
+    WORD fh = font->tf_YSize, cw = font->tf_XSize;
+    WORD x0 = cw, width = 34 * cw, labelW = 7 * cw, levelW = 4 * cw, y;
+    BOOL v39 = GfxBase->LibNode.lib_Version >= 39, done = FALSE, kept = FALSE;
+    BOOL onWorkbench = STATE_IS_NOT(APP_FULLSCREEN);
+    BOOL live = target == &prefs && TerminalIsTrueColour();  // recolour the terminal's pixels
+    BOOL deviceOrder = Prefs_Palette(&prefs) == prefs.DeviceColors;  // pens 0-15 hold ibmcon order
+    BOOL recolour = FALSE;
+    static ULONG shown[16];     // the colours the terminal's pixels have now
+    int sel = 0, i;
 
-    if (STATE_IS_NOT(APP_FULLSCREEN))
+    if (!v39 && onWorkbench)
     {
-        InfoReq(win, "The palette can only be edited on DCTelnet's own screen:\n"
-                     "on the Workbench its colours come from the Workbench palette.");
+        InfoReq(win, "The ANSI colours can be edited on the Workbench from OS 3.0 on.");
         return FALSE;
     }
-    InitializeReqToolsLib(reqtoolsTags);
+    Palette_Get(target, pal);
+    Palette_Get(&prefs, inUse);
+    for (i = 0; i < 16; i++)
+        shown[i] = Palette_RGB32(pal[i]);
 
-    reqinfo = rtAllocRequestA(RT_REQINFO, NULL);
-    if(reqinfo)
+    // The pens the editor shows the colours on.
+    editLive = TRUE;
+    for (i = 0; i < 16; i++)
     {
-        LoadAnsiPalette(target);
-        if(rtPaletteRequestA("Screen Palette..", reqinfo, (struct TagItem *)&reqtoolsTags) != -1)
+        editPenOwned[i] = FALSE;
+        if (onWorkbench)
         {
-            UWORD i;
-
-            if (ansiOwnPens && GfxBase->LibNode.lib_Version >= 39)
-            {
-                ULONG rgb[3];
-
-                for (i = 0; i < 16; i++)
-                {
-                    GetRGB32(scr->ViewPort.ColorMap, ansiColourPens[i], 1, rgb);
-                    Palette_SetAnsiColour(target->DeviceColors, i,
-                                          (rgb[0] >> 24) << 16 | (rgb[1] >> 24) << 8 | (rgb[2] >> 24));
-                }
-            }
+            ULONG c = Palette_RGB32(pal[i]);
+            LONG pen = ObtainPen(scr->ViewPort.ColorMap, (ULONG)-1, ((c >> 16) & 0xFF) * 0x01010101UL,
+                                 ((c >> 8) & 0xFF) * 0x01010101UL, (c & 0xFF) * 0x01010101UL,
+                                 PEN_EXCLUSIVE);
+            editPenOwned[i] = pen >= 0;
+            if (pen >= 0) editPens[i] = (UBYTE)pen;
             else
             {
-                UWORD *colors = Prefs_Palette(target);
-
-                for (i = 0; i < 16; i++)
-                    colors[i] = GetRGB4(scr->ViewPort.ColorMap, i);
+                // No free pen: the nearest colour already there, which cannot
+                // be recoloured and is not ours to give back.
+                editPens[i] = (UBYTE)FindColor(scr->ViewPort.ColorMap,
+                                  ((c >> 16) & 0xFF) * 0x01010101UL, ((c >> 8) & 0xFF) * 0x01010101UL,
+                                  (c & 0xFF) * 0x01010101UL, -1);
+                editLive = FALSE;
             }
-            kept = TRUE;
         }
-        if (target != &prefs)
-            LoadAnsiPalette(&prefs);
-        rtFreeRequest(reqinfo);
+        else
+            editPens[i] = ansiOwnPens ? ansiColourPens[i]
+                        : (UBYTE)(deviceOrder ? Palette_IbmconToAnsi(i) : i);
     }
+    for (i = 0; i < 16; i++)
+        ShowEditedColour(i, pal[i]);
+
+    // The gadgets, laid out in the screen font's cells.
+    y = scr->WBorTop + scr->Font->ta_YSize + 1 + fh / 2;
+    g = CreateContext(&glist);
+    for (i = 0; g && i < PE_COUNT; i++)
+    {
+        memset(&ng, 0, sizeof(ng));
+        ng.ng_TextAttr   = scr->Font;
+        ng.ng_VisualInfo = visualInfos;
+        ng.ng_GadgetID   = i;
+        ng.ng_GadgetText = (UBYTE *)labels[i];
+        switch (i)
+        {
+        case PE_PALETTE:
+            ng.ng_LeftEdge = x0; ng.ng_TopEdge = y; ng.ng_Width = width; ng.ng_Height = 2 * fh + 4;
+            g = v39 ? CreateGadget(PALETTE_KIND, g, &ng, GTPA_ColorTable, (ULONG)editPens,
+                                   GTPA_NumColors, 16, GTPA_Color, editPens[0], TAG_DONE)
+                    : CreateGadget(PALETTE_KIND, g, &ng, GTPA_Depth, 4, GTPA_Color, editPens[0], TAG_DONE);
+            y += 2 * fh + 4 + fh / 2;
+            break;
+        case PE_NAME:
+            ng.ng_LeftEdge = x0; ng.ng_TopEdge = y; ng.ng_Width = width - 9 * cw; ng.ng_Height = fh + 4;
+            editSwatch.x0 = x0 + width - 8 * cw; editSwatch.x1 = x0 + width - 1;
+            editSwatch.y0 = y;                   editSwatch.y1 = y + fh + 3;
+            g = CreateGadget(TEXT_KIND, g, &ng, GTTX_Text, (ULONG)Palette_Name(0), GTTX_Border, TRUE, TAG_DONE);
+            y += fh + 4 + fh / 2;
+            break;
+        case PE_RED: case PE_GREEN: case PE_BLUE:
+            ng.ng_LeftEdge = x0 + labelW; ng.ng_TopEdge = y;
+            ng.ng_Width = width - labelW - levelW; ng.ng_Height = fh + 2;
+            ng.ng_Flags = PLACETEXT_LEFT;
+            g = CreateGadget(SLIDER_KIND, g, &ng, GTSL_Min, 0, GTSL_Max, 15,
+                             GTSL_Level, Palette_Channel(pal[0], i - PE_RED),
+                             GTSL_MaxLevelLen, 2, GTSL_LevelFormat, (ULONG)"%2ld",
+                             GTSL_LevelPlace, PLACETEXT_RIGHT, GA_RelVerify, TRUE,
+                             GA_Immediate, TRUE, TAG_DONE);
+            y += fh + 2 + fh / 2;
+            break;
+        default:        // Use, Default, Cancel in one row
+            ng.ng_Width = (width - 2 * cw) / 3; ng.ng_Height = fh + 6;
+            ng.ng_LeftEdge = x0 + (i - PE_USE) * (ng.ng_Width + cw); ng.ng_TopEdge = y;
+            ng.ng_Flags = PLACETEXT_IN;
+            g = CreateGadget(BUTTON_KIND, g, &ng, TAG_DONE);
+            break;
+        }
+        gads[i] = g;
+    }
+    if (g)
+        pw = OpenWindowTags(NULL, WA_CustomScreen, (ULONG)scr, WA_Gadgets, (ULONG)glist,
+                            WA_Title, (ULONG)"ANSI Colours",
+                            WA_InnerWidth, width + 2 * cw, WA_InnerHeight, y + fh + 6 + fh / 2 - scr->WBorTop - scr->Font->ta_YSize - 1,
+                            WA_Left, (scr->Width - width) / 2, WA_Top, scr->BarHeight + 20,
+                            WA_IDCMP, PALETTEIDCMP | SLIDERIDCMP | BUTTONIDCMP | TEXTIDCMP
+                                      | IDCMP_CLOSEWINDOW | IDCMP_REFRESHWINDOW,
+                            WA_DragBar, TRUE, WA_DepthGadget, TRUE, WA_CloseGadget, TRUE,
+                            WA_Activate, TRUE, WA_RMBTrap, TRUE, WA_AutoAdjust, TRUE, TAG_DONE);
+    if (pw)
+    {
+        GT_RefreshWindow(pw, NULL);
+        DrawEditPreview(pw, gads[PE_PALETTE], sel);
+        while (!done)
+        {
+            struct IntuiMessage *m;
+
+            WaitPort(pw->UserPort);
+            while (!done && (m = GT_GetIMsg(pw->UserPort)))
+            {
+                ULONG class = m->Class;
+                UWORD code = m->Code;
+                struct Gadget *gad = (struct Gadget *)m->IAddress;
+
+                GT_ReplyIMsg(m);
+                if (class == IDCMP_CLOSEWINDOW) done = TRUE;
+                else if (class == IDCMP_REFRESHWINDOW)
+                {
+                    GT_BeginRefresh(pw);
+                    GT_EndRefresh(pw, TRUE);
+                    DrawEditPreview(pw, gads[PE_PALETTE], sel);
+                }
+                else if (class == IDCMP_GADGETUP || class == IDCMP_MOUSEMOVE || class == IDCMP_GADGETDOWN)
+                {
+                    switch (gad->GadgetID)
+                    {
+                    case PE_PALETTE:            // code = the pen clicked
+                        for (i = 0; i < 16; i++)
+                            if (editPens[i] == code) { sel = i; break; }
+                        if (!v39) sel = deviceOrder ? Palette_IbmconToAnsi(code) : code;
+                        ShowSelectedColour(pw, gads, pal, sel);
+                        break;
+                    case PE_RED: case PE_GREEN: case PE_BLUE:
+                        pal[sel] = Palette_WithChannel(pal[sel], gad->GadgetID - PE_RED, (UBYTE)code);
+                        ShowEditedColour(sel, pal[sel]);
+                        DrawEditPreview(pw, gads[PE_PALETTE], sel);
+                        recolour = live;        // once the queued moves are read
+                        break;
+                    case PE_DEFAULT:
+                        Palette_DefaultFor(target, pal);
+                        for (i = 0; i < 16; i++) ShowEditedColour(i, pal[i]);
+                        for (i = 0; live && i < 16; i++)
+                            if (Palette_SafeRecolour(shown, i, Palette_RGB32(pal[i])))
+                            {
+                                RecolourTerminal(shown[i], Palette_RGB32(pal[i]));
+                                shown[i] = Palette_RGB32(pal[i]);
+                            }
+                        ShowSelectedColour(pw, gads, pal, sel);     // redraws the preview
+                        break;
+                    case PE_USE:
+                        Palette_Put(target, pal);
+                        kept = done = TRUE;
+                        break;
+                    case PE_CANCEL:
+                        done = TRUE;
+                        break;
+                    }
+                }
+            }
+            // A drag queues many moves: the pixels follow once they are read.
+            if (recolour && Palette_SafeRecolour(shown, sel, Palette_RGB32(pal[sel])))
+            {
+                RecolourTerminal(shown[sel], Palette_RGB32(pal[sel]));
+                shown[sel] = Palette_RGB32(pal[sel]);
+            }
+            recolour = FALSE;
+        }
+        CloseWindow(pw);
+    }
+    FreeGadgets(glist);
+
+    // Not kept: the terminal's pixels get the colours in use back.
+    for (i = 0; live && !kept && i < 16; i++)
+        if (Palette_SafeRecolour(shown, i, Palette_RGB32(inUse[i])))
+        {
+            RecolourTerminal(shown[i], Palette_RGB32(inUse[i]));
+            shown[i] = Palette_RGB32(inUse[i]);
+        }
+
+    // Back to the live colours: the borrowed pens go back, and on the own
+    // screen the terminal's pens show the settings in use.
+    for (i = 0; i < 16; i++)
+        if (editPenOwned[i])
+            ReleasePen(scr->ViewPort.ColorMap, editPens[i]);
+    if (!onWorkbench)
+        LoadAnsiPalette(&prefs);
     return kept;
 }
 
 static void ChoosePalette(void)
 {
-    EditPalette(&prefs);
+    // On the own screen the terminal already shows the new colours; on the
+    // Workbench the running console takes new shared pens for them (a
+    // reopen would clear it).
+    if (EditPalette(&prefs) && STATE_IS_NOT(APP_FULLSCREEN))
+        RenewWorkbenchPens();
 }
 
 
@@ -1904,6 +2145,7 @@ int main(int argc, char *argv[])
     }
 
     LayersBase = OpenLibrary("layers.library", 39);
+    CyberGfxBase = OpenLibrary("cybergraphics.library", 40);   // Picasso96 / CyberGraphX
 
     UtilityBase = OpenLibrary("utility.library", 0);
     if (UtilityBase == NULL)
@@ -2196,6 +2438,7 @@ clean_exit:
     if (WorkbenchBase) CloseLibrary(WorkbenchBase);
     if (UtilityBase)   CloseLibrary(UtilityBase);
     if (LayersBase)    CloseLibrary(LayersBase);
+    if (CyberGfxBase)  CloseLibrary(CyberGfxBase);
     if (GadToolsBase)  CloseLibrary(GadToolsBase);
     if (ReqToolsBase)  CloseLibrary((struct Library *) ReqToolsBase);
     if (AslBase)       CloseLibrary(AslBase);
@@ -3494,6 +3737,71 @@ static void ClosePetsciiFonts(void)
     if(petsciiFontLower)      { CloseFont(petsciiFontLower);        petsciiFontLower = NULL; }
 }
 
+// The ANSI colours for ibmcon on the Workbench: 16 shared pens of exactly
+// their colours from its palette (V39), given back with ReleaseWorkbenchPens().
+static void ObtainWorkbenchPens(void)
+{
+    UWORD i;
+
+    if (!STATE_IS(APP_RENDERER_IBMCON_DEVICE) || STATE_IS(APP_FULLSCREEN)
+        || GfxBase->LibNode.lib_Version < 39)
+        return;
+    for (i = 0; i < 16; i++)
+    {
+        ULONG c = Palette_AnsiColour(prefs.DeviceColors, i);
+        ULONG r = ((c >> 16) & 0xFF) * 0x01010101UL, g = ((c >> 8) & 0xFF) * 0x01010101UL,
+              bl = (c & 0xFF) * 0x01010101UL;
+        LONG pen = ObtainBestPen(scr->ViewPort.ColorMap, r, g, bl,
+                                 OBP_Precision, PRECISION_EXACT, TAG_DONE);
+
+        // No pen to share (-1): the nearest colour already there, which
+        // is not ours to release. -1 cast to UBYTE was pen 255.
+        wbPenOwned[i] = pen >= 0;
+        if (pen < 0)
+            pen = FindColor(scr->ViewPort.ColorMap, r, g, bl, -1);
+        ansiColourPens[i] = (UBYTE)pen;
+    }
+    wbPensObtained = TRUE;
+    ansiOwnPens = TRUE;
+}
+
+static void ReleaseWorkbenchPens(void)
+{
+    UWORD i;
+
+    if (!wbPensObtained)
+        return;
+    for (i = 0; i < 16; i++)
+        if (wbPenOwned[i])
+            ReleasePen(scr->ViewPort.ColorMap, ansiColourPens[i]);
+    wbPensObtained = FALSE;
+    ansiOwnPens = FALSE;
+}
+
+// ibmcon 1.5: the ANSI colours' own pens. An older ibmcon answers
+// IOERR_NOCMD and keeps pens 0-15. Also sent to an open console.
+static void SendPenTable(void)
+{
+    if (!ansiOwnPens || !STATE_IS(APP_RENDERER_IBMCON_DEVICE))
+        return;
+    writeConsoleReq->io_Command = IBMCMD_SETPENS;
+    writeConsoleReq->io_Data    = ansiColourPens;
+    writeConsoleReq->io_Length  = sizeof(ansiColourPens);
+    DoIO((struct IORequest *)writeConsoleReq);
+    penTableError = writeConsoleReq->io_Error;
+}
+
+// New ANSI colours on the Workbench without reopening the console (which
+// would clear it): new shared pens, handed to the running ibmcon.
+static void RenewWorkbenchPens(void)
+{
+    if (!isConDeviceOpened || !wbPensObtained)
+        return;
+    ReleaseWorkbenchPens();
+    ObtainWorkbenchPens();
+    SendPenTable();
+}
+
 /**
  * @brief Open the renderer's console device (ibmcon.device, or console.device)
  *        on the main window, with the RastPort's current font.
@@ -3542,29 +3850,7 @@ static BOOL OpenConsoleDevice(void)
 
     // ibmcon on the Workbench: the ANSI colours take 16 shared pens of exactly
     // their colours from its palette (V39); they go back in CloseConsoleDevice().
-    if (STATE_IS(APP_RENDERER_IBMCON_DEVICE) && STATE_IS_NOT(APP_FULLSCREEN)
-        && GfxBase->LibNode.lib_Version >= 39)
-    {
-        UWORD i;
-
-        for (i = 0; i < 16; i++)
-        {
-            ULONG c = Palette_AnsiColour(prefs.DeviceColors, i);
-            ULONG r = ((c >> 16) & 0xFF) * 0x01010101UL, g = ((c >> 8) & 0xFF) * 0x01010101UL,
-                  bl = (c & 0xFF) * 0x01010101UL;
-            LONG pen = ObtainBestPen(scr->ViewPort.ColorMap, r, g, bl,
-                                     OBP_Precision, PRECISION_EXACT, TAG_DONE);
-
-            // No pen to share (-1): the nearest colour already there, which
-            // is not ours to release. -1 cast to UBYTE was pen 255.
-            wbPenOwned[i] = pen >= 0;
-            if (pen < 0)
-                pen = FindColor(scr->ViewPort.ColorMap, r, g, bl, -1);
-            ansiColourPens[i] = (UBYTE)pen;
-        }
-        wbPensObtained = TRUE;
-        ansiOwnPens = TRUE;
-    }
+    ObtainWorkbenchPens();
 
     //the window that is used by the console device for output:
     writeConsoleReq->io_Data = win;
@@ -3594,16 +3880,7 @@ static BOOL OpenConsoleDevice(void)
         isConDeviceOpened = TRUE;
         LimitTerminalWidth();       // the font is final now
 
-        // ibmcon 1.5: the ANSI colours' own pens. An older ibmcon answers
-        // IOERR_NOCMD and keeps pens 0-15.
-        if (ansiOwnPens && STATE_IS(APP_RENDERER_IBMCON_DEVICE))
-        {
-            writeConsoleReq->io_Command = IBMCMD_SETPENS;
-            writeConsoleReq->io_Data    = ansiColourPens;
-            writeConsoleReq->io_Length  = sizeof(ansiColourPens);
-            DoIO((struct IORequest *)writeConsoleReq);
-            penTableError = writeConsoleReq->io_Error;
-        }
+        SendPenTable();
     }
     else
     {
@@ -3627,16 +3904,7 @@ static BOOL OpenConsoleDevice(void)
  */
 static void CloseConsoleDevice(void)
 {
-    if (wbPensObtained)
-    {
-        UWORD i;
-
-        for (i = 0; i < 16; i++)
-            if (wbPenOwned[i])
-                ReleasePen(scr->ViewPort.ColorMap, ansiColourPens[i]);
-        wbPensObtained = FALSE;
-        ansiOwnPens = FALSE;
-    }
+    ReleaseWorkbenchPens();
 
     // https://amigadev.elowar.com/read/ADCD_2.1/Devices_Manual_guide/node0190.html
     if (isConDeviceOpened)
@@ -4104,7 +4372,10 @@ void CreateAppMenus(void)
     else
     {
         GetNewMenuItemFromID(MENU_SCREEN_MODE   )->nm_Flags = NM_ITEMDISABLED;
-        GetNewMenuItemFromID(MENU_SCREEN_PALETTE)->nm_Flags = NM_ITEMDISABLED;
+        // The ANSI colours editor works on the Workbench too with ibmcon (OS
+        // 3.0): its colours are on shared pens of their own, not the Workbench's.
+        GetNewMenuItemFromID(MENU_SCREEN_PALETTE)->nm_Flags =
+            (STATE_IS(APP_RENDERER_IBMCON_DEVICE) && GfxBase->LibNode.lib_Version >= 39) ? 0 : NM_ITEMDISABLED;
     }
 
 
@@ -4156,7 +4427,17 @@ void CreateAppMenus(void)
 
 
     // Gadtools CreateMenuA() generates a list of Intuition Menu structs.
-    mainMenuStrip = CreateMenusA(mainMenuDesc, 0);
+    // Menu item text in the screen's menu text pen: without it GadTools
+    // uses pen 0, which on 16 colours is ANSI black but on 32+ colours the
+    // UI's grey -- every item looked disabled.
+    {
+        static ULONG ctags[] = { GTMN_FrontPen, 1, TAG_END };
+
+        // BARDETAILPEN is a V39 DrawInfo pen (dri_Version 2): OS 2.x keeps the default.
+        if (drawInfo && drawInfo->dri_Version >= 2)
+            ctags[1] = drawInfo->dri_Pens[BARDETAILPEN];
+        mainMenuStrip = CreateMenusA(mainMenuDesc, (struct TagItem *)ctags);
+    }
     #ifdef _DEBUG
         Printf("   <-- CreateMenusA() => %s\n", (mainMenuStrip != NULL) ? "succeeded" : "failed");
     #endif

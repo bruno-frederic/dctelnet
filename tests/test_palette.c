@@ -23,18 +23,6 @@ static void test_ansi_colours_come_from_the_device_palette_in_ansi_order(void) {
     assert(Palette_AnsiColour(dev, 2) == 0x00AA00);
 }
 
-/* A colour edited on an ANSI pen goes back to its ibmcon slot, rounded. */
-static void test_an_edited_ansi_colour_lands_in_its_device_slot(void) {
-    UWORD dev[16];
-
-    memset(dev, 0, sizeof(dev));
-    Palette_SetAnsiColour(dev, 1, 0xFF0000);
-    Palette_SetAnsiColour(dev, 7, 0x807F7F);
-    assert(dev[7] == 0xF00);          /* ibmcon 7 = ANSI red */
-    assert(dev[1] == 0x877);          /* rounds to nearest: 0x80 -> 8, 0x7F -> 7 */
-    assert(Palette_AnsiColour(dev, 1) == 0xFF0000);
-}
-
 /* Where the 16 ANSI colours live: shared pens 0-15 below 32 colours (no
  * table), otherwise pens of their own that skip the UI pens 0-7 and the AGA
  * pointer pens 16-19. */
@@ -50,9 +38,56 @@ static void test_ansi_pen_layout(void) {
     assert(Palette_AnsiPens(24, pens) && pens[0] == 8);   /* RTG true colour */
 }
 
+/* The editor works in ANSI order whatever the renderer keeps: the built-in
+ * renderer's AnsiColors as they are, a console's DeviceColors swapped. */
+static void test_the_editor_sees_the_renderers_palette_in_ansi_order(void) {
+    struct PrefsStruct p;
+    UWORD pal[16];
+
+    memset(&p, 0, sizeof(p));
+    p.State = APP_RENDERER_IBMCON_DEVICE;
+    memcpy(p.DeviceColors, defaultDeviceColors, sizeof(p.DeviceColors));
+    Palette_Get(&p, pal);
+    assert(pal[1] == 0x0D00 && pal[7] == 0x0DDD);        /* ANSI red, ANSI white */
+    pal[1] = 0x0E00;
+    Palette_Put(&p, pal);
+    assert(p.DeviceColors[7] == 0x0E00);                  /* ibmcon's red slot */
+    Palette_DefaultFor(&p, pal);
+    assert(pal[1] == 0x0D00);
+
+    p.State = APP_RENDERER_BUILTIN;
+    memcpy(p.AnsiColors, defaultAnsiColors, sizeof(p.AnsiColors));
+    Palette_Get(&p, pal);
+    assert(pal[1] == 0x0A00 && pal[7] == 0x0AAA);
+    Palette_DefaultFor(&p, pal);
+    assert(pal[15] == 0x0FFF);
+}
+
+static void test_channels_are_the_four_bits_the_prefs_keep(void) {
+    assert(Palette_Channel(0x0A5F, 0) == 0xA && Palette_Channel(0x0A5F, 1) == 5 && Palette_Channel(0x0A5F, 2) == 0xF);
+    assert(Palette_WithChannel(0x0A5F, 1, 0xC) == 0x0ACF);
+    assert(Palette_RGB32(0x0F80) == 0xFF8800);
+    assert(!strcmp(Palette_Name(9), "Bright Red"));
+}
+
+/* Recolouring a true-colour terminal's pixels merges two colours for good
+ * when another ANSI colour has the same value: then it is not done. */
+static void test_a_recolour_that_would_merge_colours_is_refused(void) {
+    ULONG shown[16];
+    int i;
+
+    for (i = 0; i < 16; i++) shown[i] = (ULONG)i * 0x111111;
+    assert(Palette_SafeRecolour(shown, 1, 0xABCDEF));
+    assert(!Palette_SafeRecolour(shown, 1, shown[2]));     /* would become colour 2 */
+    shown[3] = shown[1];
+    assert(!Palette_SafeRecolour(shown, 1, 0xABCDEF));     /* colour 3 shares its pixels */
+}
+
 int main(void) {
+    test_the_editor_sees_the_renderers_palette_in_ansi_order();
+    test_channels_are_the_four_bits_the_prefs_keep();
+    test_a_recolour_that_would_merge_colours_is_refused();
     test_ansi_colours_come_from_the_device_palette_in_ansi_order();
-    test_an_edited_ansi_colour_lands_in_its_device_slot();
     test_ansi_pen_layout();
     printf("palette: all assertions passed\n");
     return 0;
