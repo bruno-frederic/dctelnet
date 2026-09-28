@@ -520,6 +520,7 @@ ibmcon.device (source now included in the "ibmcon" drawer):
   the margins (issue #11)
 - 1.10: iCE colours (bright backgrounds), erase characters (CSI X),
   ESC 7 / ESC 8, application cursor key mode reported to DCTelnet
+- 1.11: blinking text; a copy of the screen DCTelnet can read back
 
 
 
