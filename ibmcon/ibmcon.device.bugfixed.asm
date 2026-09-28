@@ -483,9 +483,9 @@ DevInit:                                ; was AJL_0_20
         move.l  A1,D0
         lea     LIB_VERSION(A5),A3
         move.w  D0,(A3)+                ; lib_Version  = 1
-        lea     6,A1                    ; 1.6: revision 6 (deferred wrap)
+        lea     7,A1                    ; 1.7: revision 7 (CSI L)
         move.l  A1,D0
-        move.w  D0,(A3)+                ; lib_Revision = 6
+        move.w  D0,(A3)+                ; lib_Revision = 7
         move.l  #DevIdString,(A3)+      ; lib_IdString
         lea     dev_RelocTab(A5),A3
         clr.l   (A3)+                   ; dev_RelocTab = NULL
@@ -2006,6 +2006,12 @@ Csi_M_DeleteLines:                      ; was AJL_0_C60
 ;---------------------------------------------------------------------
 ; CSI 'L' -- insert N blank lines at the cursor row; lines from the
 ; cursor down move towards the bottom (negative dy scroll).
+; FIXED(1.7): the scroll's bottom edge was rows-1 -- a row count used as
+; a pixel row -- so only the top pixel lines moved and a fullscreen
+; editor scrolling up (ABBS, MBBS) left stale lines behind. It is now
+; rows*YSize-1, as in CSI M. And N was clamped to the rows BELOW the
+; cursor, so on the last row nothing was inserted; the cursor's row
+; counts too, as in CSI M.
 ;---------------------------------------------------------------------
 Csi_L_InsertLines:                      ; was AJL_0_D0C
         suba.w  #$C,A7
@@ -2021,7 +2027,7 @@ Csi_L_InsertLines:                      ; was AJL_0_D0C
         move.w  con_Row(A5),D0
         moveq   #1,D1
         cmp.w   D1,D0
-        bcs.b   .done
+        bcs.w   .done
         move.w  con_Rows(A5),D1
         cmp.w   D1,D0
         bhi.b   .done
@@ -2029,7 +2035,8 @@ Csi_L_InsertLines:                      ; was AJL_0_D0C
         move.w  D0,D2
         moveq   #0,D0
         move.w  D1,D0
-        sub.l   D2,D0                   ; rows below the cursor
+        sub.l   D2,D0
+        addq.l  #1,D0                   ; rows below incl. current
         moveq   #0,D1
         move.b  D7,D1
         cmp.l   D0,D1
@@ -2056,10 +2063,12 @@ Csi_L_InsertLines:                      ; was AJL_0_D0C
         moveq   #0,D1
         move.w  con_WidthPx(A5),D1
         subq.l  #1,D1                   ; xmax
-        moveq   #0,D2
+        movea.l g_RastPort(A4),A1
+        movea.l rp_Font(A1),A0
         move.w  con_Rows(A5),D2
-        subq.l  #1,D2                   ; NOTE: ymax = rows-1 (pixel
-        move.l  D0,D3                   ; row!), original quirk
+        mulu    tf_YSize(A0),D2
+        subq.l  #1,D2                   ; ymax = rows*YSize-1 (1.7 FIXED)
+        move.l  D0,D3
         move.l  D1,D4
         move.l  D2,D5
         movea.l con_RastPort(A5),A1
@@ -3952,7 +3961,7 @@ DevName:                                ; was AL_2_1C
         dc.b    "ibmcon.device",0,0
         dc.b    0
 DevIdString:                            ; was AL_2_2C
-        dc.b    "ibmcon.device 1.6",0,0
+        dc.b    "ibmcon.device 1.7",0,0
         dc.b    0
 
 ;=====================================================================
@@ -3966,7 +3975,7 @@ DevIdString:                            ; was AL_2_2C
 GlobalsInit:                            ; was SegmentBeginn3
         ds.l    1                       ; $000: (unused)
         dc.b    0                       ; $004
-        dc.b    "$VER: ibmcon.device 1.6 (Sep 27 2026)",0,0
+        dc.b    "$VER: ibmcon.device 1.7 (Sep 27 2026)",0,0
 
 ;--- $02C: CSI dispatch table ----------------------------------------
 ; 6 bytes per entry: function pointer, prefix char (0 = none), final

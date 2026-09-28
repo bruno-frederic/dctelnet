@@ -1,4 +1,4 @@
-# ibmcon.device -- annotated disassembly (1.4 bug-fixed, 1.5, 1.6)
+# ibmcon.device -- annotated disassembly (1.4 bug-fixed, 1.5, 1.6, 1.7)
 
 The ANSI console DCTelnet draws its terminal with. `ibmcon.device` 1.4
 (Mar 9 1998) was freeware and shipped as a binary only; this drawer holds
@@ -105,3 +105,13 @@ A1200 (FS-UAE, AGA and Picasso96 screens) and on the Workbench.
 * **Depth.** The screen depth is read with `GetBitMapAttr(BMA_DEPTH)` on
   V39+ (an RTG bitmap's `bm_Depth` is not its depth).
 * Version 1.6 (lib_Revision 6).
+
+## 1.7 (2026-09-27)
+
+* **CSI L (Insert Lines) moves the lines.** The scroll's bottom edge was
+  `rows-1` -- a row count used as a pixel row -- so only the top pixel
+  lines moved; a fullscreen editor scrolling up (ABBS, MBBS) left stale
+  lines on screen. It is now `rows*YSize-1`, as in CSI M. On the last row
+  it also inserted nothing (N was clamped to the rows below the cursor);
+  the cursor's row now counts, as in CSI M.
+* Version 1.7 (lib_Revision 7).
