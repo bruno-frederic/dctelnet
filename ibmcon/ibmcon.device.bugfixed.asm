@@ -483,9 +483,9 @@ DevInit:                                ; was AJL_0_20
         move.l  A1,D0
         lea     LIB_VERSION(A5),A3
         move.w  D0,(A3)+                ; lib_Version  = 1
-        lea     7,A1                    ; 1.7: revision 7 (CSI L)
+        lea     8,A1                    ; 1.8: revision 8 (signal fix)
         move.l  A1,D0
-        move.w  D0,(A3)+                ; lib_Revision = 7
+        move.w  D0,(A3)+                ; lib_Revision = 8
         move.l  #DevIdString,(A3)+      ; lib_IdString
         lea     dev_RelocTab(A5),A3
         clr.l   (A3)+                   ; dev_RelocTab = NULL
@@ -874,6 +874,13 @@ HandlerProc:                            ; was JL_0_2EC
         beq.b   .doWrite
         subi.l  #CMD_DIE-CMD_WRITE,D0   ; CMD_DIE?
         bne.b   .reply                  ; anything else: just reply
+        move.l  g_CmdPort(A4),-(A7)     ; 1.8 FIXED: the handler deletes
+        bsr.w   DeletePort_             ;   its own port, so FreeSignal
+        addq.w  #4,A7                   ;   frees ITS signal. UnitClose
+        clr.l   g_CmdPort(A4)           ;   did it in the opener's task
+                                        ;   and freed the opener's bit
+                                        ;   (31: bsdsocket's -- stuck
+                                        ;   connections, DCTelnet #3)
         movea.l AbsExecBase.W,A6        ; CMD_DIE: reply under Forbid
         jsr     _LVOForbid(A6)          ;   and fall off the process
         movea.l A5,A1
@@ -3330,8 +3337,10 @@ UnitOpen:                               ; was JL_0_185A
 ; UnitClose -- device specific part of DevClose.
 ; In: A0 = ioreq, A6 = clone base.
 ; Builds a fake IORequest with io_Command = CMD_DIE on the stack,
-; sends it to the handler's command port and waits for the reply,
-; then deletes the handler's command port.
+; sends it to the handler's command port and waits for the reply.
+; The handler deletes its command port itself before replying: this
+; runs in the OPENER's task, and DeletePort_ here freed the opener's
+; signal bit of the same number (1.8 FIXED).
 ;---------------------------------------------------------------------
 UnitClose:                              ; was JL_0_1918
         suba.w  #$24,A7
@@ -3351,10 +3360,8 @@ UnitClose:                              ; was JL_0_1918
         jsr     _LVOWaitPort(A6)        ; handler replies under Forbid
         movea.l $1E(A7),A0
         jsr     -$2A0(A6)               ; DeleteMsgPort
-        move.l  g_CmdPort(A4),-(A7)
-        movea.l $10(A7),A6
-        bsr.w   DeletePort_             ; free the handler's port
-        addq.w  #4,A7
+        ; 1.8: the handler deleted its command port itself (a port's
+        ; signal belongs to the task that allocated it)
         movem.l (A7)+,A4-A6
         adda.w  #$24,A7
         rts
@@ -3961,7 +3968,7 @@ DevName:                                ; was AL_2_1C
         dc.b    "ibmcon.device",0,0
         dc.b    0
 DevIdString:                            ; was AL_2_2C
-        dc.b    "ibmcon.device 1.7",0,0
+        dc.b    "ibmcon.device 1.8",0,0
         dc.b    0
 
 ;=====================================================================
@@ -3975,7 +3982,7 @@ DevIdString:                            ; was AL_2_2C
 GlobalsInit:                            ; was SegmentBeginn3
         ds.l    1                       ; $000: (unused)
         dc.b    0                       ; $004
-        dc.b    "$VER: ibmcon.device 1.7 (Sep 27 2026)",0,0
+        dc.b    "$VER: ibmcon.device 1.8 (Sep 28 2026)",0,0
 
 ;--- $02C: CSI dispatch table ----------------------------------------
 ; 6 bytes per entry: function pointer, prefix char (0 = none), final

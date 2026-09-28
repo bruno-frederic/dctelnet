@@ -2121,9 +2121,11 @@ int main(int argc, char *argv[])
     }
 
 
-    // Workaround for connection freeze after changing display settings: ibmcon.device improperly
-    // frees signal bit 31 when being closed. We explicitly allocate signal 31 here to prevent it
-    // from being assigned elsewhere and accidentally released.
+    // Workaround for connection freeze after changing display settings: ibmcon.device before
+    // 1.8 frees signal bit 31 when being closed (its UnitClose deleted the handler's port in our
+    // task, issue #3). ibmcon 1.8 and later (built from ibmcon/) fix it; the reservation stays
+    // for every older ibmcon -- the one in the package's Devs drawer, one in DEVS:, one still
+    // in memory and in use elsewhere, which DCTelnet then shares.
     dontUseSig31 = AllocSignal(31L);
     if (dontUseSig31 != 31)
         InfoReq(NULL, "ERROR: cannot allocate sigbit 31!");
