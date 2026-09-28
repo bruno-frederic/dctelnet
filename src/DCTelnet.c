@@ -59,6 +59,8 @@ extern struct Library *CyberGfxBase;
 #include "progdir.h"
 #include "dsr.h"
 #include "keys.h"
+#include "clip.h"
+#include <devices/clipboard.h>
 #include "shipped.h"
 #ifdef __VBCC__
     #pragma popwarn
@@ -107,6 +109,10 @@ static struct NewMenu mainMenuDesc[] =
     {    NM_ITEM, NM_BARLABEL,                       0 ,             0,               0, (APTR)MENU_BAR},
     {    NM_ITEM, "Reset Screen",                   "C",             0,               0, (APTR)MENU_RESET_SCREEN},
     {    NM_ITEM, "Quit",                           "Q",             0,               0, (APTR)MENU_QUIT},
+
+    { NM_TITLE, "Edit",  0 , 0, 0, (APTR)MENU_EDIT},
+    {    NM_ITEM, "Paste",                          "V",             0,               0, (APTR)MENU_PASTE},
+    {    NM_ITEM, "Copy Screen",                     0 ,             0,               0, (APTR)MENU_COPY_SCREEN},
 
     { NM_TITLE, "Transfer",  0 , 0, 0, (APTR)MENU_TRANSFER},
     {    NM_ITEM, "Upload",                         "U",             0,               0, (APTR)MENU_UPLOAD},
@@ -330,8 +336,11 @@ BYTE dontUseSig31 = -1; // don't use it, ibmcon.device will destroy it.
 #include "term-engine.c"
 
 
+static void SelectionHide(void);
+
 static void ConWrite(char *data, long len)
 {
+    SelectionHide();                // the text may land on it
     if(STATE_IS_NOT(APP_ICONIFIED))
     {
         if (STATE_IS(APP_RENDERER_BUILTIN))
@@ -632,7 +641,7 @@ struct NewMenu *GetNewMenuItemFromID(enum MenuItemID id)
 {
     int i;
 
-    for (i = 0; i < sizeof(mainMenuDesc); i++)
+    for (i = 0; i < sizeof(mainMenuDesc) / sizeof(mainMenuDesc[0]); i++)   // entries, not bytes
     {
         if ((enum MenuItemID) mainMenuDesc[i].nm_UserData == id)
             return &mainMenuDesc[i];
@@ -2824,6 +2833,239 @@ static void SendKey(int id)
 }
 
 
+// ---- Mouse selection, the clipboard (ibmcon 1.11) --------------------------
+// The left mouse button dragged over the terminal selects text; it is shown
+// inverted and copied to the clipboard when the button goes up, and stays
+// shown until the next click or the next text. Edit > Paste types the
+// clipboard's text; Edit > Copy Screen copies the whole screen. The text is
+// read back from ibmcon's screen buffer (IBMCMD_READTEXT): an older ibmcon,
+// XEM or console.device cannot select.
+#define IBMCMD_READTEXT 0x7FE3          // ibmcon.device 1.11: row io_Offset, 4 bytes a cell
+#define CLIP_READ_MAX   16384           // the most of a clip that is pasted
+
+static struct ClipRange selShownRange;
+static BOOL  selShown, selDragging;
+static UWORD selDownRow, selDownCol, selRow, selCol;
+
+static BOOL SelectionAvailable(void)
+{
+    return win && STATE_IS(APP_RENDERER_IBMCON_DEVICE) && isConDeviceOpened && STATE_IS_NOT(APP_ICONIFIED);
+}
+
+// The terminal cell under the pointer (window coordinates), in the grid.
+static void SelectionCell(WORD mx, WORD my, UWORD *row, UWORD *col)
+{
+    struct TextFont *cell = win->RPort->Font;
+    UWORD cols, rows;
+
+    if (win->Flags & WFLG_GIMMEZEROZERO)
+    {
+        mx -= win->BorderLeft;
+        my -= win->BorderTop;
+    }
+    if (mx < 0) mx = 0;
+    if (my < 0) my = 0;
+    TerminalGrid(&cols, &rows);
+    *col = (UWORD)(mx / cell->tf_XSize + 1);
+    *row = (UWORD)(my / cell->tf_YSize + 1);
+    if (*col > cols) *col = cols;
+    if (*row > rows) *row = rows;
+}
+
+// Inverts the cells of r; twice restores them. On a copy of the window's
+// RastPort: ibmcon's blink timer draws on the window's own, from its task.
+static void SelectionInvert(const struct ClipRange *r)
+{
+    struct RastPort rp = *win->RPort;
+    UWORD xs = rp.Font->tf_XSize, ys = rp.Font->tf_YSize;
+    UWORD cols, rows, row, from, to;
+
+    TerminalGrid(&cols, &rows);
+    SetDrMd(&rp, COMPLEMENT);
+    for (row = r->startRow; row <= r->endRow; row++)
+        if (Clip_RowSpan(r, row, cols, &from, &to))
+            RectFill(&rp, (from - 1) * xs, (row - 1) * ys, to * xs - 1, row * ys - 1);
+}
+
+// Takes the selection off the screen (before any text is drawn).
+static void SelectionHide(void)
+{
+    if (selShown && win)
+        SelectionInvert(&selShownRange);
+    selShown = FALSE;
+}
+
+static BOOL ClipboardIO(UWORD command, UBYTE *data, ULONG length, ULONG *actual, BOOL toEnd)
+{
+    struct MsgPort *port = CreateMsgPort();
+    struct IOClipReq *io = port ? (struct IOClipReq *)CreateIORequest(port, sizeof(*io)) : NULL;
+    BOOL ok = FALSE;
+
+    *actual = 0;
+    if (io && !OpenDevice("clipboard.device", PRIMARY_CLIP, (struct IORequest *)io, 0))
+    {
+        static UBYTE rest[256];
+
+        io->io_Offset = 0;
+        io->io_ClipID = 0;
+        io->io_Command = command;
+        io->io_Data = (STRPTR)data;
+        io->io_Length = length;
+        DoIO((struct IORequest *)io);
+        ok = !io->io_Error;
+        *actual = io->io_Actual;
+        if (command == CMD_WRITE)
+        {
+            io->io_Command = CMD_UPDATE;        // the clip is complete
+            DoIO((struct IORequest *)io);
+        }
+        else
+            while (toEnd && io->io_Actual && !io->io_Error)
+            {
+                io->io_Command = CMD_READ;      // read to the end: that ends the read
+                io->io_Data = (STRPTR)rest;
+                io->io_Length = sizeof(rest);
+                DoIO((struct IORequest *)io);
+            }
+        CloseDevice((struct IORequest *)io);
+    }
+    if (io) DeleteIORequest((struct IORequest *)io);
+    if (port) DeleteMsgPort(port);
+    return ok;
+}
+
+// The text of r, read back from the screen, to the clipboard.
+static void CopyRange(const struct ClipRange *r)
+{
+    static UBYTE cells[CLIP_CELL * SCREENFONT_MAX_COLS];
+    UWORD cols, rows, row, from, to;
+    ULONG max, actual;
+    char *text;
+    UBYTE *iff;
+    size_t n = 0;
+
+    TerminalGrid(&cols, &rows);
+    max = (ULONG)(r->endRow - r->startRow + 1) * (cols + 1);
+    text = AllocVec(max, MEMF_ANY);
+    iff = AllocVec(max + 32, MEMF_ANY);
+    if (text && iff)
+    {
+        for (row = r->startRow; row <= r->endRow; row++)
+        {
+            if (!Clip_RowSpan(r, row, cols, &from, &to))
+                continue;
+            writeConsoleReq->io_Command = IBMCMD_READTEXT;
+            writeConsoleReq->io_Data    = cells;
+            writeConsoleReq->io_Length  = sizeof(cells);
+            writeConsoleReq->io_Offset  = row;
+            DoIO((struct IORequest *)writeConsoleReq);
+            if (writeConsoleReq->io_Error)
+                break;                          // no screen buffer (ibmcon < 1.11)
+            n += Clip_RowText(cells, (UWORD)(writeConsoleReq->io_Actual / CLIP_CELL), from, to,
+                              PETSCII_SESSION(), win->RPort->Font == petsciiFontLower, text + n);
+            if (row < r->endRow)
+                text[n++] = '\n';
+        }
+        if (!writeConsoleReq->io_Error)
+            ClipboardIO(CMD_WRITE, iff, Clip_BuildFtxt(text, n, iff, max + 32), &actual, FALSE);
+    }
+    if (text) FreeVec(text);
+    if (iff) FreeVec(iff);
+}
+
+static void SelectionDown(WORD mx, WORD my)
+{
+    if (!SelectionAvailable())
+        return;
+    SelectionHide();
+    SelectionCell(mx, my, &selDownRow, &selDownCol);
+    selRow = selDownRow;
+    selCol = selDownCol;
+    selDragging = TRUE;
+    ReportMouse(TRUE, win);
+}
+
+static void SelectionMove(WORD mx, WORD my)
+{
+    struct ClipRange r;
+    UWORD row, col;
+
+    if (!selDragging)
+        return;
+    SelectionCell(mx, my, &row, &col);
+    if (row == selRow && col == selCol)
+        return;
+    selRow = row;
+    selCol = col;
+    SelectionHide();
+    Clip_Order(selDownRow, selDownCol, row, col, &r);
+    SelectionInvert(&r);
+    selShownRange = r;
+    selShown = TRUE;
+}
+
+static void SelectionUp(void)
+{
+    if (!selDragging)
+        return;
+    selDragging = FALSE;
+    ReportMouse(FALSE, win);
+    if (selShown)                               // dragged: copy (a click selects nothing)
+        CopyRange(&selShownRange);
+}
+
+static void CopyScreen(void)
+{
+    struct ClipRange r;
+    UWORD cols, rows;
+
+    if (!SelectionAvailable())
+        return;
+    TerminalGrid(&cols, &rows);
+    r.startRow = 1; r.startCol = 1; r.endRow = rows; r.endCol = cols;
+    CopyRange(&r);
+}
+
+static void OutKey(unsigned char key);
+static void SendTypedChar(UBYTE c);
+
+// Edit > Paste: the clipboard's text, typed.
+static void PasteClipboard(void)
+{
+    UBYTE *iff = AllocVec(CLIP_READ_MAX, MEMF_ANY);
+    char *text = AllocVec(CLIP_READ_MAX, MEMF_ANY);
+    char *out = AllocVec(2 * CLIP_READ_MAX, MEMF_ANY);
+    ULONG len;
+    size_t n, i;
+
+    if (iff && text && out && ClipboardIO(CMD_READ, iff, CLIP_READ_MAX, &len, TRUE))
+    {
+        n = Clip_ParseFtxt(iff, len, text, CLIP_READ_MAX);
+        if (PETSCII_SESSION())
+        {
+            n = Clip_PasteBytes(text, n, FALSE, FALSE, out);    // line ends: one Return
+            for (i = 0; i < n; i++)
+                SendTypedChar((UBYTE)out[i]);   // C64 case and codes, as typed
+        }
+        else
+        {
+            size_t m = Clip_PasteBytes(text, n, STATE_IS(APP_RETURN_SENDING_CRLF),
+                                       isConnected && STATE_IS_NOT(APP_RAW_CONNECTION), out);
+            if (isConnected)
+            {
+                TCPSend(out, (long)m);
+                if (STATE_IS(APP_LOCAL_ECHO))
+                    ConWrite(out, (long)m);
+            }
+            else
+                ConWrite(out, (long)m);
+        }
+    }
+    if (iff) FreeVec(iff);
+    if (text) FreeVec(text);
+    if (out) FreeVec(out);
+}
+
 static void GetWindowMsg(struct Window *wwin)
 {
     struct IntuiMessage *message;
@@ -2835,6 +3077,7 @@ static void GetWindowMsg(struct Window *wwin)
     char close = FALSE;
     char resize = FALSE;
     BOOL shouldCloseToolbarWin = FALSE;
+    WORD mouseX, mouseY;
 
     while (message = GT_GetIMsg(wwin->UserPort))
     {
@@ -2842,10 +3085,27 @@ static void GetWindowMsg(struct Window *wwin)
         code = message->Code;
         gad = (struct Gadget *)message->IAddress;
         qual = message->Qualifier;
+        mouseX = message->MouseX;
+        mouseY = message->MouseY;
         GT_ReplyIMsg(message);
 
         switch (class)
         {
+        case IDCMP_MOUSEBUTTONS:
+            if (wwin == win)
+            {
+                if (code == SELECTDOWN)
+                    SelectionDown(mouseX, mouseY);
+                else if (code == SELECTUP)
+                    SelectionUp();
+            }
+            break;
+
+        case IDCMP_MOUSEMOVE:
+            if (wwin == win)
+                SelectionMove(mouseX, mouseY);
+            break;
+
         case IDCMP_GADGETUP:
             if(wwin == packetWin)  // A line has been validated in the packet window;
             {                      // send it to the server.
@@ -3206,6 +3466,14 @@ static void GetWindowMsg(struct Window *wwin)
 
                     case MENU_VT_KEYS:
                         UpdatePrefsFromMenu(item, APP_VT_KEYS);
+                        break;
+
+                    case MENU_PASTE:
+                        PasteClipboard();
+                        break;
+
+                    case MENU_COPY_SCREEN:
+                        CopyScreen();
                         break;
 
                     case MENU_LOCAL_ECHO:
@@ -4285,7 +4553,9 @@ void OpenAppWindow(void)
         newWin.IDCMPFlags = IDCMP_RAWKEY
                           | IDCMP_CLOSEWINDOW
                           | IDCMP_MENUPICK
-                          | IDCMP_NEWSIZE;      // the BBS is told the new text area
+                          | IDCMP_NEWSIZE       // the BBS is told the new text area
+                          | IDCMP_MOUSEBUTTONS  // text selection
+                          | IDCMP_MOUSEMOVE;
         newWin.Flags      = WFLG_GIMMEZEROZERO
                           | WFLG_NEWLOOKMENUS   // Requests new-look menu treatment (V39)
                           | WFLG_SMART_REFRESH  // WFLG_SIMPLE_REFRESH
@@ -4409,7 +4679,9 @@ void OpenAppWindow(void)
         newWin.IDCMPFlags  = IDCMP_GADGETUP
                            | IDCMP_RAWKEY
                            | IDCMP_CLOSEWINDOW
-                           | IDCMP_MENUPICK;
+                           | IDCMP_MENUPICK
+                           | IDCMP_MOUSEBUTTONS     // text selection
+                           | IDCMP_MOUSEMOVE;
         newWin.Flags       = WFLG_SMART_REFRESH
                            | WFLG_NEWLOOKMENUS
                            | WFLG_BORDERLESS
@@ -4457,6 +4729,9 @@ void CreateAppMenus(void)
 
     // Disable menu items that are only relevant for specific renderers.
     GetNewMenuItemFromID(MENU_FAST_SCROLL     )->nm_Flags = NM_ITEMDISABLED;
+    // The screen's text is read back from ibmcon's screen buffer: without
+    // it (another renderer) Copy Screen, and selecting with the mouse, cannot work.
+    GetNewMenuItemFromID(MENU_COPY_SCREEN     )->nm_Flags = NM_ITEMDISABLED;
     GetNewMenuItemFromID(MENU_XEM_LIB_OPTIONS )->nm_Flags = NM_ITEMDISABLED;
 
     if (STATE_IS(APP_RENDERER_BUILTIN))
@@ -4479,6 +4754,7 @@ void CreateAppMenus(void)
         GetNewMenuItemFromID(MENU_IBMCON_DEVICE)->nm_Flags |= CHECKED;
 
         GetNewMenuItemFromID(MENU_FAST_SCROLL)->nm_Flags = HIGHCOMP|CHECKIT|MENUTOGGLE;
+        GetNewMenuItemFromID(MENU_COPY_SCREEN)->nm_Flags = 0;
     }
 
     // The NewMenu item CHECKED flag will be set according to saved Prefs flags. Note: these flags
@@ -4825,6 +5101,7 @@ void CloseDisplay(BOOL manageScreen)
         ClearMenuStrip(win);
         CloseWindow(win);
         win = NULL;
+        selShown = selDragging = FALSE;         // the selection goes with the window
     }
 
     CloseScrollBack();
