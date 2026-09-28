@@ -60,6 +60,7 @@ enum MenuItemID
     MENU_TERMINAL,
         MENU_TELNET_TERM_TYPE,
         MENU_RAW_CONNECTION,
+        MENU_RLOGIN,
 //      MENU_INCOMING_LF_TO_CRLF,
         MENU_PETSCII_MODE,
 
@@ -110,6 +111,8 @@ extern long tcpSocket, nBytesReceived;
 extern struct DrawInfo *drawInfo;
 extern UWORD modeResX, modeResY;
 extern struct Menu *mainMenuStrip;
+// The connection carries telnet codes (IAC ...): not a Raw Connection, not rlogin.
+#define TELNET_DATA() STATE_IS_NOT(APP_RAW_CONNECTION | APP_RLOGIN)
 extern struct MsgPort *iconPort;
 extern struct NewWindow newWin;
 extern struct PrefsStruct globalPrefs;   // global settings during an entry session

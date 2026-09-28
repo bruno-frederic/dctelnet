@@ -483,6 +483,15 @@ mode (as vi and less do), the cursor keys send ESC O A-D.
 NOTE:  If you enable this option while connected to a telnet site, you
        will see what you have typed twice.
 
+                                 @{b}@{u} Rlogin @{ub}@{uu}
+                                  ~~~~~~
+  Connects with the rlogin protocol (usually port 513) instead of telnet.
+BBSes such as Synchronet log you in directly: DCTelnet sends the Address
+Book entry's Username as the user name and its Password as the password
+(no password: the user name twice; no user name: "guest").
+
+  Also in the Terminal group of an Address Book entry's Settings...
+
                               @{b}@{u} Raw Connection @{ub}@{uu}
                                ~~~~~~~~~~~~~~
   Makes sure DCTelnet, does NOT send any telnet negotiation data.
@@ -789,6 +798,8 @@ New Features:
   Back (F2)
 - Redial, keep alive and connect timeout (Settings > Connection Options);
   the login macro's waits no longer freeze the window
+- Rlogin connections (Options > Rlogin), with automatic login on
+  Synchronet
 - An ARexx port (DCTELNET.1) with CONNECT, SEND, WAITFOR and more; the
   login macro can wait for a text (\\w"Password:")
 - Blinking text (ibmcon.device 1.11)

@@ -65,6 +65,7 @@ extern struct Library *CyberGfxBase;
 #include "ticks.h"
 #include "waitfor.h"
 #include "rexxcmd.h"
+#include "rlogin.h"
 #include <rexx/storage.h>
 #include <rexx/rxslib.h>
 #include <proto/rexxsyslib.h>
@@ -150,6 +151,7 @@ static struct NewMenu mainMenuDesc[] =
     { NM_TITLE, "Terminal",  0, 0, 0, (APTR)MENU_TERMINAL},
     {    NM_ITEM, "Telnet terminal type..",         "9",             0,               0, (APTR)MENU_TELNET_TERM_TYPE},
     {    NM_ITEM, "Raw Connection",                 "7", HIGHCOMP|CHECKIT|MENUTOGGLE, 0, (APTR)MENU_RAW_CONNECTION},
+    {    NM_ITEM, "Rlogin",                          0 , HIGHCOMP|CHECKIT|MENUTOGGLE, 0, (APTR)MENU_RLOGIN},
 //  {    NM_ITEM, "Convert incoming LF to CRLF",    "L", HIGHCOMP|CHECKIT|MENUTOGGLE, 0, (APTR)MENU_INCOMING_LF_TO_CRLF},
     {    NM_ITEM, "PETSCII Mode",                    0 , HIGHCOMP|CHECKIT|MENUTOGGLE, 0, (APTR)MENU_PETSCII_MODE},
     {    NM_ITEM, NM_BARLABEL,                       0 ,             0,               0, (APTR)MENU_BAR},
@@ -200,6 +202,7 @@ static void RexxClose(void);
 static ULONG RexxSig(void);
 static void RexxMessages(void);
 static void CancelConnectionJobs(void);
+static BOOL rloginAckPending;         // rlogin: the server's NUL answer is still to come
 static void ScheduleKeepAlive(void);
 static void CaptureWrite(const UBYTE *data, long len);
 static void CaptureStop(void);
@@ -1187,6 +1190,15 @@ static void RunPendingConnect(void)
     lastConnectErrno = 0;               // a failed lookup sets none: no redial on an old one
     if (BeginServerConnection(pendingConnect.host, pendingConnect.port) == RETURN_OK)
     {
+        if (STATE_IS(APP_RLOGIN))               // rlogin: the login message first
+        {
+            char hello[160];
+            size_t n = Rlogin_Handshake(pendingConnect.username, pendingConnect.password,
+                                        PETSCII_SESSION() ? "PETSCII" : (const char *)prefs.TelnetTermType,
+                                        "38400", hello, sizeof(hello));
+            if (n) TCPSend(hello, (long)n);
+            rloginAckPending = TRUE;
+        }
         ScheduleKeepAlive();
         TimerArm();
         if (pendingConnect.name[0])     // "" = Connection > Connect, not an entry
@@ -1259,7 +1271,7 @@ static void TimerTick(void)
     }
     if ((due & TICK_NOP) && isConnected)
     {
-        if (STATE_IS_NOT(APP_RAW_CONNECTION))
+        if (TELNET_DATA())
             TCPSend("\377\361", 2);           // IAC NOP: the BBS shows nothing
         else
             ScheduleKeepAlive();
@@ -1997,8 +2009,15 @@ static void Receive(void)
         }
     #endif
 
-    if (STATE_IS(APP_RAW_CONNECTION))
+    if (!TELNET_DATA())
     {
+        if (rloginAckPending && len > 0)        // rlogin: the server's NUL answer to
+        {                                       //   the login message is no text
+            rloginAckPending = FALSE;
+            if (recvBuffer[0] == 0 && --len > 0)
+                memmove(recvBuffer, recvBuffer + 1, len);
+            if (len <= 0) return;
+        }
         CaptureWrite(recvBuffer, len);
         WaitForFeed(recvBuffer, len);
         BbsWrite(recvBuffer, len);
@@ -2108,7 +2127,7 @@ static void Receive(void)
     {
         // Some BBSes never respond to Telnet option negotiation; this is for informational purposes
         // only:
-        if (STATE_IS_NOT(APP_RAW_CONNECTION))
+        if (TELNET_DATA())
             IsTelnetSessionReadyForXfer();
 
         if (zmodemCtx.state == ZMODEM_DOWNLOAD) Download(prefs.XferLibrary);
@@ -3173,7 +3192,7 @@ static void OutKey(unsigned char key)
         // If you want to send 0xff then you must double it (0xff, 0xff) to tell telnet that you
         // don't intend to send it a command.
         if(key == (unsigned char) IAC)
-            if (STATE_IS_NOT(APP_RAW_CONNECTION))
+            if (TELNET_DATA())
                 TCPSend((void *)&key, 1);
 
         if(STATE_IS(APP_LOCAL_ECHO))
@@ -3606,7 +3625,7 @@ static void PasteClipboard(void)
         else
         {
             size_t m = Clip_PasteBytes(text, n, STATE_IS(APP_RETURN_SENDING_CRLF),
-                                       isConnected && STATE_IS_NOT(APP_RAW_CONNECTION), out);
+                                       isConnected && TELNET_DATA(), out);
             if (isConnected)
             {
                 TCPSend(out, (long)m);
@@ -4051,6 +4070,10 @@ static void GetWindowMsg(struct Window *wwin)
 
                     case MENU_RAW_CONNECTION:
                         UpdatePrefsFromMenu(item, APP_RAW_CONNECTION);
+                        break;
+
+                    case MENU_RLOGIN:
+                        UpdatePrefsFromMenu(item, APP_RLOGIN);
                         break;
 
                     case MENU_FAST_SCROLL:
@@ -5347,6 +5370,7 @@ void CreateAppMenus(void)
     SetNewMenuCheckFromPref(MENU_VT_KEYS,                 APP_VT_KEYS);
     SetNewMenuCheckFromPref(MENU_LOCAL_ECHO,              APP_LOCAL_ECHO);
     SetNewMenuCheckFromPref(MENU_RAW_CONNECTION,          APP_RAW_CONNECTION);
+    SetNewMenuCheckFromPref(MENU_RLOGIN,                  APP_RLOGIN);
     SetNewMenuCheckFromPref(MENU_FAST_SCROLL,             APP_FAST_SCROLL_ENABLED);
     SetNewMenuCheckFromPref(MENU_PETSCII_MODE,            APP_PETSCII_MODE);
 

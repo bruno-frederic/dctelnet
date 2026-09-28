@@ -139,6 +139,8 @@ struct PrefsStruct
 #define APP_RENDERER_XEM_LIB         (1UL << 11)
 #define APP_RENDERER_IBMCON_DEVICE   (1UL << 12)
 
+#define APP_RLOGIN                   (1UL << 13)  // Rlogin (RFC 1282): a raw byte stream after the login
+                                                  // message, no telnet codes
 #define APP_PETSCII_MODE             (1UL << 15)
 #define APP_WINDOW_SNAPSHOT          (1UL << 16)  // MainWin* hold a Snapshot Windows size;
                                                   // clear: the Workbench window opens 80x25
