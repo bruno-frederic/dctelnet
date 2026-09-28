@@ -645,6 +645,13 @@ BOOL GetStringRequester(struct Window *parent, STRPTR title, STRPTR prompt,
 
                     switch(gid)
                     {
+                        case GID_STRING:
+                            // Return in the field ends it with GADGETUP (code 0),
+                            // not a VANILLAKEY: it had to be pressed twice. Tab
+                            // (code 9) only leaves the field.
+                            if (code == 9)
+                                break;
+                            /* fall through */
                         case GID_OK:
                             result = TRUE;
                             done = TRUE;
@@ -1003,12 +1010,13 @@ clean_and_return:
  * @return FALSE if the requester was cancelled, an error occurred, or the selected mode is not
  *         available on the system.
  *
- * @note The requester is currently limited to a maximum depth of 4 bitplanes (16 colors).
+ * @note Modes deeper than maxDepth bitplanes are not offered (4 for the built-in renderer).
  *
  * @note All pointer parameters are mandatory and must be non-NULL.
  */
 BOOL ScreenModeRequester(struct Window *parent, ULONG* displayID,
-                         UWORD* displayWidth, UWORD* displayHeight, UWORD* displayDepth)
+                         UWORD* displayWidth, UWORD* displayHeight, UWORD* displayDepth,
+                         UWORD maxDepth)
 {
     struct ScreenModeRequester *sr = NULL;
     BOOL  result = FALSE;
@@ -1046,7 +1054,7 @@ BOOL ScreenModeRequester(struct Window *parent, ULONG* displayID,
                         ASLSM_DoHeight,       TRUE,
                         ASLSM_DoDepth,        TRUE,
                         ASLSM_MinWidth,       640,
-                        ASLSM_MaxDepth,       4,    // Limit to 4 bitplanes (16 colors) sreen modes
+                        ASLSM_MaxDepth,       maxDepth, // the renderer's limit (Prefs_MaxDepth)
 
                         TAG_DONE);
 

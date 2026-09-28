@@ -24,6 +24,14 @@ void myctime(ULONG secs, char *outbuf, size_t maxLen);
 size_t strlcpy(char *dst, const char *src, size_t dstSize);
 size_t strlcat(char *dst, const char *src, size_t dstSize);
 void mysprintf(char *Buffer, char *ctl, ...);
+UBYTE *ReadWholeFile(const char *path, LONG *size, LONG max);
+
+struct ColorMap;
+/* V39: a shared pen of colour rgb (0x00RRGGBB) from cm, matched to precision
+ * (PRECISION_EXACT, PRECISION_IMAGE ...). Without a pen to share (-1), the
+ * nearest colour already there, which is not ours: *owned says whether to
+ * ReleasePen() it. */
+UBYTE ObtainNearestPen(struct ColorMap *cm, ULONG rgb, LONG precision, BOOL *owned);
 
 #ifdef __VBCC__
 int stricmp(const char *a, const char *b);
