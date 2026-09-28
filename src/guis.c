@@ -807,7 +807,7 @@ static struct Window         *editProfileWnd;           // "Edit Address Book Pr
 static struct Gadget         *editProfileGList;         // "Edit Address Book Profile" window GList
 static struct Gadget         *editProfileGadgets[editProfile_CNT]; // "Edit Address Book Profile" window gadgets
 #define editProfileWidth 450
-#define editProfileHeight 185
+#define editProfileHeight 197
 
 static UBYTE editProfileGTypes[] = {
     STRING_KIND,
@@ -823,6 +823,7 @@ static UBYTE editProfileGTypes[] = {
     BUTTON_KIND,
     STRING_KIND,
     STRING_KIND,
+    TEXT_KIND,
     TEXT_KIND
 };
 
@@ -830,17 +831,18 @@ static struct MyNewGadget editProfileNGad[] = {
     120, 5, 317, 13, (UBYTE *)"_Site Name:",
     120, 21, 317, 13, (UBYTE *)"_Address:",
     121, 37, 177, 13, (UBYTE *)"Last Called:",
-    3, 170, 101, 13, (UBYTE *)"_Ok",
-    345, 170, 101, 13, (UBYTE *)"_Cancel",
+    3, 182, 101, 13, (UBYTE *)"_Ok",
+    345, 182, 101, 13, (UBYTE *)"_Cancel",
     365, 37, 72, 13, (UBYTE *)"_Port:",
     120, 53, 317, 13, (UBYTE *)"_Username:",
     120, 68, 317, 13, (UBYTE *)"Pass_word:",
-    120, 134, 317, 13, (UBYTE *)"Settings:",
-    3, 150, 218, 13, (UBYTE *)"Se_ttings...",
-    228, 150, 218, 13, (UBYTE *)"Use _Global Settings",
+    120, 146, 317, 13, (UBYTE *)"Settings:",
+    3, 162, 218, 13, (UBYTE *)"Se_ttings...",
+    228, 162, 218, 13, (UBYTE *)"Use _Global Settings",
     120, 84, 317, 13, (UBYTE *)"Co_mment:",
     120, 100, 317, 13, (UBYTE *)"_Login Macro:",
-    3, 114, 443, 12, NULL,
+    3, 115, 434, 10, NULL,              // the macro codes, two lines ending
+    3, 125, 434, 10, NULL,              //   under the field's right edge
 };
 
 static ULONG editProfileGTags[] = {
@@ -857,7 +859,8 @@ static ULONG editProfileGTags[] = {
     (GT_Underscore), '_', (TAG_DONE),
     GTST_String, 0, (GTST_MaxChars), 63, (GT_Underscore), '_', (TAG_DONE),
     GTST_String, 0, (GTST_MaxChars), 127, (GT_Underscore), '_', (TAG_DONE),
-    GTTX_Text, 0, (TAG_DONE)
+    GTTX_Text, 0, (GTTX_Justification), GTJ_RIGHT, (TAG_DONE),    // (V39; left on OS 2.x)
+    GTTX_Text, 0, (GTTX_Justification), GTJ_RIGHT, (TAG_DONE)
 };
 
 // Where each gadget's initial value sits in editProfileGTags[] above (the
@@ -873,6 +876,7 @@ static ULONG editProfileGTags[] = {
 #define EP_TAG_COMMENT  58
 #define EP_TAG_LOGIN_MACRO 65
 #define EP_TAG_MACRO_HELP  72
+#define EP_TAG_MACRO_HELP2 77
 
 /*
  * A field entered with Tab is replaced by what is typed (string edit hook):
@@ -984,7 +988,7 @@ static int OpenEditProfileWindow( void )
     DrawBevelBox( editProfileWnd->RPort, OffX + ComputeX( 3 ),
                     OffY + ComputeY( 1 ),
                     ComputeX( 444 ),
-                    ComputeY( 128 ),   /* every field down to the macro help line */
+                    ComputeY( 140 ),   /* every field down to the macro help lines */
                     GT_VisualInfo, visualInfos, TAG_DONE );
     return( 0L );
 }
@@ -1634,7 +1638,9 @@ static BOOL EditProfile(struct BookStruct *book, struct List *list)
     editProfileGTags[EP_TAG_LOGIN_MACRO] = (unsigned long)snapshot.loginMacro;
     // Sent after connecting (SendLoginMacro); the codes it understands:
     editProfileGTags[EP_TAG_MACRO_HELP] =
-        (unsigned long)"\\u Username \\p Password \\r Return \\d Wait 1 s";
+        (unsigned long)"\\u User name   \\p Password   \\r Return";
+    editProfileGTags[EP_TAG_MACRO_HELP2] =
+        (unsigned long)"\\d Wait 1 s   \\w\"text\" Wait for the text";
 
     // Open the Edit Profile window
     if(OpenEditProfileWindow() == RETURN_OK)
