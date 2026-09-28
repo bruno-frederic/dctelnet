@@ -46,6 +46,7 @@ extern struct Library *CyberGfxBase;
 #include <proto/utility.h>            // GetTagData()
 #include <proto/icon.h>               // GetDiskObjectNew(), FreeDiskObject()
 #include <proto/wb.h>                 // AddAppIconA(), RemoveAppIcon()
+#include <proto/timer.h>              // ReadEClock()
 #include <proto/keymap.h>             // MapRawKey(), RAWKEY_UP, RAWKEY_DOWN, RAWKEY_F1...
 #include <devices/conunit.h>          // CONU_SNIPMAP, CONU_CHARMAP, CONFLAG_DEFAULT
 #include <libraries/reqtools.h>       // struct rtFileList, RT_FILEREQ, RT_Window
@@ -61,6 +62,8 @@ extern struct Library *CyberGfxBase;
 #include "keys.h"
 #include "clip.h"
 #include "ansiscan.h"
+#include "ticks.h"
+#include <devices/timer.h>
 #include <devices/clipboard.h>
 #include "shipped.h"
 #ifdef __VBCC__
@@ -135,6 +138,7 @@ static struct NewMenu mainMenuDesc[] =
     {    NM_ITEM, NM_BARLABEL,                       0 ,             0,               0, (APTR)MENU_BAR},
     {    NM_ITEM, "Address Book",                   "B",             0,               0, (APTR)MENU_ADDRESS_BOOK},
     {    NM_ITEM, "Save Settings to Address Book Entry", 0,          0,               0, (APTR)MENU_SAVE_ENTRY_SETTINGS},
+    {    NM_ITEM, "Connection Options..",            0 ,             0,               0, (APTR)MENU_CONNECTION_OPTIONS},
     {    NM_ITEM, NM_BARLABEL,                       0 ,             0,               0, (APTR)MENU_BAR},
     {    NM_ITEM, "Information",                    "^",             0,               0, (APTR)MENU_INFORMATION},
 
@@ -186,6 +190,8 @@ static struct NewMenu mainMenuDesc[] =
 #endif
 
 static void GetWindowMsg(struct Window *wwin);
+static void CancelConnectionJobs(void);
+static void ScheduleKeepAlive(void);
 static void CaptureWrite(const UBYTE *data, long len);
 static void CaptureStop(void);
 static BOOL SelectionAvailable(void);
@@ -448,6 +454,8 @@ void TextFmt(struct RastPort *rP, char *ctl, ...)
 // Wrapper around send() from bsdsocket.library that maintains the nBytesSent counter.
 long TCPSend(const UBYTE *buf, long len)
 {
+    if (prefs.AntiIdleMinutes)
+        ScheduleKeepAlive();            // idle counts from now (the timer catches up)
     // Some SDKs declare send() with const buf, others without; this mismatch triggers SAS/C
     // warning 104, temporarily ignored here until properly handled.
     #ifdef __SASC
@@ -696,6 +704,7 @@ static char disconnectNote[96];
 
 static void DisConnect(char remote, char quiet)
 {
+    CancelConnectionJobs();
     if(isConnected)
     {
         disconnectNote[0] = 0;
@@ -752,7 +761,7 @@ static struct PrefsStruct handBaseline;
 
 // Address Book connect that waits for the display to be reopened with the
 // entry's settings (see BeginEntrySession); run by the main loop.
-static struct
+struct PendingConnect
 {
     BOOL  active;
     char  name[32];
@@ -762,7 +771,101 @@ static struct
     char  username[42], password[42];
     char  loginMacro[SITE_LOGIN_MACRO_SIZE];
     char  finger[64];       // a Finger query ("user@host") instead of a connect
-} pendingConnect;
+};
+static struct PendingConnect pendingConnect;
+
+// ---- Timed jobs (ticks.h): the login macro's \d waits, redial, anti-idle -----
+// One timer.device request, sent for exactly the time to the earliest job;
+// its signal is in the main loop's waits. Time is DOS ticks since start, on
+// the E-clock (monotonic: setting the clock does not move the jobs).
+struct Device *TimerBase;               // ReadEClock()
+static struct Ticks ticks;
+static struct MsgPort *tickPort;
+static struct timerequest *tickReq;
+static BOOL tickOpen, tickSent;
+static ULONG tickStart;
+static struct PendingConnect redialConnect;     // the connect a redial repeats
+static UBYTE redialLeft;
+static LONG lastConnectErrno;
+
+static ULONG EClockTicks(void)
+{
+    struct EClockVal ev;
+    ULONG perSecond = ReadEClock(&ev);
+
+    return Ticks_FromEClock(ev.ev_hi, ev.ev_lo, perSecond / TICKS_PER_SECOND);
+}
+
+static ULONG NowTicks(void)
+{
+    return tickOpen ? EClockTicks() - tickStart : 0;
+}
+
+static void TimerOpen(void)
+{
+    Ticks_Init(&ticks);
+    if ((tickPort = CreateMsgPort())
+        && (tickReq = (struct timerequest *)CreateIORequest(tickPort, sizeof(struct timerequest))))
+        tickOpen = !OpenDevice(TIMERNAME, UNIT_VBLANK, (struct IORequest *)tickReq, 0);
+    if (tickOpen)
+    {
+        TimerBase = tickReq->tr_node.io_Device;
+        tickStart = EClockTicks();
+    }
+}
+
+static void TimerClose(void)
+{
+    if (tickOpen)
+    {
+        if (tickSent)
+        {
+            AbortIO((struct IORequest *)tickReq);
+            WaitIO((struct IORequest *)tickReq);
+        }
+        CloseDevice((struct IORequest *)tickReq);
+    }
+    if (tickReq) DeleteIORequest((struct IORequest *)tickReq);
+    if (tickPort) DeleteMsgPort(tickPort);
+    tickReq = NULL; tickPort = NULL; tickOpen = tickSent = FALSE;
+    TimerBase = NULL;
+}
+
+static ULONG TimerSig(void)
+{
+    return tickOpen ? 1UL << tickPort->mp_SigBit : 0;
+}
+
+// The request again, for the time to the earliest job (none: no request).
+static void TimerArm(void)
+{
+    ULONG wait;
+
+    if (!tickOpen)
+        return;
+    if (tickSent)
+    {
+        AbortIO((struct IORequest *)tickReq);
+        WaitIO((struct IORequest *)tickReq);
+        tickSent = FALSE;
+    }
+    SetSignal(0L, TimerSig());
+    if ((wait = Ticks_Wait(&ticks, NowTicks())) == 0)
+        return;
+    tickReq->tr_node.io_Command = TR_ADDREQUEST;
+    tickReq->tr_time.tv_secs    = wait / TICKS_PER_SECOND;
+    tickReq->tr_time.tv_micro   = (wait % TICKS_PER_SECOND) * (1000000 / TICKS_PER_SECOND);
+    SendIO((struct IORequest *)tickReq);
+    tickSent = TRUE;
+}
+
+// The anti-idle NOP: Settings > Connection Options minutes after the last
+// byte sent (TCPSend), while connected.
+static void ScheduleKeepAlive(void)
+{
+    Ticks_Set(&ticks, TICK_NOP, (isConnected && prefs.AntiIdleMinutes)
+              ? NowTicks() + (ULONG)prefs.AntiIdleMinutes * 60 * TICKS_PER_SECOND : 0);
+}
 
 // Reopen the display when the C64 display it shows no longer matches what
 // the connection state and PETSCII Mode want.
@@ -950,6 +1053,8 @@ void DeferConnect(const char *name, const char *host, UWORD port, ULONG settings
     strlcpy(pendingConnect.username, user, sizeof(pendingConnect.username));
     strlcpy(pendingConnect.password, pass, sizeof(pendingConnect.password));
     pendingConnect.active = TRUE;
+    redialLeft = prefs.RedialTries;             // a new connect: all the tries
+    Ticks_Set(&ticks, TICK_REDIAL, 0);          //   (and none left pending)
 }
 
 /**
@@ -957,19 +1062,36 @@ void DeferConnect(const char *name, const char *host, UWORD port, ULONG settings
  *        are the entry's username and password, \r Return, \d a one-second
  *        wait (SitePrefs_NextMacroSegment).
  */
-void SendLoginMacro(const char *macro)
+static char macroText[SITE_LOGIN_MACRO_SIZE];
+static const char *macroCursor;
+
+// Sends the macro up to its next \d; the timer continues it a second later,
+// so the window stays live meanwhile (it waited with Delay()).
+static void SendLoginMacroStep(void)
 {
     static char segment[256];
-    const char *cursor = macro;
     BOOL wait;
     size_t n;
 
-    while (*cursor && isConnected)
+    while (macroCursor && *macroCursor && isConnected)
     {
-        n = SitePrefs_NextMacroSegment(&cursor, username, password, segment, sizeof(segment), &wait);
+        n = SitePrefs_NextMacroSegment(&macroCursor, username, password, segment, sizeof(segment), &wait);
         if (n) SendMisc(segment, (long)n);
-        if (wait) Delay(50);
+        if (wait)
+        {
+            Ticks_Set(&ticks, TICK_MACRO, NowTicks() + TICKS_PER_SECOND);
+            TimerArm();
+            return;
+        }
     }
+    macroCursor = NULL;
+}
+
+void SendLoginMacro(const char *macro)
+{
+    strlcpy(macroText, macro, sizeof(macroText));
+    macroCursor = macroText;
+    SendLoginMacroStep();
 }
 
 static void StartFinger(char *query);
@@ -987,8 +1109,12 @@ static void RunPendingConnect(void)
         return;
     }
     tcpPort = pendingConnect.port;
+    redialConnect = pendingConnect;
+    lastConnectErrno = 0;               // a failed lookup sets none: no redial on an old one
     if (BeginServerConnection(pendingConnect.host, pendingConnect.port) == RETURN_OK)
     {
+        ScheduleKeepAlive();
+        TimerArm();
         if (pendingConnect.name[0])     // "" = Connection > Connect, not an entry
         {
             RememberConnectedEntry(pendingConnect.name, pendingConnect.host, pendingConnect.port);
@@ -998,8 +1124,69 @@ static void RunPendingConnect(void)
             SendLoginMacro(pendingConnect.loginMacro);
         }
     }
+    else if (Ticks_ShouldRedial(lastConnectErrno, isConnectionAborted == CONNECT_TIMED_OUT, redialLeft))
+    {
+        // The entry's session stays: the redial connects with its settings.
+        ULONG delay = prefs.RedialDelay ? prefs.RedialDelay : 10;
+
+        redialLeft--;
+        LocalFmt("Trying again in %ld seconds (%ld more after that). Disconnect stops it.\r\n",
+                 delay, (LONG)redialLeft);
+        Ticks_Set(&ticks, TICK_REDIAL, NowTicks() + delay * TICKS_PER_SECOND);
+        TimerArm();
+    }
     else
         EndEntrySession();
+}
+
+// A connection's timed jobs end with it: the rest of the login macro, the
+// anti-idle NOP.
+static void CancelConnectionJobs(void)
+{
+    macroCursor = NULL;
+    Ticks_Set(&ticks, TICK_MACRO, 0);
+    Ticks_Set(&ticks, TICK_NOP, 0);
+    TimerArm();
+}
+
+// Stops a redial waiting for its time (Connection > Disconnect).
+static BOOL StopRedial(void)
+{
+    if (!Ticks_IsSet(&ticks, TICK_REDIAL))
+        return FALSE;
+    Ticks_Set(&ticks, TICK_REDIAL, 0);
+    TimerArm();
+    EndEntrySession();
+    LocalPrint("Redial stopped.\r\n");
+    return TRUE;
+}
+
+// The timer's reply: runs what is due and asks for the next.
+static void TimerTick(void)
+{
+    ULONG due;
+
+    if (!tickSent || !CheckIO((struct IORequest *)tickReq))
+        return;
+    WaitIO((struct IORequest *)tickReq);
+    tickSent = FALSE;
+    due = Ticks_Due(&ticks, NowTicks());
+    if (due & TICK_MACRO)
+        SendLoginMacroStep();
+    if ((due & TICK_REDIAL) && !isConnected)
+    {
+        LocalPrint("Redialling...\r\n");
+        pendingConnect = redialConnect;
+        pendingConnect.active = TRUE;           // the main loop connects
+    }
+    if ((due & TICK_NOP) && isConnected)
+    {
+        if (STATE_IS_NOT(APP_RAW_CONNECTION))
+            TCPSend("\377\361", 2);           // IAC NOP: the BBS shows nothing
+        else
+            ScheduleKeepAlive();
+    }
+    TimerArm();
 }
 
 
@@ -2256,6 +2443,7 @@ int main(int argc, char *argv[])
 
 
     if (! LoadPrefs()) goto clean_exit;
+    TimerOpen();                        // timed jobs (none pending: no request)
     SitePrefs_HandInit(&handChanges, &prefs);
 
     scrollbackList = AllocMem(sizeof(struct List), MEMF_CLEAR|MEMF_PUBLIC);
@@ -2307,10 +2495,8 @@ int main(int argc, char *argv[])
     // and in PETSCII Mode the C64 one: the main loop reopens it, then connects.
     if (server[0] != '\0')
     {
-        if (BeginEntrySession(0, NULL))
-            DeferConnect("", server, tcpPort, 0, "", "", "");
-        else
-            BeginServerConnection(server, tcpPort);
+        BeginEntrySession(0, NULL);     // (a reopen, if any, runs first)
+        DeferConnect("", server, tcpPort, 0, "", "", "");
     }
 
 /* ------ main loop ------ */
@@ -2353,7 +2539,7 @@ int main(int argc, char *argv[])
             {
                 FD_ZERO(&rd);
                 FD_SET(tcpSocket, &rd);
-                sigmask = SIGBREAKF_CTRL_C | SIGBREAKF_CTRL_F | iconsig;
+                sigmask = SIGBREAKF_CTRL_C | SIGBREAKF_CTRL_F | iconsig | TimerSig();
 
                 // https://wiki.amigaos.net/amiga/autodocs/bsdsocket.doc.txt (tout à la fin)
                 // WaitSelect() should probably return the time remaining from the original timeout,
@@ -2376,9 +2562,10 @@ int main(int argc, char *argv[])
 
             } else {
                 i = 0;
-                sigmask = Wait( SIGBREAKF_CTRL_C | SIGBREAKF_CTRL_F | iconsig );
+                sigmask = Wait( SIGBREAKF_CTRL_C | SIGBREAKF_CTRL_F | iconsig | TimerSig() );
             }
 
+            if (sigmask & TimerSig()) TimerTick();     // redial, macro, anti-idle run on
             if(sigmask&SIGBREAKF_CTRL_F) shouldUniconify = TRUE;
 
             if(sigmask&SIGBREAKF_CTRL_C) shouldQuitApp = TRUE;
@@ -2412,6 +2599,7 @@ int main(int argc, char *argv[])
                 if(scrollbackWin) sigmask |= 1L << scrollbackWin->UserPort->mp_SigBit;
                 if(packetWin) sigmask |= 1L << packetWin->UserPort->mp_SigBit;
                 if (toolBarWin) sigmask |= 1L << toolBarWin->UserPort->mp_SigBit;
+                sigmask |= TimerSig();
 
                 timeout.tv_sec = 30; timeout.tv_usec = 0;
                 i = WaitSelect(tcpSocket + 1, &rd, 0, 0, &timeout, &sigmask);
@@ -2437,6 +2625,7 @@ int main(int argc, char *argv[])
                     }
                 #endif
 
+                if (sigmask & TimerSig()) TimerTick();
                 GetWindowMsg(win);
 
                 if(scrollbackWin) GetWindowMsg(scrollbackWin);
@@ -2462,6 +2651,7 @@ int main(int argc, char *argv[])
                 if(scrollbackWin)  sig = 1L << scrollbackWin->UserPort->mp_SigBit; else sig = 0;
                 if(packetWin) sig |= 1L << packetWin->UserPort->mp_SigBit;
                 if (toolBarWin) sig |= 1L << toolBarWin->UserPort->mp_SigBit;
+                sig |= TimerSig();
 
                 // A display reopen or a connect already queued (an entry's
                 // settings, PETSCII Mode) runs now, not after the next event.
@@ -2486,6 +2676,7 @@ int main(int argc, char *argv[])
 
                 if(sigmask&winsig) GetWindowMsg(win);
                 if(sigmask&SIGBREAKF_CTRL_C) shouldQuitApp = TRUE;
+                if (sigmask & TimerSig()) TimerTick();
             }
 
             if(shouldRestart)
@@ -2525,6 +2716,7 @@ int main(int argc, char *argv[])
 
 clean_exit:
     DisConnect(FALSE, TRUE);
+    TimerClose();
     CaptureStop();                  // the capture file is complete
     CloseDisplay(TRUE);
 
@@ -2742,12 +2934,11 @@ static void OnConnectClicked(char spawnInstance)
                 #endif
                 // This function attempts to execute the string commandString as a Shell command
                 Execute(buf, (BPTR) 0, (BPTR) 0);
-            } else if (BeginEntrySession(0, NULL)) {
-                // Ending an entry session reopens the display: connect after it.
-                DeferConnect("", tbuf, port, 0, "", "", "");
             } else {
-                tcpPort = port;
-                BeginServerConnection(tbuf, tcpPort);
+                // Every connect runs from the main loop (RunPendingConnect):
+                // after a display reopen, and again on a redial.
+                BeginEntrySession(0, NULL);
+                DeferConnect("", tbuf, port, 0, "", "", "");
             }
         }
     }
@@ -3491,7 +3682,8 @@ static void GetWindowMsg(struct Window *wwin)
                         break;
 
                     case MENU_DISCONNECT:
-                        DisConnect(FALSE, FALSE);
+                        if (!StopRedial())
+                            DisConnect(FALSE, FALSE);
                         break;
 
                     case MENU_ADDRESS_BOOK:
@@ -3581,6 +3773,14 @@ static void GetWindowMsg(struct Window *wwin)
 
                     case MENU_SAVE_SCREEN:
                         SaveScreen();
+                        break;
+
+                    case MENU_CONNECTION_OPTIONS:
+                        if (EditConnectionOptions(&prefs))
+                        {
+                            ScheduleKeepAlive();        // the new minutes count from now
+                            TimerArm();
+                        }
                         break;
 
                     case MENU_COPY_SCREEN:
@@ -3923,10 +4123,15 @@ static void CheckError(void)
 {
     register long en = Errno();
 
+    lastConnectErrno = en;
     switch(en)
     {
         case EINTR:
-            LocalPrint("ERROR: Interrupted system call.\r\n"); break;
+            if (isConnectionAborted == CONNECT_TIMED_OUT)
+                LocalFmt("ERROR: No answer in %ld seconds.\r\n", (LONG)prefs.ConnectTimeout);
+            else
+                LocalPrint("ERROR: Interrupted system call.\r\n");
+            break;
         case EHOSTUNREACH:
             LocalPrint("ERROR: No route to host.\r\n"); break;
         case ECONNREFUSED:

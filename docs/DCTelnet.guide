@@ -600,6 +600,19 @@ to a UNIX host.
   Allows you to define the maximum number of lines the scrollback buffer will
 remember, before the oldest line is deleted.
 
+                          @{b}@{u} CONNECTION OPTIONS.. @{ub}@{uu}
+                           ~~~~~~~~~~~~~~~~~~~~
+  Redial Attempts          - how often a connect that was refused, timed
+                             out or found no route is tried again.
+  Seconds Between Attempts - the wait before each new try.
+  Keep Alive After Minutes - after this long without a key sent, a telnet
+                             "no operation" goes to the BBS (it shows
+                             nothing) so it does not hang up on you.
+  Connect Timeout, Seconds - how long a connect may take before it is
+                             stopped (then it counts as a failed try).
+
+  0 turns a setting off. Connection > Disconnect stops a waiting redial.
+
                             @{b}@{u} SNAPSHOT WINDOWS @{ub}@{uu}
                              ~~~~~~~~~~~~~~~~
   Will keep window position settings.  So that windows will appear in
@@ -739,6 +752,8 @@ New Features:
   Screen
 - Capture to File and Save Screen (DCTelnet menu); find text in the Scroll
   Back (F2)
+- Redial, keep alive and connect timeout (Settings > Connection Options);
+  the login macro's waits no longer freeze the window
 - Blinking text (ibmcon.device 1.11)
 - Home, End, Page Up, Page Down and Insert keys (VT Keys option), and the
   cursor keys follow the host's cursor key mode

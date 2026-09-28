@@ -773,26 +773,12 @@ add:
         // display must be reopened BEFORE connecting, which only the main loop
         // can do -- this runs inside GetWindowMsg(win). The connect is queued and
         // runs right after the reopen.
-        if (BeginEntrySession(hasSettings ? conbook->settingsId : 0,
-                              hasSettings ? &entrySettings : NULL))
-        {
-            DeferConnect(conbook->name, conbook->host, conbook->port, conbook->settingsId,
-                         conbook->username, conbook->password, loginMacro);
-        }
-        else
-        {
-            tcpPort = conbook->port;
-            if(BeginServerConnection(conbook->host, conbook->port) == RETURN_OK)
-            {
-                conbook->lastConnect = mytime();
-                strlcpy(username, conbook->username, sizeof(username));
-                strlcpy(password, conbook->password, sizeof(password));
-                RememberConnectedEntry(conbook->name, conbook->host, conbook->port);
-                SendLoginMacro(loginMacro);
-            }
-            else
-                EndEntrySession();
-        }
+        // Every connect runs from the main loop (RunPendingConnect): after
+        // the display reopen, and again on a redial.
+        BeginEntrySession(hasSettings ? conbook->settingsId : 0,
+                          hasSettings ? &entrySettings : NULL);
+        DeferConnect(conbook->name, conbook->host, conbook->port, conbook->settingsId,
+                     conbook->username, conbook->password, loginMacro);
     }
 
     // Save address book back to disk if modified
@@ -1194,6 +1180,124 @@ static void UseCurrentForGroup(struct SiteSettings *work, ULONG group, BOOL *cap
     if (group == SITE_GROUP_KEYBOARD) memcpy(work->fKeys, fKeys, sizeof(work->fKeys));
     if (group == SITE_GROUP_TERMINAL) *captureXem = TRUE;
     work->groups |= group;
+}
+
+/*
+ * Settings > Connection Options...: redial after a failed connect, the
+ * anti-idle NOP, the connect timeout. 0 turns a setting off.
+ */
+enum { CO_TRIES, CO_DELAY, CO_IDLE, CO_TIMEOUT, CO_NOTE, CO_OK, CO_CANCEL, CO_COUNT };
+#define connOptionsWidth  300
+#define connOptionsHeight 104
+
+static const struct SettingsGadgetDef connOptionsDefs[CO_COUNT] =
+{
+    { 240,   4,  52, 13, "Redial Attempts",          PLACETEXT_LEFT, INTEGER_KIND },
+    { 240,  20,  52, 13, "Seconds Between Attempts", PLACETEXT_LEFT, INTEGER_KIND },
+    { 240,  36,  52, 13, "Keep Alive After Minutes", PLACETEXT_LEFT, INTEGER_KIND },
+    { 240,  52,  52, 13, "Connect Timeout, Seconds", PLACETEXT_LEFT, INTEGER_KIND },
+    {   8,  70, 284, 12, NULL,                       0,              TEXT_KIND    },
+    {   4,  87, 100, 13, "Ok",                       PLACETEXT_IN,   BUTTON_KIND  },
+    { 196,  87, 100, 13, "Cancel",                   PLACETEXT_IN,   BUTTON_KIND  },
+};
+
+static UBYTE IntegerGadgetValue(struct Gadget *g)
+{
+    LONG v = ((struct StringInfo *)g->SpecialInfo)->LongInt;
+
+    return (UBYTE)(v < 0 ? 0 : v > 255 ? 255 : v);
+}
+
+/* TRUE when p was changed (Ok). */
+BOOL EditConnectionOptions(struct PrefsStruct *p)
+{
+    struct Gadget *glist = NULL, *g, *gads[CO_COUNT];
+    struct Window *w = NULL;
+    struct NewGadget ng;
+    UBYTE values[4];
+    UWORD i, ww, wh;
+    BOOL done = FALSE, ok = FALSE;
+
+    values[0] = p->RedialTries;
+    values[1] = p->RedialDelay ? p->RedialDelay : 10;
+    values[2] = p->AntiIdleMinutes;
+    values[3] = p->ConnectTimeout;
+    ComputeFont(connOptionsWidth, connOptionsHeight);
+    ww = ComputeX(connOptionsWidth);
+    wh = ComputeY(connOptionsHeight);
+    if (!(g = CreateContext(&glist))) return FALSE;
+    for (i = 0; i < CO_COUNT; i++)
+    {
+        const struct SettingsGadgetDef *d = &connOptionsDefs[i];
+        ULONG tags[5];
+
+        memset(&ng, 0, sizeof(ng));
+        ng.ng_LeftEdge   = OffX + ComputeX(d->x);
+        ng.ng_TopEdge    = OffY + ComputeY(d->y);
+        ng.ng_Width      = ComputeX(d->w);
+        ng.ng_Height     = ComputeY(d->h);
+        ng.ng_GadgetText = (UBYTE *)d->label;
+        ng.ng_TextAttr   = &Attr;
+        ng.ng_GadgetID   = i;
+        ng.ng_Flags      = d->placeText;
+        ng.ng_VisualInfo = visualInfos;
+        tags[0] = TAG_DONE;
+        if (d->kind == INTEGER_KIND)
+        {
+            tags[0] = GTIN_Number; tags[1] = values[i];
+            tags[2] = GTIN_MaxChars; tags[3] = 3; tags[4] = TAG_DONE;
+        }
+        if (d->kind == TEXT_KIND)
+        {
+            tags[0] = GTTX_Text; tags[1] = (ULONG)"0 turns a setting off."; tags[2] = TAG_DONE;
+        }
+        gads[i] = g = CreateGadgetA(d->kind, g, &ng, (struct TagItem *)tags);
+        if (!g) break;
+    }
+    if (g)
+        w = OpenWindowTags(NULL,
+                           WA_Left, (scr->Width - (ww + OffX + scr->WBorRight)) / 2,
+                           WA_Top, (scr->Height - (wh + OffY + scr->WBorBottom)) / 2,
+                           WA_Width, ww + OffX + scr->WBorRight,
+                           WA_Height, wh + OffY + scr->WBorBottom,
+                           WA_Title, (ULONG)"Connection Options",
+                           WA_Gadgets, (ULONG)glist,
+                           WA_IDCMP, INTEGERIDCMP | BUTTONIDCMP | IDCMP_CLOSEWINDOW | IDCMP_REFRESHWINDOW,
+                           WA_DragBar, TRUE, WA_DepthGadget, TRUE, WA_CloseGadget, TRUE,
+                           WA_Activate, TRUE, WA_RMBTrap, TRUE, WA_SmartRefresh, TRUE,
+                           WA_CustomScreen, (ULONG)scr,
+                           TAG_DONE);
+    if (w)
+    {
+        struct IntuiMessage *m;
+
+        GT_RefreshWindow(w, NULL);
+        while (!done)
+        {
+            WaitPort(w->UserPort);
+            while (!done && (m = GT_GetIMsg(w->UserPort)))
+            {
+                ULONG class = m->Class;
+                UWORD id = class == IDCMP_GADGETUP ? ((struct Gadget *)m->IAddress)->GadgetID : 0;
+
+                GT_ReplyIMsg(m);
+                if (class == IDCMP_CLOSEWINDOW) done = TRUE;
+                else if (class == IDCMP_REFRESHWINDOW) { GT_BeginRefresh(w); GT_EndRefresh(w, TRUE); }
+                else if (class == IDCMP_GADGETUP && id == CO_OK) ok = done = TRUE;
+                else if (class == IDCMP_GADGETUP && id == CO_CANCEL) done = TRUE;
+            }
+        }
+        if (ok)
+        {
+            p->RedialTries     = IntegerGadgetValue(gads[CO_TRIES]);
+            p->RedialDelay     = IntegerGadgetValue(gads[CO_DELAY]);
+            p->AntiIdleMinutes = IntegerGadgetValue(gads[CO_IDLE]);
+            p->ConnectTimeout  = IntegerGadgetValue(gads[CO_TIMEOUT]);
+        }
+        CloseWindow(w);
+    }
+    FreeGadgets(glist);
+    return ok;
 }
 
 /**
