@@ -93,6 +93,15 @@ static void test_each_group_moves_only_its_members(void) {
     SitePrefs_ApplyEntry(&live, &global, &entry);
     assert(live.State == APP_RAW_CONNECTION && live.FontSize == 8);
 
+    /* An entry's SSH setting is part of its Terminal group, like Rlogin. */
+    e.State = APP_SSH | APP_RETURN_SENDING_CRLF;
+    live = global; entry = entry_with(SITE_GROUP_TERMINAL, e);
+    SitePrefs_ApplyEntry(&live, &global, &entry);
+    assert(live.State == APP_SSH);
+    SitePrefs_GroupSummary(SITE_GROUP_TERMINAL, &live, (char *)e.TelnetTermType, sizeof(e.TelnetTermType));
+    assert(strstr((char *)e.TelnetTermType, ", SSH"));
+    e.State = APP_RETURN_SENDING_CRLF | APP_FULLSCREEN | APP_RAW_CONNECTION;
+
     live = global; entry = entry_with(0, e);                    /* nothing overridden */
     SitePrefs_ApplyEntry(&live, &global, &entry);
     assert(memcmp(&live, &global, sizeof(live)) == 0);

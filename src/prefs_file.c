@@ -38,6 +38,7 @@ enum
 #define OLD_VT_KEYS             (1UL << 17)
 #define OLD_RLOGIN              (1UL << 18)
 #define OLD_132_COLUMNS         (1UL << 19)
+#define OLD_SSH                 (1UL << 20)
 
 static UWORD Word(const UBYTE *p) { return (UWORD)(p[0] << 8 | p[1]); }
 static ULONG Long(const UBYTE *p) { return (ULONG)p[0] << 24 | (ULONG)p[1] << 16 | (ULONG)p[2] << 8 | p[3]; }
@@ -75,6 +76,7 @@ static ULONG StateFromOldFlags(ULONG f)
     if (f & OLD_VT_KEYS)                s |= APP_VT_KEYS;
     if (f & OLD_RLOGIN)                 s |= APP_RLOGIN;
     if (f & OLD_132_COLUMNS)            s |= APP_132_COLUMNS;
+    if (f & OLD_SSH)                    s |= APP_SSH;
     return s;
 }
 

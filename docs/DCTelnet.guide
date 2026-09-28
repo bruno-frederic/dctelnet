@@ -48,6 +48,8 @@ Workbench@{ub}.
 
 - @{b}ZModem@{ub} upload and download using XPR libraries
 
+- @{b}SSH@{ub}, Rlogin and telnet connections
+
 - Fast and efficient design : DCTelnet access the TCP/IP stack directly
 
 - Flexible display modes: fullscreen, windowed on Workbench or minimizable/
@@ -305,8 +307,8 @@ Opens a window with a list of the address that you have saved.
 
   @{b}Import Address Book...@{ub} adds the entries of a SyncTERM phone book
   (syncterm.lst). Entries already in the Address Book (the same host and
-  port) and ones DCTelnet cannot connect to (SSH, modem, serial) are left
-  out; RLogin entries get Rlogin in their own settings.
+  port) and ones DCTelnet cannot connect to (modem, serial, TLS) are left
+  out; RLogin and SSH entries get Rlogin or SSH in their own settings.
 
      @{b}@{u} Connect @{ub}@{uu} - Connects you to the selected site.
 
@@ -532,6 +534,36 @@ Book entry's Username as the user name and its Password as the password
 (no password: the user name twice; no user name: "guest").
 
   Also in the Terminal group of an Address Book entry's Settings...
+
+                                  @{b}@{u} SSH @{ub}@{uu}
+                                   ~~~
+  Connects with SSH (usually port 22; set the entry's port) instead of
+telnet: everything sent both ways is encrypted, the password too. Also in
+the Terminal group of an Address Book entry's Settings...
+
+  The user name and password come from the Address Book entry; without
+them DCTelnet asks when the login starts (the password field shows stars).
+BBSes that ask their own questions (keyboard-interactive) get a requester
+per question.
+
+  The first connection to a server shows the fingerprint of its key. Trust
+keeps it in PROGDIR:KnownHosts, so the next connection goes straight in;
+Just This Time trusts it for this connection only. If a known server
+shows a different key, DCTelnet warns: the server may have been
+reinstalled -- or another machine is pretending to be it. Trust the new
+key only if the sysop announced it.
+
+  SSH is slow to start on a classic Amiga: the key exchange takes about
+5 seconds on a 68020 at 14 MHz and half a minute to a minute on a 68000
+at 7 MHz, most of it checking the server's key (the terminal says what
+it is doing). After that the connection is as fast as telnet. On a 68000
+DCTelnet uses only curve25519, so it cannot log in to a server that
+offers nothing else (Synchronet: use telnet or Rlogin there).
+
+  Supported: curve25519-sha256 and diffie-hellman-group14-sha256 key
+exchange, RSA host keys (rsa-sha2-256), aes128-ctr, hmac-sha2-256;
+password and keyboard-interactive login. Not supported: public key login,
+ed25519 and ECDSA host keys.
 
                               @{b}@{u} Raw Connection @{ub}@{uu}
                                ~~~~~~~~~~~~~~
@@ -841,8 +873,10 @@ New Features:
   Back (F2)
 - Redial, keep alive and connect timeout (Settings > Connection Options);
   the login macro's waits no longer freeze the window
-- Rlogin connections (Options > Rlogin), with automatic login on
+- Rlogin connections (Terminal > Rlogin), with automatic login on
   Synchronet
+- SSH connections (Terminal > SSH), with known server keys in
+  PROGDIR:KnownHosts
 - Character Set: UTF-8 BBSes and hosts, Amiga BBS text copied as it is
 - Bell as a sound or off; ANSI music
 - 132 Columns

@@ -10,7 +10,7 @@
 #include <exec/types.h>
 #include <string.h>
 
-enum { BBS_TELNET, BBS_RLOGIN, BBS_RAW, BBS_OTHER };   /* OTHER: SSH, modem, serial ... */
+enum { BBS_TELNET, BBS_RLOGIN, BBS_RAW, BBS_SSH, BBS_OTHER };   /* OTHER: modem, serial, TLS ... */
 
 struct ImportedBbs
 {

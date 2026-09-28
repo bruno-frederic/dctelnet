@@ -28,7 +28,8 @@ static UWORD type_of(const char *v, size_t n)
     if (same(v, n, "Telnet"))         return BBS_TELNET;
     if (same(v, n, "RLogin") || same(v, n, "RLoginReversed")) return BBS_RLOGIN;
     if (same(v, n, "Raw"))            return BBS_RAW;
-    return BBS_OTHER;                               /* SSH, SSHNA, TelnetS, Modem, Serial ... */
+    if (same(v, n, "SSH") || same(v, n, "SSHNA")) return BBS_SSH;     /* NA: no password */
+    return BBS_OTHER;                               /* TelnetS, Modem, Serial ... */
 }
 
 BOOL BookList_Next(const char *text, size_t len, size_t *pos, struct ImportedBbs *out)
@@ -86,6 +87,6 @@ BOOL BookList_Next(const char *text, size_t len, size_t *pos, struct ImportedBbs
         return FALSE;
 done:
     if (!out->port)
-        out->port = out->type == BBS_RLOGIN ? 513 : 23;
+        out->port = out->type == BBS_RLOGIN ? 513 : out->type == BBS_SSH ? 22 : 23;
     return TRUE;
 }
