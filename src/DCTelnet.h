@@ -105,6 +105,7 @@ extern struct MsgPort *iconPort;
 extern struct NewWindow newWin;
 extern struct PrefsStruct globalPrefs;   // global settings during an entry session
 extern ULONG sessionSettingsId;          // 0 = no entry session
+extern struct SiteHandChanges handChanges;   // settings changed by hand while connected
 struct SiteSettings;
 BOOL BeginEntrySession(ULONG settingsId, const struct SiteSettings *entry);
 void EndEntrySession(void);

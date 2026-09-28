@@ -238,11 +238,12 @@ void SavePrefs(void)
         };
 
         // Only ever the global settings: during an Address Book entry session
-        // the live settings are the entry's, and menu changes made then are
-        // session-only (site_prefs.c).
+        // the live settings are the entry's, and menu changes made while
+        // connected last for this run but are never written here (site_prefs.c).
         static struct PrefsStruct toSave;
 
         SitePrefs_ForSave(&toSave, &prefs, &globalPrefs, sessionSettingsId != 0);
+        SitePrefs_HandForSave(&handChanges, &toSave);   // changes made while connected: not saved
         lenHeaderWritten = Write(fileHandle, &header, sizeof(header));
         lenPrefsWritten  = Write(fileHandle, &toSave, sizeof(toSave));
 

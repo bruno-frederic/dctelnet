@@ -628,6 +628,8 @@ static void DisConnect(char remote, char quiet)
         {
             WORD optionsMenuNumber = GetMenuNumberFromID(MENU_TERMINAL);
 
+            ConWrite("\x1b[20l", 5);          // newline mode off: BBSes send CR LF
+
             if (optionsMenuNumber >= 0)
                 OnMenu(win, FULLMENUNUM(optionsMenuNumber, NOITEM, NOSUB));
 
@@ -644,6 +646,16 @@ static void DisConnect(char remote, char quiet)
     }
 }
 
+// Settings changed by hand while connected: kept for the run, never saved
+// (SavePrefs in prefs.c takes them back).
+struct SiteHandChanges handChanges;
+
+// The settings a menu pick started from: what the pick changed by hand is the
+// difference (IDCMP_MENUPICK). An entry session beginning or ending inside
+// the pick (an Address Book connect, Disconnect) moves it, so the entry's
+// settings coming or going are never taken for a change made by hand.
+static struct PrefsStruct handBaseline;
+
 // Address Book connect that waits for the display to be reopened with the
 // entry's settings (see BeginEntrySession); run by the main loop.
 static struct
@@ -655,6 +667,7 @@ static struct
     ULONG settingsId;
     char  username[42], password[42];
     char  loginMacro[SITE_LOGIN_MACRO_SIZE];
+    char  finger[64];       // a Finger query ("user@host") instead of a connect
 } pendingConnect;
 
 // Reopen the display when the C64 display it shows no longer matches what
@@ -744,6 +757,7 @@ BOOL BeginEntrySession(ULONG settingsId, const struct SiteSettings *entry)
         RequestDisplayReopen(&before);
     }
     SyncPetsciiDisplay();
+    handBaseline = prefs;
     return shouldRestart || shouldReopenConsole;
 }
 
@@ -826,6 +840,7 @@ void EndEntrySession(void)
         RequestDisplayReopen(&before);
     }
     SyncPetsciiDisplay();
+    handBaseline = prefs;
 }
 
 void DeferConnect(const char *name, const char *host, UWORD port, ULONG settingsId,
@@ -861,9 +876,20 @@ void SendLoginMacro(const char *macro)
     }
 }
 
+static void StartFinger(char *query);
+
 static void RunPendingConnect(void)
 {
     pendingConnect.active = FALSE;
+    if (pendingConnect.finger[0])       // queued behind the display reopen
+    {
+        static char query[64];
+
+        strlcpy(query, pendingConnect.finger, sizeof(query));
+        pendingConnect.finger[0] = 0;
+        StartFinger(query);
+        return;
+    }
     tcpPort = pendingConnect.port;
     if (BeginServerConnection(pendingConnect.host, pendingConnect.port) == RETURN_OK)
     {
@@ -1699,56 +1725,76 @@ static void ClearScrollBack(void)
     scrollbackList->lh_Head = (struct Node *)&scrollbackList->lh_Tail;
 }
 
+// Send a Finger query ("user@host", modified in place) to host port 79 as a
+// raw connection: plain text, no telnet negotiation.
+static void StartFinger(char *query)
+{
+    char *host = strchr(query, '@');
+    BOOL originalState;
+
+    if (!host)
+        return;
+    originalState = STATE_IS(APP_RAW_CONNECTION);
+    *host++ = 0;
+
+    STATE_SET(APP_RAW_CONNECTION);     // Enable flag (NO telnet negotiation)
+    if(BeginServerConnection(host, 79) == RETURN_OK)
+    {
+        WORD optionsMenuNumber = GetMenuNumberFromID(MENU_TERMINAL);
+
+        mysprintf(buf, "/W %s\r\n", query);
+        send(tcpSocket, buf, strlen(buf), 0);
+
+        // Finger servers end lines with a bare LF (Unix), which on a
+        // terminal only moves down: the reply came out as a staircase.
+        // Newline mode (LNM, CSI 20 h) makes LF return to column 1 too,
+        // for the reply only.
+        ConWrite("\x1b[20h", 5);
+
+        // Prevent the user from toggling Raw Connection (or any other Terminal option)
+        // while this finger exchange relies on it. Re-enabled in DisConnect().
+        if (optionsMenuNumber >= 0)
+            OffMenu(win, FULLMENUNUM(optionsMenuNumber, NOITEM, NOSUB));
+
+        isFingerRequest = TRUE;
+    }
+    if (!originalState)
+        STATE_UNSET(APP_RAW_CONNECTION);    // Restore state
+}
+
 static void Finger(void)
 {
-    char tbuf[64] = "reiver@plan.cat";
+    static char tbuf[64] = "reiver@plan.cat";
 
     if (GetStringRequester(win,
                               "Finger",
                               "Enter EMail Address:",
                               tbuf, sizeof(tbuf))
-       )
+       && strchr(tbuf, '@'))
     {
-        char * host = strchr(tbuf, '@');
-        if(host)
+        // End any entry session (and its connection) BEFORE touching the
+        // flag: ending it later, inside the connect, would restore the
+        // global settings over APP_RAW_CONNECTION.
+        // Finger is plain text: no C64 display, whatever PETSCII Mode says.
+        if (isConnected) DisConnect(FALSE, FALSE);
+        EndEntrySession();
+        if (shouldRestart || shouldReopenConsole)
         {
-            BOOL originalState;
+            // The display reopens for the global settings first; a finger
+            // sent now would have its answer wiped by that reopen.
+            strlcpy(pendingConnect.finger, tbuf, sizeof(pendingConnect.finger));
+            pendingConnect.active = TRUE;
+        }
+        else
+        {
+            static char query[64];
 
-            // End any entry session (and its connection) BEFORE touching the
-            // flag: ending it later, inside the connect, would restore the
-            // global settings over APP_RAW_CONNECTION.
-            // Finger is plain text: no C64 display, whatever PETSCII Mode says.
-            if (isConnected) DisConnect(FALSE, FALSE);
-            EndEntrySession();
-            originalState = STATE_IS(APP_RAW_CONNECTION);
-
-            host[0] = 0;
-            *host++;
-
-            STATE_SET(APP_RAW_CONNECTION);     // Enable flag (NO telnet negotiation)
-            if(BeginServerConnection(host, 79) == RETURN_OK)
-            {
-                WORD optionsMenuNumber = GetMenuNumberFromID(MENU_TERMINAL);
-
-                mysprintf(buf, "/W %s\r\n", tbuf);
-                send(tcpSocket, buf, strlen(buf), 0);
-
-                // Prevent the user from toggling Raw Connection (or any other Terminal option)
-                // while this finger exchange relies on it. Re-enabled in DisConnect().
-                if (optionsMenuNumber >= 0)
-                    OffMenu(win, FULLMENUNUM(optionsMenuNumber, NOITEM, NOSUB));
-
-                isFingerRequest = TRUE;
-            }
-
-            // Restore state
-            if (originalState)
-                STATE_SET(APP_RAW_CONNECTION);
-            else
-                STATE_UNSET(APP_RAW_CONNECTION);
+            strlcpy(query, tbuf, sizeof(query));
+            StartFinger(query);
         }
     }
 }
+
 
 
 int main(int argc, char *argv[])
@@ -1869,6 +1915,7 @@ int main(int argc, char *argv[])
 
 
     if (! LoadPrefs()) goto clean_exit;
+    SitePrefs_HandInit(&handChanges, &prefs);
 
     scrollbackList = AllocMem(sizeof(struct List), MEMF_CLEAR|MEMF_PUBLIC);
     if(!scrollbackList) goto clean_exit;
@@ -2657,7 +2704,9 @@ static void GetWindowMsg(struct Window *wwin)
             struct MenuItem *item = NULL;
             UWORD nextMenuNumber = MENUNULL;
             enum MenuItemID menuID;
-
+            // What the user changes by hand while connected to an entry
+            // stays for the rest of the run, but is not saved (below).
+            handBaseline = prefs;
             LEDs();
 
             while (menuNumber != MENUNULL)
@@ -3133,6 +3182,9 @@ static void GetWindowMsg(struct Window *wwin)
 
                 menuNumber = nextMenuNumber;
             } // while
+            // Changed while connected to an entry: kept for this run, not saved.
+            SitePrefs_HandChange(&handChanges, &globalPrefs, &handBaseline, &prefs,
+                                 sessionSettingsId != 0);
             break;
         }  // case IDCMP_MENUPICK
 
