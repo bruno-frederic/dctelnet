@@ -382,6 +382,8 @@ BYTE dontUseSig31 = -1; // don't use it, ibmcon.device will destroy it.
 #define send_data(data, len) TCPSend((data), (len))
 #include "term-engine.c"
 
+static void ObtainWorkbenchPens(void);
+
 /**
  * @brief The built-in renderer's terminal: the text area of the terminal window.
  *        Below the screen's title bar, so the rows match what the BBS is told.
@@ -390,10 +392,16 @@ static int BuiltinInit(void)
 {
     WORD x0 = win->LeftEdge + win->BorderLeft, y0 = win->TopEdge + win->BorderTop;
     BOOL gzz = (win->Flags & WFLG_GIMMEZEROZERO) != 0;
+    int res;
 
-    return term_init_area(scr, win->RPort, gzz ? x0 : win->LeftEdge, gzz ? y0 : win->TopEdge,
-                          x0, y0, win->Width - win->BorderLeft - win->BorderRight,
-                          win->Height - win->BorderTop - win->BorderBottom, ansiFont);
+    // On the Workbench the ANSI colours are on 16 shared pens (the
+    // RastPort path draws with them); on the own screen on pens 0-15.
+    ObtainWorkbenchPens();
+    res = term_init_area(scr, win->RPort, gzz ? x0 : win->LeftEdge, gzz ? y0 : win->TopEdge,
+                         x0, y0, win->Width - win->BorderLeft - win->BorderRight,
+                         win->Height - win->BorderTop - win->BorderBottom, ansiFont);
+    term_set_pens(ansiOwnPens ? ansiColourPens : NULL);
+    return res;
 }
 
 /**
@@ -1441,7 +1449,7 @@ BOOL ScreenModeInto(struct PrefsStruct *target)
     {
         result = ScreenModeRequester(win, &target->DisplayID,
                                     &target->DisplayWidth, &target->DisplayHeight, &target->DisplayDepth,
-                                    Prefs_MaxDepth(target));
+                                    32);
     }
     else    // fallback to legacy ReqTools library
     {
@@ -1460,7 +1468,7 @@ BOOL ScreenModeInto(struct PrefsStruct *target)
             if (rtScreenModeRequest (scrmodereq, "Screen Mode..",
                                      RT_Window,    win,
                                      RTSC_Flags,    SCREQF_DEPTHGAD|SCREQF_SIZEGADS|SCREQF_GUIMODES,
-                                     RTSC_MaxDepth,    Prefs_MaxDepth(target) < 8 ? Prefs_MaxDepth(target) : 8,
+                                     RTSC_MaxDepth,    8,
                                      TAG_END))
             {
                 target->DisplayID     = scrmodereq->DisplayID;
@@ -4379,9 +4387,8 @@ static void GetWindowMsg(struct Window *wwin)
                             shouldReopenScreen = (was & (APP_RENDERER_CONSOLE_DEVICE
                                                          | APP_RENDERER_IBMCON_DEVICE)) != 0;
 
-                            // A screen mode chosen for another renderer (a 256-colour
-                            // ibmcon screen) is not one the built-in renderer can draw:
-                            // it draws 4 bitplanes, so pen 0 was not ANSI black.
+                            // A screen mode chosen for another renderer may be one the
+                            // built-in renderer cannot hold 80x25 cells in.
                             if (STATE_IS(APP_FULLSCREEN) && !Prefs_ScreenFits(&prefs))
                             {
                                 ULONG oldID = prefs.DisplayID;
@@ -4397,8 +4404,8 @@ static void GetWindowMsg(struct Window *wwin)
                                     prefs.DisplayWidth = oldW;
                                     prefs.DisplayHeight = oldH;
                                     prefs.DisplayDepth = oldD;
-                                    SimpleReq("The built-in renderer needs a 640 pixel wide\n"
-                                              "screen of 200 to 256 lines with 16 colours.");
+                                    SimpleReq("The built-in renderer needs a screen of at least\n"
+                                              "640x200 pixels with 16 colours or more.");
                                     STATE_UNSET(APP_RENDERER_ALL);
                                     STATE_SET(was);
                                     shouldReopenScreen = FALSE;
@@ -4943,17 +4950,19 @@ static void ClosePetsciiFonts(void)
     if(petsciiFontLower)      { CloseFont(petsciiFontLower);        petsciiFontLower = NULL; }
 }
 
-// The ANSI colours for ibmcon on the Workbench: 16 shared pens of exactly
-// their colours from its palette (V39), given back with ReleaseWorkbenchPens().
+// The ANSI colours for ibmcon and the built-in renderer on the Workbench: 16
+// shared pens of exactly the renderer's colours (Palette_Get) from its palette
+// (V39), given back with ReleaseWorkbenchPens().
 static void ObtainWorkbenchPens(void)
 {
-    UWORD i;
+    UWORD i, colours[16];
 
-    if (!STATE_IS(APP_RENDERER_IBMCON_DEVICE) || STATE_IS(APP_FULLSCREEN)
-        || GfxBase->LibNode.lib_Version < 39)
+    if (!STATE_IS(APP_RENDERER_IBMCON_DEVICE | APP_RENDERER_BUILTIN) || STATE_IS(APP_FULLSCREEN)
+        || GfxBase->LibNode.lib_Version < 39 || wbPensObtained)
         return;
+    Palette_Get(&prefs, colours);
     for (i = 0; i < 16; i++)
-        ansiColourPens[i] = ObtainNearestPen(scr->ViewPort.ColorMap, Palette_AnsiColour(prefs.DeviceColors, i),
+        ansiColourPens[i] = ObtainNearestPen(scr->ViewPort.ColorMap, Palette_RGB32(colours[i]),
                                              PRECISION_EXACT, &wbPenOwned[i]);
     wbPensObtained = TRUE;
     ansiOwnPens = TRUE;
@@ -4989,11 +4998,13 @@ static void SendPenTable(void)
 // would clear it): new shared pens, handed to the running ibmcon.
 static void RenewWorkbenchPens(void)
 {
-    if (!isConDeviceOpened || !wbPensObtained)
+    if (!wbPensObtained || (!isConDeviceOpened && STATE_IS_NOT(APP_RENDERER_BUILTIN)))
         return;
     ReleaseWorkbenchPens();
     ObtainWorkbenchPens();
     SendPenTable();
+    if (STATE_IS(APP_RENDERER_BUILTIN))
+        term_set_pens(ansiOwnPens ? ansiColourPens : NULL);
 }
 
 /**
