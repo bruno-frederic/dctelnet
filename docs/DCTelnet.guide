@@ -418,6 +418,18 @@ and a Line Feed.
 
 @{b}*  Only good for non-telnet hosts!@{ub}
 
+                                @{b}@{u} VT Keys @{ub}@{uu}
+                                 ~~~~~~~
+  Chooses what Home, End, Page Up, Page Down and Insert send. Off: the
+codes BBSes expect (SyncTERM): ESC[H, ESC[K, ESC[V, ESC[U, ESC[@. On: VT
+codes for Unix hosts: ESC[1~, ESC[4~, ESC[5~, ESC[6~, ESC[2~.
+
+  Keyboards without these keys: Shift+Cursor Up/Down are Page Up/Down,
+Shift+Cursor Left/Right are Home/End. When the host asks for cursor key
+mode (as vi and less do), the cursor keys send ESC O A-D.
+
+  Also in the Keyboard group of an Address Book entry's Settings...
+
                               @{b}@{u} Local EchoBack @{ub}@{uu}
                                ~~~~~~~~~~~~~~
   This option, shows you what you type straight to the screen.
@@ -682,6 +694,8 @@ New Features:
   or font change
 - Screen Font changes in place (ibmcon.device and console.device renderers),
   without closing the screen or the window
+- Home, End, Page Up, Page Down and Insert keys (VT Keys option), and the
+  cursor keys follow the host's cursor key mode
 - DCTelnet uses the newest ibmcon.device and libraries from its own drawer
   or from DEVS: / LIBS:
 - The start-up screen shows the display engine, screen and text area
@@ -702,6 +716,8 @@ Bug Fixes:
 - Typing in a field entered with Tab now replaces its text
 - Finger replies are no longer shown as a staircase
 - F1 in PETSCII Mode sent the code of F2
+- Shift+F1-F10 sent the macro of the next key and a "~"; Shift+Cursor
+  keys and Help sent stray characters
 - The tool bar icons were drawn for fixed pens and showed pink, cyan and
   blue on most screens. New flat, antialiased icons carry their own
   colours and are matched to every screen, in a square and a wide set.

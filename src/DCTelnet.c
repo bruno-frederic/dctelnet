@@ -58,6 +58,7 @@ extern struct Library *CyberGfxBase;
 #include "screenfont.h"
 #include "progdir.h"
 #include "dsr.h"
+#include "keys.h"
 #include "shipped.h"
 #ifdef __VBCC__
     #pragma popwarn
@@ -137,6 +138,7 @@ static struct NewMenu mainMenuDesc[] =
     {    NM_ITEM, "Local Echo",                     "6", HIGHCOMP|CHECKIT|MENUTOGGLE, 0, (APTR)MENU_LOCAL_ECHO},
     {    NM_ITEM, "Swap BackSpace & Del keys",      "/", HIGHCOMP|CHECKIT|MENUTOGGLE, 0, (APTR)MENU_BACKSPACE_DEL_SWAP},
     {    NM_ITEM, "Return key send CR+LF",          "5", HIGHCOMP|CHECKIT|MENUTOGGLE, 0, (APTR)MENU_RETURN_SENDING_CRLF},
+    {    NM_ITEM, "VT Keys",                         0 , HIGHCOMP|CHECKIT|MENUTOGGLE, 0, (APTR)MENU_VT_KEYS},
     {    NM_ITEM, NM_BARLABEL,                       0 ,             0,               0, (APTR)MENU_BAR},
     {    NM_ITEM, "Packet Window",                  "2", HIGHCOMP|CHECKIT|MENUTOGGLE, 0, (APTR)MENU_PACKET_WINDOW},
     {    NM_ITEM, "Scrollback History",              "E", HIGHCOMP|CHECKIT|MENUTOGGLE, 0, (APTR)MENU_SCROLLBACK},
@@ -476,6 +478,23 @@ static void AnswerDsr(int kind)
     n = Dsr_Answer(kind, row, col, answer, sizeof(answer));
     if (n)
         TCPSend(answer, (long)n);
+}
+
+#define IBMCMD_GETMODES 0x7FE2          // ibmcon.device 1.10: io_Actual = mode word
+#define IBMCON_MODE_CURSOR_KEYS 0x08    //   bit 3: cursor key mode (CSI ?1h, DECCKM)
+
+// TRUE when the host asked for cursor key mode (CSI ?1h): the cursor keys
+// then send ESC O A-D. Asked from ibmcon 1.10; any other renderer (the
+// built-in one ignores CSI ?1h), or an older ibmcon, keeps ESC [ A-D.
+static BOOL CursorKeyMode(void)
+{
+    if (!STATE_IS(APP_RENDERER_IBMCON_DEVICE) || !isConDeviceOpened || STATE_IS(APP_ICONIFIED))
+        return FALSE;
+    writeConsoleReq->io_Command = IBMCMD_GETMODES;
+    writeConsoleReq->io_Data    = NULL;
+    writeConsoleReq->io_Length  = 0;
+    DoIO((struct IORequest *)writeConsoleReq);
+    return !writeConsoleReq->io_Error && (writeConsoleReq->io_Actual & IBMCON_MODE_CURSOR_KEYS);
 }
 
 // A BBS's text to the console. The text up to a Device Status Report
@@ -2768,6 +2787,57 @@ static void OutKey(unsigned char key)
 cwrite:        ConWrite(&key, 1);
 }
 
+// One byte of typed text. In PETSCII Mode: BS and DEL are PETSCII's own DEL
+// (APP_BACKSPACE_DEL_SWAPPED is an ASCII-only concept), the rest case-swapped.
+static void SendTypedChar(UBYTE c)
+{
+    if (PETSCII_SESSION() && (c == DEL_CHAR || c == '\b'))
+        OutKey((unsigned char)petscii_translate_key(PETSCII_KEY_DEL, 1));
+    else if (PETSCII_SESSION() && c != '\r')
+        OutKey((unsigned char)petscii_translate_key(c, 0));
+    else
+        OutKey(c);
+    if (c == '\r' && STATE_IS(APP_RETURN_SENDING_CRLF)) OutKey('\n');
+}
+
+// A key that is not text (keys.h). F1-F10 send their macro; in PETSCII Mode
+// a key without one sends the C64 function-key byte (F1-F8). Cursor and
+// navigation keys send what the BBS expects: PETSCII codes, or ANSI-BBS /
+// VT codes (Terminal > VT Keys), cursor keys in the host's cursor key mode.
+static void SendKey(int id)
+{
+    char out[KEYS_MAX_BYTES];
+    size_t n;
+
+    if (id >= KEY_F1 && id < KEY_F1 + 10)
+    {
+        char digit = (char)('0' + (id - KEY_F1));
+
+        if (fKeys[(id - KEY_F1) * F_KEY_SIZE] != 0)
+            SendMacro(&fKeys[(id - KEY_F1) * F_KEY_SIZE]);
+        else if (PETSCII_SESSION() && petscii_fkey_from_console_digit(digit) >= 0)
+            OutKey((unsigned char)petscii_fkey_from_console_digit(digit));
+        return;
+    }
+    if (PETSCII_SESSION())
+    {
+        switch (id)
+        {
+        case KEY_UP:     OutKey((unsigned char)petscii_translate_key(PETSCII_KEY_UP, 1));     break;
+        case KEY_DOWN:   OutKey((unsigned char)petscii_translate_key(PETSCII_KEY_DOWN, 1));   break;
+        case KEY_RIGHT:  OutKey((unsigned char)petscii_translate_key(PETSCII_KEY_RIGHT, 1));  break;
+        case KEY_LEFT:   OutKey((unsigned char)petscii_translate_key(PETSCII_KEY_LEFT, 1));   break;
+        case KEY_HOME:   OutKey((unsigned char)petscii_translate_key(PETSCII_KEY_HOME, 1));   break;
+        case KEY_INSERT: OutKey((unsigned char)petscii_translate_key(PETSCII_KEY_INSERT, 1)); break;
+        }
+        return;
+    }
+    n = Keys_Bytes(id, STATE_IS(APP_VT_KEYS),
+                   id >= KEY_UP && id <= KEY_LEFT && CursorKeyMode(), out);
+    if (n)
+        SendMisc(out, (long)n);
+}
+
 
 static void GetWindowMsg(struct Window *wwin)
 {
@@ -2913,100 +2983,30 @@ static void GetWindowMsg(struct Window *wwin)
                 struct InputEvent ie;
                 register ULONG i, length;
 
-                if(!(message->Code & IECODE_UP_PREFIX))
+                if(!(code & IECODE_UP_PREFIX))
                 {
-                    static char key_csi;
-                    static char key_macro;
+                    int id = Keys_FromRawCode(code);
 
-                    ie.ie_Class        = IECLASS_RAWKEY;
-                    ie.ie_SubClass        = 0;
-                    ie.ie_Code        = code;
-                    ie.ie_Qualifier        = qual;
-                    ie.ie_position.ie_addr    = gad;
-
-                    length = MapRawKey(&ie, conbuf, 16, NULL);
-
-                    for(i=0; i<length; i++)
+                    if (id != KEY_NONE)
+                        SendKey(id);
+                    else
                     {
-                        switch(conbuf[i])
+                        ie.ie_Class        = IECLASS_RAWKEY;
+                        ie.ie_SubClass        = 0;
+                        ie.ie_Code        = code;
+                        ie.ie_Qualifier        = qual;
+                        ie.ie_position.ie_addr    = gad;
+
+                        length = MapRawKey(&ie, conbuf, 16, NULL);
+                        for (i = 0; i < length; )
                         {
-                        case CSI_CHAR:   // Amiga console CSI
-                            key_csi = TRUE;
-                            break;
-                        /*case 'v':
-                        case 'V':
-                            if(qual&IEQUALIFIER_RCOMMAND)
-                            {
-                                ConWrite("› v", 3);
-                                break;
-                            }*/
-                        default:
-                            if(key_csi)
-                            {
-                                key_csi = FALSE;
-                                /* The Amiga console reports F1-F10 as CSI <digit> ~ with
-                                 * digit 0-9 (F1 = 0). A key with a macro sends the macro,
-                                 * PETSCII Mode or not. In PETSCII Mode a key WITHOUT a
-                                 * macro sends the C64 function-key byte instead (F1-F8
-                                 * only; F9/F10 have no C64 counterpart). */
-                                if (conbuf[i] >= '0' && conbuf[i] <= '9'
-                                    && fKeys[(conbuf[i] - '0') * F_KEY_SIZE] != 0)
-                                {
-                                    key_macro = TRUE;
-                                    SendMacro(&fKeys[(conbuf[i] - '0') * F_KEY_SIZE]);
-                                }
-                                else if (PETSCII_SESSION()
-                                         && petscii_fkey_from_console_digit(conbuf[i]) >= 0)
-                                {
-                                    key_macro = TRUE;
-                                    OutKey((unsigned char)petscii_fkey_from_console_digit(conbuf[i]));
-                                }
+                            UBYTE ch = 0;
 
-                                if (PETSCII_SESSION())
-                                {
-                                    switch(conbuf[i])
-                                    {
-                                    case 'A': OutKey((unsigned char)petscii_translate_key(PETSCII_KEY_UP, 1));    break;
-                                    case 'B': OutKey((unsigned char)petscii_translate_key(PETSCII_KEY_DOWN, 1));  break;
-                                    case 'C': OutKey((unsigned char)petscii_translate_key(PETSCII_KEY_RIGHT, 1)); break;
-                                    case 'D': OutKey((unsigned char)petscii_translate_key(PETSCII_KEY_LEFT, 1));  break;
-                                    }
-                                }
-                                else switch(conbuf[i])
-                                {
-                                case 'A':
-                                    SendMisc(ESC_STR "[A", 3);
-                                    break;
-                                case 'B':
-                                    SendMisc(ESC_STR "[B", 3);
-                                    break;
-                                case 'C':
-                                    SendMisc(ESC_STR "[C", 3);
-                                    break;
-                                case 'D':
-                                    SendMisc(ESC_STR "[D", 3);
-                                    break;
-                                }
-
-                            } else {
-                                if(key_macro)
-                                    key_macro = FALSE;
-                                else
-                                {
-                                    if (PETSCII_SESSION()
-                                        && (conbuf[i] == DEL_CHAR || conbuf[i] == '\b'))
-                                        /* PETSCII's own DEL byte (20), not ASCII BS/DEL --
-                                         * APP_BACKSPACE_DEL_SWAPPED is an ASCII-only concept and
-                                         * does not apply here. */
-                                        OutKey((unsigned char)petscii_translate_key(PETSCII_KEY_DEL, 1));
-                                    else if (PETSCII_SESSION() && conbuf[i] != '\r')
-                                        OutKey((unsigned char)petscii_translate_key(conbuf[i], 0));
-                                    else
-                                        OutKey(conbuf[i]);
-                                    if(conbuf[i] == '\r' && STATE_IS(APP_RETURN_SENDING_CRLF))
-                                        OutKey('\n');
-                                }
-                            }
+                            i += Keys_Next((UBYTE *)conbuf + i, length - i, &id, &ch);
+                            if (id == KEY_TEXT)
+                                SendTypedChar(ch);
+                            else
+                                SendKey(id);
                         }
                     }
                 }
@@ -3217,6 +3217,10 @@ static void GetWindowMsg(struct Window *wwin)
 
                     case MENU_RETURN_SENDING_CRLF:
                         UpdatePrefsFromMenu(item, APP_RETURN_SENDING_CRLF);
+                        break;
+
+                    case MENU_VT_KEYS:
+                        UpdatePrefsFromMenu(item, APP_VT_KEYS);
                         break;
 
                     case MENU_LOCAL_ECHO:
@@ -4502,6 +4506,7 @@ void CreateAppMenus(void)
     SetNewMenuCheckFromPref(MENU_PACKET_WINDOW,           APP_PACKET_WINDOW_ENABLED);
     SetNewMenuCheckFromPref(MENU_TOOL_BAR,                APP_TOOL_BAR_ENABLED);
     SetNewMenuCheckFromPref(MENU_RETURN_SENDING_CRLF,     APP_RETURN_SENDING_CRLF);
+    SetNewMenuCheckFromPref(MENU_VT_KEYS,                 APP_VT_KEYS);
     SetNewMenuCheckFromPref(MENU_LOCAL_ECHO,              APP_LOCAL_ECHO);
     SetNewMenuCheckFromPref(MENU_RAW_CONNECTION,          APP_RAW_CONNECTION);
     SetNewMenuCheckFromPref(MENU_FAST_SCROLL,             APP_FAST_SCROLL_ENABLED);
