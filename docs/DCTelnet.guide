@@ -499,6 +499,16 @@ NOTE:  If you enable this option while connected to a telnet site, you
   Also "Characters" in the Terminal group of an Address Book entry's
 Settings...
 
+                                  @{b}@{u} BELL @{ub}@{uu}
+                                   ~~~~
+  What the BBS's bell (Ctrl-G) does: Flash the screen (the default), play
+a short Sound, or nothing (Off).
+
+                                @{b}@{u} ANSI MUSIC @{ub}@{uu}
+                                 ~~~~~~~~~~
+  Plays the tunes some BBSes send (ANSI music, as SyncTERM plays it)
+instead of showing them as garbage. Off by default.
+
                                  @{b}@{u} Rlogin @{ub}@{uu}
                                   ~~~~~~
   Connects with the rlogin protocol (usually port 513) instead of telnet.
@@ -817,6 +827,7 @@ New Features:
 - Rlogin connections (Options > Rlogin), with automatic login on
   Synchronet
 - Character Set: UTF-8 BBSes and hosts, Amiga BBS text copied as it is
+- Bell as a sound or off; ANSI music
 - An ARexx port (DCTELNET.1) with CONNECT, SEND, WAITFOR and more; the
   login macro can wait for a text (\\w"Password:")
 - Blinking text (ibmcon.device 1.11)

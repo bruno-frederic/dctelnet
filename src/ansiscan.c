@@ -86,3 +86,15 @@ size_t Ansi_ScreenRow(const UBYTE *cells, UWORD cols, BOOL swap17, ULONG *attr, 
     out[n++] = '\n';
     return n;
 }
+
+size_t Ansi_StripByte(UBYTE *data, size_t *len, UBYTE b)
+{
+    size_t i, o = 0;
+
+    for (i = 0; i < *len; i++)
+        if (data[i] != b)
+            data[o++] = data[i];
+    i = *len - o;
+    *len = o;
+    return i;
+}
