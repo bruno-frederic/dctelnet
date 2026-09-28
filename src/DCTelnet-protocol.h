@@ -412,9 +412,13 @@ static void TelnetSendWindowSize(void)
     }
     else if (win && win->RPort && win->RPort->Font)
     {
-         // Get terminal dimensions using current font metrics when using ibmcon/console device
-        Columns = win->Width / win->RPort->Font->tf_XSize;
-        Lines   = win->Height / win->RPort->Font->tf_YSize;
+        // The grid ibmcon draws: the window's text area, not its outer size
+        // (a Workbench window's title bar and borders are not rows).
+        UWORD cols, rows;
+
+        TerminalGrid(&cols, &rows);
+        Columns = cols;
+        Lines   = rows;
     }
 
     buf[i++] = IAC;     buf[i++] = SB;    buf[i++] = TELOPT_NAWS;

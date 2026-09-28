@@ -16,6 +16,9 @@
 #include <proto/dos.h>
 #include <graphics/modeid.h>            // PAL_MONITOR_ID, HIRES_KEY
 #include "prefs.h"
+#include "prefs_file.h"
+#include "palette.h"
+#include "site_prefs.h"
 #include "dctelnet.h"                   // ChooseScreen(), SimpleReq()
 #include "utils.h"
 #include "requesters.h"
@@ -31,42 +34,7 @@ char const prefsFilename[] = "PROGDIR:DCTelnet.Prefs";
 char const bookFilename[]  = "PROGDIR:DCTelnet.Book";
 char const keysFilename[]  = "PROGDIR:DCTelnet.Keys";
 
-// prefs.AnsiColors: 16-color CGA/VGA text palette in ANSI order. Convenient for the built-in
-// renderer: ANSI SGR color numbers map directly (Black, Red, Green, Yellow, Blue, Magenta, Cyan,
-// White), requiring only a subtraction.
-// Values: 4 unused bits followed by 4 bits for each colour channel: Red, Green, Blue.
-static const UWORD defaultAnsiColors[16] = {
-    0x0000,  // 0 : #000 black
-    0x0A00,  // 1 : #A00 red
-    0x00A0,  // 2 : #0A0 green
-    0x0A50,  // 3 : #A50 brown
-    0x000A,  // 4 : #00A blue
-    0x0A0A,  // 5 : #A0A magenta
-    0x00AA,  // 6 : #0AA cyan
-    0x0AAA,  // 7 : #AAA dark white = light gray (!= #FFF bright white)
-
-    // Bright variants: the built-in renderer treats a color as bright when atr_bold or
-    // atr_blink is set.
-    // #555  #F55 #5F5  #FF5  #55F  #F5F  #5FF  #FFF
-        0x0555, 0x0F55, 0x05F5, 0x0FF5, 0x055F, 0x0F5F, 0x05FF, 0x0FFF
-};
-
-// prefs.DeviceColors: original ibmcon/console.device palette, brighter than ANSI and with less
-// contrast between regular and bright color variants
-static const UWORD defaultDeviceColors[16] = {
-    0x0000,  // 0 : #000 black
-    0x0DDD,  // 1 : #DDD dark white = light gray (order differs from ANSI)
-    0x00D0,  // 2 : #0D0 green
-    0x0DD0,  // 3 : #DD0 yellow
-    0x000D,  // 4 : #00D blue
-    0x0D0D,  // 5 : #D0D magenta
-    0x00DD,  // 6 : #0DD cyan
-    0x0D00,  // 7 : #D00 red (order differs from ANSI)
-
-    // brighter :
-    // #555  #FFF #5F0  #FF0  #00F  #F0F  #0FF  #F00
-        0x0555, 0x0FFF, 0x00F0, 0x0FF0, 0x000F, 0x0F0F, 0x00FF, 0x0F00
-};
+// The default palettes (defaultAnsiColors, defaultDeviceColors) are in palette.c.
 
 
 // Pens are used by Intuition to draw the user interface. Each pen corresponds
@@ -169,38 +137,13 @@ static void ValidateAndInitPrefs(BOOL *userMustChooseAScreenMode)
     if (!ValidatePalette(prefs.DeviceColors))
         memcpy(prefs.DeviceColors, defaultDeviceColors, sizeof(defaultDeviceColors));
 
-    // Full-screen geometry / font: bounds depend on the active renderer.
-    if (STATE_IS(APP_RENDERER_BUILTIN))
-    {
-        // built-in renderer is, for now, very strict:
-        if (prefs.DisplayWidth  != 640
-         || prefs.DisplayHeight <  200 || prefs.DisplayHeight > 256
-         || prefs.DisplayDepth  != 4)
-        {
-            *userMustChooseAScreenMode = TRUE;
-        }
+    // Full-screen geometry: bounds depend on the active renderer.
+    if (!Prefs_ScreenFits(&prefs))
+        *userMustChooseAScreenMode = TRUE;
 
-        if (prefs.FontSize      != 8)                                 prefs.FontSize      = 8;
-    }
-    else if (STATE_IS(APP_RENDERER_IBMCON_DEVICE))
-    {
-        // ibmcon.device crashes at 1920x1200 resolution
-        if (prefs.DisplayWidth  < WIN_MIN_WIDTH  || prefs.DisplayWidth  > 1920
-         || prefs.DisplayHeight < WIN_MIN_HEIGHT || prefs.DisplayHeight > 1080
-         || prefs.DisplayDepth  == 0             || prefs.DisplayDepth  > 32)
-        {
-            *userMustChooseAScreenMode = TRUE;
-        }
-    }
-    else
-    {
-        if (prefs.DisplayWidth  < WIN_MIN_WIDTH  || prefs.DisplayWidth  > DISP_MAX_WIDTH
-         || prefs.DisplayHeight < WIN_MIN_HEIGHT || prefs.DisplayHeight > DISP_MAX_HEIGHT
-         || prefs.DisplayDepth  == 0             || prefs.DisplayDepth  > 32)
-        {
-            *userMustChooseAScreenMode = TRUE;
-        }
-    }
+    // The built-in renderer draws 8x8 cells.
+    if (STATE_IS(APP_RENDERER_BUILTIN) && prefs.FontSize != 8)
+        prefs.FontSize = 8;
 
     if (prefs.FontSize < 6 || prefs.FontSize > 72)  prefs.FontSize  = 8;
 
@@ -260,8 +203,15 @@ void SavePrefs(void)
             sizeof(struct PrefsStruct)
         };
 
+        // Only ever the global settings: during an Address Book entry session
+        // the live settings are the entry's, and menu changes made while
+        // connected last for this run but are never written here (site_prefs.c).
+        static struct PrefsStruct toSave;
+
+        SitePrefs_ForSave(&toSave, &prefs, &globalPrefs, sessionSettingsId != 0);
+        SitePrefs_HandForSave(&handChanges, &toSave);   // changes made while connected: not saved
         lenHeaderWritten = Write(fileHandle, &header, sizeof(header));
-        lenPrefsWritten  = Write(fileHandle, &prefs,  sizeof(prefs));
+        lenPrefsWritten  = Write(fileHandle, &toSave, sizeof(toSave));
 
         Close(fileHandle);
     }
@@ -269,61 +219,6 @@ void SavePrefs(void)
     if(lenHeaderWritten != sizeof(struct DCTFileHeader) || lenPrefsWritten != sizeof(prefs))
         SimpleReq("Error: unable to save the prefs file to disk!");
 }
-
-/**
- * @brief Convert a legacy preferences file to the current versioned format.
- *
- * The migration preserves the preferences that are considered essential across format versions:
- * - Display ID, Width, Height and Depth
- * - DeviceColors (palette)
- * - Font name and size
- *
- * All other preferences are initialized to their current default values.
- *
- * @param fileHandle File handle of the legacy preferences file. File is opened for reading
- * and closed by caller.
- *
- * @return TRUE on successful conversion, FALSE otherwise
- */
-BOOL ReadLegacyPrefs(BPTR fileHandle)
-{
-    BOOL result = FALSE;
-    LONG len;
-    struct LegacyPrefsStruct *legacyPrefs = AllocMem(sizeof(struct LegacyPrefsStruct), MEMF_ANY);
-
-    if (legacyPrefs == NULL)
-    {
-        RecoveryAlert("Not enough memory!");
-        return FALSE;
-    }
-
-    Seek(fileHandle, 0, OFFSET_BEGINNING);
-    len = Read(fileHandle, legacyPrefs, sizeof(struct LegacyPrefsStruct));
-
-    if (len < sizeof(struct LegacyPrefsStruct)) // Ensure all essential fields were read
-    {
-        #ifdef _DEBUG
-            SimpleReq("ReadLegacyPrefs(): legacy Prefs file truncated!");
-        #endif
-    }
-    else
-    {
-        prefs.DisplayID          = legacyPrefs->DisplayID;
-        prefs.DisplayWidth       = legacyPrefs->DisplayWidth;
-        prefs.DisplayHeight      = legacyPrefs->DisplayHeight;
-        prefs.DisplayDepth       = legacyPrefs->DisplayDepth;
-        prefs.FontSize           = legacyPrefs->fontsize;
-        strlcpy(prefs.FontName,    legacyPrefs->fontname, sizeof(prefs.FontName));
-        memcpy(prefs.DeviceColors, legacyPrefs->color, sizeof(prefs.DeviceColors));
-
-        result = TRUE;
-    }
-
-    FreeMem(legacyPrefs, sizeof(struct LegacyPrefsStruct));
-
-    return result;
-}
-
 
 /**
 @brief Load application preferences from the prefs file.
@@ -338,67 +233,32 @@ Calling code must ensure that ReqTools.library is opened before invoking this fu
 BOOL LoadPrefs(void)
 {
     LONG len;
+    BPTR fileHandle = 0;
     BOOL userMustChooseAScreenMode = FALSE;
-    BPTR fileHandle = Open(prefsFilename, MODE_OLDFILE);
+    // The whole file: a v2 file of any size (fields are only appended),
+    // or a DCTelnet 1.x file converted setting by setting.
+    UBYTE *file = ReadWholeFile(prefsFilename, &len, PREFS_FILE_MAX);
 
-    if (! fileHandle)
+    if (! file)
     {
         userMustChooseAScreenMode = TRUE;
     }
     else
     {
-         // A Prefs file exists, read its header:
-        struct DCTFileHeader hdr;
+        int kind = Prefs_Decode(file, (size_t)len, &prefs);
 
-        len = Read(fileHandle, &hdr, sizeof(hdr));
-
-        if (len != sizeof(hdr))
+        FreeVec(file);
+        switch (kind)
         {
-            SimpleReq("Error: the DCTelnet.Prefs header is incomplete.\n"
-                      "Default preferences will be used.");
-            userMustChooseAScreenMode = TRUE;
-        }
-        else
-        {
-            // Old DCTelnet 1.x prefs files without header:
-            if (memcmp(hdr.magic, "DCTP", 4) != 0)
-            {
-                SimpleReq("-->ReadLegacyPrefs()");
-
-                if (! ReadLegacyPrefs(fileHandle))
-                {
-                    SimpleReq("Error: the old DCTelnet.Prefs file could not be converted.\n"
-                              "Default preferences will be used.");
-                    userMustChooseAScreenMode = TRUE;
-                }
-            }
-            else if (hdr.version == 2) // DCTelnet v2.0+
-            {
-                if (hdr.dataSize != sizeof(prefs))
-                {
-                    SimpleReq("Error reading the DCTelnet.Prefs file: inconsistent data.\n"
-                              "Default preferences will be used.");
-                    userMustChooseAScreenMode = TRUE;
-                }
-
-                len = Read(fileHandle, &prefs, sizeof(prefs));
-
-                if (len != sizeof(prefs))
-                {
-                    SimpleReq("Error reading the DCTelnet.Prefs file: truncated data.\n"
-                              "Default preferences will be used.");
-                    userMustChooseAScreenMode = TRUE;
-                }
-            }
-            else
-            {
-                SimpleReq("Error reading DCTelnet.Prefs: unsupported file format version.\n"
+            case PREFS_FILE_V2:
+            case PREFS_FILE_LEGACY:
+                break;
+            default:
+                SimpleReq("Error: DCTelnet.Prefs is damaged or from an unknown version.\n"
                           "Default preferences will be used.");
                 userMustChooseAScreenMode = TRUE;
-            }
+                break;
         }
-
-        Close(fileHandle);  fileHandle = 0;
     }
 
 
