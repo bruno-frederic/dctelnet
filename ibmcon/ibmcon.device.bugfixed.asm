@@ -146,16 +146,21 @@
 ;   @ insert chars     A up           B down          C right
 ;   D left             E next line    F previous line H / f goto row;col
 ;   J erase display    K erase line   L insert lines  M delete lines
-;   P delete chars     R (stub)       S scroll up
+;   P delete chars     X erase chars  S scroll up
 ;   T scroll down      r set scroll region (DECSTBM top;bottom)
 ;   t set rows from 1st parameter     n (stub)
 ;   s save cursor+attrs               u restore cursor+attrs
 ;   h set mode:   20 = LNM (LF implies CR)
 ;                 >1 = scroll at margins    ?7 = auto-wrap
+;                 ?1 = cursor keys ESC O x (DECCKM, read by the client
+;                      with IBMCMD_GETMODES)
+;                 ?33 = iCE colours: SGR 5 is a bright background
 ;   l reset mode: same codes
 ;   m SGR: 0 reset, 1 bold (bright pens / pen 3 on 4-colour screens),
-;          3 italic, 4 underline, 7 reverse, 23/24 italic/underline
-;          off, 30-37/39 foreground, 40-47/49 background
+;          3 italic, 4 underline, 5 blink (a bright background in
+;          iCE mode), 7 reverse, 23/24/25 italic/underline/blink off,
+;          30-37/39 foreground, 40-47/49 background
+; ESC 7 / ESC 8 save / restore the cursor, as CSI s / CSI u.
 ;
 ;=====================================================================
 
@@ -241,6 +246,8 @@ CMD_DIE             EQU $7FF0   ; private: DevClose -> handler "exit"
 ; graphics.library; the unit 1<->7 swap and the depth checks no longer apply.
 IBMCMD_SETPENS      EQU $7FE0
 IBMCMD_GETCURSOR    EQU $7FE1   ; 1.9: io_Actual = row<<16 | column (1-based)
+IBMCMD_GETMODES     EQU $7FE2   ; 1.10: io_Actual = con_Modes (bit 3 = DECCKM:
+                                ;   the client sends cursor keys as ESC O x)
 rp_Mask             EQU $18
 IOERR_OPENFAIL      EQU -1
 IOERR_NOCMD         EQU $FD     ; -3 as a byte
@@ -390,7 +397,9 @@ con_RegBot          EQU $26     ; DECSTBM scroll region bottom row
 con_Col             EQU $28     ; cursor column, 1-based
 con_Row             EQU $2A     ; cursor row,    1-based
 con_Attrs           EQU $2C     ; long attribute state:
-con_AttrFlags       EQU $2C     ;   byte: bit4 bold, bit5 reverse
+con_AttrFlags       EQU $2C     ;   byte: bit4 bold, bit5 reverse,
+                                ;   bit6 blink (1.10: SGR 5; bright
+                                ;   background in iCE mode)
 con_SoftStyle       EQU $2F     ;   byte: bit0 underline, bit2 italic
                                 ;   (word $2E/$2F is fed to SetSoftStyle)
 con_FgPen           EQU $30
@@ -407,6 +416,8 @@ con_Modes           EQU $46     ; current mode word, low byte:
 con_ModeFlags       EQU $47     ;   bit0 LNM (LF implies CR)  [h/l 20]
                                 ;   bit1 auto-wrap            [?7]
                                 ;   bit2 scroll at margins    [>1]
+                                ;   bit3 DECCKM (1.10)        [?1]
+                                ;   bit4 iCE colours (1.10)   [?33]
 con_SavedModes      EQU $48     ; 's'/'u' snapshot of con_Modes
 con_InitModes       EQU $4A     ; initial mode word (set by handler)
 con_TextCol         EQU $4E     ; column where the pending text starts
@@ -484,9 +495,10 @@ DevInit:                                ; was AJL_0_20
         move.l  A1,D0
         lea     LIB_VERSION(A5),A3
         move.w  D0,(A3)+                ; lib_Version  = 1
-        lea     9,A1                    ; 1.9: revision 9 (CUB/CUF, cursor query)
+        lea     10,A1                   ; 1.10: revision 10 (iCE, ECH, DECSC,
+                                        ;   DECCKM, mode query)
         move.l  A1,D0
-        move.w  D0,(A3)+                ; lib_Revision = 9
+        move.w  D0,(A3)+                ; lib_Revision = 10
         move.l  #DevIdString,(A3)+      ; lib_IdString
         lea     dev_RelocTab(A5),A3
         clr.l   (A3)+                   ; dev_RelocTab = NULL
@@ -873,6 +885,8 @@ HandlerProc:                            ; was JL_0_2EC
         beq.b   .doSetPens
         cmpi.l  #IBMCMD_GETCURSOR,D0    ; 1.9: where the cursor is, for a
         beq.b   .doGetCursor            ;   client answering a BBS's DSR
+        cmpi.l  #IBMCMD_GETMODES,D0     ; 1.10: the mode flags, for a client
+        beq.b   .doGetModes             ;   sending cursor keys (DECCKM)
         subq.l  #3,D0                   ; CMD_WRITE?
         beq.b   .doWrite
         subi.l  #CMD_DIE-CMD_WRITE,D0   ; CMD_DIE?
@@ -895,6 +909,11 @@ HandlerProc:                            ; was JL_0_2EC
         swap    D0
         move.w  $16+con_Col(A7),D0
         move.l  D0,IO_ACTUAL(A5)        ; row<<16 | column
+        bra.b   .reply
+.doGetModes:
+        moveq   #0,D0
+        move.w  $16+con_Modes(A7),D0
+        move.l  D0,IO_ACTUAL(A5)        ; con_Modes
         bra.b   .reply
 .doSetPens:
         move.l  IO_DATA(A5),-(A7)
@@ -1284,7 +1303,8 @@ Csi_AtSign_InsertChars:                 ; was AJL_0_600
 .haveCount:
         move.w  con_Col(A5),D0
         cmp.w   con_Cols(A5),D0
-        bcc.b   .done                   ; cursor beyond line: nothing
+        bhi.b   .done                   ; 1.10 FIXED: the last column
+                                        ;   counts too (was bcc)
         movea.l g_RastPort(A4),A1
         movea.l rp_Font(A1),A0          ; A0 = font
         moveq   #0,D1
@@ -1330,12 +1350,22 @@ Csi_AtSign_InsertChars:                 ; was AJL_0_600
         rts
 
 ;---------------------------------------------------------------------
-; CSI 'R' -- cursor position report: not implemented (the device has
-; no read channel), accepted and ignored.
+; CSI 'X' -- erase N characters (ECH, 1.10): blank N cells from the
+; cursor, clipped to the right edge; the cursor stays.  It took the
+; table slot of CSI 'R' (a report a terminal sends, never receives),
+; whose stub did nothing: an unknown sequence is dropped the same way.
 ;---------------------------------------------------------------------
-Csi_R_Stub:                             ; was AJL_0_6A4
-        subq.w  #4,A7
-        addq.w  #4,A7
+Csi_X_EraseChars:
+        movea.l $8(A7),A0               ; params
+        moveq   #0,D0
+        move.b  (A0),D0                 ; N (0 -> 1)
+        bne.b   .haveCount
+        moveq   #1,D0
+.haveCount:
+        move.l  D0,-(A7)
+        move.l  $8(A7),-(A7)            ; con
+        bsr.w   EraseCellsRight
+        addq.w  #8,A7
         rts
 
 ;---------------------------------------------------------------------
@@ -1358,7 +1388,7 @@ Csi_s_SaveCursor:                       ; was AJL_0_6AA
 
 ;---------------------------------------------------------------------
 ; CSI 'u' -- restore the state saved by 's' and re-apply pens and
-; soft style to the RastPort.
+; soft style to the RastPort. DECCKM and iCE colours stay as they are.
 ;---------------------------------------------------------------------
 Csi_u_RestoreCursor:                    ; was AJL_0_6DA
         subq.w  #4,A7
@@ -1373,7 +1403,21 @@ Csi_u_RestoreCursor:                    ; was AJL_0_6DA
         move.w  D0,(A1)+
         move.w  (A0)+,(A1)+             ; bg
         move.b  con_SavedMask(A5),con_CharMask(A5)
+        move.b  con_ModeFlags(A5),D0    ; 1.10: DECCKM and iCE colours are
+        andi.b  #$18,D0                 ;   terminal modes, not cursor
         move.w  con_SavedModes(A5),con_Modes(A5)
+        andi.b  #$E7,con_ModeFlags(A5)  ;   state: a restore keeps the
+        or.b    D0,con_ModeFlags(A5)    ;   current ones
+        move.w  con_Rows(A5),D0         ; 1.10: the grid may have shrunk
+        cmp.w   con_Row(A5),D0          ;   since the save (window
+        bcc.b   .rowOk                  ;   resize, font change)
+        move.w  D0,con_Row(A5)
+.rowOk:
+        move.w  con_Cols(A5),D0
+        cmp.w   con_Col(A5),D0
+        bcc.b   .colOk
+        move.w  D0,con_Col(A5)
+.colOk:
         moveq   #0,D0
         move.w  con_SavedFg(A5),D0
         bsr.w   MapPen
@@ -1403,6 +1447,9 @@ Csi_u_RestoreCursor:                    ; was AJL_0_6DA
 ;   (none) 20 -> LNM: LF implies CR        (bit 0)
 ;   '>'     1 -> scroll at margins on      (bit 2)
 ;   '?'     7 -> auto-wrap on (DECAWM)     (bit 1)
+;   '?'     1 -> cursor keys ESC O x (DECCKM, bit 3; 1.10)
+;   '?'    33 -> iCE colours: blink = bright background (bit 4; 1.10)
+; The prefix applies to every parameter of the sequence.
 ;---------------------------------------------------------------------
 Csi_h_SetMode:                          ; was AJL_0_748
         subq.w  #4,A7
@@ -1415,11 +1462,10 @@ Csi_h_SetMode:                          ; was AJL_0_748
         move.l  A6,$8(A7)
         bra.b   .loopCheck
 .body:
-        moveq   #0,D0
-        move.w  D6,D0
-        moveq   #0,D1
-        addi.l  #con_RawBuf,D0
-        move.b  0(A1,D0.L),D1           ; raw char for this param
+        moveq   #0,D1                   ; 1.10 FIXED: the prefix is the
+        move.b  con_RawBuf(A1),D1       ;   sequence's first raw char; it
+                                        ;   was the Nth for param N, so
+                                        ;   ?1;7h set LNM-less param 7
         tst.l   D1
         beq.b   .noPrefix
         moveq   #'>',D0
@@ -1447,10 +1493,21 @@ Csi_h_SetMode:                          ; was AJL_0_748
 .qmPrefix:
         moveq   #0,D0
         move.w  D6,D0
+        move.b  0(A0,D0.L),D0
         moveq   #7,D1
-        cmp.b   0(A0,D0.L),D1           ; ?7 = auto-wrap
-        bne.b   .next
+        cmp.b   D1,D0                   ; ?7 = auto-wrap
+        bne.b   .qmNot7
         bset    #1,con_ModeFlags(A1)
+.qmNot7:
+        moveq   #1,D1
+        cmp.b   D1,D0                   ; 1.10: ?1 = DECCKM
+        bne.b   .qmNot1
+        bset    #3,con_ModeFlags(A1)
+.qmNot1:
+        moveq   #33,D1
+        cmp.b   D1,D0                   ; 1.10: ?33 = iCE colours
+        bne.b   .next
+        bset    #4,con_ModeFlags(A1)
 .next:
         addq.w  #1,D6
 .loopCheck:
@@ -1476,11 +1533,8 @@ Csi_l_ResetMode:                        ; was AJL_0_7D0
         move.l  A6,$8(A7)
         bra.b   .loopCheck
 .body:
-        moveq   #0,D0
-        move.w  D6,D0
-        moveq   #0,D1
-        addi.l  #con_RawBuf,D0
-        move.b  0(A1,D0.L),D1
+        moveq   #0,D1                   ; 1.10 FIXED: sequence prefix
+        move.b  con_RawBuf(A1),D1
         tst.l   D1
         beq.b   .noPrefix
         moveq   #'>',D0
@@ -1508,10 +1562,21 @@ Csi_l_ResetMode:                        ; was AJL_0_7D0
 .qmPrefix:
         moveq   #0,D0
         move.w  D6,D0
+        move.b  0(A0,D0.L),D0
         moveq   #7,D1
-        cmp.b   0(A0,D0.L),D1
-        bne.b   .next
+        cmp.b   D1,D0
+        bne.b   .qmNot7
         bclr    #1,con_ModeFlags(A1)    ; auto-wrap off
+.qmNot7:
+        moveq   #1,D1
+        cmp.b   D1,D0
+        bne.b   .qmNot1
+        bclr    #3,con_ModeFlags(A1)    ; 1.10: DECCKM off
+.qmNot1:
+        moveq   #33,D1
+        cmp.b   D1,D0
+        bne.b   .next
+        bclr    #4,con_ModeFlags(A1)    ; 1.10: iCE colours off
 .next:
         addq.w  #1,D6
 .loopCheck:
@@ -1563,7 +1628,7 @@ Csi_m_SetGraphics:                      ; was AJL_0_858
         dc.w    .next-.jBase            ;  2 (faint) unsupported
         dc.w    .sgrItalic-.jBase       ;  3 italic
         dc.w    .sgrUnderline-.jBase    ;  4 underline
-        dc.w    .next-.jBase            ;  5 (blink) unsupported
+        dc.w    .sgrBlink-.jBase        ;  5 blink (1.10)
         dc.w    .next-.jBase            ;  6
         dc.w    .sgrReverse-.jBase      ;  7 reverse video
         dc.w    .next-.jBase            ;  8
@@ -1583,7 +1648,7 @@ Csi_m_SetGraphics:                      ; was AJL_0_858
         dc.w    .next-.jBase            ; 22 (normal) unsupported
         dc.w    .sgrItalicOff-.jBase    ; 23 italic off
         dc.w    .sgrUnderlOff-.jBase    ; 24 underline off
-        dc.w    .next-.jBase            ; 25
+        dc.w    .sgrBlinkOff-.jBase     ; 25 blink off (1.10)
         dc.w    .next-.jBase            ; 26
         dc.w    .next-.jBase            ; 27 (reverse off) unsupported
         dc.w    .next-.jBase            ; 28
@@ -1634,6 +1699,15 @@ Csi_m_SetGraphics:                      ; was AJL_0_858
         bra.w   .next
 .sgrReverse:                            ; 7
         bset    #5,con_AttrFlags(A5)
+        bra.w   .next
+.sgrBlink:                              ; 5 (1.10): a bright background in
+        bset    #6,con_AttrFlags(A5)    ;   iCE mode, applied with the bg
+        move.w  #1,$2A(A7)              ;   pen below
+        bra.w   .next
+.sgrBlinkOff:                           ; 25 (1.10): bit 3 of the bg pen
+        bclr    #6,con_AttrFlags(A5)    ;   is only ever set by iCE (SGR
+        bclr    #3,con_BgPen+1(A5)      ;   40-47 give 0-7)
+        move.w  #1,$2A(A7)
         bra.w   .next
 .sgrItalicOff:                          ; 23
         bclr    #2,con_SoftStyle(A5)
@@ -1765,6 +1839,16 @@ Csi_m_SetGraphics:                      ; was AJL_0_858
         movea.l $24(A7),A6
         tst.w   $2A(A7)
         beq.b   .applyStyle
+        btst    #6,con_AttrFlags(A5)    ; 1.10: blink in iCE mode on a
+        beq.b   .setBPen                ;   screen with bright pens: the
+        btst    #4,con_ModeFlags(A5)    ;   background gets pen+8 (kept
+        beq.b   .setBPen                ;   in con_BgPen, as bold keeps
+        tst.w   con_BoldPens(A5)        ;   its bright pen in con_FgPen,
+        beq.b   .setBPen                ;   so erases use it too)
+        tst.w   con_FixedPen(A5)
+        bne.b   .setBPen
+        bset    #3,con_BgPen+1(A5)
+.setBPen:
         moveq   #0,D0
         move.w  con_BgPen(A5),D0
         bsr.w   MapPen
@@ -1905,7 +1989,8 @@ Csi_P_DeleteChars:                      ; was AJL_0_BBE
 .haveCount:
         move.w  con_Col(A5),D0
         cmp.w   con_Cols(A5),D0
-        bcc.b   .done
+        bhi.b   .done                   ; 1.10 FIXED: the last column
+                                        ;   counts too (was bcc)
         movea.l g_RastPort(A4),A1
         movea.l rp_Font(A1),A0
         moveq   #0,D1
@@ -2957,6 +3042,12 @@ ConWrite:                               ; was JL_0_14F6
         tst.w   con_EscPending(A5)      ; --- state: after ESC -------
         beq.b   .notEsc
         clr.w   con_EscPending(A5)
+        moveq   #'7',D0                 ; 1.10: ESC 7 / ESC 8 (DECSC /
+        cmp.b   D0,D4                   ;   DECRC) = CSI s / CSI u
+        beq.b   .escSaveRestore
+        moveq   #'8',D0
+        cmp.b   D0,D4
+        beq.b   .escSaveRestore
         moveq   #'[',D0
         cmp.b   D0,D4
         bne.w   .nextChar               ; ESC + anything else: drop
@@ -2965,6 +3056,26 @@ ConWrite:                               ; was JL_0_14F6
         addq.w  #4,A7
         moveq   #1,D0
         move.w  D0,con_InCsi(A5)        ; enter CSI collection
+        bra.w   .nextChar
+
+.escSaveRestore:
+        tst.w   con_TextLen(A5)         ; pending text first, as the CSI
+        beq.b   .escNoFlush             ;   dispatch does
+        move.l  A5,-(A7)
+        bsr.w   FlushText
+        addq.w  #4,A7
+.escNoFlush:
+        clr.w   con_WrapPending(A5)
+        move.l  A5,-(A7)
+        moveq   #'7',D0
+        cmp.b   D0,D4
+        bne.b   .escRestore
+        bsr.w   Csi_s_SaveCursor
+        bra.b   .escSRDone
+.escRestore:
+        bsr.w   Csi_u_RestoreCursor
+.escSRDone:
+        addq.w  #4,A7
         bra.w   .nextChar
 
 .notEsc:
@@ -3381,6 +3492,8 @@ DevBeginIO:                             ; was AJL_0_1976
         cmpi.l  #IBMCMD_SETPENS,D0      ; 1.5: pen table -> handler too
         beq.b   .forward
         cmpi.l  #IBMCMD_GETCURSOR,D0    ; 1.9: cursor position -> handler
+        beq.b   .forward
+        cmpi.l  #IBMCMD_GETMODES,D0     ; 1.10: mode flags -> handler
         beq.b   .forward
         subq.l  #CMD_WRITE,D0
         bne.b   .badCmd
@@ -3967,7 +4080,7 @@ DevName:                                ; was AL_2_1C
         dc.b    "ibmcon.device",0,0
         dc.b    0
 DevIdString:                            ; was AL_2_2C
-        dc.b    "ibmcon.device 1.9",0,0
+        dc.b    "ibmcon.device 1.10",0
         dc.b    0
 
 ;=====================================================================
@@ -3981,7 +4094,10 @@ DevIdString:                            ; was AL_2_2C
 GlobalsInit:                            ; was SegmentBeginn3
         ds.l    1                       ; $000: (unused)
         dc.b    0                       ; $004
-        dc.b    "$VER: ibmcon.device 1.9 (Sep 28 2026)",0,0
+        dc.b    "$VER: ibmcon.device 1.10 (28.9.26)",0,0,0,0,0
+        ifne    *-GlobalsInit-$2C
+        fail    "the $VER string must end where EscTable ($2C) starts"
+        endif
 
 ;--- $02C: CSI dispatch table ----------------------------------------
 ; 6 bytes per entry: function pointer, prefix char (0 = none), final
@@ -4013,8 +4129,8 @@ EscTable:                               ; = g_EscTable, was AL_3_2C
         dc.b    0,'M'                   ; delete lines
         dc.l    Csi_P_DeleteChars
         dc.b    0,'P'                   ; delete characters
-        dc.l    Csi_R_Stub
-        dc.b    0,'R'                   ; (cursor position report)
+        dc.l    Csi_X_EraseChars
+        dc.b    0,'X'                   ; erase characters (1.10)
         dc.l    Csi_r_SetRegion
         dc.b    0,'r'                   ; set scroll region (DECSTBM)
         dc.l    Csi_S_ScrollUp
@@ -4045,6 +4161,9 @@ EscTable:                               ; = g_EscTable, was AL_3_2C
         dc.b    0,'s'                   ; save cursor
         dc.l    Csi_u_RestoreCursor
         dc.b    0,'u'                   ; restore cursor
+        ifne    *-GlobalsInit-$DA
+        fail    "the CSI table is full: it must end at $DA (see g_ParamOne1)"
+        endif
         dc.w    0                       ; $0DA: NULL terminator
         dc.l    0                       ; $0DC: (pad)
 
