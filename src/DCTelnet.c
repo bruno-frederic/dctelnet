@@ -122,10 +122,11 @@ static struct NewMenu mainMenuDesc[] =
     {    NM_ITEM, "Display Speed Test",             "Y",             0,               0, (APTR)MENU_DISPLAY_SPEED_TEST},
     {    NM_ITEM, "Finger",                         "@",             0,               0, (APTR)MENU_FINGER},
     {    NM_ITEM, NM_BARLABEL,                       0 ,             0,               0, (APTR)MENU_BAR},
-    {    NM_ITEM, "Reset Screen",                   "C",             0,               0, (APTR)MENU_RESET_SCREEN},
+    {    NM_ITEM, "Reset Screen",                   "Z",             0,               0, (APTR)MENU_RESET_SCREEN},
     {    NM_ITEM, "Quit",                           "Q",             0,               0, (APTR)MENU_QUIT},
 
     { NM_TITLE, "Edit",  0 , 0, 0, (APTR)MENU_EDIT},
+    {    NM_ITEM, "Copy",                           "C",             0,               0, (APTR)MENU_COPY},
     {    NM_ITEM, "Paste",                          "V",             0,               0, (APTR)MENU_PASTE},
     {    NM_ITEM, "Copy Screen",                     0 ,             0,               0, (APTR)MENU_COPY_SCREEN},
 
@@ -3538,9 +3539,9 @@ static void RexxMessages(void)
 
 // ---- Mouse selection, the clipboard (ibmcon 1.11) --------------------------
 // The left mouse button dragged over the terminal selects text; it is shown
-// inverted and copied to the clipboard when the button goes up, and stays
-// shown until the next click or the next text. Edit > Paste types the
-// clipboard's text; Edit > Copy Screen copies the whole screen. The text is
+// inverted until the next click or the next text. Edit > Copy (Amiga-C, as
+// in a Shell window) puts it in the clipboard, Edit > Paste (Amiga-V) types
+// the clipboard's text, Edit > Copy Screen copies the whole screen. The text is
 // read back from ibmcon's screen buffer (IBMCMD_READTEXT): an older ibmcon,
 // XEM or console.device cannot select.
 #define CLIP_READ_MAX   16384           // the most of a clip that is pasted
@@ -3714,9 +3715,7 @@ static void SelectionUp(void)
     if (!selDragging)
         return;
     selDragging = FALSE;
-    ReportMouse(FALSE, win);
-    if (selShown)                               // dragged: copy (a click selects nothing)
-        CopyRange(&selShownRange);
+    ReportMouse(FALSE, win);                    // the selection waits for Amiga-C
 }
 
 static void CopyScreen(void)
@@ -4215,6 +4214,11 @@ static void GetWindowMsg(struct Window *wwin)
                         prefs.Charset = (UBYTE)((ULONG)GTMENUITEM_USERDATA(item) - MENU_CHARSET_CP437);
                         Charset_Utf8Init(&utf8In);
                         Charset_Utf8Init(&utf8Echo);
+                        break;
+
+                    case MENU_COPY:
+                        if (selShown)
+                            CopyRange(&selShownRange);
                         break;
 
                     case MENU_PASTE:
@@ -5504,8 +5508,9 @@ void CreateAppMenus(void)
     // Disable menu items that are only relevant for specific renderers.
     GetNewMenuItemFromID(MENU_FAST_SCROLL     )->nm_Flags = NM_ITEMDISABLED;
     // The screen's text is read back from ibmcon's screen buffer: without
-    // it (another renderer) Copy Screen, Save Screen and selecting with the
+    // it (another renderer) Copy, Copy Screen, Save Screen and selecting with the
     // mouse cannot work.
+    GetNewMenuItemFromID(MENU_COPY            )->nm_Flags = NM_ITEMDISABLED;
     GetNewMenuItemFromID(MENU_COPY_SCREEN     )->nm_Flags = NM_ITEMDISABLED;
     GetNewMenuItemFromID(MENU_SAVE_SCREEN     )->nm_Flags = NM_ITEMDISABLED;
     GetNewMenuItemFromID(MENU_XEM_LIB_OPTIONS )->nm_Flags = NM_ITEMDISABLED;
@@ -5532,6 +5537,7 @@ void CreateAppMenus(void)
         GetNewMenuItemFromID(MENU_IBMCON_DEVICE)->nm_Flags |= CHECKED;
 
         GetNewMenuItemFromID(MENU_FAST_SCROLL)->nm_Flags = HIGHCOMP|CHECKIT|MENUTOGGLE;
+        GetNewMenuItemFromID(MENU_COPY)->nm_Flags = 0;
         GetNewMenuItemFromID(MENU_COPY_SCREEN)->nm_Flags = 0;
         GetNewMenuItemFromID(MENU_SAVE_SCREEN)->nm_Flags = 0;
         GetNewMenuItemFromID(MENU_132_COLUMNS)->nm_Flags = HIGHCOMP|CHECKIT|MENUTOGGLE
