@@ -1,4 +1,4 @@
-# ibmcon.device -- annotated disassembly (1.4 bug-fixed, 1.5, 1.6, 1.7)
+# ibmcon.device -- annotated disassembly (1.4 bug-fixed, 1.5 to 1.8)
 
 The ANSI console DCTelnet draws its terminal with. `ibmcon.device` 1.4
 (Mar 9 1998) was freeware and shipped as a binary only; this drawer holds
@@ -115,3 +115,16 @@ A1200 (FS-UAE, AGA and Picasso96 screens) and on the Workbench.
   it also inserted nothing (N was clamped to the rows below the cursor);
   the cursor's row now counts, as in CSI M.
 * Version 1.7 (lib_Revision 7).
+
+## 1.8 (2026-09-28)
+
+* **CloseDevice no longer frees the opener's signal.** The handler process
+  creates its command port with `CreatePort` (the signal bit is allocated
+  in the handler's task: a new process's first `AllocSignal(-1)` is 31),
+  but `UnitClose` deleted that port in the opener's task, so `FreeSignal`
+  freed the opener's bit of the same number -- usually bsdsocket.library's
+  bit 31. Connections then hung after a display change (DCTelnet issue #3).
+  The handler now deletes its own port before it replies to `CMD_DIE`.
+  Measured on an emulated A1200: a task holding bit 31 opens and closes the
+  device -- 1.7 frees the bit, 1.8 leaves it allocated.
+* Version 1.8 (lib_Revision 8).
