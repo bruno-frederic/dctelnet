@@ -97,10 +97,28 @@ struct PrefsStruct
 
     // New fields for the next file format version.
     // ...
+    // Fields are only ever appended (below): an older file loads with the new
+    // ones 0, which ValidateAndInitPrefs() turns into their defaults
+    // (Prefs_Decode in prefs_file.c).
 
     // TODO: Consider storing the transfer options in separate fields, as done by XprOptions(),
     //       instead of adding XferOptions here.
     TEXT  XferOptions[52];
+
+    // Connection Options. 0 is each one's default.
+    UBYTE RedialTries;          // failed connects tried again; 0: none
+    UBYTE RedialDelay;          // seconds between tries; 0: 10
+    UBYTE AntiIdleMinutes;      // a keep-alive after this long without a key sent; 0: never
+    UBYTE ConnectTimeout;       // seconds a connect may take; 0: the TCP stack's own limit
+
+    UBYTE Charset;              // what the BBS sends: CHARSET_CP437 (0), _LATIN1, _UTF8 (charset.h)
+    UBYTE Bell;                 // BEL: BELL_FLASH (0), BELL_SOUND, BELL_OFF
+    UBYTE AnsiMusic;            // <>0: play ANSI music (ansimusic.h)
+
+    // Keeps the struct a multiple of 4 bytes with no padding a compiler adds
+    // on its own (every byte is a field: site_prefs.c carries them all). A
+    // new UBYTE field takes one of these.
+    UBYTE Reserved[1];
 };
 
 /*
@@ -130,7 +148,15 @@ struct PrefsStruct
 #define APP_RENDERER_XEM_LIB         (1UL << 11)
 #define APP_RENDERER_IBMCON_DEVICE   (1UL << 12)
 
+#define APP_RLOGIN                   (1UL << 13)  // Rlogin (RFC 1282): a raw byte stream after the login
+                                                  // message, no telnet codes
 #define APP_PETSCII_MODE             (1UL << 15)
+#define APP_WINDOW_SNAPSHOT          (1UL << 16)  // MainWin* hold a Snapshot Windows size;
+                                                  // clear: the Workbench window opens 80x25
+#define APP_VT_KEYS                  (1UL << 17)  // Home/End/Page/Insert send VT codes (ESC[1~ ...);
+                                                  // clear: ANSI-BBS (ESC[H ...)
+#define APP_132_COLUMNS              (1UL << 18)  // the terminal is 132 columns wide, not 80
+                                                  // (ibmcon.device renderer only)
 
 #define APP_CUSTOM_SCREEN_OPENED     (1UL << 23)  // Rarely accessed (during display initalization)
 
@@ -141,6 +167,11 @@ struct PrefsStruct
 
 #define APP_TITLE_BAR_ENABLED        (1UL << 25)  //  2x in main loop for each Receive() (and 1x in LEDs(), LEDs() is not used in hot-path)
 #define APP_LEDS_ENABLED             (1UL << 26)  //  2x in main loop for each Receive)) (and 1x in LEDs(), LEDs() is not used in hot-path)
+
+// prefs.Bell
+#define BELL_FLASH 0     // the screen flashes (DisplayBeep)
+#define BELL_SOUND 1     // a short tone
+#define BELL_OFF   2
 
 // Persist bits 0 through APP_LEDS_ENABLED
 #define STATE_PERSISTENT_MASK    ((APP_LEDS_ENABLED << 1) - 1)
@@ -199,38 +230,6 @@ struct PrefsStruct
 #define WIN_MIN_HEIGHT     50
 #define DISP_MAX_WIDTH   7680   // UHD 8K
 #define DISP_MAX_HEIGHT  4320   // UHD 8K
-
-struct LegacyPrefsStruct
-{
-    ULONG DisplayID;
-    UWORD DisplayWidth,
-          DisplayHeight,
-          DisplayDepth,
-          fontsize;
-    char  fontname[32],
-          downloadpath[52],
-          xferlibrary[52],
-          xferinit[52];
-    UWORD color[16];
-
-/* Non-essential prefs, ignored during conversion:
-    ULONG flags;
-    UWORD win_left,
-          win_top,
-          win_width,
-          win_height,
-          sb_left,
-          sb_top,
-          sb_width,
-          sb_height;
-    char  uploadpath[52],
-          displaydriver[32];
-    ULONG sb_lines;
-    char  displayidstr[32];
-    UWORD toolBarWin_left,
-          toolBarWin_top;
-*/
-};
 
 #define F_KEY_COUNT 10
 #define F_KEY_SIZE  152  // 151 chars + '\0'

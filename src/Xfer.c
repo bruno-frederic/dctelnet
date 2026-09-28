@@ -24,6 +24,7 @@
 #include "requesters.h"
 #include "utils.h"
 #include "prefs.h"
+#include "shipped.h"
 
 #define PATHLEN 256     // From third_party\Xpr\XprZmodem.h
 
@@ -98,7 +99,7 @@ static long instrip(unsigned char *buff, long length)
 {
     register long i = 0, j = 0;
     unsigned char *tb = NULL;
-    if (STATE_IS(APP_RAW_CONNECTION))
+    if (!TELNET_DATA())
         return length; // No stripping for raw connections
 
     tb = AllocMem(length+2, MEMF_PUBLIC);
@@ -213,7 +214,16 @@ long __SAVE_DS__ __ASM__ xpr_swrite(__REG__(a0, char *buffer),
 {
     long ret = -1;
     register ULONG i = 0, j = 0;
-    UBYTE *tb = AllocMem(size+size, MEMF_PUBLIC);
+    UBYTE *tb;
+
+    // XEM libraries answer the BBS (Device Status Reports...) with size -1:
+    // a NUL-terminated string. Taken as a length it was AllocMem(-2), which
+    // failed, and the answer was never sent.
+    if (size < 0)
+        size = (long)strlen(buffer);
+    if (size == 0)
+        return 0;
+    tb = AllocMem(size+size, MEMF_PUBLIC);
     if(tb)
     {
         while(i < size)
@@ -222,7 +232,7 @@ long __SAVE_DS__ __ASM__ xpr_swrite(__REG__(a0, char *buffer),
             // 0xff then you must send it twice to tell telnet that you don't intend to send a
             // command. This escaping is only required for Telnet connections and must not be
             // applied to raw TCP connections.
-            if((unsigned char) buffer[i] == 255 && STATE_IS_NOT(APP_RAW_CONNECTION))
+            if((unsigned char) buffer[i] == 255 && TELNET_DATA())
             {
                 tb[j] = buffer[i];
                 j++;
@@ -852,7 +862,7 @@ long __SAVE_DS__ xpr_squery(void)
 
 static char ProtoStart(char *library, char *firstfile)
 {
-    XProtocolBase = OpenLibrary(library, 0);
+    XProtocolBase = OpenNewestLibrary(library, 0);
     if(!XProtocolBase)
     {
         LocalFmt("\r\n›0;31mERROR: ›mCould not open transfer library: %s\r\n", library);
@@ -888,7 +898,7 @@ static char ProtoStart(char *library, char *firstfile)
 /* TODO MAKE A CLEAN FUNCTION NOT REDUNDANT WITH ProtoStart() */
 void XferOptions(char *library)
 {
-    XProtocolBase = OpenLibrary(library, 0);
+    XProtocolBase = OpenNewestLibrary(library, 0);
     if(!XProtocolBase)
     {
         LocalFmt("\r\n›0;31mERROR: ›mCould not open transfer library: %s\r\n", library);
