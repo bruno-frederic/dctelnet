@@ -44,6 +44,7 @@ BOOL FileRequester(struct Window *parent, STRPTR dirName, UWORD dirMaxLen,
                    FileRequesterMode mode);
 BOOL FontRequester(struct Window *parent, STRPTR fontName, UWORD maxLen, UWORD *fontYSize);
 BOOL ScreenModeRequester(struct Window *parent, ULONG* displayID,
-                         UWORD* displayWidth, UWORD* displayHeight, UWORD* displayDepth);
+                         UWORD* displayWidth, UWORD* displayHeight, UWORD* displayDepth,
+                         UWORD maxDepth);
 
 #endif /* REQUESTERS_H */
