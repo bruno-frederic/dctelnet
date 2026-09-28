@@ -126,7 +126,7 @@ and Fonts drawers. When ibmcon.device or a library is in both its own
 drawer and DEVS: or LIBS:, DCTelnet opens the newer version. The start-up
 screen tells which ibmcon.device it uses and where it came from.
 
-DCTelnet needs @{b}ibmcon.device 1.10@{ub} or later (included) for all of its
+DCTelnet needs @{b}ibmcon.device 1.11@{ub} or later (included) for all of its
 features. Fonts in the package:
 - Petscii and PetsciiLower: the Commodore 64 upper-case and lower-case
   character sets, used by PETSCII Mode
@@ -709,6 +709,7 @@ ibmcon.device (source now included in the "ibmcon" drawer):
   the margins (issue #11)
 - 1.10: iCE colours (bright backgrounds), erase characters (CSI X),
   ESC 7 / ESC 8, application cursor key mode reported to DCTelnet
+- 1.11: blinking text; a copy of the screen DCTelnet can read back
 
 Bug Fixes:
 - Menu items were grey, as if disabled, on screens with 32+ colours
