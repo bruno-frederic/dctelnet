@@ -104,6 +104,12 @@ struct PrefsStruct
     // TODO: Consider storing the transfer options in separate fields, as done by XprOptions(),
     //       instead of adding XferOptions here.
     TEXT  XferOptions[52];
+
+    // Connection Options. 0 is each one's default.
+    UBYTE RedialTries;          // failed connects tried again; 0: none
+    UBYTE RedialDelay;          // seconds between tries; 0: 10
+    UBYTE AntiIdleMinutes;      // a keep-alive after this long without a key sent; 0: never
+    UBYTE ConnectTimeout;       // seconds a connect may take; 0: the TCP stack's own limit
 };
 
 /*

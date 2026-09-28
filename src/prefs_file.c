@@ -12,7 +12,10 @@ enum
     OLD_COLOR = 200, OLD_FLAGS = 232, OLD_WIN = 236, OLD_SB = 244, OLD_UPLOADPATH = 252,
     OLD_DISPLAYDRIVER = 304, OLD_SB_LINES = 336, OLD_DISPLAYIDSTR = 340, OLD_TOOLBAR = 372,
     OLD_ESSENTIAL = 232,        // screen mode, font, paths and palette
-    OLD_V1_SIZE = 376
+    OLD_V1_SIZE = 376,
+    // The builds before v2.0 appended an extension block at 444:
+    OLD_REDIAL_TRIES = 444, OLD_REDIAL_DELAY = 445, OLD_ANTI_IDLE = 446, OLD_CONNECT_TIMEOUT = 447,
+    OLD_EXT_END = 508
 };
 
 // DCTelnet 1.x option flags (PrefsStruct.flags).
@@ -106,6 +109,13 @@ BOOL Prefs_FromLegacy(const UBYTE *old, size_t len, struct PrefsStruct *out)
     Text(out->TelnetTermType, sizeof(out->TelnetTermType), old + OLD_DISPLAYIDSTR,  32);
     out->ToolBarWinLeftEdge    = (WORD)Word(old + OLD_TOOLBAR);
     out->ToolBarWinTopEdge     = (WORD)Word(old + OLD_TOOLBAR + 2);
+    if (len < OLD_EXT_END)      // no extension block: its settings stay default
+        return TRUE;
+
+    out->RedialTries     = old[OLD_REDIAL_TRIES];
+    out->RedialDelay     = old[OLD_REDIAL_DELAY];
+    out->AntiIdleMinutes = old[OLD_ANTI_IDLE];
+    out->ConnectTimeout  = old[OLD_CONNECT_TIMEOUT];
     return TRUE;
 }
 

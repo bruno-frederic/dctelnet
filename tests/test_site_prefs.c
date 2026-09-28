@@ -158,7 +158,7 @@ static void test_display_differs_names_what_needs_a_reopen(void) {
     assert(SitePrefs_DisplayDiffers(&a, &b, &screen) && !screen);
 }
 
-/* An entry's settings file: 'DCS2', the group mask, the settings, the
+/* An entry's settings file: 'DCS4', the group mask, the settings, the
  * function keys and the login macro. A truncated, foreign or unknown file
  * is "no settings", never a half-read struct. */
 static void test_sidecar_round_trip_and_rejects(void) {
