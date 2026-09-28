@@ -5,8 +5,8 @@ CFLAGS := -std=c99 -Wall -Wextra -Werror -I../src
 
 TESTS := test_petscii_modules test_petscii_dispatch test_prefs_file test_site_prefs test_palette test_screenfont test_progdir test_listsel test_textedit test_dsr test_iconpens test_keys
 
-.PHONY: all clean check-encoding check-fonts check-icons
-all: $(TESTS) check-encoding check-fonts check-icons
+.PHONY: all clean check-encoding check-fonts check-icons check-ibmcon
+all: $(TESTS) check-encoding check-fonts check-icons check-ibmcon
 	@for t in $(TESTS); do echo "--- $$t ---"; ./$$t || exit 1; done
 
 # DCTelnet's own sources carry legacy 8-bit bytes (Amiga CSI 0x9B, Latin-1
@@ -28,6 +28,16 @@ check-fonts:
 # for fixed pens and drew pink and cyan on a standard palette.
 check-icons:
 	python3 ../tools/toolbar_icons.py check
+
+# The package's Devs/ibmcon.device must be the device the ibmcon/ source
+# builds: the package shipped the 1.4 binary long after the source was 1.11.
+# Needs vasm (vasmm68k_mot); skipped without it.
+check-ibmcon:
+	@if command -v vasmm68k_mot >/dev/null; then \
+		$(MAKE) -s -C ../ibmcon ibmcon.device && \
+		cmp ../ibmcon/ibmcon.device ../build/package/DCTelnet/Devs/ibmcon.device && \
+		echo "[OK] the package's ibmcon.device is the source's build"; \
+	else echo "[SKIP] check-ibmcon: no vasmm68k_mot"; fi
 
 MODULE_SRC := ../src/petscii_screencode.c ../src/petscii_fallback.c ../src/petscii_keymap.c
 MODULE_HDR := ../src/petscii_screencode.h ../src/petscii_fallback.h ../src/petscii_keymap.h

@@ -58,6 +58,9 @@ drawer or from `DEVS:`) and then runs `make check`:
 
     vasmm68k_mot -Fhunkexe -kick1hunks -nosym -o ibmcon.device ibmcon.device.bugfixed.asm
 
+The package ships this build as `build/package/DCTelnet/Devs/ibmcon.device`;
+`make check-ibmcon` in `tests/` fails when the two differ.
+
 (`-kick1hunks` keeps the relocations as classic HUNK_RELOC32 like the
 original SAS/C binary instead of the V37+ RELOC32SHORT form; `-nosym`
 drops the symbol table hunks.)
