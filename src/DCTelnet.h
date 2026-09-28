@@ -5,6 +5,7 @@
 #include <string.h>     // size_t
 
 // Types
+struct PrefsStruct;
 
 // ID of the gadget in top right corner when title bar is hidden in full screen
 #define GADGET_SCREEN_TO_BACK  20
@@ -45,6 +46,7 @@ enum MenuItemID
         MENU_DISCONNECT,
 
         MENU_ADDRESS_BOOK,
+        MENU_SAVE_ENTRY_SETTINGS,
 
         MENU_INFORMATION,
 
@@ -98,9 +100,28 @@ extern char server[64];
 extern long nScrollbackLines;
 extern long tcpSocket, nBytesReceived;
 extern struct DrawInfo *drawInfo;
+extern UWORD modeResX, modeResY;
 extern struct Menu *mainMenuStrip;
 extern struct MsgPort *iconPort;
 extern struct NewWindow newWin;
+extern struct PrefsStruct globalPrefs;   // global settings during an entry session
+extern ULONG sessionSettingsId;          // 0 = no entry session
+extern struct SiteHandChanges handChanges;   // settings changed by hand while connected
+struct SiteSettings;
+BOOL BeginEntrySession(ULONG settingsId, const struct SiteSettings *entry);
+void EndEntrySession(void);
+void DeferConnect(const char *name, const char *host, UWORD port, ULONG settingsId,
+                  const char *user, const char *pass, const char *loginMacro);
+void SendLoginMacro(const char *macro);
+BOOL SessionOverridesKeyboard(void);
+void AdoptEntrySession(ULONG settingsId, ULONG groups);
+BOOL ScreenModeInto(struct PrefsStruct *target);
+const struct PrefsStruct *GlobalSettings(void);
+const TEXT *GlobalFKeys(void);
+const struct PrefsStruct *ConnectBaseSettings(void);
+const TEXT *ConnectBaseFKeys(void);
+BOOL EditPalette(struct PrefsStruct *target);
+UWORD AppScreenDepth(struct Screen *s);
 extern struct List *scrollbackList;
 extern struct Screen *scr;
 extern struct TextFont *ansiFont;
