@@ -22,6 +22,8 @@ enum MenuItemID
         MENU_ABOUT,
 
         MENU_SCROLLBACK_WIN,
+        MENU_CAPTURE,
+        MENU_SAVE_SCREEN,
         MENU_ICONIFY,
         MENU_DISPLAY_SPEED_TEST,
         MENU_FINGER,

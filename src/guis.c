@@ -31,6 +31,7 @@
 #include "textedit.h"
 #include "iconpens.h"
 #include "screenfont.h"
+#include "ansiscan.h"
 #include <intuition/sghooks.h>
 
 struct BookStruct
@@ -1601,6 +1602,41 @@ void CloseScrollBack(void)
     }
 }
 
+// F2 in the scroll back: the next line below the top one holding the text
+// asked for (ignoring case), wrapping round to the start, scrolled to the
+// top. Asked each time, with the last text: Return searches on. TRUE when
+// *top moved.
+BOOL FindInScrollBack(ULONG *top)
+{
+    static char findText[64];
+    struct Node *node;
+    ULONG line, tried;
+
+    if (!GetStringRequester(scrollbackWin, "Find in Scroll Back", "Text:", findText, sizeof(findText))
+        || !findText[0] || IsListEmpty(scrollbackList))
+        return FALSE;
+    line = *top;
+    node = FindNode(scrollbackList, (UWORD)line);
+    for (tried = 0; node && tried < nScrollbackLines; tried++)
+    {
+        node = node->ln_Succ;                       // the next line ...
+        line++;
+        if (!node || !node->ln_Succ)                // ... or the first again
+        {
+            node = scrollbackList->lh_Head;
+            line = 0;
+        }
+        if (Ansi_FindText(node->ln_Name, strlen(node->ln_Name), findText) >= 0)
+        {
+            *top = line;
+            RefreshListView((UWORD)line);
+            return TRUE;
+        }
+    }
+    InfoReq(scrollbackWin, "\"%s\" is not in the scroll back.", findText);
+    return FALSE;
+}
+
 void RefreshListView(UWORD top)
 {
     register struct RastPort *rp = scrollbackWin->RPort;
@@ -1743,7 +1779,7 @@ void OpenScrollBack(UWORD sel)
                             newWin.IDCMPFlags = IDCMP_IDCMPUPDATE | LISTVIEWIDCMP | IDCMP_MENUPICK | IDCMP_NEWSIZE | IDCMP_CLOSEWINDOW | BUTTONIDCMP | IDCMP_RAWKEY;
                             newWin.Flags = WFLG_NOCAREREFRESH | WFLG_ACTIVATE|WFLG_CLOSEGADGET|WFLG_DRAGBAR|WFLG_DEPTHGADGET|WFLG_SIZEGADGET;
                             newWin.FirstGadget = Scroller;
-                            newWin.Title = "Scroll Back:  F1 - Clear  F3 - Print  F5 - Save";
+                            newWin.Title = "Scroll Back:  F1 - Clear  F2 - Find  F3 - Print  F5 - Save";
                             newWin.MinWidth   = WIN_MIN_WIDTH;
                             newWin.MinHeight  = WIN_MIN_HEIGHT;
                             newWin.MaxWidth   = DISP_MAX_WIDTH;
@@ -1751,7 +1787,7 @@ void OpenScrollBack(UWORD sel)
                             CheckDimensions(&newWin);
                             scrollbackWin = OpenWindow(&newWin);
                             /*scrollbackWin = OpenWindowTags(NULL,
-                                WA_Title,        "Scroll Back:  F1 - Clear  F3 - Print  F5 - Save",
+                                WA_Title,        "Scroll Back:  F1 - Clear  F2 - Find  F3 - Print  F5 - Save",
                                 WA_Left,        prefs.ScrollbackWinLeftEdge,
                                 WA_Top,            prefs.ScrollbackWinTopEdge,
                                 WA_Width,        prefs.ScrollbackWinWidth,

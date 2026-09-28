@@ -60,6 +60,7 @@ extern struct Library *CyberGfxBase;
 #include "dsr.h"
 #include "keys.h"
 #include "clip.h"
+#include "ansiscan.h"
 #include <devices/clipboard.h>
 #include "shipped.h"
 #ifdef __VBCC__
@@ -103,6 +104,8 @@ static struct NewMenu mainMenuDesc[] =
     {    NM_ITEM, "About",                          "A",             0,               0, (APTR)MENU_ABOUT},
     {    NM_ITEM, NM_BARLABEL,                       0 ,             0,               0, (APTR)MENU_BAR},
     {    NM_ITEM, "Scrollback window",              "X",             0,               0, (APTR)MENU_SCROLLBACK_WIN},
+    {    NM_ITEM, "Capture to File...",              0 ,     CHECKIT|MENUTOGGLE,     0, (APTR)MENU_CAPTURE},
+    {    NM_ITEM, "Save Screen...",                  0 ,             0,               0, (APTR)MENU_SAVE_SCREEN},
     {    NM_ITEM, "Iconify",                        "&",             0,               0, (APTR)MENU_ICONIFY},
     {    NM_ITEM, "Display Speed Test",             "Y",             0,               0, (APTR)MENU_DISPLAY_SPEED_TEST},
     {    NM_ITEM, "Finger",                         "@",             0,               0, (APTR)MENU_FINGER},
@@ -183,6 +186,9 @@ static struct NewMenu mainMenuDesc[] =
 #endif
 
 static void GetWindowMsg(struct Window *wwin);
+static void CaptureWrite(const UBYTE *data, long len);
+static void CaptureStop(void);
+static BOOL SelectionAvailable(void);
 static void SendMisc(char *str, long len);
 static void ReopenTerminal(void);
 static void OpenAnsiFont(void);
@@ -490,6 +496,7 @@ static void AnswerDsr(int kind)
 }
 
 #define IBMCMD_GETMODES 0x7FE2          // ibmcon.device 1.10: io_Actual = mode word
+#define IBMCMD_READTEXT 0x7FE3          // ibmcon.device 1.11: row io_Offset, 4 bytes a cell
 #define IBMCON_MODE_CURSOR_KEYS 0x08    //   bit 3: cursor key mode (CSI ?1h, DECCKM)
 
 // TRUE when the host asked for cursor key mode (CSI ?1h): the cursor keys
@@ -1651,12 +1658,15 @@ add:
             case CSI_CHAR:   // Amiga console CSI
                 n = 0;
                 i++;
-                while(i < size && str[i]>='0' && str[i]<=';')
                 {
-                    numb[n] = str[i];
-                    i++;
-                    n++;
-                    if(n > 30) n = 0;
+                    // Every parameter byte, '?' of CSI ?25h too (it stopped
+                    // at ';' and kept the rest as text).
+                    long end = (long)Ansi_ParamsEnd(str, (size_t)i, (size_t)size);
+
+                    n = end - i;
+                    if (n > 30) n = 30;
+                    memcpy(numb, str + i, n);
+                    i = end;
                 }
                 switch(str[i])
                 {
@@ -1724,6 +1734,7 @@ static void Receive(void)
 
     if (STATE_IS(APP_RAW_CONNECTION))
     {
+        CaptureWrite(recvBuffer, len);
         BbsWrite(recvBuffer, len);
         if (STATE_IS(APP_SCROLLBACK_ENABLED))
             AddBuf(recvBuffer, len);
@@ -1767,6 +1778,8 @@ static void Receive(void)
             }
         }
 
+        if (outLen > 0)
+            CaptureWrite(outBuffer, outLen);
         if (outLen > 0)
         {
             if (PETSCII_SESSION())
@@ -2512,6 +2525,7 @@ int main(int argc, char *argv[])
 
 clean_exit:
     DisConnect(FALSE, TRUE);
+    CaptureStop();                  // the capture file is complete
     CloseDisplay(TRUE);
 
     ClearScrollBack();
@@ -2545,18 +2559,112 @@ clean_exit:
     return returnCode;
 }
 
+// A file requester for a file to save, opened on DCTelnet's drawer: path
+// gets directory and file name.
+static BOOL AskSavePath(char *path, size_t max, const char *defaultName)
+{
+    char name[108];
+
+    strlcpy(path, "PROGDIR:", max);
+    strlcpy(name, defaultName, sizeof(name));
+    if (!FileRequester(win, path, (UWORD)max, name, sizeof(name),
+                       "#?", FILEREQ_SAVE))
+        return FALSE;
+    AddPart(path, name, (ULONG)max);
+    return TRUE;
+}
+
+// A new file at fname, asking first when one is there. 0: not opened.
+static BPTR OpenNewFileAsking(const char *fname)
+{
+    BPTR lock = Lock((STRPTR)fname, SHARED_LOCK);
+
+    if (lock)
+    {
+        UnLock(lock);
+        if (!ConfirmRequester(win, "OverWrite|Cancel",
+                              "File Already Exists."))
+            return 0;
+    }
+    return Open((STRPTR)fname, MODE_NEWFILE);
+}
+
+// DC Telnet > Capture to File: everything the BBS sends -- after the telnet
+// codes are taken out, before any translation -- goes on to a file as it
+// arrives, until the item is chosen again.
+static BPTR captureFile;
+
+static void CaptureWrite(const UBYTE *data, long len)
+{
+    if (captureFile && len > 0)
+        Write(captureFile, (APTR)data, len);
+}
+
+static void CaptureStop(void)
+{
+    struct MenuItem *item = GetMenuItemFromID(MENU_CAPTURE);
+
+    if (captureFile)
+    {
+        Close(captureFile);
+        captureFile = 0;
+    }
+    if (item) item->Flags &= ~CHECKED;
+}
+
+static void CaptureToggle(struct MenuItem *item)
+{
+    char path[256];
+
+    if (captureFile || !(item->Flags & CHECKED))
+    {
+        CaptureStop();
+        return;
+    }
+    item->Flags &= ~CHECKED;                    // checked once the file is open
+    if (AskSavePath(path, sizeof(path), "DCTelnet.ans") && (captureFile = OpenNewFileAsking(path)))
+        item->Flags |= CHECKED;
+}
+
+// DC Telnet > Save Screen: the terminal as it is, as ANSI (a .ans file):
+// the characters and colours read back from ibmcon's screen buffer (1.11).
+static void SaveScreen(void)
+{
+    static UBYTE cells[CLIP_CELL * SCREENFONT_MAX_COLS];
+    static char line[24 * SCREENFONT_MAX_COLS + 8];
+    char path[256];
+    ULONG attr = ANSI_ATTR_RESET;
+    UWORD cols, rows, row;
+    BPTR file;
+
+    if (!SelectionAvailable())
+    {
+        InfoReq(win, "Saving the screen needs the ibmcon.device renderer, 1.11 or later.");
+        return;
+    }
+    if (!AskSavePath(path, sizeof(path), "Screen.ans") || !(file = OpenNewFileAsking(path)))
+        return;
+    TerminalGrid(&cols, &rows);
+    for (row = 1; row <= rows; row++)
+    {
+        writeConsoleReq->io_Command = IBMCMD_READTEXT;
+        writeConsoleReq->io_Data    = cells;
+        writeConsoleReq->io_Length  = sizeof(cells);
+        writeConsoleReq->io_Offset  = row;
+        DoIO((struct IORequest *)writeConsoleReq);
+        if (writeConsoleReq->io_Error)
+            break;
+        Write(file, line, (LONG)Ansi_ScreenRow(cells, (UWORD)(writeConsoleReq->io_Actual / CLIP_CELL),
+                                               !ansiOwnPens, &attr, line));
+    }
+    Write(file, "\033[0m", 4);
+    Close(file);
+}
+
 static void SaveScrollBack(char *fname)
 {
     struct Scroll *worknode, *nextnode;
-    fileHandle = Lock(fname, SHARED_LOCK);
-    if(fileHandle)
-    {
-        UnLock(fileHandle);
-        if (! ConfirmRequester(win, "OverWrite|Cancel",
-                               "File Already Exists."))
-            return;
-    }
-    fileHandle = Open(fname, MODE_NEWFILE);
+    fileHandle = OpenNewFileAsking(fname);
     if(fileHandle)
     {
         worknode = (struct Scroll *)scrollbackList->lh_Head;
@@ -2840,7 +2948,6 @@ static void SendKey(int id)
 // clipboard's text; Edit > Copy Screen copies the whole screen. The text is
 // read back from ibmcon's screen buffer (IBMCMD_READTEXT): an older ibmcon,
 // XEM or console.device cannot select.
-#define IBMCMD_READTEXT 0x7FE3          // ibmcon.device 1.11: row io_Offset, 4 bytes a cell
 #define CLIP_READ_MAX   16384           // the most of a clip that is pasted
 
 static struct ClipRange selShownRange;
@@ -3194,23 +3301,19 @@ static void GetWindowMsg(struct Window *wwin)
                 case RAWKEY_CRSRDOWN:
                     goto down;
                 case RAWKEY_F5:
-                    buf[0] = '\0';
-                    strlcpy(fbuf, "DCTelnet.Cap", sizeof(fbuf));
-                    if (FileRequester(win,
-                                      buf,  sizeof(buf),
-                                      fbuf, sizeof(fbuf),
-                                      "#?",
-                                      FILEREQ_SAVE))
-                    {
-                        AddPart(buf, fbuf, sizeof(buf));
-                        //strcat(buf, fbuf);
+                    if (AskSavePath(buf, sizeof(buf), "DCTelnet.Cap"))
                         SaveScrollBack(buf);
-                    }
                     break;
                 case RAWKEY_F3:
                     if (ConfirmRequester(win, "Print|Cancel",
                                          "Print Scrollback?"))
                         SaveScrollBack("PRT:");
+                    break;
+                case RAWKEY_F2:
+                    if (FindInScrollBack(&lasttop))
+                        SetGadgetAttrs((struct Gadget *)Scroller, scrollbackWin, NULL,
+                            PGA_Top,    lasttop,
+                        TAG_DONE);
                     break;
                 case RAWKEY_F1:
                     ClearScrollBack();
@@ -3470,6 +3573,14 @@ static void GetWindowMsg(struct Window *wwin)
 
                     case MENU_PASTE:
                         PasteClipboard();
+                        break;
+
+                    case MENU_CAPTURE:
+                        CaptureToggle(item);
+                        break;
+
+                    case MENU_SAVE_SCREEN:
+                        SaveScreen();
                         break;
 
                     case MENU_COPY_SCREEN:
@@ -4730,8 +4841,10 @@ void CreateAppMenus(void)
     // Disable menu items that are only relevant for specific renderers.
     GetNewMenuItemFromID(MENU_FAST_SCROLL     )->nm_Flags = NM_ITEMDISABLED;
     // The screen's text is read back from ibmcon's screen buffer: without
-    // it (another renderer) Copy Screen, and selecting with the mouse, cannot work.
+    // it (another renderer) Copy Screen, Save Screen and selecting with the
+    // mouse cannot work.
     GetNewMenuItemFromID(MENU_COPY_SCREEN     )->nm_Flags = NM_ITEMDISABLED;
+    GetNewMenuItemFromID(MENU_SAVE_SCREEN     )->nm_Flags = NM_ITEMDISABLED;
     GetNewMenuItemFromID(MENU_XEM_LIB_OPTIONS )->nm_Flags = NM_ITEMDISABLED;
 
     if (STATE_IS(APP_RENDERER_BUILTIN))
@@ -4755,6 +4868,7 @@ void CreateAppMenus(void)
 
         GetNewMenuItemFromID(MENU_FAST_SCROLL)->nm_Flags = HIGHCOMP|CHECKIT|MENUTOGGLE;
         GetNewMenuItemFromID(MENU_COPY_SCREEN)->nm_Flags = 0;
+        GetNewMenuItemFromID(MENU_SAVE_SCREEN)->nm_Flags = 0;
     }
 
     // The NewMenu item CHECKED flag will be set according to saved Prefs flags. Note: these flags
@@ -4772,6 +4886,12 @@ void CreateAppMenus(void)
     SetNewMenuCheckFromPref(MENU_RAW_CONNECTION,          APP_RAW_CONNECTION);
     SetNewMenuCheckFromPref(MENU_FAST_SCROLL,             APP_FAST_SCROLL_ENABLED);
     SetNewMenuCheckFromPref(MENU_PETSCII_MODE,            APP_PETSCII_MODE);
+
+    // A capture runs on over a display reopen: its item keeps the check mark.
+    if (captureFile)
+        GetNewMenuItemFromID(MENU_CAPTURE)->nm_Flags |= CHECKED;
+    else
+        GetNewMenuItemFromID(MENU_CAPTURE)->nm_Flags &= ~CHECKED;
 
 
     // Gadtools CreateMenuA() generates a list of Intuition Menu structs.
