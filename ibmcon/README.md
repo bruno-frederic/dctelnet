@@ -1,4 +1,4 @@
-# ibmcon.device -- annotated disassembly (1.4 bug-fixed, 1.5 to 1.8)
+# ibmcon.device -- annotated disassembly (1.4 bug-fixed, 1.5 to 1.9)
 
 The ANSI console DCTelnet draws its terminal with. `ibmcon.device` 1.4
 (Mar 9 1998) was freeware and shipped as a binary only; this drawer holds
@@ -128,3 +128,15 @@ A1200 (FS-UAE, AGA and Picasso96 screens) and on the Workbench.
   Measured on an emulated A1200: a task holding bit 31 opens and closes the
   device -- 1.7 frees the bit, 1.8 leaves it allocated.
 * Version 1.8 (lib_Revision 8).
+
+## 1.9 (2026-09-28)
+
+* **Cursor Left/Right stop at the margins.** CUB at column 1 went up to the
+  end of the previous line and CUF at the right edge wrapped to the next
+  one (with auto-wrap on); ANSI.SYS and VT100 stop there. A BBS moving back
+  with `CSI 79 D` from short of column 80 drew a line too high (Absinthe's
+  ticker, DCTelnet issue #11).
+* **`IBMCMD_GETCURSOR` ($7FE1).** Replies with `io_Actual` = row << 16 |
+  column (1-based), so a client can answer a BBS's Device Status Report
+  (`CSI 6 n`): the console itself cannot send anything back.
+* Version 1.9 (lib_Revision 9).

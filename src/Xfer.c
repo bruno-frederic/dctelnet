@@ -214,7 +214,16 @@ long __SAVE_DS__ __ASM__ xpr_swrite(__REG__(a0, char *buffer),
 {
     long ret = -1;
     register ULONG i = 0, j = 0;
-    UBYTE *tb = AllocMem(size+size, MEMF_PUBLIC);
+    UBYTE *tb;
+
+    // XEM libraries answer the BBS (Device Status Reports...) with size -1:
+    // a NUL-terminated string. Taken as a length it was AllocMem(-2), which
+    // failed, and the answer was never sent.
+    if (size < 0)
+        size = (long)strlen(buffer);
+    if (size == 0)
+        return 0;
+    tb = AllocMem(size+size, MEMF_PUBLIC);
     if(tb)
     {
         while(i < size)
