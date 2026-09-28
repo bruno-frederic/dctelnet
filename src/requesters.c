@@ -1065,7 +1065,7 @@ clean_and_return:
  * @return FALSE if the requester was cancelled, an error occurred, or the selected mode is not
  *         available on the system.
  *
- * @note Modes deeper than maxDepth bitplanes are not offered (4 for the built-in renderer).
+ * @note Modes deeper than maxDepth bitplanes are not offered.
  *
  * @note All pointer parameters are mandatory and must be non-NULL.
  */
@@ -1109,7 +1109,7 @@ BOOL ScreenModeRequester(struct Window *parent, ULONG* displayID,
                         ASLSM_DoHeight,       TRUE,
                         ASLSM_DoDepth,        TRUE,
                         ASLSM_MinWidth,       640,
-                        ASLSM_MaxDepth,       maxDepth, // the renderer's limit (Prefs_MaxDepth)
+                        ASLSM_MaxDepth,       maxDepth,
 
                         TAG_DONE);
 
