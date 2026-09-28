@@ -97,6 +97,9 @@ struct PrefsStruct
 
     // New fields for the next file format version.
     // ...
+    // Fields are only ever appended (below): an older file loads with the new
+    // ones 0, which ValidateAndInitPrefs() turns into their defaults
+    // (Prefs_Decode in prefs_file.c).
 
     // TODO: Consider storing the transfer options in separate fields, as done by XprOptions(),
     //       instead of adding XferOptions here.
@@ -199,38 +202,6 @@ struct PrefsStruct
 #define WIN_MIN_HEIGHT     50
 #define DISP_MAX_WIDTH   7680   // UHD 8K
 #define DISP_MAX_HEIGHT  4320   // UHD 8K
-
-struct LegacyPrefsStruct
-{
-    ULONG DisplayID;
-    UWORD DisplayWidth,
-          DisplayHeight,
-          DisplayDepth,
-          fontsize;
-    char  fontname[32],
-          downloadpath[52],
-          xferlibrary[52],
-          xferinit[52];
-    UWORD color[16];
-
-/* Non-essential prefs, ignored during conversion:
-    ULONG flags;
-    UWORD win_left,
-          win_top,
-          win_width,
-          win_height,
-          sb_left,
-          sb_top,
-          sb_width,
-          sb_height;
-    char  uploadpath[52],
-          displaydriver[32];
-    ULONG sb_lines;
-    char  displayidstr[32];
-    UWORD toolBarWin_left,
-          toolBarWin_top;
-*/
-};
 
 #define F_KEY_COUNT 10
 #define F_KEY_SIZE  152  // 151 chars + '\0'

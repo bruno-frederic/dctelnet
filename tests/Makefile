@@ -1,9 +1,9 @@
-# test/Makefile -- host-native build for DCTelnet's platform-independent
+# tests/Makefile -- host-native build for DCTelnet's platform-independent
 # PETSCII logic. Separate from src/Makefile (vbcc/Amiga target).
 CC := cc
 CFLAGS := -std=c99 -Wall -Wextra -Werror -I../src
 
-TESTS := test_petscii_modules test_petscii_dispatch
+TESTS := test_petscii_modules test_petscii_dispatch test_prefs_file
 
 .PHONY: all clean check-encoding check-fonts
 all: $(TESTS) check-encoding check-fonts
@@ -21,7 +21,7 @@ check-encoding:
 # first build put the DiskFontHeader 4 bytes late and every OpenDiskFont()
 # failed silently.
 check-fonts:
-	python3 ../tools/check_amiga_font.py ../Fonts/Petscii.font ../Fonts/PetsciiLower.font
+	python3 ../tools/check_amiga_font.py ../build/package/DCTelnet/Fonts/Petscii.font ../build/package/DCTelnet/Fonts/PetsciiLower.font
 
 MODULE_SRC := ../src/petscii_screencode.c ../src/petscii_fallback.c ../src/petscii_keymap.c
 MODULE_HDR := ../src/petscii_screencode.h ../src/petscii_fallback.h ../src/petscii_keymap.h
@@ -32,6 +32,9 @@ test_petscii_modules: test_petscii_modules.c $(MODULE_SRC) $(MODULE_HDR)
 test_petscii_dispatch: test_petscii_dispatch.c ../src/petscii_dispatch.c ../src/petscii_dispatch.h \
                        ../src/petscii_screencode.c ../src/petscii_fallback.c $(MODULE_HDR)
 	$(CC) $(CFLAGS) -o $@ $(filter %.c,$^)
+
+test_prefs_file: test_prefs_file.c ../src/prefs_file.c ../src/prefs_file.h ../src/prefs.h
+	$(CC) $(CFLAGS) -Ishim -o $@ $(filter %.c,$^)
 
 clean:
 	rm -f $(TESTS)
