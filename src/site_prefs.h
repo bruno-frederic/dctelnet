@@ -125,13 +125,16 @@ BOOL SitePrefs_Decode(struct SiteSettings *out, const UBYTE *buf, size_t len,
 
 /*
  * Login macro, sent after connecting: \u username, \p password, \r Return,
- * \d wait one second, \\ a backslash; any other \x goes out as written.
+ * \d wait one second, \w"text" wait until the BBS sent text, \\ a
+ * backslash; any other \x goes out as written.
  * Returns the next segment to send (in out, NOT NUL-terminated, at most max
  * bytes) and advances *cursor. *wait is TRUE when the segment ended at a \d:
- * the caller waits a second before asking for the next one.
+ * the caller waits a second before asking for the next one; waitText is not
+ * empty when it ended at a \w: the caller waits for that text.
  */
 size_t SitePrefs_NextMacroSegment(const char **cursor, const char *user, const char *pass,
-                                  char *out, size_t max, BOOL *wait);
+                                  char *out, size_t max, BOOL *wait,
+                                  char *waitText, size_t waitMax);
 
 /* An entry overriding the Keyboard group: its F1-F10 become live, the live
  * (global) ones are kept in aside. Returns FALSE (nothing moved) otherwise. */
