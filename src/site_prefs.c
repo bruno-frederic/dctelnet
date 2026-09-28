@@ -127,7 +127,7 @@ static const struct { size_t offset, size; } prefsFields[] =
     F(nScrollbackLines), F(TelnetTermType), F(XemLibrary),
     F(XferLibrary), F(DownloadPath), F(UploadPath), F(XferOptions),
     F(RedialTries), F(RedialDelay), F(AntiIdleMinutes), F(ConnectTimeout), F(Charset),
-    F(Reserved)
+    F(Bell), F(AnsiMusic), F(Reserved)
 #undef F
 };
 

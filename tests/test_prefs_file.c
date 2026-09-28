@@ -113,10 +113,10 @@ static void test_the_extension_block_of_the_builds_before_v2_carries(void)
     struct PrefsStruct got;
     legacy_file(0);
     memset(file + 376, 0, 508 - 376);
-    file[444] = 3; file[445] = 20; file[446] = 5; file[447] = 30; file[448] = 2;
+    file[444] = 3; file[445] = 20; file[446] = 5; file[447] = 30; file[448] = 2; file[449] = 1; file[450] = 1;
     assert(Prefs_Decode(file, 508, &got) == PREFS_FILE_LEGACY);
     assert(got.RedialTries == 3 && got.RedialDelay == 20 && got.AntiIdleMinutes == 5 && got.ConnectTimeout == 30);
-    assert(got.Charset == 2);                                   /* UTF-8 */
+    assert(got.Charset == 2 && got.Bell == 1 && got.AnsiMusic == 1);   /* UTF-8, Sound, music on */
     assert(Prefs_Decode(file, 444, &got) == PREFS_FILE_LEGACY && got.RedialTries == 0);
 }
 

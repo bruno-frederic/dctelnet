@@ -67,6 +67,11 @@ enum MenuItemID
             MENU_CHARSET_CP437,     // CP437, LATIN1, UTF8 in this order:
             MENU_CHARSET_LATIN1,    //   minus MENU_CHARSET_CP437 is the
             MENU_CHARSET_UTF8,      //   charset.h value
+        MENU_BELL,
+            MENU_BELL_FLASH,        // FLASH, SOUND, OFF in this order (prefs.h)
+            MENU_BELL_SOUND,
+            MENU_BELL_OFF,
+        MENU_ANSI_MUSIC,
 
         MENU_LOCAL_ECHO,
         MENU_BACKSPACE_DEL_SWAP,
