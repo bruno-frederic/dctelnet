@@ -20,6 +20,7 @@
 #include "DCTelnet.h"                 // win, scr, ansiFont, prefs.XemLibrary, buf
 #include "Xfer.h"                     // xpr_sread(), xpr_swrite(), xpr_sflush(), xpr_options()
 #include "requesters.h"
+#include "shipped.h"
 
 struct Library *XEmulatorBase;
 struct XEM_IO *xemIO;
@@ -115,7 +116,7 @@ BOOL InitializeXemLibrary(CONST_STRPTR libName)
         goto clean_and_return;
     }
 
-    XEmulatorBase = OpenLibrary(libName, 0);
+    XEmulatorBase = OpenNewestLibrary(libName, 0);
     if (XEmulatorBase == NULL)
     {
         InfoReq(win, "Failed to open XEM library: %s", libName);
@@ -127,7 +128,7 @@ BOOL InitializeXemLibrary(CONST_STRPTR libName)
     xemIO->xem_font        = ansiFont;
     //xemIO->xem_console   = NULL;
     //xemIO->xem_signal    = 0;
-    xemIO->xem_screendepth = scr->BitMap.Depth;
+    xemIO->xem_screendepth = AppScreenDepth(scr);   // RTG: struct BitMap is not to be read
 
     xemIO->xem_sread             = xpr_sread;
     xemIO->xem_swrite            = xpr_swrite;
@@ -156,6 +157,10 @@ BOOL InitializeXemLibrary(CONST_STRPTR libName)
         InfoReq(win, "XEmulatorSetup() failed!");
         goto clean_and_return;
     }
+
+    // The options the user chose for this connection (an Address Book entry's own,
+    // or the global ones); no file yet = the library's defaults.
+    XEmulatorPreferences(xemIO, (STRPTR)CurrentXemOptionsPath(), XEM_PREFS_LOAD);
 
     // XEmulatorOpenConsole has to be called after a comm-proggy has opened (or changed) its screen
     // and/or window. XEmulatorOpenConsole resets its internal data structure and sets custom-fonts,
@@ -188,6 +193,19 @@ clean_and_return:
     }
 
     return FALSE;
+}
+
+// Load the options file for the current connection into a running XEM library.
+void ReloadXemOptions(void)
+{
+    if (xemIO)
+        XEmulatorPreferences(xemIO, (STRPTR)CurrentXemOptionsPath(), XEM_PREFS_LOAD);
+}
+
+// Save the running XEM library's options to a file; FALSE when XEM is not in use.
+BOOL SaveXemOptions(const char *path)
+{
+    return xemIO && XEmulatorPreferences(xemIO, (STRPTR)path, XEM_PREFS_SAVE);
 }
 
 // Unitilize XEM library if it was initialized (does nothing if it was not initialized)
