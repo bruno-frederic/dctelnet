@@ -113,6 +113,19 @@ BOOL SitePrefs_DisplayDiffers(const struct PrefsStruct *a, const struct PrefsStr
     return *reopenScreen || windows;
 }
 
+BOOL SitePrefs_OnlyLookDiffers(const struct PrefsStruct *a, const struct PrefsStruct *b)
+{
+    static struct PrefsStruct look;
+    BOOL reopenScreen;
+
+    look = *a;
+    look.FontSize = b->FontSize;
+    memcpy(look.FontName, b->FontName, sizeof(look.FontName));
+    memcpy(look.AnsiColors, b->AnsiColors, sizeof(look.AnsiColors));
+    memcpy(look.DeviceColors, b->DeviceColors, sizeof(look.DeviceColors));
+    return !SitePrefs_DisplayDiffers(&look, b, &reopenScreen);
+}
+
 /*
  * Settings files: 'DCTS' (DCTFileHeader, version 1, dataSize = the
  * PrefsStruct size), then groups, PrefsStruct, fKeys, loginMacro. Before

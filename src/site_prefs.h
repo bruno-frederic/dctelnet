@@ -57,6 +57,11 @@ void SitePrefs_Restore(struct PrefsStruct *live, const struct PrefsStruct *globa
 void SitePrefs_ForSave(struct PrefsStruct *out, const struct PrefsStruct *live,
                        const struct PrefsStruct *global, BOOL sessionActive);
 
+/* TRUE when a and b differ only in the terminal's look -- the font and the
+ * palette. On the Workbench only the console reopens for that; the window
+ * stays where it is. */
+BOOL SitePrefs_OnlyLookDiffers(const struct PrefsStruct *a, const struct PrefsStruct *b);
+
 /* TRUE when switching between a and b needs the display reopened;
  * *reopenScreen is set when the screen itself must be reopened too, not
  * only the windows (the same split as MENU_SCREEN_FONT vs MENU_TOOL_BAR). */

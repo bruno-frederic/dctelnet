@@ -107,6 +107,15 @@ static void test_an_old_prefs_file_keeps_all_its_settings(void)
                          | APP_RENDERER_IBMCON_DEVICE));
 }
 
+/* The builds before v2.0 added their own flags after bit 15. */
+static void test_the_flags_of_the_builds_before_v2_carry(void)
+{
+    struct PrefsStruct got;
+    size_t n = legacy_file((1UL << 3) | (1UL << 16));          /* Workbench, snapshot size */
+    assert(Prefs_Decode(file, n, &got) == PREFS_FILE_LEGACY);
+    assert(got.State & APP_WINDOW_SNAPSHOT);
+}
+
 static void test_old_hide_options_and_xem_map_to_the_new_ones(void)
 {
     struct PrefsStruct got;
@@ -155,6 +164,7 @@ int main(void)
     test_damaged_files_are_refused();
     test_an_old_prefs_file_keeps_all_its_settings();
     test_old_hide_options_and_xem_map_to_the_new_ones();
+    test_the_flags_of_the_builds_before_v2_carry();
     test_a_short_old_file_keeps_the_essentials();
     test_a_256_colour_screen_does_not_fit_the_built_in_renderer();
     printf("prefs_file: all assertions passed\n");
