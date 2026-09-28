@@ -437,6 +437,9 @@ static void BuiltinCovered(void)
 
 static void SelectionHide(void);
 
+// console.device's colour fix: a sequence split between writes (ConWrite).
+static struct AnsiSwap17 consoleSwap;
+
 static void ConWrite(char *data, long len)
 {
     SelectionHide();                // the text may land on it
@@ -464,6 +467,25 @@ static void ConWrite(char *data, long len)
             // Doc about passing requests to I/O device:
             // https://amigadev.elowar.com/read/ADCD_2.1/Devices_Manual_guide/node0006.html
 
+            // console.device: SGR colours swap 1 and 7 (Ansi_Swap17): it draws plain
+            // text in pen 1, white in ibmcon's order, and SGR 31 (red) in pen 1 too.
+            if (STATE_IS(APP_RENDERER_CONSOLE_DEVICE))
+            {
+                static UBYTE swapped[1024 + ANSI_SWAP17_HELD];
+
+                while (len > 0)
+                {
+                    long part = len < 1024 ? len : 1024;
+
+                    writeConsoleReq->io_Data = swapped;
+                    writeConsoleReq->io_Length = (LONG)Ansi_Swap17(&consoleSwap, (UBYTE *)data, (size_t)part, swapped);
+                    writeConsoleReq->io_Command = CMD_WRITE;
+                    DoIO((struct IORequest *)writeConsoleReq);
+                    data += part;
+                    len -= part;
+                }
+                return;
+            }
             // An I/O request typically has three fields set for every command sent to a device:
             writeConsoleReq->io_Data = data;
             writeConsoleReq->io_Length = len;
@@ -2270,7 +2292,15 @@ static void Receive(void)
                             if (STATE_IS(APP_RENDERER_BUILTIN))
                                 term_set_font(wanted);      // (sets the RastPort's too)
                             else
+                            {
                                 SetFont(win->RPort, wanted);
+                                // console.device draws with its own copy of the font
+                                // (ConUnit cu_Font, set at OpenDevice): both C64 sets
+                                // have the same cell, so it takes the other one live.
+                                if (STATE_IS(APP_RENDERER_CONSOLE_DEVICE) && isConDeviceOpened
+                                    && writeConsoleReq->io_Unit)
+                                    ((struct ConUnit *)writeConsoleReq->io_Unit)->cu_Font = wanted;
+                            }
                         }
                     }
                 }
@@ -3897,6 +3927,26 @@ static void PasteClipboard(void)
     if (out) FreeVec(out);
 }
 
+/**
+ * @brief How the own screen lays out its pens for a renderer (OpenAppScreen):
+ *        ANSI colours on pens 0-15 in ANSI order (built-in, XEM), in ibmcon's
+ *        order (console.device, ibmcon), or on pens of their own with
+ *        Intuition's UI pens (ibmcon with 32+ colours). Intuition applies it
+ *        only when the screen opens: a renderer of another layout needs a new
+ *        screen -- console.device after ibmcon on 256 colours drew on the
+ *        UI's grey pen 0.
+ */
+static int ScreenPenLayout(ULONG renderer)
+{
+    UBYTE pens[16];
+
+    if (renderer & (APP_RENDERER_BUILTIN | APP_RENDERER_XEM_LIB))
+        return 0;
+    if ((renderer & APP_RENDERER_IBMCON_DEVICE) && Palette_AnsiPens(prefs.DisplayDepth, pens))
+        return 2;
+    return 1;
+}
+
 static void GetWindowMsg(struct Window *wwin)
 {
     struct IntuiMessage *message;
@@ -4403,8 +4453,7 @@ static void GetWindowMsg(struct Window *wwin)
                             // Changing the pen mapping requires reopening the screen,
                             // because Intuition only applies SA_Pens during screen creation
                             // (was: the renderer being left).
-                            shouldReopenScreen = (was & (APP_RENDERER_CONSOLE_DEVICE
-                                                         | APP_RENDERER_IBMCON_DEVICE)) != 0;
+                            shouldReopenScreen = ScreenPenLayout(was) != ScreenPenLayout(prefs.State & APP_RENDERER_ALL);
 
                             // A screen mode chosen for another renderer may be one the
                             // built-in renderer cannot hold 80x25 cells in.
@@ -4443,8 +4492,7 @@ static void GetWindowMsg(struct Window *wwin)
                             STATE_UNSET(APP_RENDERER_ALL);
                             STATE_SET(APP_RENDERER_CONSOLE_DEVICE);
 
-                            shouldReopenScreen = (was & (APP_RENDERER_BUILTIN
-                                                         | APP_RENDERER_XEM_LIB)) != 0;
+                            shouldReopenScreen = ScreenPenLayout(was) != ScreenPenLayout(prefs.State & APP_RENDERER_ALL);
                             shouldRestart = TRUE;
                         }
                     break;
@@ -4463,8 +4511,7 @@ static void GetWindowMsg(struct Window *wwin)
                             STATE_UNSET(APP_RENDERER_ALL);
                             STATE_SET(APP_RENDERER_XEM_LIB);
 
-                            shouldReopenScreen = (was & (APP_RENDERER_CONSOLE_DEVICE
-                                                         | APP_RENDERER_IBMCON_DEVICE)) != 0;
+                            shouldReopenScreen = ScreenPenLayout(was) != ScreenPenLayout(prefs.State & APP_RENDERER_ALL);
                         }
 
                         // Restart even when prefs.displaydriver[0] == '\0', this forces a menu
@@ -4481,8 +4528,7 @@ static void GetWindowMsg(struct Window *wwin)
                             STATE_UNSET(APP_RENDERER_ALL);
                             STATE_SET(APP_RENDERER_IBMCON_DEVICE);
 
-                            shouldReopenScreen = (was & (APP_RENDERER_BUILTIN
-                                                         | APP_RENDERER_XEM_LIB)) != 0;
+                            shouldReopenScreen = ScreenPenLayout(was) != ScreenPenLayout(prefs.State & APP_RENDERER_ALL);
                             shouldRestart = TRUE;
                         }
                     break;
@@ -5076,6 +5122,7 @@ static BOOL OpenConsoleDevice(void)
     // ibmcon on the Workbench: the ANSI colours take 16 shared pens of exactly
     // their colours from its palette (V39); they go back in CloseConsoleDevice().
     ObtainWorkbenchPens();
+    memset(&consoleSwap, 0, sizeof(consoleSwap));   // a fresh console: no sequence half-read
 
     //the window that is used by the console device for output:
     writeConsoleReq->io_Data = win;

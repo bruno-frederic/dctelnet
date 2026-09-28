@@ -86,9 +86,43 @@ static void test_bells_are_taken_out(void)
     assert(Ansi_StripByte(text, &len, 7) == 0 && len == 2);
 }
 
+static void swap(struct AnsiSwap17 *st, const char *in, char *out)
+{
+    size_t l = strlen(out), n = Ansi_Swap17(st, (const UBYTE *)in, strlen(in), (UBYTE *)out + l);
+    out[l + n] = 0;
+}
+
+/* console.device: SGR 31 is pen 1, which holds white (ibmcon's order) -- red
+ * and white were swapped. The colours of SGR sequences swap 1 and 7; nothing
+ * else changes. */
+static void test_console_colours_swap_red_and_white_in_sgr_only(void)
+{
+    struct AnsiSwap17 st;
+    char out[256];
+
+    memset(&st, 0, sizeof(st)); out[0] = 0;
+    swap(&st, "\x1b[31mred\x1b[37;41mw\x1b[1;91;107m\x1b[0m", out);
+    assert(strcmp(out, "\x1b[37mred\x1b[31;47mw\x1b[1;97;101m\x1b[0m") == 0);
+
+    memset(&st, 0, sizeof(st)); out[0] = 0;
+    swap(&st, "\x1b[31;37H\x1b[17m\x1b[3;1m\x1b[32;47m", out);     /* a move, 17, 3;1, green */
+    assert(strcmp(out, "\x1b[31;37H\x1b[17m\x1b[3;1m\x1b[32;41m") == 0);
+
+    memset(&st, 0, sizeof(st)); out[0] = 0;
+    swap(&st, "\x1b[38;5;31;41m\x1b[48;2;31;37;41;37m", out);   /* 256 and true colour kept */
+    assert(strcmp(out, "\x1b[38;5;31;47m\x1b[48;2;31;37;41;31m") == 0);
+
+    memset(&st, 0, sizeof(st)); out[0] = 0;
+    swap(&st, "a\x1b[3", out);                                    /* split between reads */
+    assert(strcmp(out, "a") == 0);
+    swap(&st, "1mb\x9b" "47m\x1b" "c", out);                          /* 8-bit CSI; ESC c */
+    assert(strcmp(out, "a\x1b[37mb\x9b" "41m\x1b" "c") == 0);
+}
+
 int main(void)
 {
     test_bells_are_taken_out();
+    test_console_colours_swap_red_and_white_in_sgr_only();
     test_private_parameters_are_skipped_whole();
     test_find_ignores_case();
     test_screen_row_as_ansi();
