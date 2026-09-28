@@ -382,6 +382,48 @@ BYTE dontUseSig31 = -1; // don't use it, ibmcon.device will destroy it.
 #define send_data(data, len) TCPSend((data), (len))
 #include "term-engine.c"
 
+/**
+ * @brief The built-in renderer's terminal: the text area of the terminal window.
+ *        Below the screen's title bar, so the rows match what the BBS is told.
+ */
+static int BuiltinInit(void)
+{
+    WORD x0 = win->LeftEdge + win->BorderLeft, y0 = win->TopEdge + win->BorderTop;
+    BOOL gzz = (win->Flags & WFLG_GIMMEZEROZERO) != 0;
+
+    return term_init_area(scr, win->RPort, gzz ? x0 : win->LeftEdge, gzz ? y0 : win->TopEdge,
+                          x0, y0, win->Width - win->BorderLeft - win->BorderRight,
+                          win->Height - win->BorderTop - win->BorderBottom, ansiFont);
+}
+
+/**
+ * @brief Tell retro32-term whether anything lies over the terminal: a layer in
+ *        front of the terminal window that overlaps it (a requester, another
+ *        DCTelnet window, an open menu). It draws straight into the screen
+ *        bitmap only while nothing does; otherwise through the window's
+ *        RastPort, whose layer keeps what is covered. Before it did, it drew
+ *        over such windows, scrolled them along, and left them behind.
+ */
+static void BuiltinCovered(void)
+{
+    struct Layer *l;
+    WORD x0, y0, x1, y1;
+    BOOL covered = FALSE;
+
+    if (!scr || !win)
+        return;
+    x0 = win->LeftEdge + win->BorderLeft;
+    y0 = win->TopEdge + win->BorderTop;
+    x1 = win->LeftEdge + win->Width - win->BorderRight - 1;
+    y1 = win->TopEdge + win->Height - win->BorderBottom - 1;
+    if (LayersBase) LockLayerInfo(&scr->LayerInfo); else Forbid();
+    for (l = scr->LayerInfo.top_layer; l && l != win->WLayer && !covered; l = l->back)
+        covered = l->bounds.MinX <= x1 && l->bounds.MaxX >= x0
+               && l->bounds.MinY <= y1 && l->bounds.MaxY >= y0;
+    if (LayersBase) UnlockLayerInfo(&scr->LayerInfo); else Permit();
+    term_covered(covered);
+}
+
 
 static void SelectionHide(void);
 
@@ -394,9 +436,11 @@ static void ConWrite(char *data, long len)
         {
             // With retro32-term, drawing only ever happens with the cursor hidden, so glyphs never
             // land on an inverted cell.
+            BuiltinCovered();
             cursor_hide();
             while (len-- > 0)
                 term_feed((UBYTE)*data++);
+            term_flush();
             cursor_show();
             return; // direct return because maximal optimization is needed for this frequently called function
         }
@@ -1459,6 +1503,14 @@ static void TerminalGrid(UWORD *cols, UWORD *rows)
 {
     struct TextFont *cell = win->RPort->Font;
 
+    // The built-in renderer's grid is the engine's: at most 80 columns
+    // however wide the window (term_init_area).
+    if (STATE_IS(APP_RENDERER_BUILTIN) && term_rows > 0)
+    {
+        *cols = (UWORD)term_cols;
+        *rows = (UWORD)term_rows;
+        return;
+    }
     ScreenFont_Grid(win->Width, win->Height, win->GZZWidth, win->GZZHeight,
                     (win->Flags & WFLG_GIMMEZEROZERO) != 0,
                     cell->tf_XSize, cell->tf_YSize, cols, rows);
@@ -2808,6 +2860,10 @@ int main(int argc, char *argv[])
             if(i != 0 || SshConn_Buffered()) Receive();
 
         } else { // app is not iconified
+
+            // Windows opened or closed over the built-in renderer's terminal since the last time
+            if (STATE_IS(APP_RENDERER_BUILTIN))
+                BuiltinCovered();
 
             winsig = 1L << win->UserPort->mp_SigBit;
             if(isConnected)
@@ -5742,7 +5798,7 @@ BOOL OpenDisplay(void)
 
     if (STATE_IS(APP_RENDERER_BUILTIN))
     {
-        int res = term_init(scr, ansiFont);
+        int res = BuiltinInit();
 
         // If it fails fallback to console.device.
         if (res != RETURN_OK)
