@@ -87,36 +87,6 @@ const UWORD defaultPens[] = {  1,4, 1,1,1,4,1,0,7, 4,1,1, 0xFFFF };
 #define WIN_DEFAULT_HEIGHT   200   // 200 = display height in HiRes NTSC
 
 /**
- * @brief Validate the format of a 16-entry RGB4 palette.
- *
- * Amiga RGB4 palette entries use only the low twelve bits: 0x0RGB. The four most significant bits
- * must remain clear, and a palette must contain at least one visible colour. This also rejects the
- * all-zero palette produced by the zero-initialized prefs structure before defaults are applied.
- * The palette is not modified.
- *
- * @return TRUE if every entry uses the RGB4 format, FALSE otherwise.
- */
-static BOOL ValidatePalette(const UWORD palette[16])
-{
-    UWORD i;
-    BOOL hasNonZeroColor = FALSE;
-
-    if (palette == NULL)
-        return FALSE;
-
-    for (i = 0; i < 16; i++)
-    {
-        if ((palette[i] & 0xF000) != 0)
-            return FALSE;
-
-        if (palette[i] != 0)
-            hasNonZeroColor = TRUE;
-    }
-
-    return hasNonZeroColor;
-}
-
-/**
  * @brief Initialize the prefs structure, replacing any aberrant field with a sensible default.
  *
  * Used both to build the initial default configuration and to sanitize preferences just loaded
@@ -131,11 +101,8 @@ static void ValidateAndInitPrefs(BOOL *userMustChooseAScreenMode)
     if (prefs.State == 0)
         prefs.State = APP_FULLSCREEN | APP_RENDERER_BUILTIN;
 
-    if (!ValidatePalette(prefs.AnsiColors))
-        memcpy(prefs.AnsiColors,   defaultAnsiColors,   sizeof(defaultAnsiColors));
-
-    if (!ValidatePalette(prefs.DeviceColors))
-        memcpy(prefs.DeviceColors, defaultDeviceColors, sizeof(defaultDeviceColors));
+    // Both palettes usable: a 1.x file has only the console's.
+    Palette_Repair(&prefs);
 
     // Full-screen geometry: bounds depend on the active renderer.
     if (!Prefs_ScreenFits(&prefs))
