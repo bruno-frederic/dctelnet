@@ -301,6 +301,11 @@ name and port number in manually (SEE: CONNECT)
                                ~~~~~~~~~~~~
 Opens a window with a list of the address that you have saved.
 
+  @{b}Import Address Book...@{ub} adds the entries of a SyncTERM phone book
+  (syncterm.lst). Entries already in the Address Book (the same host and
+  port) and ones DCTelnet cannot connect to (SSH, modem, serial) are left
+  out; RLogin entries get Rlogin in their own settings.
+
      @{b}@{u} Connect @{ub}@{uu} - Connects you to the selected site.
 
      @{b}@{u} Edit @{ub}@{uu}    - Allows you to edit, Site name, Site address, port number
@@ -837,6 +842,7 @@ New Features:
 - Character Set: UTF-8 BBSes and hosts, Amiga BBS text copied as it is
 - Bell as a sound or off; ANSI music
 - 132 Columns
+- Import a SyncTERM phone book into the Address Book
 - An ARexx port (DCTELNET.1) with CONNECT, SEND, WAITFOR and more; the
   login macro can wait for a text (\\w"Password:")
 - Blinking text (ibmcon.device 1.11)
