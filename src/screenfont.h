@@ -33,6 +33,7 @@ void ScreenFont_Grid(UWORD width, UWORD height, UWORD gzzWidth, UWORD gzzHeight,
  * -- and relies on the terminal wrapping at its edge; a wider terminal
  * breaks it. The widest a window with these borders may be. */
 #define SCREENFONT_ANSI_COLUMNS    80
+#define SCREENFONT_WIDE_COLUMNS    132  /* Display > 132 Columns: Unix hosts, wide BBS menus */
 #define SCREENFONT_PETSCII_COLUMNS 40
 #define SCREENFONT_BBS_ROWS        25   /* the Workbench window opens 80x25 (40x25) */
 UWORD ScreenFont_MaxWindowWidth(UWORD columns, UWORD cellX, UWORD borders);

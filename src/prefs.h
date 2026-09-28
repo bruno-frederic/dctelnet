@@ -155,6 +155,8 @@ struct PrefsStruct
                                                   // clear: the Workbench window opens 80x25
 #define APP_VT_KEYS                  (1UL << 17)  // Home/End/Page/Insert send VT codes (ESC[1~ ...);
                                                   // clear: ANSI-BBS (ESC[H ...)
+#define APP_132_COLUMNS              (1UL << 18)  // the terminal is 132 columns wide, not 80
+                                                  // (ibmcon.device renderer only)
 
 #define APP_CUSTOM_SCREEN_OPENED     (1UL << 23)  // Rarely accessed (during display initalization)
 
