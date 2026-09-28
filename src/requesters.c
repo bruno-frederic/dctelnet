@@ -60,7 +60,10 @@
 #endif
 #include <stdarg.h>           // va_list, va_start(), va_end()
 #include <string.h>           // strlen(), memset(), size_t
+#include <intuition/sghooks.h>  // SGWork, EO_* (the password field)
 #include "requesters.h"
+#include "textedit.h"
+#include "utils.h"
 
 
 // Calling module must provide these:
@@ -373,8 +376,59 @@ enum
  * Additional information for AmigaOS Release 2 can be found in:
  * Chapter 16 "ASL Library".
  */
+static BOOL AskString(struct Window *parent, STRPTR title, STRPTR prompt,
+                      STRPTR buffer, UWORD maxLen, BOOL secret);
+
 BOOL GetStringRequester(struct Window *parent, STRPTR title, STRPTR prompt,
                         STRPTR buffer, UWORD maxLen)
+{
+    return AskString(parent, title, prompt, buffer, maxLen, FALSE);
+}
+
+/* The password field: what is typed goes to secretText, the gadget shows
+ * a star per character (TextEdit_Secret). */
+static char secretText[128];
+
+static ULONG __SAVE_DS__ __ASM__ MaskSecret(__REG__(a0, struct Hook *hook),
+                                            __REG__(a2, struct SGWork *sgw),
+                                            __REG__(a1, ULONG *msg))
+{
+    int op;
+
+    if (*msg != SGH_KEY)
+        return 0;
+    if (sgw->EditOp == EO_MOVECURSOR || sgw->EditOp == EO_ENTER || sgw->EditOp == EO_NOOP)
+        return ~0UL;
+    op = sgw->EditOp == EO_INSERTCHAR ? TEXTEDIT_INSERT
+       : sgw->EditOp == EO_REPLACECHAR ? TEXTEDIT_REPLACE : TEXTEDIT_OTHER;
+    TextEdit_Secret(secretText, sizeof(secretText), (char *)sgw->WorkBuffer, (UWORD)sgw->BufferPos,
+                    (UWORD)sgw->StringInfo->NumChars, (UWORD)sgw->NumChars, op);
+    sgw->NumChars = (WORD)strlen((char *)sgw->WorkBuffer);
+    if (sgw->BufferPos > sgw->NumChars) sgw->BufferPos = sgw->NumChars;
+    sgw->Actions |= SGA_REDISPLAY;
+    return ~0UL;
+}
+
+static struct Hook maskSecret = { { NULL, NULL }, (HOOKFUNC)MaskSecret, NULL, NULL };
+
+/* As GetStringRequester, for a password: the field starts empty and shows stars. */
+BOOL GetSecretRequester(struct Window *parent, STRPTR title, STRPTR prompt,
+                        STRPTR buffer, UWORD maxLen)
+{
+    BOOL ok;
+
+    buffer[0] = 0;
+    secretText[0] = 0;
+    ok = AskString(parent, title, prompt, buffer,
+                   maxLen < sizeof(secretText) ? maxLen : (UWORD)sizeof(secretText), TRUE);
+    if (ok)
+        strlcpy(buffer, secretText, maxLen);
+    memset(secretText, 0, sizeof(secretText));
+    return ok;
+}
+
+static BOOL AskString(struct Window *parent, STRPTR title, STRPTR prompt,
+                      STRPTR buffer, UWORD maxLen, BOOL secret)
 {
     struct Screen     *screen;
 
@@ -543,6 +597,7 @@ BOOL GetStringRequester(struct Window *parent, STRPTR title, STRPTR prompt,
     stringGad = gad = CreateGadget(STRING_KIND, gad, &ng,
         GTST_String,   buffer,
         GTST_MaxChars, maxLen - 1,  // UWORD
+        GTST_EditHook, secret ? (ULONG)&maskSecret : 0,
         TAG_DONE);
 
     if (gad == NULL) { InfoReq(parent, "CreateGadget() => NULL (failed)"); goto clean_and_return; }
@@ -645,6 +700,13 @@ BOOL GetStringRequester(struct Window *parent, STRPTR title, STRPTR prompt,
 
                     switch(gid)
                     {
+                        case GID_STRING:
+                            // Return in the field ends it with GADGETUP (code 0),
+                            // not a VANILLAKEY: it had to be pressed twice. Tab
+                            // (code 9) only leaves the field.
+                            if (code == 9)
+                                break;
+                            /* fall through */
                         case GID_OK:
                             result = TRUE;
                             done = TRUE;
@@ -659,7 +721,7 @@ BOOL GetStringRequester(struct Window *parent, STRPTR title, STRPTR prompt,
         }
     }
 
-    if (result == TRUE)
+    if (result == TRUE && !secret)          // (a password is in secretText)
     {
         // The gadget buffer is expected to be limited by "GTST_MaxChars, maxLen - 1",
         // but this provides additional protection against unexpected gadget behavior.
@@ -1003,12 +1065,13 @@ clean_and_return:
  * @return FALSE if the requester was cancelled, an error occurred, or the selected mode is not
  *         available on the system.
  *
- * @note The requester is currently limited to a maximum depth of 4 bitplanes (16 colors).
+ * @note Modes deeper than maxDepth bitplanes are not offered (4 for the built-in renderer).
  *
  * @note All pointer parameters are mandatory and must be non-NULL.
  */
 BOOL ScreenModeRequester(struct Window *parent, ULONG* displayID,
-                         UWORD* displayWidth, UWORD* displayHeight, UWORD* displayDepth)
+                         UWORD* displayWidth, UWORD* displayHeight, UWORD* displayDepth,
+                         UWORD maxDepth)
 {
     struct ScreenModeRequester *sr = NULL;
     BOOL  result = FALSE;
@@ -1046,7 +1109,7 @@ BOOL ScreenModeRequester(struct Window *parent, ULONG* displayID,
                         ASLSM_DoHeight,       TRUE,
                         ASLSM_DoDepth,        TRUE,
                         ASLSM_MinWidth,       640,
-                        ASLSM_MaxDepth,       4,    // Limit to 4 bitplanes (16 colors) sreen modes
+                        ASLSM_MaxDepth,       maxDepth, // the renderer's limit (Prefs_MaxDepth)
 
                         TAG_DONE);
 

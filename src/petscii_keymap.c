@@ -30,3 +30,12 @@ int petscii_translate_key(int ascii_or_special, int is_special) {
         return ascii_or_special - 'a' + 'A';
     return ascii_or_special; /* digits, punctuation: unchanged */
 }
+
+int petscii_fkey_from_console_digit(char digit) {
+    static const int fkeys[8] = {
+        PETSCII_KEY_F1, PETSCII_KEY_F2, PETSCII_KEY_F3, PETSCII_KEY_F4,
+        PETSCII_KEY_F5, PETSCII_KEY_F6, PETSCII_KEY_F7, PETSCII_KEY_F8
+    };
+    if (digit < '0' || digit > '7') return -1;
+    return petscii_translate_key(fkeys[digit - '0'], 1);
+}
