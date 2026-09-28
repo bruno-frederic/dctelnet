@@ -53,6 +53,8 @@ static char MainWindowTitle[] =
 #include "petscii_keymap.h"
 #include "site_prefs.h"
 #include "screenfont.h"
+#include "progdir.h"
+#include "shipped.h"
 #ifdef __VBCC__
     #pragma popwarn
 #endif
@@ -208,6 +210,13 @@ static BOOL connectionDisplay = FALSE;   // a connection is being prepared or is
 // (prefs.win_*) is only what Snapshot Windows stored.
 static struct IBox wbWindowBox;
 static BOOL wbWindowBoxValid = FALSE;
+// The height of the screen title bar's text: the LEDs are drawn inside the
+// bar as the screen made it (BarHeight is its height minus one, text plus
+// two border lines), not from prefs.FontSize, which is only the setting.
+#define BAR_TEXT_HEIGHT (scr->BarHeight - 2)
+
+static const char *consoleFrom = "the system";   // where ibmcon.device came from
+static char fontMissing[48];    // the font setting that could not be opened ("" = none)
 static BOOL displayIsPetscii = FALSE;    // the display was opened for PETSCII
 #define PETSCII_SESSION() (connectionDisplay && STATE_IS(APP_PETSCII_MODE))
 // 32+ colours with ibmcon.device: the 16 ANSI colours get pens of their own
@@ -884,7 +893,7 @@ static BOOL InitializeReqToolsLib(ULONG reqtoolsTags[5])
     }
     else // ReqTools needs to be loaded now.
     {
-        ReqToolsBase = (struct ReqToolsBase *)OpenLibrary (REQTOOLSNAME, 0);
+        ReqToolsBase = (struct ReqToolsBase *)OpenNewestLibrary(REQTOOLSNAME, 0);
 
         if (ReqToolsBase)
         {
@@ -1551,12 +1560,12 @@ void LEDs(void)
     // Draw connection activity indicator when Title bar AND LEDs are enabled AND NOT iconified
     if (STATE_ARE_ALL(APP_TITLE_BAR_ENABLED | APP_LEDS_ENABLED)  &&  STATE_IS_NOT(APP_ICONIFIED))
     {
-        EraseRect(&scr->RastPort, scr->Width-72, 2, scr->Width-60, prefs.FontSize-1);
-        EraseRect(&scr->RastPort, scr->Width-86, 2, scr->Width-74, prefs.FontSize-1);
+        EraseRect(&scr->RastPort, scr->Width-72, 2, scr->Width-60, BAR_TEXT_HEIGHT-1);
+        EraseRect(&scr->RastPort, scr->Width-86, 2, scr->Width-74, BAR_TEXT_HEIGHT-1);
         if(isConnected)
         {
             SetAPen(&scr->RastPort, LegacyPen(15));
-            RectFill(&scr->RastPort, scr->Width-84, 3, scr->Width-76, prefs.FontSize-2);
+            RectFill(&scr->RastPort, scr->Width-84, 3, scr->Width-76, BAR_TEXT_HEIGHT-2);
         }
     }
 }
@@ -2052,11 +2061,11 @@ int main(int argc, char *argv[])
                     if (STATE_ARE_ALL(APP_TITLE_BAR_ENABLED | APP_LEDS_ENABLED))
                     {
                         SetAPen(&scr->RastPort, LegacyPen(10));
-                        RectFill(&scr->RastPort, scr->Width-70, 3, scr->Width-62, prefs.FontSize-2);
+                        RectFill(&scr->RastPort, scr->Width-70, 3, scr->Width-62, BAR_TEXT_HEIGHT-2);
                     }
                     Receive();
                     if (STATE_ARE_ALL(APP_TITLE_BAR_ENABLED | APP_LEDS_ENABLED))
-                        EraseRect(&scr->RastPort, scr->Width-72, 2, scr->Width-60, prefs.FontSize-1);
+                        EraseRect(&scr->RastPort, scr->Width-72, 2, scr->Width-60, BAR_TEXT_HEIGHT-1);
                 }
 
             } else {  // not connected
@@ -2797,7 +2806,7 @@ static void GetWindowMsg(struct Window *wwin)
                             if(STATE_IS(APP_TITLE_BAR_ENABLED))
                             {
                                 SetAPen(&scr->RastPort, drawInfo->dri_Pens[BARBLOCKPEN]);
-                                RectFill(&scr->RastPort, scr->Width-86, 2, scr->Width-60, prefs.FontSize-1);
+                                RectFill(&scr->RastPort, scr->Width-86, 2, scr->Width-60, BAR_TEXT_HEIGHT-1);
                             }
                         }
                         break;
@@ -2983,14 +2992,20 @@ static void GetWindowMsg(struct Window *wwin)
                         break;
 
                     case MENU_SCREEN_FONT:
+                    {
+                        // The same reopen as an entry's font: on the Workbench
+                        // the console only, and a window at the BBS size stays
+                        // 80x25 in the new font (a 7x11 font came back in the
+                        // old 8x16 window: 91x36, cut to 80 columns).
+                        static struct PrefsStruct before;
+
+                        before = prefs;
                         if (FontRequester(win,
                                           prefs.FontName, sizeof(prefs.FontName),
                                           &prefs.FontSize))
-                        {
-                            shouldRestart = TRUE;
-                            shouldReopenScreen = TRUE;
-                        }
+                            RequestDisplayReopen(&before);
                         break;
+                    }
 
                     case MENU_SCREEN_PALETTE:
                         ChoosePalette();
@@ -3137,7 +3152,7 @@ up:                if(lasttop > 0) lasttop--;
                 break;
 
             case GAD_DOWN:
-down:                if(lasttop+((scrollbackWin->Height - (prefs.FontSize + scr->WBorTop + 2)) / prefs.FontSize) < nScrollbackLines) lasttop++;
+down:                if(lasttop+((scrollbackWin->Height - (scr->Font->ta_YSize + scr->WBorTop + 2)) / scr->Font->ta_YSize) < nScrollbackLines) lasttop++;
                 break;
             }
             SetGadgetAttrs((struct Gadget *)Scroller, scrollbackWin, NULL,
@@ -3157,7 +3172,7 @@ down:                if(lasttop+((scrollbackWin->Height - (prefs.FontSize + scr-
         RefreshWindowFrame(scrollbackWin);
         RefreshListView(lasttop);
         SetGadgetAttrs((struct Gadget *)Scroller, scrollbackWin, NULL,
-            PGA_Visible,    (scrollbackWin->Height - (prefs.FontSize + scr->WBorTop + 2)) / prefs.FontSize,
+            PGA_Visible,    (scrollbackWin->Height - (scr->Font->ta_YSize + scr->WBorTop + 2)) / scr->Font->ta_YSize,
         TAG_END);
     }
     if(close) CloseScrollBack();
@@ -3267,7 +3282,7 @@ static UWORD EstablishTCPConnection(char *servername, UWORD port)
     if (STATE_ARE_ALL(APP_TITLE_BAR_ENABLED | APP_LEDS_ENABLED))
     {
         SetAPen(&scr->RastPort, LegacyPen(11));
-        RectFill(&scr->RastPort, scr->Width-84, 3, scr->Width-76, prefs.FontSize-2);
+        RectFill(&scr->RastPort, scr->Width-84, 3, scr->Width-76, BAR_TEXT_HEIGHT-2);
     }
 
     DisConnect(FALSE, FALSE);
@@ -3387,14 +3402,14 @@ static struct TextFont *OpenBundledFont(STRPTR name, STRPTR progdirPath, UWORD y
     struct TextAttr attr;
     struct TextFont *font;
 
-    attr.ta_Name  = name;
+    attr.ta_Name  = progdirPath;     // DCTelnet's own drawer first
     attr.ta_YSize = ysize;
     attr.ta_Style = FS_NORMAL;
     attr.ta_Flags = 0;
     font = OpenDiskFont(&attr);
     if (!font)
     {
-        attr.ta_Name = progdirPath;
+        attr.ta_Name = name;         // then FONTS:
         font = OpenDiskFont(&attr);
     }
     return font;
@@ -3510,7 +3525,8 @@ static BOOL OpenConsoleDevice(void)
         LogWindowsSigBit();
     #endif
 
-    b = OpenDevice(devName, unitNumber, (struct IORequest *)writeConsoleReq, CONFLAG_DEFAULT);
+    b = OpenNewestDevice(devName, unitNumber, (struct IORequest *)writeConsoleReq, CONFLAG_DEFAULT);
+    consoleFrom = ShippedFrom;      // for the start-up line
 
     #ifdef _DEBUG
         PutStr("   <-- OpenDevice()\n");
@@ -3712,12 +3728,30 @@ static void OpenAnsiFont(void)
         }
     }
     if (!ansiFont)
-        ansiFont = OpenDiskFont(&fontAttr);
+    {
+        // DCTelnet's Fonts drawer first (the fonts it ships), then FONTS:
+        static char own[64];
+
+        if (ProgDir_Path("Fonts", (const char *)fontAttr.ta_Name, own, sizeof(own)))
+            ansiFont = OpenBundledFont(fontAttr.ta_Name, own, fontAttr.ta_YSize);
+        else
+            ansiFont = OpenDiskFont(&fontAttr);
+    }
+    fontMissing[0] = 0;
     if(!ansiFont)
     {
-        fontAttr.ta_Name = "topaz.font";
-        fontAttr.ta_YSize = 8;
-        ansiFont = OpenFont(&fontAttr);
+        // The chosen font could not be opened: topaz, in the form the
+        // screen's pixels want (Topaz Pro on square ones), and say so.
+        struct ScreenFontChoice pick;
+
+        mysprintf(fontMissing, "%s %ld", prefs.FontName, (LONG)prefs.FontSize);
+        ScreenFont_ForMode("topaz.font", 8, modeResX, modeResY, &pick);
+        if (pick.topazPro)
+            ansiFont = OpenBundledFont(TOPAZ_PRO_NAME, "PROGDIR:Fonts/" TOPAZ_PRO_NAME, TOPAZ_PRO_SIZE);
+        fontAttr.ta_Name  = ansiFont ? (STRPTR)TOPAZ_PRO_NAME : (STRPTR)"topaz.font";
+        fontAttr.ta_YSize = ansiFont ? TOPAZ_PRO_SIZE : 8;
+        if (!ansiFont)
+            ansiFont = OpenFont(&fontAttr);
     }
 }
 
@@ -3922,8 +3956,11 @@ void OpenAppWindow(void)
             screenToBackGadget.LeftEdge = scr->Width - 20;
             screenToBackGadget.GadgetID = GADGET_SCREEN_TO_BACK;
         } else {
-            top = prefs.FontSize + 3;
-            height = scr->Height - (prefs.FontSize + 3);
+            // Below the title bar as the screen draws it: prefs.FontSize is the
+            // setting, not the opened font (Topaz Pro 16 for topaz 8), and the
+            // first rows went under the bar.
+            top = scr->BarHeight + 1;
+            height = scr->Height - top;
             backgad = 0;
         }
 
@@ -3950,20 +3987,18 @@ void OpenAppWindow(void)
 
         if(STATE_IS(APP_PACKET_WINDOW_ENABLED))
         {
-            height -= (prefs.FontSize + 2);
-
-            strInfo.Buffer     = strBuffer;
-            strInfo.MaxChars   = BUFSIZE;
-
-            strGad.TopEdge     = 2;
-            strGad.Activation  = GACT_RELVERIFY | GACT_STRINGLEFT;
-            strGad.GadgetType  = GTYP_STRGADGET;
+            height -= (scr->Font->ta_YSize + 2);
+            strInfo.Buffer = strBuffer;
+            strInfo.MaxChars = BUFSIZE;
+            strGad.TopEdge = 2;
+            strGad.Activation = GACT_RELVERIFY | GACT_STRINGLEFT;
+            strGad.GadgetType = GTYP_STRGADGET;
             strGad.SpecialInfo = &strInfo;
-            strGad.Width       = scr->Width;
-            strGad.Height      = prefs.FontSize;
+            strGad.Width = scr->Width;
+            strGad.Height = scr->Font->ta_YSize;
 
-            newWin.TopEdge     = top+height;
-            newWin.Height      = prefs.FontSize+2,
+            newWin.TopEdge = top+height;
+            newWin.Height = scr->Font->ta_YSize + 2,
             newWin.FirstGadget = &strGad;
             newWin.IDCMPFlags  = IDCMP_MENUPICK
                                | IDCMP_GADGETUP;
@@ -4242,62 +4277,70 @@ BOOL OpenDisplay(void)
         if(flags & AFF_68040) cpu = '4';
         if(flags & AFF_68060) cpu = '6';
 
+        // One labelled line per fact, each shorter than 80 columns: the
+        // renderer, the screen, and the grid the console measured.
+        static char details[200];
+
+        details[0] = 0;
         switch (renderer)
         {
             case APP_RENDERER_BUILTIN:
-                strRenderer = "retro32-term";
-            break;
-
-            case APP_RENDERER_CONSOLE_DEVICE:
-                strRenderer = "console.device";
+                strRenderer = "retro32-term (built-in)";
             break;
 
             case APP_RENDERER_XEM_LIB:
                 strRenderer = prefs.XemLibrary;
             break;
 
+            case APP_RENDERER_CONSOLE_DEVICE:
             case APP_RENDERER_IBMCON_DEVICE:
             if (isConDeviceOpened)
             {
-                // Which ibmcon runs and how it draws the ANSI colours: it is
-                // opened from DEVS:, not from the Devs drawer next to DCTelnet.
-                static char engine[240];
-                char grid[96];
+                static char engine[80];
+                char screenInfo[80];
                 struct TextFont *cell = win->RPort->Font;
                 UWORD cols, rows;
                 struct Library *dev = (struct Library *)writeConsoleReq->io_Device;
 
-                mysprintf(engine, "ibmcon.device %ld.%ld, %ld bit planes",
-                          (LONG)dev->lib_Version, (LONG)dev->lib_Revision,
-                          (LONG)AppScreenDepth(scr));
+                if (renderer == APP_RENDERER_IBMCON_DEVICE)
+                    mysprintf(engine, "ibmcon.device %ld.%ld from %s",
+                              (LONG)dev->lib_Version, (LONG)dev->lib_Revision, consoleFrom);
+                else
+                    mysprintf(engine, "console.device %ld.%ld",
+                              (LONG)dev->lib_Version, (LONG)dev->lib_Revision);
+                mysprintf(screenInfo, "%ld bit planes", (LONG)AppScreenDepth(scr));
                 if (ansiOwnPens && penTableError)
-                    strlcat(engine, "\r\n  ANSI colours NOT on their own pens: this ibmcon is\r\n"
-                                    "  older than 1.5 -- copy Devs/ibmcon.device to DEVS:",
-                            sizeof(engine));
+                    strlcat(screenInfo, ", ANSI colours on pens 0-15 (old ibmcon)", sizeof(screenInfo));
                 else if (ansiOwnPens)
-                    strlcat(engine, ", ANSI colours on their own pens", sizeof(engine));
-                // The grid ibmcon should measure from the same window: rows that
-                // do not fit are drawn below the edge and lost.
+                    strlcat(screenInfo, ", ANSI colours on their own pens", sizeof(screenInfo));
                 TerminalGrid(&cols, &rows);
-                mysprintf(grid, "\r\n  Text area: %ld x %ld characters (font %ld x %ld)",
-                          (LONG)cols, (LONG)rows, (LONG)cell->tf_XSize, (LONG)cell->tf_YSize);
-                strlcat(engine, grid, sizeof(engine));
+                mysprintf(details, "›0;1;36mScreen: ›37m%s\r\n\r\n"
+                                   "›36mText area: ›37m%ld x %ld characters, font %ld x %ld\r\n\r\n",
+                          screenInfo, (LONG)cols, (LONG)rows, (LONG)cell->tf_XSize, (LONG)cell->tf_YSize);
+                if (fontMissing[0])
+                {
+                    char note[80];
+
+                    mysprintf(note, "›31mFont %s could not be opened\r\n\r\n", fontMissing);
+                    strlcat(details, note, sizeof(details));
+                }
                 strRenderer = engine;
             }
             else
-                strRenderer = "ibmcon.device";
+                strRenderer = (renderer == APP_RENDERER_IBMCON_DEVICE) ? "ibmcon.device" : "console.device";
             break;
         }
 
         LocalFmt("›0;1;36m\f\r\n\r\n"
                 "Processor: ›37m680%lc0\r\n\r\n›36m"
                 "Kickstart: ›37m%ld.%ld\r\n\r\n›36m"
-                "Renderer: ›37m%s\r\n\r\n›36m"
+                "Renderer: ›37m%s\r\n\r\n"
+                "%s›36m"
                 "TCP Stack: ›37m",
                 cpu,
                 (LONG)((struct Library *)SysBase)->lib_Version,
                 (LONG)SysBase->SoftVer,
-                strRenderer);
+                strRenderer, details);
 
         if(SocketBase)
         {
