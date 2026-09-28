@@ -10,7 +10,7 @@ CFLAGS := -std=c99 -Wall -Wextra -Werror -I../src
 STACK_MAX := 400
 STACKCHK := $(shell $(CC) -Werror -Wstack-usage=$(STACK_MAX) -c -x c /dev/null -o /dev/null 2>/dev/null && echo -Wstack-usage=$(STACK_MAX))
 
-TESTS := test_petscii_modules test_petscii_dispatch test_prefs_file test_site_prefs test_palette test_screenfont test_progdir test_listsel test_textedit test_dsr test_keys test_clip test_ansiscan test_ticks test_rexx test_rlogin test_ansimusic test_booklist test_crypto test_ssh test_knownhosts
+TESTS := test_petscii_modules test_petscii_dispatch test_prefs_file test_site_prefs test_palette test_screenfont test_progdir test_listsel test_textedit test_dsr test_keys test_clip test_ansiscan test_ticks test_rexx test_rlogin test_ansimusic test_booklist test_crypto test_ssh test_knownhosts test_term_engine
 
 .PHONY: all clean check-encoding check-fonts check-stack check-statics
 all: $(TESTS) check-encoding check-fonts check-stack check-statics
@@ -138,3 +138,7 @@ test_ssh: test_ssh.c ../src/ssh.c ../src/ssh.h $(CRYPTO_SRC) $(wildcard ../src/c
 
 test_knownhosts: test_knownhosts.c ../src/knownhosts.c ../src/knownhosts.h
 	$(CC) $(CFLAGS) -Ishim -o $@ $(filter %.c,$^)
+
+# The engine is written for the Amiga: its static helpers are not all used here.
+test_term_engine: test_term_engine.c ../src/third_party/retro32-term/term-engine.c
+	$(CC) $(CFLAGS) -Wno-unused-function -Ishim -o $@ test_term_engine.c
