@@ -127,8 +127,8 @@ static void test_display_differs_names_what_needs_a_reopen(void) {
     b = a; b.FontSize = 11;                              /* font: screen reopen */
     assert(SitePrefs_DisplayDiffers(&a, &b, &screen) && screen);
 
-    b = a; b.State |= APP_PETSCII_MODE;                 /* PETSCII fonts: screen */
-    assert(SitePrefs_DisplayDiffers(&a, &b, &screen) && screen);
+    b = a; b.State |= APP_PETSCII_MODE;   /* C64 display follows the connection, not the flag */
+    assert(!SitePrefs_DisplayDiffers(&a, &b, &screen));
 
     b = a; b.DisplayDepth = 3;
     assert(SitePrefs_DisplayDiffers(&a, &b, &screen) && screen);

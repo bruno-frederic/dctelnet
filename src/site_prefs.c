@@ -2,8 +2,10 @@
 #include "site_prefs.h"
 #include "prefs_file.h"
 
-/* Flags whose change needs the screen reopened (OpenAppScreen reads them). */
-#define SCREEN_FLAGS  (APP_FULLSCREEN | APP_TITLE_BAR_ENABLED | APP_PETSCII_MODE)
+/* Flags whose change needs the screen reopened (OpenAppScreen reads them).
+ * APP_PETSCII_MODE is not one: the C64 display is up only during a
+ * connection, and DCTelnet.c switches it with the connection itself. */
+#define SCREEN_FLAGS  (APP_FULLSCREEN | APP_TITLE_BAR_ENABLED)
 
 /* Flags whose change needs the windows reopened (OpenDisplay reads them). */
 #define WINDOW_FLAGS  (APP_PACKET_WINDOW_ENABLED | APP_RENDERER_ALL | APP_TOOL_BAR_ENABLED | APP_FAST_SCROLL_ENABLED)

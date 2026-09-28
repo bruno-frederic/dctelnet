@@ -166,6 +166,7 @@ static struct NewMenu mainMenuDesc[] =
 
 static void GetWindowMsg(struct Window *wwin);
 static void SendMisc(char *str, long len);
+static void SwitchPetsciiDisplay(void);
 static void ResetTelnetContext(void);
 static void ResetZmodemContext(void);
 static void SetLocalEchoBack(BOOL wantedState);
@@ -192,6 +193,12 @@ static struct TextAttr fontAttr;    // describes the desired font
 struct TextFont *ansiFont;          // actual font loaded via OpenFont(), ready to use
 static struct TextFont *petsciiFont = NULL;      // upper/graphics charset font
 static struct TextFont *petsciiFontLower = NULL; // shifted/lowercase charset font
+// PETSCII only makes sense in a PETSCII BBS session: the C64 fonts and console
+// setup are up only while a connection is being made or live (connectionDisplay)
+// with PETSCII Mode on. Start-up and disconnected text keep the normal font.
+static BOOL connectionDisplay = FALSE;   // a connection is being prepared or is live
+static BOOL displayIsPetscii = FALSE;    // the display was opened for PETSCII
+#define PETSCII_SESSION() (connectionDisplay && STATE_IS(APP_PETSCII_MODE))
 static BOOL isConDeviceOpened = FALSE;
 static struct IOStdReq *writeConsoleReq = NULL;
 static struct MsgPort  *writeConsoleMP  = NULL;
@@ -269,6 +276,7 @@ BOOL shouldQuitApp;    // program finished
 static BOOL isConnected;    // tcp connected
 static BOOL shouldRestart;    // prefs changed, restart
 static BOOL shouldReopenScreen;    // flag
+static BOOL shouldReopenConsole;   // only the C64 display changes: reopen the console in place
 static BOOL shouldIconify;        // must iconify
 BOOL shouldUniconify;        // must uniconify
 struct PetsciiDispatchState g_petsciiState;
@@ -324,9 +332,36 @@ static void ConWrite(char *data, long len)
     }
 }
 
+/*
+ * DCTelnet's own messages. While the C64 display is up they are rewritten so
+ * the letters read as intended in the active C64 charset (petscii_local_text).
+ */
+static void LocalWrite(char *data, long len)
+{
+    static struct PetsciiLocalText lt;
+    static char chunk[256];
+
+    if (!displayIsPetscii || !petsciiFont)
+    {
+        ConWrite(data, len);
+        return;
+    }
+    petscii_local_text_init(&lt, win && win->RPort->Font == petsciiFontLower);
+    while (len > 0)
+    {
+        long n = len < (long)sizeof(chunk) ? len : (long)sizeof(chunk);
+
+        memcpy(chunk, data, n);
+        petscii_local_text(&lt, chunk, (size_t)n);
+        ConWrite(chunk, n);
+        data += n;
+        len -= n;
+    }
+}
+
 void LocalPrint(char *data)
 {
-    ConWrite(data, strlen(data));
+    LocalWrite(data, strlen(data));
 }
 
 // WARNING: This function uses the same global buffer "buf" that is also used by recv() to receive
@@ -340,7 +375,7 @@ void LocalFmt(char *ctl, ...)
     #ifdef __VBCC__
     #pragma popwarn
     #endif
-    ConWrite(buf, strlen(buf));
+    LocalWrite(buf, strlen(buf));
 }
 
 // WARNING: This function uses the same global buffer "buf" that is also used by recv() to receive
@@ -530,19 +565,25 @@ WORD GetMenuNumberFromID(enum MenuItemID id)
 }
 
 
+// The disconnect notice, kept when ending the connection reopens the display
+// (the C64 display goes, or an entry's settings end): printed again once the
+// display is back, which clears the console. Empty = nothing to reprint.
+static char disconnectNote[96];
+
 static void DisConnect(char remote, char quiet)
 {
     if(isConnected)
     {
+        disconnectNote[0] = 0;
         if(!quiet && STATE_IS_NOT(APP_ICONIFIED))
         {
             register ULONG spent;
-            if(remote)
-                LocalPrint("›m\r\nConnection closed by foreign host");
-            else
-                LocalPrint("›m\r\nConnection closed");
+
             spent = mytime() - conectionTime;
-            LocalFmt(". %02ld:%02ld:%02ld spent online.\r\n", spent/3600, (spent/60)%60, spent%60);
+            mysprintf(disconnectNote, "›m\r\n%s. %02ld:%02ld:%02ld spent online.\r\n",
+                      remote ? "Connection closed by foreign host" : "Connection closed",
+                      spent/3600, (spent/60)%60, spent%60);
+            LocalPrint(disconnectNote);
         }
         shutdown(tcpSocket, 2);
         CloseSocket(tcpSocket);
@@ -568,6 +609,8 @@ static void DisConnect(char remote, char quiet)
         // The connection ends, and with it any Address Book entry's settings.
         ForgetConnectedEntry();
         EndEntrySession();
+        if (!shouldRestart && !shouldReopenConsole)
+            disconnectNote[0] = 0;      // the display stays: the notice is still there
     }
 }
 
@@ -583,6 +626,14 @@ static struct
     char  username[42], password[42];
     char  loginMacro[SITE_LOGIN_MACRO_SIZE];
 } pendingConnect;
+
+// Reopen the display when the C64 display it shows no longer matches what
+// the connection state and PETSCII Mode want.
+static void SyncPetsciiDisplay(void)
+{
+    if ((PETSCII_SESSION() != 0) != displayIsPetscii)
+        shouldReopenConsole = TRUE;     // SwitchPetsciiDisplay() in the main loop
+}
 
 static void RequestDisplayReopen(const struct PrefsStruct *before)
 {
@@ -617,23 +668,23 @@ BOOL BeginEntrySession(ULONG settingsId, const struct SiteSettings *entry)
 
     connectBasePrefs = prefs;
     memcpy(connectBaseKeys, fKeys, sizeof(connectBaseKeys));
-    if (!entry) return shouldRestart;
 
-    before = prefs;
-    globalPrefs = prefs;
-    SitePrefs_ApplyEntry(&prefs, &globalPrefs, entry);
-    fKeysFromEntry = SitePrefs_SwapInKeys(fKeys, globalFKeys, entry);
-    sessionSettingsId = settingsId;
-    sessionGroups = entry->groups;
-    ReloadXemOptions();
-    RequestDisplayReopen(&before);
-    return shouldRestart;
+    connectionDisplay = TRUE;
+    if (entry)
+    {
+        before = prefs;
+        globalPrefs = prefs;
+        SitePrefs_ApplyEntry(&prefs, &globalPrefs, entry);
+        fKeysFromEntry = SitePrefs_SwapInKeys(fKeys, globalFKeys, entry);
+        sessionSettingsId = settingsId;
+        sessionGroups = entry->groups;
+        ReloadXemOptions();
+        RequestDisplayReopen(&before);
+    }
+    SyncPetsciiDisplay();
+    return shouldRestart || shouldReopenConsole;
 }
 
-/**
- * @brief Restore the global settings after an entry session (disconnect or a
- *        failed connect). Requests a display reopen when they differ.
- */
 /**
  * @brief The live settings were just saved as an entry's own (Settings > Save
  *        Settings to Address Book Entry): treat the rest of this connection as
@@ -684,6 +735,11 @@ BOOL SessionOverridesKeyboard(void)
     return fKeysFromEntry;
 }
 
+/**
+ * @brief End a connection's settings (disconnect or a failed connect): the
+ *        global settings come back after an entry session, and the C64
+ *        display goes. Requests a display reopen when anything visible changes.
+ */
 void EndEntrySession(void)
 {
     static struct PrefsStruct before;
@@ -694,17 +750,20 @@ void EndEntrySession(void)
         fKeysFromEntry = FALSE;
     }
 
-    if (!sessionSettingsId) return;
-    before = prefs;
-    SitePrefs_Restore(&prefs, &globalPrefs);
-    sessionSettingsId = 0;
-    if (sessionGroups & SITE_GROUP_TERMINAL)
+    connectionDisplay = FALSE;
+    if (sessionSettingsId)
     {
+        ULONG endedGroups = sessionGroups;
+
+        before = prefs;
+        SitePrefs_Restore(&prefs, &globalPrefs);
+        sessionSettingsId = 0;
         sessionGroups = 0;
-        ReloadXemOptions();
+        if (endedGroups & SITE_GROUP_TERMINAL)
+            ReloadXemOptions();
+        RequestDisplayReopen(&before);
     }
-    sessionGroups = 0;
-    RequestDisplayReopen(&before);
+    SyncPetsciiDisplay();
 }
 
 void DeferConnect(const char *name, const char *host, UWORD port, ULONG settingsId,
@@ -1119,7 +1178,7 @@ static void Receive(void)
 
         if (outLen > 0)
         {
-            if (STATE_IS(APP_PETSCII_MODE))
+            if (PETSCII_SESSION())
             {
                 /* Translated in chunks sized so even the worst-case expansion
                  * (PETSCII_MAX_OUT_PER_BYTE) fits: output is never truncated. */
@@ -1246,7 +1305,7 @@ cont:
             default:
 norm:                // Typed text in PETSCII Mode goes out case-swapped (petscii_keymap);
                 // a macro's text is typed text too. Escapes (\r, \123) stay raw.
-                buf[j] = STATE_IS(APP_PETSCII_MODE)
+                buf[j] = PETSCII_SESSION()
                          ? (char)petscii_translate_key((unsigned char)str[i], 0) : str[i];
                 j++;
         }
@@ -1418,7 +1477,9 @@ static void Finger(void)
             // End any entry session (and its connection) BEFORE touching the
             // flag: ending it later, inside the connect, would restore the
             // global settings over APP_RAW_CONNECTION.
-            BeginEntrySession(0, NULL);
+            // Finger is plain text: no C64 display, whatever PETSCII Mode says.
+            if (isConnected) DisConnect(FALSE, FALSE);
+            EndEntrySession();
             originalState = STATE_IS(APP_RAW_CONNECTION);
 
             host[0] = 0;
@@ -1609,12 +1670,18 @@ int main(int argc, char *argv[])
         LogWindowsSigBit();
     #endif
 
-    // Connect to server if it was specified in the command line. It needs an opened display.
-    if (server[0] != '\0')
-        BeginServerConnection(server, tcpPort);
-
     shouldRestart = FALSE;
     shouldReopenScreen = FALSE;
+
+    // Connect to server if it was specified in the command line. It needs an opened display,
+    // and in PETSCII Mode the C64 one: the main loop reopens it, then connects.
+    if (server[0] != '\0')
+    {
+        if (BeginEntrySession(0, NULL))
+            DeferConnect("", server, tcpPort, 0, "", "", "");
+        else
+            BeginServerConnection(server, tcpPort);
+    }
 
 /* ------ main loop ------ */
     shouldQuitApp = FALSE;
@@ -1793,6 +1860,19 @@ int main(int argc, char *argv[])
 
                 shouldRestart = FALSE;
                 shouldReopenScreen = FALSE;
+                shouldReopenConsole = FALSE;    // the full reopen covered it
+            }
+            else if (shouldReopenConsole)
+            {
+                SwitchPetsciiDisplay();
+                shouldReopenConsole = FALSE;
+            }
+
+            // A disconnect that reopened the display: its notice again.
+            if (disconnectNote[0] && !shouldRestart && !shouldReopenConsole && !isConnected)
+            {
+                LocalPrint(disconnectNote);
+                disconnectNote[0] = 0;
             }
 
             // After the reopen, so the connect sees the entry's display settings.
@@ -2255,14 +2335,14 @@ static void GetWindowMsg(struct Window *wwin)
                                     key_macro = TRUE;
                                     SendMacro(&fKeys[(conbuf[i] - '0') * F_KEY_SIZE]);
                                 }
-                                else if (STATE_IS(APP_PETSCII_MODE)
+                                else if (PETSCII_SESSION()
                                          && petscii_fkey_from_console_digit(conbuf[i]) >= 0)
                                 {
                                     key_macro = TRUE;
                                     OutKey((unsigned char)petscii_fkey_from_console_digit(conbuf[i]));
                                 }
 
-                                if (STATE_IS(APP_PETSCII_MODE))
+                                if (PETSCII_SESSION())
                                 {
                                     switch(conbuf[i])
                                     {
@@ -2293,13 +2373,13 @@ static void GetWindowMsg(struct Window *wwin)
                                     key_macro = FALSE;
                                 else
                                 {
-                                    if (STATE_IS(APP_PETSCII_MODE)
+                                    if (PETSCII_SESSION()
                                         && (conbuf[i] == DEL_CHAR || conbuf[i] == '\b'))
                                         /* PETSCII's own DEL byte (20), not ASCII BS/DEL --
                                          * APP_BACKSPACE_DEL_SWAPPED is an ASCII-only concept and
                                          * does not apply here. */
                                         OutKey((unsigned char)petscii_translate_key(PETSCII_KEY_DEL, 1));
-                                    else if (STATE_IS(APP_PETSCII_MODE) && conbuf[i] != '\r')
+                                    else if (PETSCII_SESSION() && conbuf[i] != '\r')
                                         OutKey((unsigned char)petscii_translate_key(conbuf[i], 0));
                                     else
                                         OutKey(conbuf[i]);
@@ -2600,12 +2680,11 @@ static void GetWindowMsg(struct Window *wwin)
                     case MENU_PETSCII_MODE:
                         UpdatePrefsFromMenu(item, APP_PETSCII_MODE);
                         petscii_dispatch_init(&g_petsciiState, 40, 25);
-                        /* The console device fixes its cell size from the RastPort
-                         * font at OpenDevice() time, so a font swap needs the same
-                         * close/reopen as MENU_SCREEN_FONT -- OpenAppScreen() picks
-                         * the PETSCII fonts from APP_PETSCII_MODE. */
-                        shouldRestart = TRUE;
-                        shouldReopenScreen = TRUE;
+                        /* The C64 display is up only during a connection. Toggled
+                         * while connected, the display reopens (the console fixes its
+                         * cell size at OpenDevice() time, as for MENU_SCREEN_FONT);
+                         * toggled while disconnected, nothing visible changes. */
+                        SyncPetsciiDisplay();
                         break;
 
                     case MENU_SCREEN_MODE:
@@ -2999,7 +3078,7 @@ static UWORD EstablishTCPConnection(char *servername, UWORD port)
      * mode already saved in prefs ran on a zeroed state (cols = 0), so
      * every printable byte "wrapped" and got its own line. */
     petscii_dispatch_init(&g_petsciiState, 40, 25);
-    if (STATE_IS(APP_PETSCII_MODE) && !petsciiFont)
+    if (PETSCII_SESSION() && !petsciiFont)
         LocalPrint("\r\nPETSCII Mode: Petscii.font not found in FONTS: or PROGDIR:Fonts/, "
                    "showing CP437 lookalikes.\r\n");
 
@@ -3035,6 +3114,212 @@ static struct TextFont *OpenPetsciiFont(STRPTR name, STRPTR progdirPath)
     return font;
 }
 
+/**
+ * @brief Open the C64 fonts when the display should be the C64 one (a PETSCII
+ *        session on a console device), and record which display this is. The
+ *        built-in renderer and XEM draw with their own glyphs: there the
+ *        PETSCII stream is translated to ANSI (Receive) and no C64 font opens.
+ */
+static void OpenPetsciiFonts(void)
+{
+    displayIsPetscii = PETSCII_SESSION() != 0;
+    if (displayIsPetscii && STATE_IS(APP_RENDERER_IBMCON_DEVICE | APP_RENDERER_CONSOLE_DEVICE))
+    {
+        /* Petscii/PetsciiLower.font: real C64 glyphs indexed by raw PETSCII
+         * byte, double-width (16x8) cells so 40 columns fill roughly the
+         * physical width the normal 80-column font needs. Not installed:
+         * both stay NULL and Receive() renders CP437 lookalikes instead. */
+        petsciiFont = OpenPetsciiFont("Petscii.font", "PROGDIR:Fonts/Petscii.font");
+        petsciiFontLower = petsciiFont
+            ? OpenPetsciiFont("PetsciiLower.font", "PROGDIR:Fonts/PetsciiLower.font") : NULL;
+    }
+}
+
+static void ClosePetsciiFonts(void)
+{
+    if(petsciiFont)           { CloseFont(petsciiFont);             petsciiFont = NULL; }
+    if(petsciiFontLower)      { CloseFont(petsciiFontLower);        petsciiFontLower = NULL; }
+}
+
+/**
+ * @brief Open the renderer's console device (ibmcon.device, or console.device)
+ *        on the main window, with the RastPort's current font.
+ */
+static BOOL OpenConsoleDevice(void)
+{
+    #ifdef _DEBUG
+        ULONG beforeSigAlloc;
+        ULONG afterSigAlloc;
+        UBYTE conDeviceSigBit;
+    #endif
+    UWORD unitNumber;
+    char *devName = STATE_IS(APP_RENDERER_CONSOLE_DEVICE) ? "console.device" : "ibmcon.device";
+    BOOL b;
+
+    // Exec Device I/O Functions docs:
+    // https://amigadev.elowar.com/read/ADCD_2.1/Libraries_Manual_guide/node02A5.html
+
+    // CreateIORequest() requires a message port.
+    writeConsoleMP = CreateMsgPort();
+    if (!writeConsoleMP) { InfoReq(win,
+                                 "Unable to create message port for console device!");
+                         return FALSE; }
+
+    // https://amigadev.elowar.com/read/ADCD_2.1/Includes_and_Autodocs_2._guide/node0344.html
+    writeConsoleReq = CreateIORequest(writeConsoleMP, sizeof(struct IOStdReq));
+    if (!writeConsoleReq)       // the console is reopened at run time too
+    {
+        DeleteMsgPort(writeConsoleMP);
+        writeConsoleMP = NULL;
+        InfoReq(win, "Unable to create the console device request!");
+        return FALSE;
+    }
+
+    // The unit number that is a standard parameter for an open call is used
+    // specially by this device.
+    if (STATE_IS(APP_RENDERER_CONSOLE_DEVICE))
+    {
+        unitNumber = CONU_SNIPMAP;
+    } else {
+        if(STATE_IS(APP_FAST_SCROLL_ENABLED))
+            unitNumber = 2; // Unit 2 is a non-standard unit specific to ibmcon.device
+        else
+            unitNumber = CONU_CHARMAP;
+    }
+
+    //the window that is used by the console device for output:
+    writeConsoleReq->io_Data = win;
+    writeConsoleReq->io_Length = sizeof(struct Window);
+
+    #ifdef _DEBUG
+        PutStr("   --> OpenDevice()\n");
+        beforeSigAlloc = mainTask->tc_SigAlloc;
+        PutStr("SigAlloc:"); PrintBitsULONG(mainTask->tc_SigAlloc);
+        LogWindowsSigBit();
+    #endif
+
+    b = OpenDevice(devName, unitNumber, (struct IORequest *)writeConsoleReq, CONFLAG_DEFAULT);
+
+    #ifdef _DEBUG
+        PutStr("   <-- OpenDevice()\n");
+        PutStr("SigAlloc:"); PrintBitsULONG(mainTask->tc_SigAlloc);
+        afterSigAlloc = mainTask->tc_SigAlloc;
+        conDeviceSigBit = BitPosition(beforeSigAlloc ^ afterSigAlloc); // XOR help detect the difference
+        Printf("                   conDeviceSigBit = %lu\n", (LONG) conDeviceSigBit);
+        LogWindowsSigBit();
+    #endif
+
+    if(b == RETURN_OK)
+    {
+        isConDeviceOpened = TRUE;
+    }
+    else
+    {
+        // Device open failed; falling back to console.device for the next DCTelnet launch.
+        // console.device is the most compatible renderer.
+        STATE_UNSET(APP_RENDERER_ALL);
+        STATE_SET(APP_RENDERER_CONSOLE_DEVICE);
+
+        isConDeviceOpened = FALSE;
+
+        InfoReq(win, "Failed to open device: %s", devName);
+
+        return FALSE;
+    }
+    return TRUE;
+}
+
+/**
+ * @brief Close the console device and free its request and port.
+ */
+static void CloseConsoleDevice(void)
+{
+    // https://amigadev.elowar.com/read/ADCD_2.1/Devices_Manual_guide/node0190.html
+    if (isConDeviceOpened)
+    {
+        #ifdef _DEBUG
+            PutStr("   --> CloseDevice(&writeConsoleReq)\n");
+            PutStr("SigAlloc:"); PrintBitsULONG(mainTask->tc_SigAlloc);
+            LogWindowsSigBit();
+
+            if (! (mainTask->tc_SigAlloc & (1L << 31)))
+            {
+                InfoReq(win,
+                        "ERROR: sigbit 31 has disappeared before CloseDevice()! Why???");
+            }
+        #endif
+
+        CloseDevice((struct IORequest *)writeConsoleReq);
+
+        if (mainTask->tc_SigAlloc & (1L << 31))
+        {
+            #ifdef _DEBUG
+                PutStr("   <-- CloseDevice(&writeConsoleReq) => sigbit 31 preserved.\n");
+                PutStr("SigAlloc:"); PrintBitsULONG(mainTask->tc_SigAlloc);
+            #endif
+        }
+        else
+        {
+            #ifdef _DEBUG
+                PutStr("   <-- CloseDevice(&writeConsoleReq) => ERROR: sigbit 31 destroyed!!!\n");
+                PutStr("SigAlloc:"); PrintBitsULONG(mainTask->tc_SigAlloc);
+                PutStr("   --> AllocSignal(31L)\n");
+            #endif
+
+            dontUseSig31 = AllocSignal(31L);
+            if (dontUseSig31 != 31)
+                InfoReq(win, "ERROR: cannot allocate sigbit 31!");
+
+            #ifdef _DEBUG
+                PutStr("SigAlloc:"); PrintBitsULONG(mainTask->tc_SigAlloc);
+            #endif
+        }
+
+        isConDeviceOpened = FALSE;
+    }
+
+    if (writeConsoleReq)
+    {
+        DeleteIORequest(writeConsoleReq);
+        writeConsoleReq=NULL;
+    }
+
+    if (writeConsoleMP)
+    {
+        DeleteMsgPort(writeConsoleMP);
+        writeConsoleMP = NULL;
+    }
+}
+
+/**
+ * @brief Switch between the normal and the C64 display without closing the
+ *        screen or the window: the console fixes its cell size at OpenDevice()
+ *        time, so only the console is reopened after the fonts change (ibmcon
+ *        reads the RastPort font live). The built-in and XEM renderers take
+ *        their font at setup: they get the full reopen instead.
+ */
+static void SwitchPetsciiDisplay(void)
+{
+    if (!STATE_IS(APP_RENDERER_IBMCON_DEVICE | APP_RENDERER_CONSOLE_DEVICE) || !win)
+    {
+        shouldRestart = TRUE;
+        shouldReopenScreen = TRUE;
+        return;
+    }
+    CloseConsoleDevice();
+    ClosePetsciiFonts();
+    OpenPetsciiFonts();
+    SetFont(win->RPort, petsciiFont ? petsciiFont : ansiFont);
+    if (!OpenConsoleDevice())
+    {
+        shouldRestart = TRUE;       // could not reopen it in place: reopen everything
+        shouldReopenScreen = TRUE;
+        return;
+    }
+    if (displayIsPetscii)
+        ConWrite(PETSCII_CONSOLE_SETUP, sizeof(PETSCII_CONSOLE_SETUP) - 1);
+}
+
 struct Screen* OpenAppScreen(void)
 {
     struct Screen *scr;
@@ -3049,16 +3334,7 @@ struct Screen* OpenAppScreen(void)
         ansiFont = OpenFont(&fontAttr);
     }
 
-    if (STATE_IS(APP_PETSCII_MODE))
-    {
-        /* Petscii/PetsciiLower.font: real C64 glyphs indexed by raw PETSCII
-         * byte, double-width (16x8) cells so 40 columns fill roughly the
-         * physical width the normal 80-column font needs. Not installed:
-         * both stay NULL and Receive() renders CP437 lookalikes instead. */
-        petsciiFont = OpenPetsciiFont("Petscii.font", "PROGDIR:Fonts/Petscii.font");
-        petsciiFontLower = petsciiFont
-            ? OpenPetsciiFont("PetsciiLower.font", "PROGDIR:Fonts/PetsciiLower.font") : NULL;
-    }
+    OpenPetsciiFonts();
 
     if (STATE_IS_NOT(APP_FULLSCREEN))
     {
@@ -3405,9 +3681,6 @@ void CreateAppMenus(void)
 BOOL OpenDisplay(void)
 {
     #ifdef _DEBUG
-        ULONG beforeSigAlloc;
-        ULONG afterSigAlloc;
-        UBYTE conDeviceSigBit;
         PutStr("--> OpenDisplay()\n");
     #endif
 
@@ -3500,81 +3773,13 @@ BOOL OpenDisplay(void)
     // Doc about OpenDevice() to open a console device :
     // https://amigadev.elowar.com/read/ADCD_2.1/Libraries_Manual_guide/node029E.html
     // https://amigadev.elowar.com/read/ADCD_2.1/Includes_and_Autodocs_2._guide/node0509.html
-    if(STATE_IS(APP_RENDERER_IBMCON_DEVICE | APP_RENDERER_CONSOLE_DEVICE))
-    {
-        UWORD unitNumber;
-        char *devName = STATE_IS(APP_RENDERER_CONSOLE_DEVICE) ? "console.device" : "ibmcon.device";
-        BOOL b;
-
-        // Exec Device I/O Functions docs:
-        // https://amigadev.elowar.com/read/ADCD_2.1/Libraries_Manual_guide/node02A5.html
-
-        // CreateIORequest() requires a message port.
-        writeConsoleMP = CreateMsgPort();
-        if (!writeConsoleMP) { InfoReq(win,
-                                     "Unable to create message port for console device!");
-                             goto clean_and_return; }
-
-        // https://amigadev.elowar.com/read/ADCD_2.1/Includes_and_Autodocs_2._guide/node0344.html
-        writeConsoleReq = CreateIORequest(writeConsoleMP, sizeof(struct IOStdReq));
-
-        // The unit number that is a standard parameter for an open call is used
-        // specially by this device.
-        if (STATE_IS(APP_RENDERER_CONSOLE_DEVICE))
-        {
-            unitNumber = CONU_SNIPMAP;
-        } else {
-            if(STATE_IS(APP_FAST_SCROLL_ENABLED))
-                unitNumber = 2; // Unit 2 is a non-standard unit specific to ibmcon.device
-            else
-                unitNumber = CONU_CHARMAP;
-        }
-
-        //the window that is used by the console device for output:
-        writeConsoleReq->io_Data = win;
-        writeConsoleReq->io_Length = sizeof(struct Window);
-
-        #ifdef _DEBUG
-            PutStr("   --> OpenDevice()\n");
-            beforeSigAlloc = mainTask->tc_SigAlloc;
-            PutStr("SigAlloc:"); PrintBitsULONG(mainTask->tc_SigAlloc);
-            LogWindowsSigBit();
-        #endif
-
-        b = OpenDevice(devName, unitNumber, (struct IORequest *)writeConsoleReq, CONFLAG_DEFAULT);
-
-        #ifdef _DEBUG
-            PutStr("   <-- OpenDevice()\n");
-            PutStr("SigAlloc:"); PrintBitsULONG(mainTask->tc_SigAlloc);
-            afterSigAlloc = mainTask->tc_SigAlloc;
-            conDeviceSigBit = BitPosition(beforeSigAlloc ^ afterSigAlloc); // XOR help detect the difference
-            Printf("                   conDeviceSigBit = %lu\n", (LONG) conDeviceSigBit);
-            LogWindowsSigBit();
-        #endif
-
-        if(b == RETURN_OK)
-        {
-            isConDeviceOpened = TRUE;
-        }
-        else
-        {
-            // Device open failed; falling back to console.device for the next DCTelnet launch.
-            // console.device is the most compatible renderer.
-            STATE_UNSET(APP_RENDERER_ALL);
-            STATE_SET(APP_RENDERER_CONSOLE_DEVICE);
-
-            isConDeviceOpened = FALSE;
-
-            InfoReq(win, "Failed to open device: %s", devName);
-
-            goto clean_and_return;
-        }
-    }
+    if (STATE_IS(APP_RENDERER_IBMCON_DEVICE | APP_RENDERER_CONSOLE_DEVICE) && !OpenConsoleDevice())
+        goto clean_and_return;
 
     STATE_UNSET(APP_ICONIFIED);
 
     /* After isAppIconified is cleared: ConWrite() drops writes while it is set. */
-    if (isConDeviceOpened && STATE_IS(APP_PETSCII_MODE))
+    if (isConDeviceOpened && displayIsPetscii)
         ConWrite(PETSCII_CONSOLE_SETUP, sizeof(PETSCII_CONSOLE_SETUP) - 1);
 
     LEDs();
@@ -3677,61 +3882,7 @@ void CloseDisplay(BOOL manageScreen)
     // Unitilize XEM library if it was initialized (does nothing if it was not initialized)
     UninitializeXemLibrary();
 
-    // https://amigadev.elowar.com/read/ADCD_2.1/Devices_Manual_guide/node0190.html
-    if (isConDeviceOpened)
-    {
-        #ifdef _DEBUG
-            PutStr("   --> CloseDevice(&writeConsoleReq)\n");
-            PutStr("SigAlloc:"); PrintBitsULONG(mainTask->tc_SigAlloc);
-            LogWindowsSigBit();
-
-            if (! (mainTask->tc_SigAlloc & (1L << 31)))
-            {
-                InfoReq(win,
-                        "ERROR: sigbit 31 has disappeared before CloseDevice()! Why???");
-            }
-        #endif
-
-        CloseDevice((struct IORequest *)writeConsoleReq);
-
-        if (mainTask->tc_SigAlloc & (1L << 31))
-        {
-            #ifdef _DEBUG
-                PutStr("   <-- CloseDevice(&writeConsoleReq) => sigbit 31 preserved.\n");
-                PutStr("SigAlloc:"); PrintBitsULONG(mainTask->tc_SigAlloc);
-            #endif
-        }
-        else
-        {
-            #ifdef _DEBUG
-                PutStr("   <-- CloseDevice(&writeConsoleReq) => ERROR: sigbit 31 destroyed!!!\n");
-                PutStr("SigAlloc:"); PrintBitsULONG(mainTask->tc_SigAlloc);
-                PutStr("   --> AllocSignal(31L)\n");
-            #endif
-
-            dontUseSig31 = AllocSignal(31L);
-            if (dontUseSig31 != 31)
-                InfoReq(win, "ERROR: cannot allocate sigbit 31!");
-
-            #ifdef _DEBUG
-                PutStr("SigAlloc:"); PrintBitsULONG(mainTask->tc_SigAlloc);
-            #endif
-        }
-
-        isConDeviceOpened = FALSE;
-    }
-
-    if (writeConsoleReq)
-    {
-        DeleteIORequest(writeConsoleReq);
-        writeConsoleReq=NULL;
-    }
-
-    if (writeConsoleMP)
-    {
-        DeleteMsgPort(writeConsoleMP);
-        writeConsoleMP = NULL;
-    }
+    CloseConsoleDevice();
 
     if(packetWin)
     {
@@ -3774,8 +3925,7 @@ void CloseDisplay(BOOL manageScreen)
             scr = NULL;
         }
         if(ansiFont)              { CloseFont(ansiFont);                ansiFont = NULL; }
-        if(petsciiFont)           { CloseFont(petsciiFont);             petsciiFont = NULL; }
-        if(petsciiFontLower)      { CloseFont(petsciiFontLower);        petsciiFontLower = NULL; }
+        ClosePetsciiFonts();
     }
 
     STATE_SET(APP_ICONIFIED);
