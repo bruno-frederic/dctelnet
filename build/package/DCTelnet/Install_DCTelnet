@@ -49,8 +49,8 @@
 
 (SET #destDir       (TACKON #destDir "DCTelnet"))
 (SET #docsDir       (TACKON #destDir "Docs"))
-(SET #scIconsDir    (TACKON #destDir "SCIcons"))
-(SET #wbIconsDir    (TACKON #destDir "WBIcons"))
+(SET #toolBarDir    (TACKON #destDir "ToolBar"))
+(SET #rexxDir       (TACKON #destDir "Rexx"))
 (SET @default-dest  #destDir)
 
 (if (= (exists #destDir) 1)  ; 1 <=> it is a file
@@ -123,22 +123,21 @@
 
 
     (COPYFILES
-        (prompt    "Installing the DCTelnet SCIcons (ANSI) icons.")
-        (help    "\n\nAs from 1.4, DCTelnet now uses various icons to represent functions.\n\n"
-            "If you use Workbench to run DCTelnet, it will default to MWB (WB) style icons,\n"
-            "otherwise it will load and use the ANSI (SC) style icons.")
-        (source "SCIcons")
-        (dest     #scIconsDir)
+        (prompt    "Installing the DCTelnet tool bar icons.")
+        (help    "\n\nThe tool bar (Display > Tool Bar) shows these icons.\n\n"
+            "They carry their own colours, so they suit any screen. The Square\n"
+            "set is for square pixels, the Wide set for modes with tall pixels\n"
+            "such as 640x256.")
+        (source "ToolBar")
+        (dest     #toolBarDir)
         (all)
     )
 
     (COPYFILES
-        (prompt    "Installing the DCTelnet WBIcons (MWB) icons.")
-        (help    "\n\nAs from 1.4, DCTelnet now uses various icons to represent functions.\n\n"
-            "If you use Workbench to run DCTelnet, it will default to MWB (WB) style icons,\n"
-            "otherwise it will load and use the ANSI (SC) style icons.")
-        (source "WBIcons")
-        (dest     #wbIconsDir)
+        (prompt    "Installing the example ARexx script.")
+        (help    "\n\nLogin.rexx logs in to a BBS through DCTelnet's ARexx port.")
+        (source "Rexx")
+        (dest     #rexxDir)
         (all)
     )
 

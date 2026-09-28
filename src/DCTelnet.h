@@ -5,6 +5,7 @@
 #include <string.h>     // size_t
 
 // Types
+struct PrefsStruct;
 
 // ID of the gadget in top right corner when title bar is hidden in full screen
 #define GADGET_SCREEN_TO_BACK  20
@@ -21,12 +22,18 @@ enum MenuItemID
         MENU_ABOUT,
 
         MENU_SCROLLBACK_WIN,
+        MENU_CAPTURE,
+        MENU_SAVE_SCREEN,
         MENU_ICONIFY,
         MENU_DISPLAY_SPEED_TEST,
         MENU_FINGER,
 
         MENU_RESET_SCREEN,
         MENU_QUIT,
+
+    MENU_EDIT,
+        MENU_PASTE,
+        MENU_COPY_SCREEN,
 
     MENU_TRANSFER,
         MENU_UPLOAD,
@@ -45,18 +52,22 @@ enum MenuItemID
         MENU_DISCONNECT,
 
         MENU_ADDRESS_BOOK,
+        MENU_SAVE_ENTRY_SETTINGS,
+        MENU_CONNECTION_OPTIONS,
 
         MENU_INFORMATION,
 
     MENU_TERMINAL,
         MENU_TELNET_TERM_TYPE,
         MENU_RAW_CONNECTION,
+        MENU_RLOGIN,
 //      MENU_INCOMING_LF_TO_CRLF,
         MENU_PETSCII_MODE,
 
         MENU_LOCAL_ECHO,
         MENU_BACKSPACE_DEL_SWAP,
         MENU_RETURN_SENDING_CRLF,
+        MENU_VT_KEYS,
 
         MENU_SCROLLBACK,
         MENU_SCROLLBACK_LINES,
@@ -98,9 +109,30 @@ extern char server[64];
 extern long nScrollbackLines;
 extern long tcpSocket, nBytesReceived;
 extern struct DrawInfo *drawInfo;
+extern UWORD modeResX, modeResY;
 extern struct Menu *mainMenuStrip;
+// The connection carries telnet codes (IAC ...): not a Raw Connection, not rlogin.
+#define TELNET_DATA() STATE_IS_NOT(APP_RAW_CONNECTION | APP_RLOGIN)
 extern struct MsgPort *iconPort;
 extern struct NewWindow newWin;
+extern struct PrefsStruct globalPrefs;   // global settings during an entry session
+extern ULONG sessionSettingsId;          // 0 = no entry session
+extern struct SiteHandChanges handChanges;   // settings changed by hand while connected
+struct SiteSettings;
+BOOL BeginEntrySession(ULONG settingsId, const struct SiteSettings *entry);
+void EndEntrySession(void);
+void DeferConnect(const char *name, const char *host, UWORD port, ULONG settingsId,
+                  const char *user, const char *pass, const char *loginMacro);
+void SendLoginMacro(const char *macro);
+BOOL SessionOverridesKeyboard(void);
+void AdoptEntrySession(ULONG settingsId, ULONG groups);
+BOOL ScreenModeInto(struct PrefsStruct *target);
+const struct PrefsStruct *GlobalSettings(void);
+const TEXT *GlobalFKeys(void);
+const struct PrefsStruct *ConnectBaseSettings(void);
+const TEXT *ConnectBaseFKeys(void);
+BOOL EditPalette(struct PrefsStruct *target);
+UWORD AppScreenDepth(struct Screen *s);
 extern struct List *scrollbackList;
 extern struct Screen *scr;
 extern struct TextFont *ansiFont;
@@ -116,7 +148,9 @@ extern UWORD winTop;                // WinTop topEdge (titlebar height)
 extern struct Task *mainTask;       // An AmigaOS Task is roughly equivalent to a thread
 
 // This flag is set by the "Connecting..." window task when the user cancels the operation:
-extern BOOL isConnectionAborted;
+extern BOOL isConnectionAborted;       // CONNECT_ABORTED or CONNECT_TIMED_OUT
+#define CONNECT_ABORTED    1                // the user clicked Abort
+#define CONNECT_TIMED_OUT  2                // Settings > Connection Options timeout
 extern UWORD connectMsgType;
 extern char *connectString;
 
