@@ -17,6 +17,7 @@
 #include <exec/memory.h>              // MEMF_ANY
 #include <proto/dos.h>                // DateToStr(), LEN_DATSTRING, TICKS_PER_SECOND
 #include <proto/intuition.h>          // CurrentTime()
+#include <proto/graphics.h>           // ObtainBestPen(), FindColor()
 #ifdef __VBCC__
     #pragma popwarn
 #endif
@@ -312,3 +313,16 @@ int stricmp(const char *a, const char *b)
     return (unsigned char)*a - (unsigned char)*b;
 }
 #endif
+
+UBYTE ObtainNearestPen(struct ColorMap *cm, ULONG rgb, LONG precision, BOOL *owned)
+{
+    ULONG r = ((rgb >> 16) & 0xFF) * 0x01010101UL, g = ((rgb >> 8) & 0xFF) * 0x01010101UL,
+          b = (rgb & 0xFF) * 0x01010101UL;
+    LONG pen = ObtainBestPen(cm, r, g, b, OBP_Precision, precision, TAG_DONE);
+
+    // -1 cast to UBYTE was pen 255.
+    *owned = pen >= 0;
+    if (pen < 0)
+        pen = FindColor(cm, r, g, b, -1);
+    return (UBYTE)pen;
+}

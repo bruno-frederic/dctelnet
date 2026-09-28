@@ -29,6 +29,8 @@
 #include "Xem_wrapper.h"                 // SaveXemOptions()
 #include "listsel.h"
 #include "textedit.h"
+#include "iconpens.h"
+#include "screenfont.h"
 #include <intuition/sghooks.h>
 
 struct BookStruct
@@ -2045,21 +2047,110 @@ void CheckDimensions(struct NewWindow *newwin)
     if(newwin->TopEdge + newwin->Height > scr->Height) newwin->TopEdge = 0;
 }
 
+// Tool bar icons that carry their colours (DCTELNET_PALETTE, iconpens.h) are
+// redrawn with the screen's closest pens: images drawn for fixed pens showed
+// whatever colours a screen had there (MagicWB icons on a standard Workbench,
+// on DCTelnet's own 256-colour screen). An icon without the tool type, such as
+// one a user drew, is shown as it is.
+static struct Image *toolImage[BUTTON_COUNT][2];
+static UBYTE toolPen[BUTTON_COUNT][ICONPENS_MAX];
+static BOOL  toolPenOwned[BUTTON_COUNT][ICONPENS_MAX];
+
+// The standard Workbench colours: the match without ObtainBestPen (OS 2).
+static const ULONG standardPens[4] = { 0xAAAAAA, 0x000000, 0xFFFFFF, 0x6688BB };
+
+static struct Image *RemapToolImage(const struct Image *img, const UBYTE *map, int n)
+{
+    struct Image *out;
+    UBYTE maxPen = 0;
+    UWORD depth;
+    ULONG plane;
+    int i;
+
+    for (i = 0; i < n; i++)
+        if (map[i] > maxPen) maxPen = map[i];
+    depth = IconPens_Depth(maxPen);
+    plane = IconPens_PlaneSize(img->Width, img->Height);
+    if (!(out = AllocVec(sizeof(struct Image), MEMF_CLEAR)))
+        return NULL;
+    if (!(out->ImageData = AllocVec(plane * depth, MEMF_CHIP)))
+    {
+        FreeVec(out);
+        return NULL;
+    }
+    out->LeftEdge   = img->LeftEdge;
+    out->TopEdge    = img->TopEdge;
+    out->Width      = img->Width;
+    out->Height     = img->Height;
+    out->Depth      = depth;
+    out->PlanePick  = (UBYTE)((1 << depth) - 1);
+    IconPens_Remap(img->ImageData, img->Width, img->Height, img->Depth, img->PlanePick,
+                   img->PlaneOnOff, map, n, out->ImageData, depth);
+    return out;
+}
+
+static void RemapToolIcon(UWORD i)
+{
+    struct Gadget *gad = &dob[i]->do_Gadget;
+    struct Image **render[2];
+    ULONG rgb[ICONPENS_MAX];
+    char *value;
+    int n, k;
+
+    value = (char *)FindToolType((CONST_STRPTR *)dob[i]->do_ToolTypes, ICONPENS_TOOLTYPE);
+    if (!value || !(n = IconPens_Parse(value, rgb)))
+        return;
+    for (k = 0; k < n; k++)
+    {
+        toolPenOwned[i][k] = FALSE;
+        if (k == 0)                                 // the icon's background
+            toolPen[i][k] = (UBYTE)drawInfo->dri_Pens[BACKGROUNDPEN];
+        else if (GfxBase->LibNode.lib_Version >= 39)
+            toolPen[i][k] = ObtainNearestPen(scr->ViewPort.ColorMap, rgb[k], PRECISION_IMAGE,
+                                             &toolPenOwned[i][k]);
+        else
+            toolPen[i][k] = (UBYTE)IconPens_Nearest(rgb[k], standardPens, 4);
+    }
+    render[0] = (struct Image **)&gad->GadgetRender;
+    render[1] = (struct Image **)&gad->SelectRender;
+    for (k = 0; k < 2; k++)
+        if (*render[k] && (toolImage[i][k] = RemapToolImage(*render[k], toolPen[i], n)))
+            *render[k] = toolImage[i][k];
+}
+
+static void FreeToolIcons(void)
+{
+    UWORD i, k;
+
+    for (i = 0; i < BUTTON_COUNT; i++)
+    {
+        for (k = 0; k < 2; k++)
+            if (toolImage[i][k])
+            {
+                FreeVec(toolImage[i][k]->ImageData);
+                FreeVec(toolImage[i][k]);
+                toolImage[i][k] = NULL;
+            }
+        for (k = 0; k < ICONPENS_MAX; k++)
+            if (toolPenOwned[i][k])
+            {
+                ReleasePen(scr->ViewPort.ColorMap, toolPen[i][k]);
+                toolPenOwned[i][k] = FALSE;
+            }
+        if (dob[i]) { FreeDiskObject(dob[i]);  dob[i] = NULL; }
+    }
+}
+
 void CloseToolBarWindow(void)
 {
     if (toolBarWin)
     {
         register struct MenuItem *item;
-         register UWORD i;
 
         ClearMenuStrip(toolBarWin);
         CloseWindow(toolBarWin);
         toolBarWin = NULL;
-
-        for(i=0; i<BUTTON_COUNT; i++)
-        {
-            if(dob[i]) { FreeDiskObject(dob[i]);  dob[i]= NULL; }
-        }
+        FreeToolIcons();
 
         item = GetMenuItemFromID(MENU_TOOL_BAR);
         if (item != NULL)
@@ -2080,13 +2171,15 @@ void OpenToolBarWindow(char setmenus)
 
         do
         {
-            strlcpy(buf,
-                    STATE_IS(APP_FULLSCREEN) ? "PROGDIR:SCIcons/" : "PROGDIR:WBIcons/",
-                    sizeof(buf));
+            // The icons carry their colours: one set for any screen, drawn
+            // for the shape of its pixels.
+            strlcpy(buf, ScreenFont_TallPixels(modeResX, modeResY) ? "PROGDIR:ToolBar/Wide/"
+                                                                   : "PROGDIR:ToolBar/Square/", sizeof(buf));
             strlcat(buf, icons[i], sizeof(buf));
             dob[i] = GetDiskObjectNew(buf);
             if(dob[i])
             {
+                RemapToolIcon(i);
                 if(gad) gad->NextGadget = &dob[i]->do_Gadget;
                 gad = &dob[i]->do_Gadget;
                 gad->NextGadget = 0;
@@ -2156,6 +2249,8 @@ void OpenToolBarWindow(char setmenus)
         CheckDimensions(&newWin);
 
         toolBarWin = OpenWindow(&newWin);
+        if (!toolBarWin)
+            FreeToolIcons();
         if (toolBarWin)
         {
             if(setmenus) ResetMenuStrip(toolBarWin, mainMenuStrip);
