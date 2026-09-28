@@ -739,7 +739,7 @@ static void SyncPetsciiDisplay(void)
 
 // The screen mode's pixel shape (DisplayInfo.Resolution), from OpenAppScreen:
 // which of topaz and Topaz Pro a font setting opens as (ScreenFont_ForMode).
-static UWORD modeResX, modeResY;
+UWORD modeResX, modeResY;      // the display mode's resolution ticks (0: unknown)
 
 // The font a setting actually opens on the current mode.
 static void EffectiveFont(struct PrefsStruct *p)
@@ -3806,20 +3806,8 @@ static void ObtainWorkbenchPens(void)
         || GfxBase->LibNode.lib_Version < 39)
         return;
     for (i = 0; i < 16; i++)
-    {
-        ULONG c = Palette_AnsiColour(prefs.DeviceColors, i);
-        ULONG r = ((c >> 16) & 0xFF) * 0x01010101UL, g = ((c >> 8) & 0xFF) * 0x01010101UL,
-              bl = (c & 0xFF) * 0x01010101UL;
-        LONG pen = ObtainBestPen(scr->ViewPort.ColorMap, r, g, bl,
-                                 OBP_Precision, PRECISION_EXACT, TAG_DONE);
-
-        // No pen to share (-1): the nearest colour already there, which
-        // is not ours to release. -1 cast to UBYTE was pen 255.
-        wbPenOwned[i] = pen >= 0;
-        if (pen < 0)
-            pen = FindColor(scr->ViewPort.ColorMap, r, g, bl, -1);
-        ansiColourPens[i] = (UBYTE)pen;
-    }
+        ansiColourPens[i] = ObtainNearestPen(scr->ViewPort.ColorMap, Palette_AnsiColour(prefs.DeviceColors, i),
+                                             PRECISION_EXACT, &wbPenOwned[i]);
     wbPensObtained = TRUE;
     ansiOwnPens = TRUE;
 }
@@ -4231,6 +4219,20 @@ struct Screen* OpenAppScreen(void)
     // Own screen with 32+ colours and ibmcon: the ANSI colours on pens of their own.
     ansiOwnPens = scr && STATE_IS(APP_FULLSCREEN) && STATE_IS(APP_RENDERER_IBMCON_DEVICE)
                && Palette_AnsiPens(AppScreenDepth(scr), ansiColourPens);
+
+    // The screen shares its free pens (SA_SharePens): the terminal's ANSI
+    // pens and the AGA pointer pens 16-19 are ours, so that no ObtainBestPen()
+    // (the tool bar's icons) takes one and recolours it. They go with the
+    // screen.
+    if (ansiOwnPens && GfxBase->LibNode.lib_Version >= 39)
+    {
+        UWORD i;
+
+        for (i = 0; i < 16; i++)
+            ObtainPen(scr->ViewPort.ColorMap, ansiColourPens[i], 0, 0, 0, PEN_EXCLUSIVE | PEN_NO_SETCOLOR);
+        for (i = 16; i < 20; i++)
+            ObtainPen(scr->ViewPort.ColorMap, i, 0, 0, 0, PEN_EXCLUSIVE | PEN_NO_SETCOLOR);
+    }
 
     // Border blank (V39, ECS/AGA): the overscan border shows colour 0, which
     // on 32+ colours is the UI's grey pen 0 -- keep it black like the terminal.

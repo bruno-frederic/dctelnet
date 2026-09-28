@@ -100,6 +100,7 @@ extern char server[64];
 extern long nScrollbackLines;
 extern long tcpSocket, nBytesReceived;
 extern struct DrawInfo *drawInfo;
+extern UWORD modeResX, modeResY;
 extern struct Menu *mainMenuStrip;
 extern struct MsgPort *iconPort;
 extern struct NewWindow newWin;
