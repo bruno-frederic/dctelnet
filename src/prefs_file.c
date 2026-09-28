@@ -15,6 +15,7 @@ enum
     OLD_V1_SIZE = 376,
     // The builds before v2.0 appended an extension block at 444:
     OLD_REDIAL_TRIES = 444, OLD_REDIAL_DELAY = 445, OLD_ANTI_IDLE = 446, OLD_CONNECT_TIMEOUT = 447,
+    OLD_CHARSET = 448,
     OLD_EXT_END = 508
 };
 
@@ -118,6 +119,7 @@ BOOL Prefs_FromLegacy(const UBYTE *old, size_t len, struct PrefsStruct *out)
     out->RedialDelay     = old[OLD_REDIAL_DELAY];
     out->AntiIdleMinutes = old[OLD_ANTI_IDLE];
     out->ConnectTimeout  = old[OLD_CONNECT_TIMEOUT];
+    out->Charset         = old[OLD_CHARSET];
     return TRUE;
 }
 

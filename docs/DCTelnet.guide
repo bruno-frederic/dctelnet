@@ -483,6 +483,22 @@ mode (as vi and less do), the cursor keys send ESC O A-D.
 NOTE:  If you enable this option while connected to a telnet site, you
        will see what you have typed twice.
 
+                              @{b}@{u} CHARACTER SET @{ub}@{uu}
+                               ~~~~~~~~~~~~~
+  What the BBS sends:
+
+  IBM PC (CP437)     - PC BBSes (the default). Shown as it comes; use an
+                       IBM font (IBM, P0T-IBM, ANSEY, HyperANSI).
+  Amiga (ISO-8859-1) - Amiga BBSes. Copied text keeps its accented
+                       letters.
+  UTF-8              - modern BBSes and Unix hosts that send UTF-8. The
+                       text is shown in the IBM character set (box drawing
+                       exact); accented letters you type or paste are sent
+                       as UTF-8.
+
+  Also "Characters" in the Terminal group of an Address Book entry's
+Settings...
+
                                  @{b}@{u} Rlogin @{ub}@{uu}
                                   ~~~~~~
   Connects with the rlogin protocol (usually port 513) instead of telnet.
@@ -800,6 +816,7 @@ New Features:
   the login macro's waits no longer freeze the window
 - Rlogin connections (Options > Rlogin), with automatic login on
   Synchronet
+- Character Set: UTF-8 BBSes and hosts, Amiga BBS text copied as it is
 - An ARexx port (DCTELNET.1) with CONNECT, SEND, WAITFOR and more; the
   login macro can wait for a text (\\w"Password:")
 - Blinking text (ibmcon.device 1.11)
