@@ -63,6 +63,11 @@ extern struct Library *CyberGfxBase;
 #include "clip.h"
 #include "ansiscan.h"
 #include "ticks.h"
+#include "waitfor.h"
+#include "rexxcmd.h"
+#include <rexx/storage.h>
+#include <rexx/rxslib.h>
+#include <proto/rexxsyslib.h>
 #include <devices/timer.h>
 #include <devices/clipboard.h>
 #include "shipped.h"
@@ -190,6 +195,10 @@ static struct NewMenu mainMenuDesc[] =
 #endif
 
 static void GetWindowMsg(struct Window *wwin);
+static void RexxOpen(void);
+static void RexxClose(void);
+static ULONG RexxSig(void);
+static void RexxMessages(void);
 static void CancelConnectionJobs(void);
 static void ScheduleKeepAlive(void);
 static void CaptureWrite(const UBYTE *data, long len);
@@ -1065,18 +1074,83 @@ void DeferConnect(const char *name, const char *host, UWORD port, ULONG settings
 static char macroText[SITE_LOGIN_MACRO_SIZE];
 static const char *macroCursor;
 
+// Waiting for a text from the BBS (waitfor.h): the login macro's \w"text"
+// or ARexx WAITFOR. Fed the BBS's bytes in Receive().
+enum { WAIT_NONE, WAIT_MACRO, WAIT_REXX };
+static struct WaitFor waitFor;
+static int waitOwner = WAIT_NONE;
+static struct RexxMsg *waitRexxMsg;         // replied when the text comes
+#define MACRO_WAIT_SECONDS 30
+
+static void RexxReply(struct RexxMsg *msg, LONG rc, const char *result);
+static void SendLoginMacroStep(void);
+
+// The wait ended: the text came, it timed out, or the connection went (or
+// the ARexx port closed).
+#define WAIT_FOUND      0
+#define WAIT_TIMED_OUT  1
+#define WAIT_CANCELLED  2
+static void WaitForDone(int how)
+{
+    BOOL found = how == WAIT_FOUND;
+    int owner = waitOwner;
+
+    WaitFor_Stop(&waitFor);
+    waitOwner = WAIT_NONE;
+    Ticks_Set(&ticks, TICK_WAITFOR, 0);
+    if (owner == WAIT_REXX && waitRexxMsg)
+    {
+        struct RexxMsg *msg = waitRexxMsg;
+
+        waitRexxMsg = NULL;
+        RexxReply(msg, found ? 0 : 5, NULL);    // RC 5: the text did not come
+    }
+    else if (owner == WAIT_MACRO)
+    {
+        if (found)
+            SendLoginMacroStep();
+        else
+        {
+            macroCursor = NULL;
+            if (how == WAIT_TIMED_OUT)
+                LocalPrint("Login macro stopped: the text it waited for did not come.\r\n");
+        }
+    }
+}
+
+// The BBS's bytes, for a wait (Receive()).
+static void WaitForFeed(const UBYTE *data, long len)
+{
+    if (WaitFor_Active(&waitFor) && WaitFor_Feed(&waitFor, data, (size_t)len))
+        WaitForDone(WAIT_FOUND);
+}
+
+static void WaitForStart(int owner, const char *text, ULONG seconds)
+{
+    WaitFor_Start(&waitFor, text, strlen(text));
+    waitOwner = owner;
+    Ticks_Set(&ticks, TICK_WAITFOR, NowTicks() + seconds * TICKS_PER_SECOND);
+    TimerArm();
+}
+
 // Sends the macro up to its next \d; the timer continues it a second later,
 // so the window stays live meanwhile (it waited with Delay()).
 static void SendLoginMacroStep(void)
 {
-    static char segment[256];
+    static char segment[256], waitText[WAITFOR_MAX];
     BOOL wait;
     size_t n;
 
     while (macroCursor && *macroCursor && isConnected)
     {
-        n = SitePrefs_NextMacroSegment(&macroCursor, username, password, segment, sizeof(segment), &wait);
+        n = SitePrefs_NextMacroSegment(&macroCursor, username, password, segment, sizeof(segment), &wait,
+                                       waitText, sizeof(waitText));
         if (n) SendMisc(segment, (long)n);
+        if (waitText[0])
+        {
+            WaitForStart(WAIT_MACRO, waitText, MACRO_WAIT_SECONDS);
+            return;
+        }
         if (wait)
         {
             Ticks_Set(&ticks, TICK_MACRO, NowTicks() + TICKS_PER_SECOND);
@@ -1143,6 +1217,8 @@ static void RunPendingConnect(void)
 // anti-idle NOP.
 static void CancelConnectionJobs(void)
 {
+    if (waitOwner != WAIT_NONE)
+        WaitForDone(WAIT_CANCELLED);
     macroCursor = NULL;
     Ticks_Set(&ticks, TICK_MACRO, 0);
     Ticks_Set(&ticks, TICK_NOP, 0);
@@ -1173,6 +1249,8 @@ static void TimerTick(void)
     due = Ticks_Due(&ticks, NowTicks());
     if (due & TICK_MACRO)
         SendLoginMacroStep();
+    if (due & TICK_WAITFOR)
+        WaitForDone(WAIT_TIMED_OUT);
     if ((due & TICK_REDIAL) && !isConnected)
     {
         LocalPrint("Redialling...\r\n");
@@ -1922,6 +2000,7 @@ static void Receive(void)
     if (STATE_IS(APP_RAW_CONNECTION))
     {
         CaptureWrite(recvBuffer, len);
+        WaitForFeed(recvBuffer, len);
         BbsWrite(recvBuffer, len);
         if (STATE_IS(APP_SCROLLBACK_ENABLED))
             AddBuf(recvBuffer, len);
@@ -1966,7 +2045,10 @@ static void Receive(void)
         }
 
         if (outLen > 0)
+        {
             CaptureWrite(outBuffer, outLen);
+            WaitForFeed(outBuffer, outLen);
+        }
         if (outLen > 0)
         {
             if (PETSCII_SESSION())
@@ -2444,6 +2526,7 @@ int main(int argc, char *argv[])
 
     if (! LoadPrefs()) goto clean_exit;
     TimerOpen();                        // timed jobs (none pending: no request)
+    RexxOpen();                         // the ARexx port, when ARexx is there
     SitePrefs_HandInit(&handChanges, &prefs);
 
     scrollbackList = AllocMem(sizeof(struct List), MEMF_CLEAR|MEMF_PUBLIC);
@@ -2539,7 +2622,7 @@ int main(int argc, char *argv[])
             {
                 FD_ZERO(&rd);
                 FD_SET(tcpSocket, &rd);
-                sigmask = SIGBREAKF_CTRL_C | SIGBREAKF_CTRL_F | iconsig | TimerSig();
+                sigmask = SIGBREAKF_CTRL_C | SIGBREAKF_CTRL_F | iconsig | TimerSig() | RexxSig();
 
                 // https://wiki.amigaos.net/amiga/autodocs/bsdsocket.doc.txt (tout à la fin)
                 // WaitSelect() should probably return the time remaining from the original timeout,
@@ -2562,10 +2645,11 @@ int main(int argc, char *argv[])
 
             } else {
                 i = 0;
-                sigmask = Wait( SIGBREAKF_CTRL_C | SIGBREAKF_CTRL_F | iconsig | TimerSig() );
+                sigmask = Wait( SIGBREAKF_CTRL_C | SIGBREAKF_CTRL_F | iconsig | TimerSig() | RexxSig() );
             }
 
             if (sigmask & TimerSig()) TimerTick();     // redial, macro, anti-idle run on
+            if (sigmask & RexxSig()) RexxMessages();   // scripts too
             if(sigmask&SIGBREAKF_CTRL_F) shouldUniconify = TRUE;
 
             if(sigmask&SIGBREAKF_CTRL_C) shouldQuitApp = TRUE;
@@ -2599,7 +2683,7 @@ int main(int argc, char *argv[])
                 if(scrollbackWin) sigmask |= 1L << scrollbackWin->UserPort->mp_SigBit;
                 if(packetWin) sigmask |= 1L << packetWin->UserPort->mp_SigBit;
                 if (toolBarWin) sigmask |= 1L << toolBarWin->UserPort->mp_SigBit;
-                sigmask |= TimerSig();
+                sigmask |= TimerSig() | RexxSig();
 
                 timeout.tv_sec = 30; timeout.tv_usec = 0;
                 i = WaitSelect(tcpSocket + 1, &rd, 0, 0, &timeout, &sigmask);
@@ -2626,6 +2710,7 @@ int main(int argc, char *argv[])
                 #endif
 
                 if (sigmask & TimerSig()) TimerTick();
+                if (sigmask & RexxSig()) RexxMessages();
                 GetWindowMsg(win);
 
                 if(scrollbackWin) GetWindowMsg(scrollbackWin);
@@ -2651,7 +2736,7 @@ int main(int argc, char *argv[])
                 if(scrollbackWin)  sig = 1L << scrollbackWin->UserPort->mp_SigBit; else sig = 0;
                 if(packetWin) sig |= 1L << packetWin->UserPort->mp_SigBit;
                 if (toolBarWin) sig |= 1L << toolBarWin->UserPort->mp_SigBit;
-                sig |= TimerSig();
+                sig |= TimerSig() | RexxSig();
 
                 // A display reopen or a connect already queued (an entry's
                 // settings, PETSCII Mode) runs now, not after the next event.
@@ -2677,6 +2762,7 @@ int main(int argc, char *argv[])
                 if(sigmask&winsig) GetWindowMsg(win);
                 if(sigmask&SIGBREAKF_CTRL_C) shouldQuitApp = TRUE;
                 if (sigmask & TimerSig()) TimerTick();
+                if (sigmask & RexxSig()) RexxMessages();
             }
 
             if(shouldRestart)
@@ -2716,6 +2802,7 @@ int main(int argc, char *argv[])
 
 clean_exit:
     DisConnect(FALSE, TRUE);
+    RexxClose();
     TimerClose();
     CaptureStop();                  // the capture file is complete
     CloseDisplay(TRUE);
@@ -3131,6 +3218,162 @@ static void SendKey(int id)
         SendMisc(out, (long)n);
 }
 
+
+// ---- ARexx port (rexxcmd.h): DCTELNET.1, .2 ... one per running DCTelnet --
+struct RxsLib *RexxSysBase;
+static struct MsgPort *rexxPort;
+static char rexxPortName[16];
+
+static void RexxOpen(void)
+{
+    int n;
+
+    if (!(RexxSysBase = (struct RxsLib *)OpenLibrary("rexxsyslib.library", 36)))
+        return;                                 // no ARexx: no port
+    if (!(rexxPort = CreateMsgPort()))
+        return;
+    Forbid();
+    for (n = 1; n <= 9; n++)
+    {
+        mysprintf(rexxPortName, "DCTELNET.%ld", (LONG)n);
+        if (!FindPort(rexxPortName))
+        {
+            rexxPort->mp_Node.ln_Name = rexxPortName;
+            rexxPort->mp_Node.ln_Pri  = 0;
+            AddPort(rexxPort);
+            break;
+        }
+    }
+    Permit();
+    if (n > 9)
+    {
+        DeleteMsgPort(rexxPort);
+        rexxPort = NULL;
+    }
+}
+
+static ULONG RexxSig(void)
+{
+    return rexxPort ? 1UL << rexxPort->mp_SigBit : 0;
+}
+
+static void RexxReply(struct RexxMsg *msg, LONG rc, const char *result)
+{
+    msg->rm_Result1 = rc;
+    msg->rm_Result2 = 0;
+    if (rc == 0 && result && (msg->rm_Action & RXFF_RESULT))
+        msg->rm_Result2 = (LONG)CreateArgstring((STRPTR)result, (ULONG)strlen(result));
+    ReplyMsg((struct Message *)msg);
+}
+
+static void RexxClose(void)
+{
+    struct Message *msg;
+
+    if (rexxPort)
+    {
+        if (waitRexxMsg)
+            WaitForDone(WAIT_CANCELLED);
+        Forbid();
+        RemPort(rexxPort);
+        while ((msg = GetMsg(rexxPort)))
+            RexxReply((struct RexxMsg *)msg, 20, NULL);
+        Permit();
+        DeleteMsgPort(rexxPort);
+        rexxPort = NULL;
+    }
+    if (RexxSysBase)
+    {
+        CloseLibrary((struct Library *)RexxSysBase);
+        RexxSysBase = NULL;
+    }
+}
+
+static void RexxCommand(struct RexxMsg *msg)
+{
+    static char text[512];
+    struct RexxCmd cmd;
+    char status[128];
+    size_t n;
+
+    if (!RexxCmd_Parse((char *)ARG0(msg), &cmd))
+    {
+        RexxReply(msg, 10, NULL);               // unknown command or argument missing
+        return;
+    }
+    switch (cmd.verb)
+    {
+    case REXX_CONNECT:
+        BeginEntrySession(0, NULL);
+        DeferConnect("", cmd.arg1, (UWORD)(cmd.arg2[0] ? atoi(cmd.arg2) : 23), 0, "", "", "");
+        RexxReply(msg, 0, NULL);                // connects from the main loop
+        return;
+    case REXX_DISCONNECT:
+        if (!StopRedial() && isConnected)
+            DisConnect(FALSE, FALSE);
+        RexxReply(msg, 0, NULL);
+        return;
+    case REXX_SEND:
+    case REXX_SENDLN:
+        if (!isConnected) { RexxReply(msg, 10, NULL); return; }
+        n = RexxCmd_Unescape(cmd.arg1, text, sizeof(text) - 2);
+        if (cmd.verb == REXX_SENDLN)
+        {
+            text[n++] = '\r';
+            if (STATE_IS(APP_RETURN_SENDING_CRLF)) text[n++] = '\n';
+        }
+        SendMisc(text, (long)n);
+        RexxReply(msg, 0, NULL);
+        return;
+    case REXX_WAITFOR:
+        if (!isConnected || waitOwner != WAIT_NONE) { RexxReply(msg, 10, NULL); return; }
+        waitRexxMsg = msg;                      // replied when the text comes
+        WaitForStart(WAIT_REXX, cmd.arg1, cmd.arg2[0] ? (ULONG)atoi(cmd.arg2) : 30);
+        return;
+    case REXX_CAPTURE:
+    {
+        struct MenuItem *item = GetMenuItemFromID(MENU_CAPTURE);
+
+        CaptureStop();
+        if (stricmp(cmd.arg1, "OFF") != 0)
+        {
+            if (!(captureFile = Open((STRPTR)cmd.arg1, MODE_NEWFILE)))
+            {
+                RexxReply(msg, 10, NULL);
+                return;
+            }
+            if (item) item->Flags |= CHECKED;
+        }
+        RexxReply(msg, 0, NULL);
+        return;
+    }
+    case REXX_GETSTATUS:
+        if (isConnected)
+            mysprintf(status, "CONNECTED %s %ld", server, (LONG)tcpPort);
+        else
+            strlcpy(status, "DISCONNECTED", sizeof(status));
+        RexxReply(msg, 0, status);
+        return;
+    case REXX_QUIT:
+        shouldQuitApp = TRUE;
+        RexxReply(msg, 0, NULL);
+        return;
+    }
+    RexxReply(msg, 10, NULL);
+}
+
+static void RexxMessages(void)
+{
+    struct Message *msg;
+
+    while (rexxPort && (msg = GetMsg(rexxPort)))
+    {
+        if (IsRexxMsg((struct RexxMsg *)msg))
+            RexxCommand((struct RexxMsg *)msg);
+        else
+            ReplyMsg(msg);
+    }
+}
 
 // ---- Mouse selection, the clipboard (ibmcon 1.11) --------------------------
 // The left mouse button dragged over the terminal selects text; it is shown
