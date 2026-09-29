@@ -36,7 +36,7 @@ static void VtDraw(void *user, int x0, int y0, int x1, int y1)
         cur_y = (WORD)y;
         term_sync_row_base();
         for (x = x0; x < x1 && x < n; x++) {
-            vt_u16 fg, bg;
+            vt_color fg, bg;
             vt_u32 ch = c[x].ch;
             UBYTE code;
             vt_resolve_colors(vtTerm, &c[x], &fg, &bg);
