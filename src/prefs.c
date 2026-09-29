@@ -16,7 +16,7 @@
 #include <proto/dos.h>
 #include <graphics/modeid.h>            // PAL_MONITOR_ID, HIRES_KEY
 #include "prefs.h"
-#include "dctelnet.h"                   // ChooseScreen(), SimpleReq()
+#include "DCTelnet.h"                   // ChooseScreen(), SimpleReq()
 #include "utils.h"
 #include "requesters.h"
 
