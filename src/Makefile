@@ -63,6 +63,8 @@ INCLUDES := \
 	-I$(NET_INC) \
 	-Ithird_party/ReqTools/include \
 	-Ithird_party/retro32-term \
+	-Ithird_party/vtcon/engine \
+	-Ithird_party/vtcon/render \
 	-Ithird_party/Xem/INCLUDE \
 	-Ithird_party/Xpr/include
 
@@ -143,8 +145,9 @@ CFLAGS += -D"COMPILER_STRING=$(COMPILER_STRING)" -DBUILD_HASH=$(BUILD_HASH) $(IN
 TARGET     := DCTelnet
 SRCS       := DCTelnet.c connect.c guis.c Xfer.c Xem_wrapper.c requesters.c utils.c prefs.c prefs_file.c \
               petscii_screencode.c petscii_fallback.c petscii_keymap.c petscii_dispatch.c site_prefs.c palette.c \
-              screenfont.c progdir.c shipped.c listsel.c textedit.c dsr.c iconpens.c keys.c clip.c charset.c ansiscan.c ticks.c waitfor.c rexxcmd.c rlogin.c ansimusic.c sound.c booklist.c ssh.c sshconn.c knownhosts.c crypto/sha256.c crypto/aes.c crypto/bignum.c crypto/rsa.c crypto/x25519.c crypto/random.c
-DEPS       := abook.h connect.h DCTelnet.h DCTelnet-debug.h DCTelnet-protocol.h third_party/retro32-term/term-engine.c edit.h fkey.h guis.h Xfer.h Xem_wrapper.h requesters.h utils.h prefs.h prefs_file.h site_prefs.h palette.h screenfont.h progdir.h shipped.h listsel.h textedit.h dsr.h iconpens.h keys.h clip.h charset.h ansiscan.h ticks.h waitfor.h rexxcmd.h rlogin.h ansimusic.h sound.h booklist.h ssh.h sshconn.h knownhosts.h crypto/sha256.h crypto/aes.h crypto/bignum.h crypto/rsa.h crypto/x25519.h crypto/random.h
+              screenfont.c progdir.c shipped.c listsel.c textedit.c dsr.c iconpens.c keys.c clip.c charset.c ansiscan.c ticks.c waitfor.c rexxcmd.c rlogin.c ansimusic.c sound.c booklist.c ssh.c sshconn.c knownhosts.c crypto/sha256.c crypto/aes.c crypto/bignum.c crypto/rsa.c crypto/x25519.c crypto/random.c \
+              third_party/vtcon/engine/vtengine.c third_party/vtcon/render/glyphmap.c
+DEPS       := vtbuiltin.c third_party/vtcon/engine/vtengine.h third_party/vtcon/render/glyphmap.h abook.h connect.h DCTelnet.h DCTelnet-debug.h DCTelnet-protocol.h third_party/retro32-term/term-engine.c edit.h fkey.h guis.h Xfer.h Xem_wrapper.h requesters.h utils.h prefs.h prefs_file.h site_prefs.h palette.h screenfont.h progdir.h shipped.h listsel.h textedit.h dsr.h iconpens.h keys.h clip.h charset.h ansiscan.h ticks.h waitfor.h rexxcmd.h rlogin.h ansimusic.h sound.h booklist.h ssh.h sshconn.h knownhosts.h crypto/sha256.h crypto/aes.h crypto/bignum.h crypto/rsa.h crypto/x25519.h crypto/random.h
 INSTALLDIR := ../build/installed/DCTelnet
 
 # OBJ subdir depends on TOOLCHAIN and DEBUG flag (use DEBUG=yes to enable)
@@ -246,16 +249,22 @@ $(OBJDIR):
 	@echo "------------- mkdir $@ --------------------"
 	$(MKDIR) $@
 
-# The SSH crypto sources build into a subdirectory of their own.
-$(OBJS): | $(OBJDIR)/crypto
+# The SSH crypto sources build into a subdirectory of their own, and
+# vtcon's engine (third_party/vtcon) into its source layout.
+$(OBJS): | $(OBJDIR)/crypto $(OBJDIR)/third_party/vtcon/engine $(OBJDIR)/third_party/vtcon/render
 
 # vbcc stops at 30 optimizer passes (warning 172, an error here); the SSH
 # code needs more at -speed, and AES runs for every byte of a session.
 ifeq ($(TOOLCHAIN),vbcc)
 $(OBJDIR)/ssh.o $(ASRCS:%.s=$(OBJDIR)/%.o) $(patsubst %.c,$(OBJDIR)/%.o,$(filter crypto/%,$(SRCS))): CFLAGS += -maxoptpasses=100
+# vtcon's portable C lays structs out for readability (warning 306: padding).
+$(patsubst %.c,$(OBJDIR)/%.o,$(filter third_party/vtcon/%,$(SRCS))): CFLAGS += -dontwarn=306
 endif
 
 $(OBJDIR)/crypto: | $(OBJDIR)
+	$(MKDIR) $@
+
+$(OBJDIR)/third_party/vtcon/engine $(OBJDIR)/third_party/vtcon/render: | $(OBJDIR)
 	$(MKDIR) $@
 
 
