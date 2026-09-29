@@ -14,6 +14,7 @@
     #pragma dontwarn 306
 #endif
 #include <proto/exec.h>               // RawDoFmt()
+#include <exec/memory.h>              // MEMF_ANY
 #include <proto/dos.h>                // DateToStr(), LEN_DATSTRING, TICKS_PER_SECOND
 #include <proto/intuition.h>          // CurrentTime()
 #ifdef __VBCC__
@@ -235,6 +236,46 @@ size_t strlcat(char *dst, const char *src, size_t dstSize)
     *dst = '\0';
 
     return dlen + (src - osrc);     // Count does not include NUL
+}
+
+
+/**
+ * @brief The whole file at path, read into memory: settings files are read
+ *        whole because their size is not fixed -- an older version's file
+ *        is converted, a newer one has fields appended.
+ *
+ * @param path File to read.
+ * @param size Set to the bytes read (0 when there is no buffer).
+ * @param max  A longer file is refused (NULL).
+ * @return A buffer of *size bytes plus a NUL, to FreeVec(); NULL when the file
+ *         cannot be opened or read, is empty, or is longer than max.
+ */
+UBYTE *ReadWholeFile(const char *path, LONG *size, LONG max)
+{
+    BPTR fh = Open((STRPTR)path, MODE_OLDFILE);
+    UBYTE *data = NULL;
+    LONG len;
+
+    *size = 0;
+    if (!fh)
+        return NULL;
+    Seek(fh, 0, OFFSET_END);
+    len = Seek(fh, 0, OFFSET_BEGINNING);                // Seek returns the old position
+    if (len > 0 && len <= max && (data = AllocVec((ULONG)len + 1, MEMF_ANY)) != NULL)
+    {
+        if (Read(fh, data, len) == len)
+        {
+            data[len] = 0;
+            *size = len;
+        }
+        else
+        {
+            FreeVec(data);
+            data = NULL;
+        }
+    }
+    Close(fh);
+    return data;
 }
 
 

@@ -16,6 +16,7 @@
 #include <proto/dos.h>
 #include <graphics/modeid.h>            // PAL_MONITOR_ID, HIRES_KEY
 #include "prefs.h"
+#include "prefs_file.h"
 #include "dctelnet.h"                   // ChooseScreen(), SimpleReq()
 #include "utils.h"
 #include "requesters.h"
@@ -271,61 +272,6 @@ void SavePrefs(void)
 }
 
 /**
- * @brief Convert a legacy preferences file to the current versioned format.
- *
- * The migration preserves the preferences that are considered essential across format versions:
- * - Display ID, Width, Height and Depth
- * - DeviceColors (palette)
- * - Font name and size
- *
- * All other preferences are initialized to their current default values.
- *
- * @param fileHandle File handle of the legacy preferences file. File is opened for reading
- * and closed by caller.
- *
- * @return TRUE on successful conversion, FALSE otherwise
- */
-BOOL ReadLegacyPrefs(BPTR fileHandle)
-{
-    BOOL result = FALSE;
-    LONG len;
-    struct LegacyPrefsStruct *legacyPrefs = AllocMem(sizeof(struct LegacyPrefsStruct), MEMF_ANY);
-
-    if (legacyPrefs == NULL)
-    {
-        RecoveryAlert("Not enough memory!");
-        return FALSE;
-    }
-
-    Seek(fileHandle, 0, OFFSET_BEGINNING);
-    len = Read(fileHandle, legacyPrefs, sizeof(struct LegacyPrefsStruct));
-
-    if (len < sizeof(struct LegacyPrefsStruct)) // Ensure all essential fields were read
-    {
-        #ifdef _DEBUG
-            SimpleReq("ReadLegacyPrefs(): legacy Prefs file truncated!");
-        #endif
-    }
-    else
-    {
-        prefs.DisplayID          = legacyPrefs->DisplayID;
-        prefs.DisplayWidth       = legacyPrefs->DisplayWidth;
-        prefs.DisplayHeight      = legacyPrefs->DisplayHeight;
-        prefs.DisplayDepth       = legacyPrefs->DisplayDepth;
-        prefs.FontSize           = legacyPrefs->fontsize;
-        strlcpy(prefs.FontName,    legacyPrefs->fontname, sizeof(prefs.FontName));
-        memcpy(prefs.DeviceColors, legacyPrefs->color, sizeof(prefs.DeviceColors));
-
-        result = TRUE;
-    }
-
-    FreeMem(legacyPrefs, sizeof(struct LegacyPrefsStruct));
-
-    return result;
-}
-
-
-/**
 @brief Load application preferences from the prefs file.
 
 Loads preferences from the configured prefs file. If the file does not exist it is created and
@@ -338,67 +284,32 @@ Calling code must ensure that ReqTools.library is opened before invoking this fu
 BOOL LoadPrefs(void)
 {
     LONG len;
+    BPTR fileHandle = 0;
     BOOL userMustChooseAScreenMode = FALSE;
-    BPTR fileHandle = Open(prefsFilename, MODE_OLDFILE);
+    // The whole file: a v2 file of any size (fields are only appended),
+    // or a DCTelnet 1.x file converted setting by setting.
+    UBYTE *file = ReadWholeFile(prefsFilename, &len, PREFS_FILE_MAX);
 
-    if (! fileHandle)
+    if (! file)
     {
         userMustChooseAScreenMode = TRUE;
     }
     else
     {
-         // A Prefs file exists, read its header:
-        struct DCTFileHeader hdr;
+        int kind = Prefs_Decode(file, (size_t)len, &prefs);
 
-        len = Read(fileHandle, &hdr, sizeof(hdr));
-
-        if (len != sizeof(hdr))
+        FreeVec(file);
+        switch (kind)
         {
-            SimpleReq("Error: the DCTelnet.Prefs header is incomplete.\n"
-                      "Default preferences will be used.");
-            userMustChooseAScreenMode = TRUE;
-        }
-        else
-        {
-            // Old DCTelnet 1.x prefs files without header:
-            if (memcmp(hdr.magic, "DCTP", 4) != 0)
-            {
-                SimpleReq("-->ReadLegacyPrefs()");
-
-                if (! ReadLegacyPrefs(fileHandle))
-                {
-                    SimpleReq("Error: the old DCTelnet.Prefs file could not be converted.\n"
-                              "Default preferences will be used.");
-                    userMustChooseAScreenMode = TRUE;
-                }
-            }
-            else if (hdr.version == 2) // DCTelnet v2.0+
-            {
-                if (hdr.dataSize != sizeof(prefs))
-                {
-                    SimpleReq("Error reading the DCTelnet.Prefs file: inconsistent data.\n"
-                              "Default preferences will be used.");
-                    userMustChooseAScreenMode = TRUE;
-                }
-
-                len = Read(fileHandle, &prefs, sizeof(prefs));
-
-                if (len != sizeof(prefs))
-                {
-                    SimpleReq("Error reading the DCTelnet.Prefs file: truncated data.\n"
-                              "Default preferences will be used.");
-                    userMustChooseAScreenMode = TRUE;
-                }
-            }
-            else
-            {
-                SimpleReq("Error reading DCTelnet.Prefs: unsupported file format version.\n"
+            case PREFS_FILE_V2:
+            case PREFS_FILE_LEGACY:
+                break;
+            default:
+                SimpleReq("Error: DCTelnet.Prefs is damaged or from an unknown version.\n"
                           "Default preferences will be used.");
                 userMustChooseAScreenMode = TRUE;
-            }
+                break;
         }
-
-        Close(fileHandle);  fileHandle = 0;
     }
 
 
