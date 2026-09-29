@@ -1,0 +1,25 @@
+name: Build
+
+on:
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository and submodules
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Build with vbcc
+        env:
+          BUILD_IMAGE: walkero/docker4amigavbcc:m68k-amigaos-2.0.0
+        shell: bash
+        run: |
+          docker run --rm \
+            --volume "$GITHUB_WORKSPACE:/opt/code" \
+            --workdir /opt/code/src \
+            "$BUILD_IMAGE" \
+            make
