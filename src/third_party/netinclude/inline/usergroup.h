@@ -2,7 +2,7 @@
  * :ts=8
  *
  * 'Roadshow' -- Amiga TCP/IP stack; "usergroup.library" API
- * Copyright © 2001-2019 by Olaf Barthel.
+ * Copyright (C) 2001-2022 by Olaf Barthel.
  * All Rights Reserved.
  *
  * Amiga specific TCP/IP 'C' header files;
@@ -14,9 +14,9 @@
  */
 
 /*
- * This file was created with fd2pragma V2.171 using the following options:
+ * This file was created with fd2pragma V2.197g using the following options:
  *
- * fd2pragma usergroup_lib.sfd to RAM:inline special 47
+ *    fd2pragma --special 40 --infile usergroup_lib.sfd
  */
 
 #ifndef _INLINE_USERGROUP_H
@@ -26,12 +26,18 @@
 #define CLIB_USERGROUP_PROTOS_H
 #endif
 
+#ifndef __INLINE_MACROS_H
+#include <inline/macros.h>
+#endif
+
 #ifndef  LIBRARIES_USERGROUP_H
 #include <libraries/usergroup.h>
 #endif
+
 #ifndef  PWD_H
 #include <pwd.h>
 #endif
+
 #ifndef  GRP_H
 #include <grp.h>
 #endif
@@ -40,300 +46,165 @@
 #define USERGROUP_BASE_NAME UserGroupBase
 #endif
 
-#define ug_SetupContextTagList(name, tags) ({ \
-  STRPTR _ug_SetupContextTagList_name = (name); \
-  struct TagItem * _ug_SetupContextTagList_tags = (tags); \
-  ({ \
-  register char * _ug_SetupContextTagList__bn __asm("a6") = (char *) (USERGROUP_BASE_NAME);\
-  ((LONG (*)(char * __asm("a6"), STRPTR __asm("a0"), struct TagItem * __asm("a1"))) \
-  (_ug_SetupContextTagList__bn - 30))(_ug_SetupContextTagList__bn, _ug_SetupContextTagList_name, _ug_SetupContextTagList_tags); \
-});})
+#define ug_SetupContextTagList(name, tags) \
+	LP2(0x1e, LONG, ug_SetupContextTagList, STRPTR, name, a0, struct TagItem *, tags, a1, \
+	, USERGROUP_BASE_NAME)
 
 #ifndef NO_INLINE_STDARG
-static __inline__ LONG ___ug_SetupContextTags(struct Library * UserGroupBase, STRPTR name, ...)
-{
-  return ug_SetupContextTagList(name, (struct TagItem *) ((ULONG) &name + sizeof(STRPTR)));
-}
-
-#define ug_SetupContextTags(name...) ___ug_SetupContextTags(USERGROUP_BASE_NAME, name)
+#define ug_SetupContextTags(name, tags...) \
+	({ULONG _tags[] = {tags}; ug_SetupContextTagList((name), (struct TagItem *) _tags);})
 #endif
 
-#define ug_GetErr() ({ \
-  register char * _ug_GetErr__bn __asm("a6") = (char *) (USERGROUP_BASE_NAME);\
-  ((LONG (*)(char * __asm("a6"))) \
-  (_ug_GetErr__bn - 36))(_ug_GetErr__bn); \
-})
+#define ug_GetErr() \
+	LP0(0x24, LONG, ug_GetErr, \
+	, USERGROUP_BASE_NAME)
 
-#define ug_StrError(err) ({ \
-  LONG _ug_StrError_err = (err); \
-  ({ \
-  register char * _ug_StrError__bn __asm("a6") = (char *) (USERGROUP_BASE_NAME);\
-  ((STRPTR (*)(char * __asm("a6"), LONG __asm("d1"))) \
-  (_ug_StrError__bn - 42))(_ug_StrError__bn, _ug_StrError_err); \
-});})
+#define ug_StrError(err) \
+	LP1(0x2a, STRPTR, ug_StrError, LONG, err, d1, \
+	, USERGROUP_BASE_NAME)
 
-#define getuid() ({ \
-  register char * _getuid__bn __asm("a6") = (char *) (USERGROUP_BASE_NAME);\
-  ((LONG (*)(char * __asm("a6"))) \
-  (_getuid__bn - 48))(_getuid__bn); \
-})
+#define getuid() \
+	LP0(0x30, LONG, getuid, \
+	, USERGROUP_BASE_NAME)
 
-#define geteuid() ({ \
-  register char * _geteuid__bn __asm("a6") = (char *) (USERGROUP_BASE_NAME);\
-  ((LONG (*)(char * __asm("a6"))) \
-  (_geteuid__bn - 54))(_geteuid__bn); \
-})
+#define geteuid() \
+	LP0(0x36, LONG, geteuid, \
+	, USERGROUP_BASE_NAME)
 
-#define setreuid(real, effective) ({ \
-  LONG _setreuid_real = (real); \
-  LONG _setreuid_effective = (effective); \
-  ({ \
-  register char * _setreuid__bn __asm("a6") = (char *) (USERGROUP_BASE_NAME);\
-  ((LONG (*)(char * __asm("a6"), LONG __asm("d0"), LONG __asm("d1"))) \
-  (_setreuid__bn - 60))(_setreuid__bn, _setreuid_real, _setreuid_effective); \
-});})
+#define setreuid(real, effective) \
+	LP2(0x3c, LONG, setreuid, LONG, real, d0, LONG, effective, d1, \
+	, USERGROUP_BASE_NAME)
 
-#define setuid(uid) ({ \
-  LONG _setuid_uid = (uid); \
-  ({ \
-  register char * _setuid__bn __asm("a6") = (char *) (USERGROUP_BASE_NAME);\
-  ((LONG (*)(char * __asm("a6"), LONG __asm("d0"))) \
-  (_setuid__bn - 66))(_setuid__bn, _setuid_uid); \
-});})
+#define setuid(uid) \
+	LP1(0x42, LONG, setuid, LONG, uid, d0, \
+	, USERGROUP_BASE_NAME)
 
-#define getgid() ({ \
-  register char * _getgid__bn __asm("a6") = (char *) (USERGROUP_BASE_NAME);\
-  ((LONG (*)(char * __asm("a6"))) \
-  (_getgid__bn - 72))(_getgid__bn); \
-})
+#define getgid() \
+	LP0(0x48, LONG, getgid, \
+	, USERGROUP_BASE_NAME)
 
-#define getegid() ({ \
-  register char * _getegid__bn __asm("a6") = (char *) (USERGROUP_BASE_NAME);\
-  ((LONG (*)(char * __asm("a6"))) \
-  (_getegid__bn - 78))(_getegid__bn); \
-})
+#define getegid() \
+	LP0(0x4e, LONG, getegid, \
+	, USERGROUP_BASE_NAME)
 
-#define setregid(real, effective) ({ \
-  LONG _setregid_real = (real); \
-  LONG _setregid_effective = (effective); \
-  ({ \
-  register char * _setregid__bn __asm("a6") = (char *) (USERGROUP_BASE_NAME);\
-  ((LONG (*)(char * __asm("a6"), LONG __asm("d0"), LONG __asm("d1"))) \
-  (_setregid__bn - 84))(_setregid__bn, _setregid_real, _setregid_effective); \
-});})
+#define setregid(real, effective) \
+	LP2(0x54, LONG, setregid, LONG, real, d0, LONG, effective, d1, \
+	, USERGROUP_BASE_NAME)
 
-#define setgid(gid) ({ \
-  LONG _setgid_gid = (gid); \
-  ({ \
-  register char * _setgid__bn __asm("a6") = (char *) (USERGROUP_BASE_NAME);\
-  ((LONG (*)(char * __asm("a6"), LONG __asm("d0"))) \
-  (_setgid__bn - 90))(_setgid__bn, _setgid_gid); \
-});})
+#define setgid(gid) \
+	LP1(0x5a, LONG, setgid, LONG, gid, d0, \
+	, USERGROUP_BASE_NAME)
 
-#define getgroups(gidsetlen, gidset) ({ \
-  LONG _getgroups_gidsetlen = (gidsetlen); \
-  LONG * _getgroups_gidset = (gidset); \
-  ({ \
-  register char * _getgroups__bn __asm("a6") = (char *) (USERGROUP_BASE_NAME);\
-  ((LONG (*)(char * __asm("a6"), LONG __asm("d0"), LONG * __asm("a1"))) \
-  (_getgroups__bn - 96))(_getgroups__bn, _getgroups_gidsetlen, _getgroups_gidset); \
-});})
+#define getgroups(gidsetlen, gidset) \
+	LP2(0x60, LONG, getgroups, LONG, gidsetlen, d0, LONG *, gidset, a1, \
+	, USERGROUP_BASE_NAME)
 
-#define setgroups(gidsetlen, gidset) ({ \
-  LONG _setgroups_gidsetlen = (gidsetlen); \
-  LONG * _setgroups_gidset = (gidset); \
-  ({ \
-  register char * _setgroups__bn __asm("a6") = (char *) (USERGROUP_BASE_NAME);\
-  ((LONG (*)(char * __asm("a6"), LONG __asm("d0"), LONG * __asm("a1"))) \
-  (_setgroups__bn - 102))(_setgroups__bn, _setgroups_gidsetlen, _setgroups_gidset); \
-});})
+#define setgroups(gidsetlen, gidset) \
+	LP2(0x66, LONG, setgroups, LONG, gidsetlen, d0, LONG *, gidset, a1, \
+	, USERGROUP_BASE_NAME)
 
-#define initgroups(name, basegid) ({ \
-  STRPTR _initgroups_name = (name); \
-  LONG _initgroups_basegid = (basegid); \
-  ({ \
-  register char * _initgroups__bn __asm("a6") = (char *) (USERGROUP_BASE_NAME);\
-  ((LONG (*)(char * __asm("a6"), STRPTR __asm("a1"), LONG __asm("d0"))) \
-  (_initgroups__bn - 108))(_initgroups__bn, _initgroups_name, _initgroups_basegid); \
-});})
+#define initgroups(name, basegid) \
+	LP2(0x6c, LONG, initgroups, STRPTR, name, a1, LONG, basegid, d0, \
+	, USERGROUP_BASE_NAME)
 
-#define getpwnam(login) ({ \
-  STRPTR _getpwnam_login = (login); \
-  ({ \
-  register char * _getpwnam__bn __asm("a6") = (char *) (USERGROUP_BASE_NAME);\
-  ((struct passwd * (*)(char * __asm("a6"), STRPTR __asm("a1"))) \
-  (_getpwnam__bn - 114))(_getpwnam__bn, _getpwnam_login); \
-});})
+#define getpwnam(login) \
+	LP1(0x72, struct passwd *, getpwnam, STRPTR, login, a1, \
+	, USERGROUP_BASE_NAME)
 
-#define getpwuid(uid) ({ \
-  LONG _getpwuid_uid = (uid); \
-  ({ \
-  register char * _getpwuid__bn __asm("a6") = (char *) (USERGROUP_BASE_NAME);\
-  ((struct passwd * (*)(char * __asm("a6"), LONG __asm("d0"))) \
-  (_getpwuid__bn - 120))(_getpwuid__bn, _getpwuid_uid); \
-});})
+#define getpwuid(uid) \
+	LP1(0x78, struct passwd *, getpwuid, LONG, uid, d0, \
+	, USERGROUP_BASE_NAME)
 
-#define setpwent() ({ \
-  register char * _setpwent__bn __asm("a6") = (char *) (USERGROUP_BASE_NAME);\
-  ((VOID (*)(char * __asm("a6"))) \
-  (_setpwent__bn - 126))(_setpwent__bn); \
-})
+#define setpwent() \
+	LP0NR(0x7e, setpwent, \
+	, USERGROUP_BASE_NAME)
 
-#define getpwent() ({ \
-  register char * _getpwent__bn __asm("a6") = (char *) (USERGROUP_BASE_NAME);\
-  ((struct passwd * (*)(char * __asm("a6"))) \
-  (_getpwent__bn - 132))(_getpwent__bn); \
-})
+#define getpwent() \
+	LP0(0x84, struct passwd *, getpwent, \
+	, USERGROUP_BASE_NAME)
 
-#define endpwent() ({ \
-  register char * _endpwent__bn __asm("a6") = (char *) (USERGROUP_BASE_NAME);\
-  ((VOID (*)(char * __asm("a6"))) \
-  (_endpwent__bn - 138))(_endpwent__bn); \
-})
+#define endpwent() \
+	LP0NR(0x8a, endpwent, \
+	, USERGROUP_BASE_NAME)
 
-#define getgrnam(name) ({ \
-  STRPTR _getgrnam_name = (name); \
-  ({ \
-  register char * _getgrnam__bn __asm("a6") = (char *) (USERGROUP_BASE_NAME);\
-  ((struct group * (*)(char * __asm("a6"), STRPTR __asm("a1"))) \
-  (_getgrnam__bn - 144))(_getgrnam__bn, _getgrnam_name); \
-});})
+#define getgrnam(name) \
+	LP1(0x90, struct group *, getgrnam, STRPTR, name, a1, \
+	, USERGROUP_BASE_NAME)
 
-#define getgrgid(gid) ({ \
-  LONG _getgrgid_gid = (gid); \
-  ({ \
-  register char * _getgrgid__bn __asm("a6") = (char *) (USERGROUP_BASE_NAME);\
-  ((struct group * (*)(char * __asm("a6"), LONG __asm("d0"))) \
-  (_getgrgid__bn - 150))(_getgrgid__bn, _getgrgid_gid); \
-});})
+#define getgrgid(gid) \
+	LP1(0x96, struct group *, getgrgid, LONG, gid, d0, \
+	, USERGROUP_BASE_NAME)
 
-#define setgrent() ({ \
-  register char * _setgrent__bn __asm("a6") = (char *) (USERGROUP_BASE_NAME);\
-  ((VOID (*)(char * __asm("a6"))) \
-  (_setgrent__bn - 156))(_setgrent__bn); \
-})
+#define setgrent() \
+	LP0NR(0x9c, setgrent, \
+	, USERGROUP_BASE_NAME)
 
-#define getgrent() ({ \
-  register char * _getgrent__bn __asm("a6") = (char *) (USERGROUP_BASE_NAME);\
-  ((struct group * (*)(char * __asm("a6"))) \
-  (_getgrent__bn - 162))(_getgrent__bn); \
-})
+#define getgrent() \
+	LP0(0xa2, struct group *, getgrent, \
+	, USERGROUP_BASE_NAME)
 
-#define endgrent() ({ \
-  register char * _endgrent__bn __asm("a6") = (char *) (USERGROUP_BASE_NAME);\
-  ((VOID (*)(char * __asm("a6"))) \
-  (_endgrent__bn - 168))(_endgrent__bn); \
-})
+#define endgrent() \
+	LP0NR(0xa8, endgrent, \
+	, USERGROUP_BASE_NAME)
 
-#define crypt(key, set) ({ \
-  UBYTE * _crypt_key = (key); \
-  UBYTE * _crypt_set = (set); \
-  ({ \
-  register char * _crypt__bn __asm("a6") = (char *) (USERGROUP_BASE_NAME);\
-  ((UBYTE * (*)(char * __asm("a6"), UBYTE * __asm("a0"), UBYTE * __asm("a1"))) \
-  (_crypt__bn - 174))(_crypt__bn, _crypt_key, _crypt_set); \
-});})
+#define crypt(key, set) \
+	LP2(0xae, UBYTE *, crypt, UBYTE *, key, a0, UBYTE *, set, a1, \
+	, USERGROUP_BASE_NAME)
 
-#define ug_GetSalt(user, buf, size) ({ \
-  struct passwd * _ug_GetSalt_user = (user); \
-  UBYTE * _ug_GetSalt_buf = (buf); \
-  ULONG _ug_GetSalt_size = (size); \
-  ({ \
-  register char * _ug_GetSalt__bn __asm("a6") = (char *) (USERGROUP_BASE_NAME);\
-  ((UBYTE * (*)(char * __asm("a6"), struct passwd * __asm("a0"), UBYTE * __asm("a1"), ULONG __asm("d0"))) \
-  (_ug_GetSalt__bn - 180))(_ug_GetSalt__bn, _ug_GetSalt_user, _ug_GetSalt_buf, _ug_GetSalt_size); \
-});})
+#define ug_GetSalt(user, buf, size) \
+	LP3(0xb4, UBYTE *, ug_GetSalt, struct passwd *, user, a0, UBYTE *, buf, a1, ULONG, size, d0, \
+	, USERGROUP_BASE_NAME)
 
-#define getpass(prompt) ({ \
-  STRPTR _getpass_prompt = (prompt); \
-  ({ \
-  register char * _getpass__bn __asm("a6") = (char *) (USERGROUP_BASE_NAME);\
-  ((STRPTR (*)(char * __asm("a6"), STRPTR __asm("a1"))) \
-  (_getpass__bn - 186))(_getpass__bn, _getpass_prompt); \
-});})
+#define getpass(prompt) \
+	LP1(0xba, STRPTR, getpass, STRPTR, prompt, a1, \
+	, USERGROUP_BASE_NAME)
 
-#define umask(mask) ({ \
-  ULONG _umask_mask = (mask); \
-  ({ \
-  register char * _umask__bn __asm("a6") = (char *) (USERGROUP_BASE_NAME);\
-  ((ULONG (*)(char * __asm("a6"), ULONG __asm("d0"))) \
-  (_umask__bn - 192))(_umask__bn, _umask_mask); \
-});})
+#define umask(mask) \
+	LP1(0xc0, ULONG, umask, ULONG, mask, d0, \
+	, USERGROUP_BASE_NAME)
 
-#define getumask() ({ \
-  register char * _getumask__bn __asm("a6") = (char *) (USERGROUP_BASE_NAME);\
-  ((ULONG (*)(char * __asm("a6"))) \
-  (_getumask__bn - 198))(_getumask__bn); \
-})
+#define getumask() \
+	LP0(0xc6, ULONG, getumask, \
+	, USERGROUP_BASE_NAME)
 
-#define setsid() ({ \
-  register char * _setsid__bn __asm("a6") = (char *) (USERGROUP_BASE_NAME);\
-  ((LONG (*)(char * __asm("a6"))) \
-  (_setsid__bn - 204))(_setsid__bn); \
-})
+#define setsid() \
+	LP0(0xcc, LONG, setsid, \
+	, USERGROUP_BASE_NAME)
 
-#define getpgrp() ({ \
-  register char * _getpgrp__bn __asm("a6") = (char *) (USERGROUP_BASE_NAME);\
-  ((LONG (*)(char * __asm("a6"))) \
-  (_getpgrp__bn - 210))(_getpgrp__bn); \
-})
+#define getpgrp() \
+	LP0(0xd2, LONG, getpgrp, \
+	, USERGROUP_BASE_NAME)
 
-#define getlogin() ({ \
-  register char * _getlogin__bn __asm("a6") = (char *) (USERGROUP_BASE_NAME);\
-  ((STRPTR (*)(char * __asm("a6"))) \
-  (_getlogin__bn - 216))(_getlogin__bn); \
-})
+#define getlogin() \
+	LP0(0xd8, STRPTR, getlogin, \
+	, USERGROUP_BASE_NAME)
 
-#define setlogin(name) ({ \
-  STRPTR _setlogin_name = (name); \
-  ({ \
-  register char * _setlogin__bn __asm("a6") = (char *) (USERGROUP_BASE_NAME);\
-  ((LONG (*)(char * __asm("a6"), STRPTR __asm("a1"))) \
-  (_setlogin__bn - 222))(_setlogin__bn, _setlogin_name); \
-});})
+#define setlogin(name) \
+	LP1(0xde, LONG, setlogin, STRPTR, name, a1, \
+	, USERGROUP_BASE_NAME)
 
-#define setutent() ({ \
-  register char * _setutent__bn __asm("a6") = (char *) (USERGROUP_BASE_NAME);\
-  ((VOID (*)(char * __asm("a6"))) \
-  (_setutent__bn - 228))(_setutent__bn); \
-})
+#define setutent() \
+	LP0NR(0xe4, setutent, \
+	, USERGROUP_BASE_NAME)
 
-#define getutent() ({ \
-  register char * _getutent__bn __asm("a6") = (char *) (USERGROUP_BASE_NAME);\
-  ((struct utmp * (*)(char * __asm("a6"))) \
-  (_getutent__bn - 234))(_getutent__bn); \
-})
+#define getutent() \
+	LP0(0xea, struct utmp *, getutent, \
+	, USERGROUP_BASE_NAME)
 
-#define endutent() ({ \
-  register char * _endutent__bn __asm("a6") = (char *) (USERGROUP_BASE_NAME);\
-  ((VOID (*)(char * __asm("a6"))) \
-  (_endutent__bn - 240))(_endutent__bn); \
-})
+#define endutent() \
+	LP0NR(0xf0, endutent, \
+	, USERGROUP_BASE_NAME)
 
-#define getlastlog(uid) ({ \
-  LONG _getlastlog_uid = (uid); \
-  ({ \
-  register char * _getlastlog__bn __asm("a6") = (char *) (USERGROUP_BASE_NAME);\
-  ((struct lastlog * (*)(char * __asm("a6"), LONG __asm("d0"))) \
-  (_getlastlog__bn - 246))(_getlastlog__bn, _getlastlog_uid); \
-});})
+#define getlastlog(uid) \
+	LP1(0xf6, struct lastlog *, getlastlog, LONG, uid, d0, \
+	, USERGROUP_BASE_NAME)
 
-#define setlastlog(uid, name, host) ({ \
-  LONG _setlastlog_uid = (uid); \
-  STRPTR _setlastlog_name = (name); \
-  STRPTR _setlastlog_host = (host); \
-  ({ \
-  register char * _setlastlog__bn __asm("a6") = (char *) (USERGROUP_BASE_NAME);\
-  ((LONG (*)(char * __asm("a6"), LONG __asm("d0"), STRPTR __asm("a0"), STRPTR __asm("a1"))) \
-  (_setlastlog__bn - 252))(_setlastlog__bn, _setlastlog_uid, _setlastlog_name, _setlastlog_host); \
-});})
+#define setlastlog(uid, name, host) \
+	LP3(0xfc, LONG, setlastlog, LONG, uid, d0, STRPTR, name, a0, STRPTR, host, a1, \
+	, USERGROUP_BASE_NAME)
 
-#define getcredentials(task) ({ \
-  struct Task * _getcredentials_task = (task); \
-  ({ \
-  register char * _getcredentials__bn __asm("a6") = (char *) (USERGROUP_BASE_NAME);\
-  ((struct UserGroupCredentials * (*)(char * __asm("a6"), struct Task * __asm("a0"))) \
-  (_getcredentials__bn - 258))(_getcredentials__bn, _getcredentials_task); \
-});})
+#define getcredentials(task) \
+	LP1(0x102, struct UserGroupCredentials *, getcredentials, struct Task *, task, a0, \
+	, USERGROUP_BASE_NAME)
 
-#endif /*  _INLINE_USERGROUP_H  */
+#endif /* _INLINE_USERGROUP_H  */

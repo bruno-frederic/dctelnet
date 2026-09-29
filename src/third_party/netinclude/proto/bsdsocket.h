@@ -2,7 +2,7 @@
  * :ts=8
  *
  * 'Roadshow' -- Amiga TCP/IP stack
- * Copyright © 2001-2016 by Olaf Barthel.
+ * Copyright (C) 2001-2023 by Olaf Barthel.
  * All Rights Reserved.
  *
  * Generic prototype and direct ROM interface definitions
@@ -71,7 +71,9 @@ extern struct Library * SocketBase;
  #endif /* CLIB_BSDSOCKET_PROTOS_H */
  #if defined(__GNUC__)
   #ifndef __PPC__
-   #include <inline/bsdsocket.h>
+   #if defined(__AMIGA__)
+    #include <inline/bsdsocket.h>
+   #endif /* __AMIGA__ */
   #else
    #include <ppcinline/bsdsocket.h>
   #endif /* __PPC__ */

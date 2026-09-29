@@ -4,7 +4,7 @@
  * :ts=8
  *
  * 'Roadshow' -- Amiga TCP/IP stack
- * Copyright © 2001-2016 by Olaf Barthel.
+ * Copyright (C) 2001-2022 by Olaf Barthel.
  * All Rights Reserved.
  *
  * Amiga specific TCP/IP 'C' header files;
@@ -255,8 +255,9 @@ extern "C" {
 /* Install or remove the error code hook. */
 #define SBTC_ERROR_HOOK 68
 
-/* Whether or not the gethostbyname_r() and gethostbyaddr_r() functions
-   are supported. */
+/* Whether or not the gethostbyname_r(), gethostbyaddr_r(), getaddrinfo(),
+   freeaddrinfo(), getnameinfo() and gai_strerror() functions are
+   supported. */
 #define SBTC_HAVE_GETHOSTADDR_R_API 69
 
 /****************************************************************************/
