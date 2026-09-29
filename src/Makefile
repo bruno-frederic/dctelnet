@@ -40,6 +40,11 @@ INCLUDES := \
 	-Ithird_party/Xem/INCLUDE \
 	-Ithird_party/Xpr/include
 
+# Submodules must be checked out before anything else can be built.
+ifeq (,$(wildcard third_party/retro32-term/term-engine.c))
+  $(error third_party/retro32-term/term-engine.c is missing. Run 'git submodule update --init --recursive')
+endif
+
 # vbcc or gcc
 TOOLCHAIN ?= vbcc
 CPU       ?= 68000
