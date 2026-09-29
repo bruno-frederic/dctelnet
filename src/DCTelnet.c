@@ -382,6 +382,7 @@ BYTE dontUseSig31 = -1; // don't use it, ibmcon.device will destroy it.
 #include "DCTelnet-debug.h"
 #define send_data(data, len) TCPSend((data), (len))
 #include "term-engine.c"
+#include "vtbuiltin.c"
 
 static void ObtainWorkbenchPens(void);
 
@@ -404,6 +405,8 @@ static int BuiltinInit(void)
                          win->Height - win->BorderTop - win->BorderBottom,
                          petsciiFont ? petsciiFont : ansiFont);
     term_set_pens(ansiOwnPens ? ansiColourPens : NULL);
+    if (res == 0)
+        res = VtOpen();
     return res;
 }
 
@@ -448,14 +451,10 @@ static void ConWrite(char *data, long len)
     {
         if (STATE_IS(APP_RENDERER_BUILTIN))
         {
-            // With retro32-term, drawing only ever happens with the cursor hidden, so glyphs never
-            // land on an inverted cell.
+            // vtcon parses, retro32-term draws (vtbuiltin.c); drawing only ever happens with
+            // the cursor hidden, so glyphs never land on an inverted cell.
             BuiltinCovered();
-            cursor_hide();
-            while (len-- > 0)
-                term_feed((UBYTE)*data++);
-            term_flush();
-            cursor_show();
+            VtWrite((const UBYTE *)data, len);
             return; // direct return because maximal optimization is needed for this frequently called function
         }
         else if (STATE_IS(APP_RENDERER_CONSOLE_DEVICE | APP_RENDERER_IBMCON_DEVICE))
@@ -5207,6 +5206,7 @@ static BOOL OpenConsoleDevice(void)
 static void CloseConsoleDevice(void)
 {
     ReleaseWorkbenchPens();
+    VtClose();
 
     // https://amigadev.elowar.com/read/ADCD_2.1/Devices_Manual_guide/node0190.html
     if (isConDeviceOpened)

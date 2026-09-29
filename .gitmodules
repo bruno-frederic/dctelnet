@@ -2,3 +2,6 @@
 	path = src/third_party/retro32-term
 	url = ../retro32-term.git
 	branch = feat/dctelnet-integration
+[submodule "src/third_party/vtcon"]
+	path = src/third_party/vtcon
+	url = /Users/spot/Code/vtcon
