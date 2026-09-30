@@ -9,17 +9,19 @@ jobs:
 
     steps:
       - name: Check out repository and submodules
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           submodules: recursive
 
       - name: Build with vbcc
-        env:
-          BUILD_IMAGE: walkero/docker4amigavbcc:m68k-amigaos-2.0.0
-        shell: bash
-        run: |
-          docker run --rm \
-            --volume "$GITHUB_WORKSPACE:/opt/code" \
-            --workdir /opt/code/src \
-            "$BUILD_IMAGE" \
-            make
+        run: make -C src ci
+
+      - name: Upload non-release build artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: DCTelnet-${{ github.sha }}
+          path: |
+            build/vbcc-68000-release/DCTelnet.68000
+            build/vbcc-68020-release/DCTelnet.68020
+          if-no-files-found: error
+          retention-days: 60

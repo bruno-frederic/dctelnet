@@ -159,31 +159,15 @@ Starting with v1.8, a compatible version of the library is included in the `Libs
 **As of September 2026:**
 
 - **IDE**: VS Code (on Windows)
-- Docker/Podman running a telnetd container for testing
-- **Compiler**: **VBCC** and **GNU Make** on Windows, using my custom toolchain :
+- Docker is used for the official build and can run a telnetd container for testing.
+- **Build instructions**: See [CONTRIBUTING.md](CONTRIBUTING.md) for the official CI build procedure and contributor requirements.
+- **Alternative build toolchains** (outside the official CI build):
+  - **VBCC** on Windows, using my custom toolchain:
   [vbcc-bin](https://github.com/bruno-frederic/vbcc-bin/tree/Bruno_toolchain)
-- The project can also be built using:
-  - VBCC in a Docker or Podman container
-  - SAS/C v6.58 on AmigaOS 3.2
   - Bebbo's Amiga-GCC 6.5.0b
+  - SAS/C v6.58 on AmigaOS 3.2 can build all DCTelnet 1.x versions, but not 2.0,
+    which uses C99 features unsupported by SAS/C.
 - Icon Editor : IconEdit from AmigaOS 3.2.3
-
-### Build with Docker or Podman
-
-The walkero/docker4amigavbcc container provides the VBCC cross-compiler and build tools needed to compile
-DCTelnet for AmigaOS, without installing the Amiga toolchain on your host. Docker
-or Podman must be installed and running. The commands below clone the development
-branch and build both the 68000 and 68020 release binaries:
-
-```sh
-git clone --branch v2.0-dev --recurse-submodules https://github.com/bruno-frederic/dctelnet.git
-
-docker run --rm -v "${PWD}/dctelnet:/opt/code" -w /opt/code/src walkero/docker4amigavbcc:m68k-amigaos-2.0.0 make
-```
-
-The source directory is mounted into the container, so the build outputs remain on the host in
-`build/vbcc-680x0-release/`.
-
 
 ### Source code
 
