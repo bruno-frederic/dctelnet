@@ -156,13 +156,17 @@ Starting with v1.8, a compatible version of the library is included in the `Libs
 
 ## 🛠️ Build environment
 
-**As of August 2026:**
+**As of September 2026:**
 
 - **IDE**: VS Code (on Windows)
-- Docker/Podman running a telnetd container for testing
-- **Compiler**: **VBCC** and **GNU Make** on Windows, using my custom toolchain :
+- Docker is used for the official build and can run a telnetd container for testing.
+- **Build instructions**: See [CONTRIBUTING.md](CONTRIBUTING.md) for the official CI build procedure and contributor requirements.
+- **Alternative build toolchains** (outside the official CI build):
+  - **VBCC** on Windows, using my custom toolchain:
   [vbcc-bin](https://github.com/bruno-frederic/vbcc-bin/tree/Bruno_toolchain)
-- The project can also be built with SAS/C v6.58 under AmigaOS 3.2
+  - Bebbo's Amiga-GCC 6.5.0b
+  - SAS/C v6.58 on AmigaOS 3.2 can build all DCTelnet 1.x versions, but not 2.0,
+    which uses C99 features unsupported by SAS/C.
 - Icon Editor : IconEdit from AmigaOS 3.2.3
 
 ### Source code
