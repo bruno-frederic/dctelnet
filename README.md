@@ -184,23 +184,6 @@ Starting with v1.8, a compatible version of the library is included in the `Libs
     which uses C99 features unsupported by SAS/C.
 - Icon Editor : IconEdit from AmigaOS 3.2.3
 
-### Build with Docker or Podman
-
-The walkero/docker4amigavbcc container provides the VBCC cross-compiler and build tools needed to compile
-DCTelnet for AmigaOS, without installing the Amiga toolchain on your host. Docker
-or Podman must be installed and running. The commands below clone the development
-branch and build both the 68000 and 68020 release binaries:
-
-```sh
-git clone --branch v2.0-dev --recurse-submodules https://github.com/bruno-frederic/dctelnet.git
-
-docker run --rm -v "${PWD}/dctelnet:/opt/code" -w /opt/code/src walkero/docker4amigavbcc:m68k-amigaos-2.0.0 make
-```
-
-The source directory is mounted into the container, so the build outputs remain on the host in
-`build/vbcc-680x0-release/`.
-
-
 ### Source code
 
 All source code referenced below, including **DCTelnet 1.5 / 1.6** and its
