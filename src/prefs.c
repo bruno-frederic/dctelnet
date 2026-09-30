@@ -17,7 +17,7 @@
 #include <graphics/modeid.h>            // PAL_MONITOR_ID, HIRES_KEY
 #include "prefs.h"
 #include "prefs_file.h"
-#include "dctelnet.h"                   // ChooseScreen(), SimpleReq()
+#include "DCTelnet.h"                   // ChooseScreen(), SimpleReq()
 #include "utils.h"
 #include "requesters.h"
 

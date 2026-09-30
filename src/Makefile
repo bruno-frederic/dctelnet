@@ -31,6 +31,10 @@
 #       -Ithird_party/netinclude
 #       -Ithird_party/ReqTools/include
 #
+#   - On Linux, export these environment variables before running make:
+#       export NDK32_INC=/path/to/NDK3.2/Include_H
+#       export NET_INC=/path/to/Roadshow-SDK/netinclude
+#
 #   - On other OS, edit vbcc/config/aos68k and append the same include paths to the end of
 #     the -cc= and -ccv= lines, AFTER: -I%%VBCC%%/targets/m68k-amigaos/include
 
@@ -40,16 +44,27 @@ INCLUDES := \
 	-Ithird_party/Xem/INCLUDE \
 	-Ithird_party/Xpr/include
 
+# Submodules must be checked out before anything else can be built.
+ifeq (,$(wildcard third_party/retro32-term/term-engine.c))
+  $(error third_party/retro32-term/term-engine.c is missing. Run 'git submodule update --init --recursive')
+endif
+
 # vbcc or gcc
 TOOLCHAIN ?= vbcc
 CPU       ?= 68000
 
 ifeq ($(TOOLCHAIN),vbcc)
+	ifeq ($(OS),Windows_NT)
+		AOS := aos68k_win
+	else
+		AOS := aos68k_nix
+	endif
+
 	# Do not use spaces or '.' VC passes '.' to the linker, which causes problems.
 	COMPILER_STRING := VBCC_0_9h_patch_3
 	CC              := vc
 	WARN            := -warn=-1 "-dontwarn=163,166,167,168,170,307" -warnings-as-errors
-	CFLAGS          := +aos68k $(WARN) -cpu=$(CPU)
+	CFLAGS          := +$(AOS) $(WARN) -cpu=$(CPU)
 		DEBUG_CFLAGS    := -g -D_DEBUG -stack-check
 		RELEASE_CFLAGS  := -O3 -speed
 else ifeq ($(TOOLCHAIN),gcc)
