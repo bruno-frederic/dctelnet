@@ -1281,7 +1281,7 @@ void LEDs(void)
  * The terminal cursor is temporarily hidden during the test.
  *
  */
-static void SpeedTest(void)
+static ULONG SpeedTest(void)
 {
     ULONG before_s, before_micros;
     ULONG after_s, after_micros;
@@ -1378,6 +1378,8 @@ static void SpeedTest(void)
 
     // Restore cursor visibility after the test.
     ConWrite("›1 p", 4);
+
+    return elapsed_tenths;
 }
 
 static void ClearScrollBack(void)
@@ -1611,7 +1613,20 @@ int main(int argc, char *argv[])
 
     // Connect to server if it was specified in the command line. It needs an opened display.
     if (server[0] != '\0')
-        BeginServerConnection(server, tcpPort);
+    {
+        if (stricmp(server, "--test-speed") == 0)
+        {
+            ULONG elapsed_tenths = SpeedTest();
+
+            Printf("{\"renderer_duration_seconds\":%ld.%ld}\r\n", elapsed_tenths / 10, elapsed_tenths % 10);
+
+            returnCode = RETURN_OK;
+
+            goto clean_exit;
+        }
+        else
+            BeginServerConnection(server, tcpPort);
+    }
 
     shouldRestart = FALSE;
     shouldReopenScreen = FALSE;
