@@ -1246,7 +1246,7 @@ static BOOL EditEntrySettings(const char *entryName, struct SiteSettings *entry,
                 case SG_SCREEN_PALETTE:
                     undo = work;
                     OverrideGroup(&work, SITE_GROUP_SCREEN);
-                    if (!EditPalette(Prefs_Palette(&work.prefs))) work = undo;
+                    if (!EditPalette(&work.prefs)) work = undo;
                     break;
                 case SG_SCREEN_WB:
                     SetFlagFromGadget(&work, SITE_GROUP_SCREEN, SG_SCREEN_WB, APP_FULLSCREEN, TRUE);

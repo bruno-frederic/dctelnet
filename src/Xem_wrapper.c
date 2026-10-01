@@ -127,7 +127,7 @@ BOOL InitializeXemLibrary(CONST_STRPTR libName)
     xemIO->xem_font        = ansiFont;
     //xemIO->xem_console   = NULL;
     //xemIO->xem_signal    = 0;
-    xemIO->xem_screendepth = scr->BitMap.Depth;
+    xemIO->xem_screendepth = AppScreenDepth(scr);   // RTG: struct BitMap is not to be read
 
     xemIO->xem_sread             = xpr_sread;
     xemIO->xem_swrite            = xpr_swrite;

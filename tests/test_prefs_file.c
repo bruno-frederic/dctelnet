@@ -126,6 +126,27 @@ static void test_a_short_old_file_keeps_the_essentials(void)
     assert(got.MainWinWidth == 0);
 }
 
+/* The built-in renderer draws 4 bitplanes: a 256-colour screen chosen for
+ * ibmcon (the RTG/AGA build's default) is not one it can use -- it showed a
+ * grey background -- so switching to it must ask for another mode. */
+static void test_a_256_colour_screen_does_not_fit_the_built_in_renderer(void)
+{
+    struct PrefsStruct p;
+
+    memset(&p, 0, sizeof(p));
+    p.DisplayWidth = 640; p.DisplayHeight = 256; p.DisplayDepth = 8;
+    p.State = APP_RENDERER_IBMCON_DEVICE;
+    assert(Prefs_ScreenFits(&p) && Prefs_MaxDepth(&p) == 32);
+    p.State = APP_RENDERER_BUILTIN;
+    assert(!Prefs_ScreenFits(&p) && Prefs_MaxDepth(&p) == 4);
+    p.DisplayDepth = 4;
+    assert(Prefs_ScreenFits(&p));
+    p.DisplayWidth = 800;                       /* an RTG mode: not 640 wide */
+    assert(!Prefs_ScreenFits(&p));
+    p.State = APP_RENDERER_IBMCON_DEVICE; p.DisplayWidth = 1920; p.DisplayHeight = 1200;
+    assert(!Prefs_ScreenFits(&p));             /* ibmcon.device crashes there */
+}
+
 int main(void)
 {
     test_a_v2_file_round_trips();
@@ -135,6 +156,7 @@ int main(void)
     test_an_old_prefs_file_keeps_all_its_settings();
     test_old_hide_options_and_xem_map_to_the_new_ones();
     test_a_short_old_file_keeps_the_essentials();
+    test_a_256_colour_screen_does_not_fit_the_built_in_renderer();
     printf("prefs_file: all assertions passed\n");
     return 0;
 }
