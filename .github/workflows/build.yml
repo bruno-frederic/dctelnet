@@ -1,0 +1,27 @@
+name: Build
+
+on:
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository and submodules
+        uses: actions/checkout@v7
+        with:
+          submodules: recursive
+
+      - name: Build with vbcc
+        run: make -C src ci
+
+      - name: Upload non-release build artifacts
+        uses: actions/upload-artifact@v7
+        with:
+          name: DCTelnet-${{ github.sha }}
+          path: |
+            build/vbcc-68000-release/DCTelnet.68000
+            build/vbcc-68020-release/DCTelnet.68020
+          if-no-files-found: error
+          retention-days: 60

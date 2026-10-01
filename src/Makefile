@@ -15,8 +15,11 @@
 #
 #
 #
-# make must be run in "src" folder under Powershell.
+# Run make from the "src" folder; use PowerShell on Windows.
 #
+# make ci                 ->  official DCTelnet build method, used by CI;
+#                             no C compiler installation required; only GNU Make and Docker (plus
+#                             WSL on Windows); outputs binaries under build/vbcc-680x0-release
 # make                    ->  build 68000 & 68020 release binaries with VBCC
 # make TOOLCHAIN=gcc      ->  build 68000 & 68020 release binaries with GCC
 # make 68000              ->  build only 68000 release binary
@@ -31,6 +34,10 @@
 #       -Ithird_party/netinclude
 #       -Ithird_party/ReqTools/include
 #
+#   - On Linux, export these environment variables before running make:
+#       export NDK32_INC=/path/to/NDK3.2/Include_H
+#       export NET_INC=/path/to/Roadshow-SDK/netinclude
+#
 #   - On other OS, edit vbcc/config/aos68k and append the same include paths to the end of
 #     the -cc= and -ccv= lines, AFTER: -I%%VBCC%%/targets/m68k-amigaos/include
 
@@ -40,20 +47,31 @@ INCLUDES := \
 	-Ithird_party/Xem/INCLUDE \
 	-Ithird_party/Xpr/include
 
+# Submodules must be checked out before anything else can be built.
+ifeq (,$(wildcard third_party/retro32-term/term-engine.c))
+  $(error third_party/retro32-term/term-engine.c is missing. Run 'git submodule update --init --recursive')
+endif
+
 # vbcc or gcc
 TOOLCHAIN ?= vbcc
 CPU       ?= 68000
 
 ifeq ($(TOOLCHAIN),vbcc)
+	ifeq ($(OS),Windows_NT)
+		AOS := aos68k_win
+	else
+		AOS := aos68k_nix
+	endif
+
 	# Do not use spaces or '.' VC passes '.' to the linker, which causes problems.
-	COMPILER_STRING := VBCC_0_9h_patch_3
+	COMPILER_STRING := VBCC-$(word 2,$(shell vbccm68k 2>/dev/null))
 	CC              := vc
 	WARN            := -warn=-1 "-dontwarn=163,166,167,168,170,307" -warnings-as-errors
-	CFLAGS          := +aos68k $(WARN) -cpu=$(CPU)
+	CFLAGS          := +$(AOS) $(WARN) -cpu=$(CPU)
 		DEBUG_CFLAGS    := -g -D_DEBUG -stack-check
 		RELEASE_CFLAGS  := -O3 -speed
 else ifeq ($(TOOLCHAIN),gcc)
-	COMPILER_STRING := GCC $(shell m68k-amigaos-gcc -dumpversion)
+	COMPILER_STRING := GCC-v$(shell m68k-amigaos-gcc -dumpversion)
 	CC              := m68k-amigaos-gcc
 	# TODO: analyse all these GCC warning then enables all:
 	WARN            := -Wno-incompatible-pointer-types -Wno-int-conversion -Wno-overflow -Wno-discarded-qualifiers
@@ -101,15 +119,17 @@ ifeq ($(OS),Windows_NT)
 	RM    := function rmps{ foreach ($$f in $$args){rm -Literal $$f -EA Silent} } ; rmps
 	TOUCH := $$null = New-Item -ItemType File -Force -Path
 	MKDIR := function mdps{ foreach ($$f in $$args){$$null = mkdir -Force -Path  $$f} } ; mdps
+	DOCKER := wsl docker
 else
 	RM:=rm -f
 	TOUCH:=touch
 	MKDIR := mkdir -p
+	DOCKER := docker
 endif
 
 
 # make treats a phony target as always out-of-date and runs its recipe when requested.
-.PHONY: all clean debug release
+.PHONY: all clean debug release ci
 
 all: $(MAKEFILE_UPTODATE) 68000 68020
 
@@ -127,6 +147,9 @@ debug:
 release:
 	$(MAKE) all
 
+BUILDER_IMAGE := walkero/docker4amigavbcc:m68k-amigaos-2.0.0
+ci:
+	$(DOCKER) run --rm --volume "./..:/opt/code" --workdir /opt/code/src "$(BUILDER_IMAGE)" sh -c "git config --global --add safe.directory /opt/code; make"
 
 LIBS := -lamiga     # needed for NewObject() in guis.c. It is a varargs stub for NewObjectA().
 

@@ -18,7 +18,7 @@
 #include "prefs.h"
 #include "prefs_file.h"
 #include "site_prefs.h"
-#include "dctelnet.h"                   // ChooseScreen(), SimpleReq()
+#include "DCTelnet.h"                   // ChooseScreen(), SimpleReq()
 #include "utils.h"
 #include "requesters.h"
 
