@@ -124,3 +124,8 @@ int Prefs_Decode(const UBYTE *file, size_t len, struct PrefsStruct *out)
     memcpy(out, file + sizeof(hdr), n);
     return PREFS_FILE_V2;
 }
+
+UWORD *Prefs_Palette(struct PrefsStruct *p)
+{
+    return (p->State & (APP_RENDERER_BUILTIN | APP_RENDERER_XEM_LIB)) ? p->AnsiColors : p->DeviceColors;
+}

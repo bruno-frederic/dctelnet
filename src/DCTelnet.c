@@ -49,6 +49,7 @@ static char MainWindowTitle[] =
 #include <arpa/telnet.h>
 #include "petscii_dispatch.h"
 #include "petscii_keymap.h"
+#include "site_prefs.h"
 #ifdef __VBCC__
     #pragma popwarn
 #endif
@@ -60,6 +61,7 @@ static char MainWindowTitle[] =
 #include "requesters.h"
 #include "utils.h"
 #include "prefs.h"
+#include "prefs_file.h"
 
 #define ESC_CHAR '\x1B'  // ASCII Escape character (decimal 27, octal 033)
 #define ESC_STR  "\x1B"  // ASCII Escape character (decimal 27, octal 033) as a C string
@@ -112,6 +114,7 @@ static struct NewMenu mainMenuDesc[] =
     {    NM_ITEM, "Disconnect",                     "H",             0,               0, (APTR)MENU_DISCONNECT},
     {    NM_ITEM, NM_BARLABEL,                       0 ,             0,               0, (APTR)MENU_BAR},
     {    NM_ITEM, "Address Book",                   "B",             0,               0, (APTR)MENU_ADDRESS_BOOK},
+    {    NM_ITEM, "Save Settings to Address Book Entry", 0,          0,               0, (APTR)MENU_SAVE_ENTRY_SETTINGS},
     {    NM_ITEM, NM_BARLABEL,                       0 ,             0,               0, (APTR)MENU_BAR},
     {    NM_ITEM, "Information",                    "^",             0,               0, (APTR)MENU_INFORMATION},
 
@@ -162,6 +165,7 @@ static struct NewMenu mainMenuDesc[] =
 #endif
 
 static void GetWindowMsg(struct Window *wwin);
+static void SendMisc(char *str, long len);
 static void ResetTelnetContext(void);
 static void ResetZmodemContext(void);
 static void SetLocalEchoBack(BOOL wantedState);
@@ -207,6 +211,43 @@ enum    {    GAD_SCROLLER,
         GAD_UP,
         GAD_DOWN
     };
+
+// prefs (prefs.c) holds the live settings: what every part of DCTelnet reads.
+// Global settings kept aside while connected to an Address Book entry that has
+// settings of its own (issue #10); only these are ever saved. Valid while
+// sessionSettingsId != 0.
+struct PrefsStruct globalPrefs;
+ULONG sessionSettingsId = 0;      // settings id of the connected entry, 0 = global settings
+// The global function keys, kept aside while an entry's own (Keyboard group) are live.
+static TEXT globalFKeys[F_KEY_COUNT * F_KEY_SIZE];
+static BOOL fKeysFromEntry = FALSE;
+static ULONG sessionGroups = 0;   // SITE_GROUP_* the connected entry overrides
+// The global settings and keys as they were when the current connection was
+// prepared: Save Settings to Address Book Entry moves what changed since into
+// the entry and puts these back.
+static struct PrefsStruct connectBasePrefs;
+static TEXT connectBaseKeys[F_KEY_COUNT * F_KEY_SIZE];
+
+#define XEM_GLOBAL_OPTIONS "PROGDIR:DCTelnet.XEM"
+
+/**
+ * @brief The XEM options file for the current connection: the entry's own
+ *        (PROGDIR:Sites/<id>.xem) when it overrides the Terminal group,
+ *        else the global PROGDIR:DCTelnet.XEM.
+ */
+const char *CurrentXemOptionsPath(void)
+{
+    static char path[40];
+
+    if (sessionSettingsId && (sessionGroups & SITE_GROUP_TERMINAL))
+    {
+        EntryXemOptionsPath(sessionSettingsId, path);
+        return path;
+    }
+    return XEM_GLOBAL_OPTIONS;
+}
+// An entry's settings file stores the function keys with this size.
+typedef char FKeysMatchSiteSettings[SITE_FKEY_BYTES == F_KEY_COUNT * F_KEY_SIZE ? 1 : -1];
 
 static BPTR fileHandle;
 long nScrollbackLines;
@@ -523,7 +564,199 @@ static void DisConnect(char remote, char quiet)
         }
 
         LEDs();
+
+        // The connection ends, and with it any Address Book entry's settings.
+        ForgetConnectedEntry();
+        EndEntrySession();
     }
+}
+
+// Address Book connect that waits for the display to be reopened with the
+// entry's settings (see BeginEntrySession); run by the main loop.
+static struct
+{
+    BOOL  active;
+    char  name[32];
+    char  host[52];
+    UWORD port;
+    ULONG settingsId;
+    char  username[42], password[42];
+    char  loginMacro[SITE_LOGIN_MACRO_SIZE];
+} pendingConnect;
+
+static void RequestDisplayReopen(const struct PrefsStruct *before)
+{
+    BOOL reopenScreen;
+
+    if (SitePrefs_DisplayDiffers(before, &prefs, &reopenScreen))
+    {
+        shouldRestart = TRUE;
+        if (reopenScreen) shouldReopenScreen = TRUE;
+    }
+}
+
+/**
+ * @brief Prepare the settings for the next connect; call before every
+ *        user-initiated connect.
+ *
+ * Ends any current connection (and with it any previous entry session). With
+ * an entry (settingsId != 0), keeps the global settings aside in globalPrefs
+ * and applies the entry's (window geometry stays global); menu changes from
+ * now on are session-only and only globalPrefs is saved. With entry == NULL
+ * the connect uses the global settings.
+ *
+ * @return TRUE when the display must be reopened before connecting: the
+ *         caller queues the connect with DeferConnect().
+ */
+BOOL BeginEntrySession(ULONG settingsId, const struct SiteSettings *entry)
+{
+    static struct PrefsStruct before;
+
+    if (isConnected) DisConnect(FALSE, FALSE);
+    EndEntrySession();
+
+    connectBasePrefs = prefs;
+    memcpy(connectBaseKeys, fKeys, sizeof(connectBaseKeys));
+    if (!entry) return shouldRestart;
+
+    before = prefs;
+    globalPrefs = prefs;
+    SitePrefs_ApplyEntry(&prefs, &globalPrefs, entry);
+    fKeysFromEntry = SitePrefs_SwapInKeys(fKeys, globalFKeys, entry);
+    sessionSettingsId = settingsId;
+    sessionGroups = entry->groups;
+    ReloadXemOptions();
+    RequestDisplayReopen(&before);
+    return shouldRestart;
+}
+
+/**
+ * @brief Restore the global settings after an entry session (disconnect or a
+ *        failed connect). Requests a display reopen when they differ.
+ */
+/**
+ * @brief The live settings were just saved as an entry's own (Settings > Save
+ *        Settings to Address Book Entry): treat the rest of this connection as
+ *        that entry's session. A session already running for it only takes
+ *        the new group set.
+ */
+void AdoptEntrySession(ULONG settingsId, ULONG groups)
+{
+    if (!sessionSettingsId)
+    {
+        // What was changed since connecting now belongs to the entry: the
+        // global settings go back to how they were then.
+        globalPrefs = connectBasePrefs;
+    }
+    sessionSettingsId = settingsId;
+    sessionGroups = groups;
+    if ((groups & SITE_GROUP_KEYBOARD) && !fKeysFromEntry)
+    {
+        memcpy(globalFKeys, connectBaseKeys, sizeof(globalFKeys));
+        fKeysFromEntry = TRUE;
+    }
+}
+
+// The settings and keys the current connection started from (see AdoptEntrySession).
+const struct PrefsStruct *ConnectBaseSettings(void)
+{
+    return &connectBasePrefs;
+}
+
+const TEXT *ConnectBaseFKeys(void)
+{
+    return connectBaseKeys;
+}
+
+// The global settings and function keys, also while an entry's are live.
+const struct PrefsStruct *GlobalSettings(void)
+{
+    return sessionSettingsId ? &globalPrefs : &prefs;
+}
+
+const TEXT *GlobalFKeys(void)
+{
+    return fKeysFromEntry ? globalFKeys : fKeys;
+}
+
+BOOL SessionOverridesKeyboard(void)
+{
+    return fKeysFromEntry;
+}
+
+void EndEntrySession(void)
+{
+    static struct PrefsStruct before;
+
+    if (fKeysFromEntry)
+    {
+        SitePrefs_SwapOutKeys(fKeys, globalFKeys);
+        fKeysFromEntry = FALSE;
+    }
+
+    if (!sessionSettingsId) return;
+    before = prefs;
+    SitePrefs_Restore(&prefs, &globalPrefs);
+    sessionSettingsId = 0;
+    if (sessionGroups & SITE_GROUP_TERMINAL)
+    {
+        sessionGroups = 0;
+        ReloadXemOptions();
+    }
+    sessionGroups = 0;
+    RequestDisplayReopen(&before);
+}
+
+void DeferConnect(const char *name, const char *host, UWORD port, ULONG settingsId,
+                  const char *user, const char *pass, const char *loginMacro)
+{
+    strlcpy(pendingConnect.loginMacro, loginMacro, sizeof(pendingConnect.loginMacro));
+    strlcpy(pendingConnect.name, name, sizeof(pendingConnect.name));
+    strlcpy(pendingConnect.host, host, sizeof(pendingConnect.host));
+    pendingConnect.port = port;
+    pendingConnect.settingsId = settingsId;
+    strlcpy(pendingConnect.username, user, sizeof(pendingConnect.username));
+    strlcpy(pendingConnect.password, pass, sizeof(pendingConnect.password));
+    pendingConnect.active = TRUE;
+}
+
+/**
+ * @brief Send an Address Book entry's login macro after connecting: \u, \p
+ *        are the entry's username and password, \r Return, \d a one-second
+ *        wait (SitePrefs_NextMacroSegment).
+ */
+void SendLoginMacro(const char *macro)
+{
+    static char segment[256];
+    const char *cursor = macro;
+    BOOL wait;
+    size_t n;
+
+    while (*cursor && isConnected)
+    {
+        n = SitePrefs_NextMacroSegment(&cursor, username, password, segment, sizeof(segment), &wait);
+        if (n) SendMisc(segment, (long)n);
+        if (wait) Delay(50);
+    }
+}
+
+static void RunPendingConnect(void)
+{
+    pendingConnect.active = FALSE;
+    tcpPort = pendingConnect.port;
+    if (BeginServerConnection(pendingConnect.host, pendingConnect.port) == RETURN_OK)
+    {
+        if (pendingConnect.name[0])     // "" = Connection > Connect, not an entry
+        {
+            RememberConnectedEntry(pendingConnect.name, pendingConnect.host, pendingConnect.port);
+            StampConnectedEntry();
+            strlcpy(username, pendingConnect.username, sizeof(username));
+            strlcpy(password, pendingConnect.password, sizeof(password));
+            SendLoginMacro(pendingConnect.loginMacro);
+        }
+    }
+    else
+        EndEntrySession();
 }
 
 
@@ -580,14 +813,18 @@ static BOOL InitializeReqToolsLib(ULONG reqtoolsTags[5])
     return result;
 }
 
-BOOL ChooseScreen(void)
+/**
+ * @brief Screen mode requester writing into target (the live settings, or an
+ *        Address Book entry's copy). TRUE when the user chose a mode.
+ */
+BOOL ScreenModeInto(struct PrefsStruct *target)
 {
     BOOL result = FALSE;
 
     if (AslBase && AslBase->lib_Version >= 38) // ASL screen mode requester introduced with AmigaOS 2.1
     {
-        result = ScreenModeRequester(win, &prefs.DisplayID,
-                                    &prefs.DisplayWidth, &prefs.DisplayHeight, &prefs.DisplayDepth);
+        result = ScreenModeRequester(win, &target->DisplayID,
+                                    &target->DisplayWidth, &target->DisplayHeight, &target->DisplayDepth);
     }
     else    // fallback to legacy ReqTools library
     {
@@ -598,10 +835,10 @@ BOOL ChooseScreen(void)
 
         if(scrmodereq = rtAllocRequestA (RT_SCREENMODEREQ, NULL))
         {
-            scrmodereq->DisplayID     = prefs.DisplayID;
-            scrmodereq->DisplayWidth  = prefs.DisplayWidth;
-            scrmodereq->DisplayHeight = prefs.DisplayHeight;
-            scrmodereq->DisplayDepth  = prefs.DisplayDepth;
+            scrmodereq->DisplayID     = target->DisplayID;
+            scrmodereq->DisplayWidth  = target->DisplayWidth;
+            scrmodereq->DisplayHeight = target->DisplayHeight;
+            scrmodereq->DisplayDepth  = target->DisplayDepth;
 
             if (rtScreenModeRequest (scrmodereq, "Screen Mode..",
                                      RT_Window,    win,
@@ -609,45 +846,72 @@ BOOL ChooseScreen(void)
                                      RTSC_MaxDepth,    4,
                                      TAG_END))
             {
-                prefs.DisplayID     = scrmodereq->DisplayID;
-                prefs.DisplayWidth  = scrmodereq->DisplayWidth;
-                prefs.DisplayHeight = scrmodereq->DisplayHeight;
-                prefs.DisplayDepth  = scrmodereq->DisplayDepth;
+                target->DisplayID     = scrmodereq->DisplayID;
+                target->DisplayWidth  = scrmodereq->DisplayWidth;
+                target->DisplayHeight = scrmodereq->DisplayHeight;
+                target->DisplayDepth  = scrmodereq->DisplayDepth;
                 result = TRUE;
             }
             rtFreeRequest (scrmodereq);
         }
     }
-
-    // On first time init, returning FALSE prevents the preferences from being written to disk.
     return result;
 }
 
-static void ChoosePalette(void)
+// The screen mode requester for the live settings (exported: LoadPrefs asks
+// for a mode on first run).
+BOOL ChooseScreen(void)
+{
+    // On first time init, returning FALSE prevents the preferences from being written to disk.
+    return ScreenModeInto(&prefs);
+}
+
+/**
+ * @brief Palette requester for colors[16] (the live palette, or an Address
+ *        Book entry's copy). The requester edits the screen itself, so the
+ *        screen shows colors while it is open and gets the live palette back
+ *        afterwards when colors is someone else's. TRUE when the user kept it.
+ */
+BOOL EditPalette(UWORD colors[16])
 {
     APTR reqinfo;
     ULONG reqtoolsTags[5];
+    BOOL kept = FALSE;
+    UWORD *live = Prefs_Palette(&prefs);
 
+    if (STATE_IS_NOT(APP_FULLSCREEN))
+    {
+        InfoReq(win, "The palette can only be edited on DCTelnet's own screen:\n"
+                     "on the Workbench its colours come from the Workbench palette.");
+        return FALSE;
+    }
     InitializeReqToolsLib(reqtoolsTags);
 
     reqinfo = rtAllocRequestA(RT_REQINFO, NULL);
     if(reqinfo)
     {
+        LoadRGB4(&scr->ViewPort, colors, 16);
         if(rtPaletteRequestA("Screen Palette..", reqinfo, (struct TagItem *)&reqtoolsTags) != -1)
         {
             UWORD i = 0;
-            UWORD *colors = STATE_IS(APP_RENDERER_BUILTIN | APP_RENDERER_XEM_LIB) ?
-                            prefs.AnsiColors : prefs.DeviceColors;
 
             while(i < 16)
             {
                 colors[i] = GetRGB4(scr->ViewPort.ColorMap, i);
                 i++;
             }
+            kept = TRUE;
         }
+        if (colors != live)
+            LoadRGB4(&scr->ViewPort, live, 16);
         rtFreeRequest(reqinfo);
     }
+    return kept;
+}
 
+static void ChoosePalette(void)
+{
+    EditPalette(Prefs_Palette(&prefs));
 }
 
 
@@ -980,7 +1244,10 @@ cont:
                 }
                 break;
             default:
-norm:                buf[j] = str[i];
+norm:                // Typed text in PETSCII Mode goes out case-swapped (petscii_keymap);
+                // a macro's text is typed text too. Escapes (\r, \123) stay raw.
+                buf[j] = STATE_IS(APP_PETSCII_MODE)
+                         ? (char)petscii_translate_key((unsigned char)str[i], 0) : str[i];
                 j++;
         }
         i++;
@@ -1146,7 +1413,13 @@ static void Finger(void)
         char * host = strchr(tbuf, '@');
         if(host)
         {
-            BOOL originalState = STATE_IS(APP_RAW_CONNECTION);
+            BOOL originalState;
+
+            // End any entry session (and its connection) BEFORE touching the
+            // flag: ending it later, inside the connect, would restore the
+            // global settings over APP_RAW_CONNECTION.
+            BeginEntrySession(0, NULL);
+            originalState = STATE_IS(APP_RAW_CONNECTION);
 
             host[0] = 0;
             *host++;
@@ -1521,6 +1794,10 @@ int main(int argc, char *argv[])
                 shouldRestart = FALSE;
                 shouldReopenScreen = FALSE;
             }
+
+            // After the reopen, so the connect sees the entry's display settings.
+            if (pendingConnect.active)
+                RunPendingConnect();
         }
     } /* -- end of main loop -- */
 
@@ -1652,6 +1929,9 @@ static void OnConnectClicked(char spawnInstance)
                 #endif
                 // This function attempts to execute the string commandString as a Shell command
                 Execute(buf, (BPTR) 0, (BPTR) 0);
+            } else if (BeginEntrySession(0, NULL)) {
+                // Ending an entry session reopens the display: connect after it.
+                DeferConnect("", tbuf, port, 0, "", "", "");
             } else {
                 tcpPort = port;
                 BeginServerConnection(tbuf, tcpPort);
@@ -1964,24 +2244,22 @@ static void GetWindowMsg(struct Window *wwin)
                             if(key_csi)
                             {
                                 key_csi = FALSE;
-                                if (conbuf[i] >= '0' && conbuf[i] <= '9' && STATE_IS_NOT(APP_PETSCII_MODE))
+                                /* The Amiga console reports F1-F10 as CSI <digit> ~ with
+                                 * digit 0-9 (F1 = 0). A key with a macro sends the macro,
+                                 * PETSCII Mode or not. In PETSCII Mode a key WITHOUT a
+                                 * macro sends the C64 function-key byte instead (F1-F8
+                                 * only; F9/F10 have no C64 counterpart). */
+                                if (conbuf[i] >= '0' && conbuf[i] <= '9'
+                                    && fKeys[(conbuf[i] - '0') * F_KEY_SIZE] != 0)
                                 {
                                     key_macro = TRUE;
                                     SendMacro(&fKeys[(conbuf[i] - '0') * F_KEY_SIZE]);
                                 }
-                                /* PETSCII mode: F1-F8 send the real PETSCII function-key bytes
-                                 * instead of triggering a user macro -- Amiga's console CSI encodes
-                                 * F1-F10 as ESC [ <digit> per the digit branch above (0-9); only
-                                 * 1-8 have a PETSCII counterpart (F9/F10/F0 have none). */
                                 else if (STATE_IS(APP_PETSCII_MODE)
-                                         && conbuf[i] >= '1' && conbuf[i] <= '8')
+                                         && petscii_fkey_from_console_digit(conbuf[i]) >= 0)
                                 {
-                                    static const int fkeys[8] = {
-                                        PETSCII_KEY_F1, PETSCII_KEY_F2, PETSCII_KEY_F3, PETSCII_KEY_F4,
-                                        PETSCII_KEY_F5, PETSCII_KEY_F6, PETSCII_KEY_F7, PETSCII_KEY_F8
-                                    };
                                     key_macro = TRUE;
-                                    OutKey((unsigned char)petscii_translate_key(fkeys[conbuf[i] - '1'], 1));
+                                    OutKey((unsigned char)petscii_fkey_from_console_digit(conbuf[i]));
                                 }
 
                                 if (STATE_IS(APP_PETSCII_MODE))
@@ -2018,7 +2296,7 @@ static void GetWindowMsg(struct Window *wwin)
                                     if (STATE_IS(APP_PETSCII_MODE)
                                         && (conbuf[i] == DEL_CHAR || conbuf[i] == '\b'))
                                         /* PETSCII's own DEL byte (20), not ASCII BS/DEL --
-                                         * FLAG_BS_DEL_SWAP is an ASCII-only concept and
+                                         * APP_BACKSPACE_DEL_SWAPPED is an ASCII-only concept and
                                          * does not apply here. */
                                         OutKey((unsigned char)petscii_translate_key(PETSCII_KEY_DEL, 1));
                                     else if (STATE_IS(APP_PETSCII_MODE) && conbuf[i] != '\r')
@@ -2394,7 +2672,13 @@ static void GetWindowMsg(struct Window *wwin)
 
                     case MENU_XEM_LIB_OPTIONS:
                         if (xemIO)
+                        {
                             XEmulatorOptions(xemIO);
+                            // Saved as the global options unless an entry's own Terminal
+                            // settings are live: then the change is session-only.
+                            if (!(sessionSettingsId && (sessionGroups & SITE_GROUP_TERMINAL)))
+                                SaveXemOptions(XEM_GLOBAL_OPTIONS);
+                        }
                         else
                             InfoReq(win, "The XEM library is currently "
                                            "disabled, so related functionality is unavailable.");
@@ -2431,6 +2715,27 @@ static void GetWindowMsg(struct Window *wwin)
                             prefs.ToolBarWinTopEdge     = toolBarWin->TopEdge;
                         }
 
+                        break;
+
+                    case MENU_SAVE_ENTRY_SETTINGS:
+                        switch (SaveSettingsToConnectedEntry())
+                        {
+                            case SAVE_ENTRY_NOT_CONNECTED:
+                                InfoReq(win,
+                                        "Connect to an Address Book entry first.");
+                                break;
+                            case SAVE_ENTRY_NOTHING_CHANGED:
+                                InfoReq(win,
+                                        "Nothing was changed since connecting,\n"
+                                        "so there is nothing to save to this entry.");
+                                break;
+                            case SAVE_ENTRY_WRITE_ERROR:
+                                InfoReq(win,
+                                        "Could not save the settings to PROGDIR:Sites.");
+                                break;
+                            default:
+                                break;
+                        }
                         break;
 
                     case MENU_SEND_USERNAME:
