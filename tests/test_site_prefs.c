@@ -61,6 +61,7 @@ static void test_each_group_moves_only_its_members(void) {
 
     strcpy((char *)e.XferOptions, "TN");
     e.DisplayDepth = 8;
+    e.DisplayID = 0x29000;
 
     live = global; entry = entry_with(SITE_GROUP_KEYBOARD, e);
     SitePrefs_ApplyEntry(&live, &global, &entry);
@@ -72,7 +73,21 @@ static void test_each_group_moves_only_its_members(void) {
 
     live = global; entry = entry_with(SITE_GROUP_SCREEN, e);
     SitePrefs_ApplyEntry(&live, &global, &entry);
-    assert(live.State == APP_FULLSCREEN && live.DisplayDepth == 8 && live.FontSize == 11);
+    /* Full-screen is app-wide: an entry saved in Workbench mode opened
+     * the Workbench window on connect while the user ran DCTelnet on its
+     * own 800x600 screen. */
+    assert(live.State == 0 && live.FontSize == 11);
+    /* The screen mode is app-wide too: the entry's 8-bit PAL mode switched
+     * the user's 800x600 screen on connect. */
+    assert(live.DisplayDepth == 4 && live.DisplayID == global.DisplayID);
+    live = make(APP_FULLSCREEN, "IBM.font", 8);
+    global = live;
+    e.State = 0;
+    entry = entry_with(SITE_GROUP_SCREEN, e);
+    SitePrefs_ApplyEntry(&live, &global, &entry);
+    assert(live.State == APP_FULLSCREEN);
+    global = make(0, "IBM.font", 8);
+    e.State = APP_RETURN_SENDING_CRLF | APP_FULLSCREEN | APP_RAW_CONNECTION;
 
     live = global; entry = entry_with(SITE_GROUP_TERMINAL, e);
     SitePrefs_ApplyEntry(&live, &global, &entry);
@@ -303,6 +318,87 @@ static void test_differing_groups_names_what_changed(void) {
     assert(SitePrefs_DifferingGroups(&a, &b, keysA, keysB) == (SITE_GROUP_KEYBOARD | SITE_GROUP_TERMINAL));
 }
 
+/* Connecting to an entry with its own font on the Workbench closed and
+ * reopened the window; a font or palette change needs only the console
+ * reopened. Anything else about the display still takes the full reopen. */
+static void test_font_or_palette_change_is_a_look_change(void) {
+    struct PrefsStruct a = make(0, "topaz.font", 8), b = a;       /* on the Workbench */
+
+    strcpy((char *)b.FontName, "IBM.font"); b.FontSize = 16;
+    b.DeviceColors[1] = 0x0A00;
+    assert(SitePrefs_OnlyLookDiffers(&a, &b));
+    b.State |= APP_TOOL_BAR_ENABLED;                /* a window change */
+    assert(!SitePrefs_OnlyLookDiffers(&a, &b));
+    b = a; strcpy((char *)b.XemLibrary, "xemvt340.library");
+    assert(!SitePrefs_OnlyLookDiffers(&a, &b));
+}
+
+/* A font chosen from the menu while connected to an entry with its own
+ * font went back to topaz at disconnect: the change lived only in the
+ * session. What the user changes by hand is carried into the global
+ * settings -- whole fields, flags bit by bit, the rest untouched. */
+static void test_a_manual_change_during_a_session_is_kept_globally(void) {
+    struct PrefsStruct global = make(APP_BACKSPACE_DEL_SWAPPED, "topaz.font", 8);
+    struct PrefsStruct before = make(APP_RETURN_SENDING_CRLF, "TopazPro.font", 16), after = before;
+    struct PrefsStruct pristine;
+
+    strcpy((char *)global.XferLibrary, "xprzmodem.library");
+    strcpy((char *)before.XferLibrary, "xprkermit.library");        /* the entry's */
+    after = before;
+    strcpy((char *)after.FontName, "Thin711.font"); after.FontSize = 11;
+    after.State |= APP_LOCAL_ECHO;
+    pristine = global;
+    SitePrefs_CarryChange(&global, &before, &after);
+    assert(strcmp((char *)global.FontName, "Thin711.font") == 0 && global.FontSize == 11);
+    assert(global.State == (APP_BACKSPACE_DEL_SWAPPED | APP_LOCAL_ECHO));  /* only the changed bit */
+    assert(strcmp((char *)global.XferLibrary, "xprzmodem.library") == 0);  /* not changed: kept */
+    /* Every field is in the carry table: a struct with every byte changed
+     * arrives whole. */
+    memset(&before, 0x11, sizeof(before));
+    memset(&after, 0x5A, sizeof(after));
+    before.State = ~after.State;                 /* every flag bit changed too */
+    memset(&global, 0, sizeof(global));
+    SitePrefs_CarryChange(&global, &before, &after);
+    assert(memcmp(&global, &after, sizeof(global)) == 0);
+    before = make(APP_RETURN_SENDING_CRLF, "TopazPro.font", 16);
+    after = before;                                                  /* nothing changed */
+    global = pristine;
+    SitePrefs_CarryChange(&global, &before, &after);
+    assert(memcmp(&global, &pristine, sizeof(global)) == 0);
+}
+
+/* A font picked while connected is for this run only: it survives the
+ * disconnect but DCTelnet.Prefs keeps the one it replaced. Picked again
+ * while not connected, it is a real change and saved. */
+static void test_a_font_picked_while_connected_is_not_saved(void) {
+    static struct SiteHandChanges hand;
+    struct PrefsStruct global = make(0, "topaz.font", 8), session, before, toSave;
+
+    SitePrefs_HandInit(&hand, &global);
+    session = make(0, "TopazPro.font", 16);                 /* the entry's font */
+    before = session;
+    strcpy((char *)session.FontName, "Thin711.font"); session.FontSize = 11;
+    SitePrefs_HandChange(&hand, &global, &before, &session, TRUE);
+    assert(strcmp((char *)global.FontName, "Thin711.font") == 0);   /* the run keeps it */
+    toSave = global;
+    SitePrefs_HandForSave(&hand, &toSave);
+    assert(strcmp((char *)toSave.FontName, "topaz.font") == 0 && toSave.FontSize == 8);
+
+    before = global;                                         /* not connected now */
+    global.State |= APP_LOCAL_ECHO;                         /* an unrelated real change */
+    SitePrefs_HandChange(&hand, &global, &before, &global, FALSE);
+    toSave = global;
+    SitePrefs_HandForSave(&hand, &toSave);
+    assert(strcmp((char *)toSave.FontName, "topaz.font") == 0 && (toSave.State & APP_LOCAL_ECHO));
+
+    before = global;                                         /* the font, for real */
+    strcpy((char *)global.FontName, "IBM.font"); global.FontSize = 8;
+    SitePrefs_HandChange(&hand, &global, &before, &global, FALSE);
+    toSave = global;
+    SitePrefs_HandForSave(&hand, &toSave);
+    assert(strcmp((char *)toSave.FontName, "IBM.font") == 0);
+}
+
 /* The settings window's one-line summary per group. */
 static void test_group_summaries(void) {
     struct PrefsStruct p = make(APP_FULLSCREEN | APP_PETSCII_MODE | APP_BACKSPACE_DEL_SWAPPED, "Petscii.font", 8);
@@ -311,7 +407,7 @@ static void test_group_summaries(void) {
     strcpy((char *)p.TelnetTermType, "VT102");    /* PETSCII Mode sends "PETSCII" regardless */
     strcpy((char *)p.XferLibrary, "xprzmodem.library");
     SitePrefs_GroupSummary(SITE_GROUP_SCREEN, &p, out, sizeof(out));
-    assert(strcmp(out, "Petscii 8, 640x256, 16 colours") == 0);
+    assert(strcmp(out, "Petscii 8") == 0);
     SitePrefs_GroupSummary(SITE_GROUP_TERMINAL, &p, out, sizeof(out));
     assert(strcmp(out, "PETSCII Mode, type PETSCII") == 0);
     SitePrefs_GroupSummary(SITE_GROUP_KEYBOARD, &p, out, sizeof(out));
@@ -321,7 +417,7 @@ static void test_group_summaries(void) {
 
     p.State = APP_RENDERER_XEM_LIB | APP_RETURN_SENDING_CRLF;      /* on the Workbench */
     strcpy((char *)p.XemLibrary, "xemvt340.library");
-    SitePrefs_GroupSummary(SITE_GROUP_SCREEN, &p, out, 20);          /* truncates safely */
+    SitePrefs_GroupSummary(SITE_GROUP_TERMINAL, &p, out, 20);        /* truncates safely */
     assert(strlen(out) == 19);
     SitePrefs_GroupSummary(SITE_GROUP_TERMINAL, &p, out, sizeof(out));
     assert(strcmp(out, "XEM xemvt340.library, type VT102") == 0);
@@ -334,6 +430,9 @@ static void test_group_summaries(void) {
 
 int main(void) {
     test_differing_groups_names_what_changed();
+    test_font_or_palette_change_is_a_look_change();
+    test_a_manual_change_during_a_session_is_kept_globally();
+    test_a_font_picked_while_connected_is_not_saved();
     test_group_summaries();
     test_entry_function_keys_swap_in_and_back();
     test_login_macro_expands_codes();

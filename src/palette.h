@@ -23,7 +23,34 @@ int Palette_IbmconToAnsi(int index);
 /* ANSI colour `ansi` of a device palette, as 0x00RRGGBB. */
 ULONG Palette_AnsiColour(const UWORD deviceColors[16], int ansi);
 
-/* Sets ANSI colour `ansi` (0x00RRGGBB, rounded to RGB4) in a device palette. */
-void Palette_SetAnsiColour(UWORD deviceColors[16], int ansi, ULONG rgb);
+
+/* The default palettes: AnsiColors (ANSI order) for the built-in and XEM
+ * renderers, DeviceColors (ibmcon order) for the console devices. */
+extern const UWORD defaultAnsiColors[16];
+extern const UWORD defaultDeviceColors[16];
+
+/* The palette p's renderer shows (Prefs_Palette), as 16 RGB4 colours in
+ * ANSI order, and back; and that renderer's default palette. What the
+ * ANSI colours editor edits. */
+void Palette_Get(struct PrefsStruct *p, UWORD out[16]);
+void Palette_Put(struct PrefsStruct *p, const UWORD in[16]);
+void Palette_DefaultFor(struct PrefsStruct *p, UWORD out[16]);
+
+/* The colour's name in ANSI order ("Black" ... "Bright White"). */
+const char *Palette_Name(int ansiIndex);
+
+/* One channel (0 red, 1 green, 2 blue) of an RGB4 colour (0-15), and the
+ * colour with that channel set to value. */
+UBYTE Palette_Channel(UWORD rgb4, int channel);
+UWORD Palette_WithChannel(UWORD rgb4, int channel, UBYTE value);
+
+/* An RGB4 colour as 0x00RRGGBB. */
+ULONG Palette_RGB32(UWORD rgb4);
+
+/* On a true-colour screen the terminal's pixels hold colours, so the
+ * palette editor recolours them: every pixel of shown[sel] becomes newRGB.
+ * Safe only when no other ANSI colour shares either value -- else the two
+ * colours' pixels would merge for good. */
+BOOL Palette_SafeRecolour(const ULONG shown[16], int sel, ULONG newRGB);
 
 #endif /* PALETTE_H */

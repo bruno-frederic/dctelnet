@@ -24,6 +24,7 @@
 #include "requesters.h"
 #include "utils.h"
 #include "prefs.h"
+#include "shipped.h"
 
 #define PATHLEN 256     // From third_party\Xpr\XprZmodem.h
 
@@ -213,7 +214,16 @@ long __SAVE_DS__ __ASM__ xpr_swrite(__REG__(a0, char *buffer),
 {
     long ret = -1;
     register ULONG i = 0, j = 0;
-    UBYTE *tb = AllocMem(size+size, MEMF_PUBLIC);
+    UBYTE *tb;
+
+    // XEM libraries answer the BBS (Device Status Reports...) with size -1:
+    // a NUL-terminated string. Taken as a length it was AllocMem(-2), which
+    // failed, and the answer was never sent.
+    if (size < 0)
+        size = (long)strlen(buffer);
+    if (size == 0)
+        return 0;
+    tb = AllocMem(size+size, MEMF_PUBLIC);
     if(tb)
     {
         while(i < size)
@@ -852,7 +862,7 @@ long __SAVE_DS__ xpr_squery(void)
 
 static char ProtoStart(char *library, char *firstfile)
 {
-    XProtocolBase = OpenLibrary(library, 0);
+    XProtocolBase = OpenNewestLibrary(library, 0);
     if(!XProtocolBase)
     {
         LocalFmt("\r\n›0;31mERROR: ›mCould not open transfer library: %s\r\n", library);
@@ -888,7 +898,7 @@ static char ProtoStart(char *library, char *firstfile)
 /* TODO MAKE A CLEAN FUNCTION NOT REDUNDANT WITH ProtoStart() */
 void XferOptions(char *library)
 {
-    XProtocolBase = OpenLibrary(library, 0);
+    XProtocolBase = OpenNewestLibrary(library, 0);
     if(!XProtocolBase)
     {
         LocalFmt("\r\n›0;31mERROR: ›mCould not open transfer library: %s\r\n", library);

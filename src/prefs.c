@@ -17,6 +17,7 @@
 #include <graphics/modeid.h>            // PAL_MONITOR_ID, HIRES_KEY
 #include "prefs.h"
 #include "prefs_file.h"
+#include "palette.h"
 #include "site_prefs.h"
 #include "DCTelnet.h"                   // ChooseScreen(), SimpleReq()
 #include "utils.h"
@@ -33,42 +34,7 @@ char const prefsFilename[] = "PROGDIR:DCTelnet.Prefs";
 char const bookFilename[]  = "PROGDIR:DCTelnet.Book";
 char const keysFilename[]  = "PROGDIR:DCTelnet.Keys";
 
-// prefs.AnsiColors: 16-color CGA/VGA text palette in ANSI order. Convenient for the built-in
-// renderer: ANSI SGR color numbers map directly (Black, Red, Green, Yellow, Blue, Magenta, Cyan,
-// White), requiring only a subtraction.
-// Values: 4 unused bits followed by 4 bits for each colour channel: Red, Green, Blue.
-static const UWORD defaultAnsiColors[16] = {
-    0x0000,  // 0 : #000 black
-    0x0A00,  // 1 : #A00 red
-    0x00A0,  // 2 : #0A0 green
-    0x0A50,  // 3 : #A50 brown
-    0x000A,  // 4 : #00A blue
-    0x0A0A,  // 5 : #A0A magenta
-    0x00AA,  // 6 : #0AA cyan
-    0x0AAA,  // 7 : #AAA dark white = light gray (!= #FFF bright white)
-
-    // Bright variants: the built-in renderer treats a color as bright when atr_bold or
-    // atr_blink is set.
-    // #555  #F55 #5F5  #FF5  #55F  #F5F  #5FF  #FFF
-        0x0555, 0x0F55, 0x05F5, 0x0FF5, 0x055F, 0x0F5F, 0x05FF, 0x0FFF
-};
-
-// prefs.DeviceColors: original ibmcon/console.device palette, brighter than ANSI and with less
-// contrast between regular and bright color variants
-static const UWORD defaultDeviceColors[16] = {
-    0x0000,  // 0 : #000 black
-    0x0DDD,  // 1 : #DDD dark white = light gray (order differs from ANSI)
-    0x00D0,  // 2 : #0D0 green
-    0x0DD0,  // 3 : #DD0 yellow
-    0x000D,  // 4 : #00D blue
-    0x0D0D,  // 5 : #D0D magenta
-    0x00DD,  // 6 : #0DD cyan
-    0x0D00,  // 7 : #D00 red (order differs from ANSI)
-
-    // brighter :
-    // #555  #FFF #5F0  #FF0  #00F  #F0F  #0FF  #F00
-        0x0555, 0x0FFF, 0x00F0, 0x0FF0, 0x000F, 0x0F0F, 0x00FF, 0x0F00
-};
+// The default palettes (defaultAnsiColors, defaultDeviceColors) are in palette.c.
 
 
 // Pens are used by Intuition to draw the user interface. Each pen corresponds
@@ -238,11 +204,12 @@ void SavePrefs(void)
         };
 
         // Only ever the global settings: during an Address Book entry session
-        // the live settings are the entry's, and menu changes made then are
-        // session-only (site_prefs.c).
+        // the live settings are the entry's, and menu changes made while
+        // connected last for this run but are never written here (site_prefs.c).
         static struct PrefsStruct toSave;
 
         SitePrefs_ForSave(&toSave, &prefs, &globalPrefs, sessionSettingsId != 0);
+        SitePrefs_HandForSave(&handChanges, &toSave);   // changes made while connected: not saved
         lenHeaderWritten = Write(fileHandle, &header, sizeof(header));
         lenPrefsWritten  = Write(fileHandle, &toSave, sizeof(toSave));
 

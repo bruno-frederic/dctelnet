@@ -18,8 +18,9 @@
 /*
  * An entry overrides settings by GROUP (Term 4.x style): an overridden group's
  * members come from the entry, every other setting from the global ones.
- *   Screen:   DisplayID/Width/Height/Depth, FontName, FontSize, AnsiColors,
- *             DeviceColors, APP_FULLSCREEN
+ *   Screen:   FontName, FontSize, AnsiColors, DeviceColors (the screen mode
+ *             and Full-screen are app-wide: an entry never changes where or
+ *             in which mode DCTelnet runs)
  *   Terminal: APP_PETSCII_MODE, the renderer (APP_RENDERER_*), XemLibrary,
  *             TelnetTermType, APP_RAW_CONNECTION, APP_LOCAL_ECHO (+ XEM options)
  *   Keyboard: APP_BACKSPACE_DEL_SWAPPED, APP_RETURN_SENDING_CRLF (+ function keys)
@@ -56,6 +57,41 @@ void SitePrefs_Restore(struct PrefsStruct *live, const struct PrefsStruct *globa
  * settings with the live window geometry, otherwise the live settings. */
 void SitePrefs_ForSave(struct PrefsStruct *out, const struct PrefsStruct *live,
                        const struct PrefsStruct *global, BOOL sessionActive);
+
+/* A setting the user changed by hand during an entry session (before ->
+ * after) is theirs everywhere: every field that changed is carried into
+ * global too, whole (a font name is never half copied), and the flags bit
+ * by bit. Fields that did not change keep global's value. */
+void SitePrefs_CarryChange(struct PrefsStruct *global, const struct PrefsStruct *before,
+                           const struct PrefsStruct *after);
+
+/* Settings the user changed by hand while connected to an entry apply for
+ * the rest of the run -- a disconnect does not take them back -- but are
+ * never saved: DCTelnet.Prefs keeps what they replaced. A later change of
+ * the same setting while not connected is a real one and is saved.
+ * before: the saved value of every field; after: its value now. */
+struct SiteHandChanges
+{
+    struct PrefsStruct before, after;
+};
+
+/* Start the record from the settings as loaded. */
+void SitePrefs_HandInit(struct SiteHandChanges *h, const struct PrefsStruct *loaded);
+
+/* A menu pick changed the live settings from before to after. In an entry
+ * session the change is carried into global (the run keeps it) and noted
+ * as temporary; outside one it is a real change. */
+void SitePrefs_HandChange(struct SiteHandChanges *h, struct PrefsStruct *global,
+                          const struct PrefsStruct *before, const struct PrefsStruct *after,
+                          BOOL inSession);
+
+/* toSave (the global settings) with every temporary change taken back. */
+void SitePrefs_HandForSave(const struct SiteHandChanges *h, struct PrefsStruct *toSave);
+
+/* TRUE when a and b differ only in the terminal's look -- the font and the
+ * palette. On the Workbench only the console reopens for that; the window
+ * stays where it is. */
+BOOL SitePrefs_OnlyLookDiffers(const struct PrefsStruct *a, const struct PrefsStruct *b);
 
 /* TRUE when switching between a and b needs the display reopened;
  * *reopenScreen is set when the screen itself must be reopened too, not

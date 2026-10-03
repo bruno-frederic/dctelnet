@@ -32,7 +32,6 @@ static void replace_keeping_geometry(struct PrefsStruct *live, const struct Pref
     copy_geometry(live, &geometry);
 }
 
-#define SCREEN_GROUP_FLAGS    (APP_FULLSCREEN)
 #define TERMINAL_GROUP_FLAGS  (APP_PETSCII_MODE | APP_RENDERER_ALL | APP_RAW_CONNECTION | APP_LOCAL_ECHO)
 #define KEYBOARD_GROUP_FLAGS  (APP_BACKSPACE_DEL_SWAPPED | APP_RETURN_SENDING_CRLF)
 
@@ -49,15 +48,10 @@ void SitePrefs_ApplyEntry(struct PrefsStruct *live, const struct PrefsStruct *gl
 
     if (entry->groups & SITE_GROUP_SCREEN)
     {
-        result.DisplayID     = e->DisplayID;
-        result.DisplayWidth  = e->DisplayWidth;
-        result.DisplayHeight = e->DisplayHeight;
-        result.DisplayDepth  = e->DisplayDepth;
         result.FontSize      = e->FontSize;
         memcpy(result.FontName, e->FontName, sizeof(result.FontName));
         memcpy(result.AnsiColors, e->AnsiColors, sizeof(result.AnsiColors));
         memcpy(result.DeviceColors, e->DeviceColors, sizeof(result.DeviceColors));
-        copy_flags(&result, e, SCREEN_GROUP_FLAGS);
     }
     if (entry->groups & SITE_GROUP_TERMINAL)
     {
@@ -111,6 +105,74 @@ BOOL SitePrefs_DisplayDiffers(const struct PrefsStruct *a, const struct PrefsStr
            || memcmp(a->DeviceColors, b->DeviceColors, sizeof(a->DeviceColors)) != 0;
 
     return *reopenScreen || windows;
+}
+
+#include <stddef.h>
+
+/* Every field of struct PrefsStruct but State (carried bit by bit). A field
+ * added to the struct is added here, or a change to it is not carried
+ * (test_site_prefs covers every byte). */
+static const struct { size_t offset, size; } prefsFields[] =
+{
+#define F(m) { offsetof(struct PrefsStruct, m), sizeof(((struct PrefsStruct *)0)->m) }
+    F(AnsiColors), F(DeviceColors),
+    F(DisplayID), F(DisplayWidth), F(DisplayHeight), F(DisplayDepth),
+    F(FontSize), F(FontName),
+    F(MainWinLeftEdge), F(MainWinTopEdge), F(MainWinWidth), F(MainWinHeight),
+    F(ScrollbackWinLeftEdge), F(ScrollbackWinTopEdge), F(ScrollbackWinWidth), F(ScrollbackWinHeight),
+    F(ToolBarWinLeftEdge), F(ToolBarWinTopEdge),
+    F(nScrollbackLines), F(TelnetTermType), F(XemLibrary),
+    F(XferLibrary), F(DownloadPath), F(UploadPath), F(XferOptions)
+#undef F
+};
+
+void SitePrefs_CarryChange(struct PrefsStruct *global, const struct PrefsStruct *before,
+                           const struct PrefsStruct *after)
+{
+    const UBYTE *b = (const UBYTE *)before, *a = (const UBYTE *)after;
+    UBYTE *g = (UBYTE *)global;
+    ULONG changed = before->State ^ after->State;
+    size_t i;
+
+    for (i = 0; i < sizeof(prefsFields) / sizeof(prefsFields[0]); i++)
+        if (memcmp(b + prefsFields[i].offset, a + prefsFields[i].offset, prefsFields[i].size) != 0)
+            memcpy(g + prefsFields[i].offset, a + prefsFields[i].offset, prefsFields[i].size);
+    global->State = (global->State & ~changed) | (after->State & changed);
+}
+
+void SitePrefs_HandInit(struct SiteHandChanges *h, const struct PrefsStruct *loaded)
+{
+    h->before = *loaded;
+    h->after  = *loaded;
+}
+
+void SitePrefs_HandChange(struct SiteHandChanges *h, struct PrefsStruct *global,
+                          const struct PrefsStruct *before, const struct PrefsStruct *after,
+                          BOOL inSession)
+{
+    if (inSession)
+        SitePrefs_CarryChange(global, before, after);   // the run keeps it
+    else
+        SitePrefs_CarryChange(&h->before, before, after);   // a real change: saved
+    SitePrefs_CarryChange(&h->after, before, after);
+}
+
+void SitePrefs_HandForSave(const struct SiteHandChanges *h, struct PrefsStruct *toSave)
+{
+    SitePrefs_CarryChange(toSave, &h->after, &h->before);
+}
+
+BOOL SitePrefs_OnlyLookDiffers(const struct PrefsStruct *a, const struct PrefsStruct *b)
+{
+    static struct PrefsStruct look;
+    BOOL reopenScreen;
+
+    look = *a;
+    look.FontSize = b->FontSize;
+    memcpy(look.FontName, b->FontName, sizeof(look.FontName));
+    memcpy(look.AnsiColors, b->AnsiColors, sizeof(look.AnsiColors));
+    memcpy(look.DeviceColors, b->DeviceColors, sizeof(look.DeviceColors));
+    return !SitePrefs_DisplayDiffers(&look, b, &reopenScreen);
 }
 
 /*
@@ -318,22 +380,7 @@ void SitePrefs_GroupSummary(ULONG group, const struct PrefsStruct *p, char *out,
     out[0] = 0;
     if (group == SITE_GROUP_SCREEN)
     {
-        if (!(p->State & APP_FULLSCREEN))
-        {
-            put(out, &len, max, "Workbench, ");
-            put_font(out, &len, max, p);
-        }
-        else
-        {
-            put_font(out, &len, max, p);
-            put(out, &len, max, ", ");
-            put_num(out, &len, max, p->DisplayWidth);
-            put(out, &len, max, "x");
-            put_num(out, &len, max, p->DisplayHeight);
-            put(out, &len, max, ", ");
-            put_num(out, &len, max, 1UL << p->DisplayDepth);
-            put(out, &len, max, " colours");
-        }
+        put_font(out, &len, max, p);
     }
     else if (group == SITE_GROUP_TERMINAL)
     {

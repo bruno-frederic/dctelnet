@@ -33,14 +33,14 @@ MAKE=smake
 
 TARGET=DCTelnet
 CPU=68000
-DEPS = abook.h connect.h DCTelnet.h DCTelnet-debug.h DCTelnet-protocol.h third_party/retro32-term/term-engine.c edit.h fkey.h guis.h Xfer.h Xem_wrapper.h requesters.h utils.h prefs.h prefs_file.h site_prefs.h palette.h
+DEPS = abook.h connect.h DCTelnet.h DCTelnet-debug.h DCTelnet-protocol.h third_party/retro32-term/term-engine.c edit.h fkey.h guis.h Xfer.h Xem_wrapper.h requesters.h utils.h prefs.h prefs_file.h site_prefs.h palette.h screenfont.h progdir.h shipped.h listsel.h textedit.h dsr.h
 # The first '/' in the path is equivalent to '../' on other platforms:
 INSTALLDIR=/build/installed/DCTelnet
 
 # final OBJDIR depends on CPU and OBJ_SUFFIX
 # OBJDIR need to be on an Amiga fileystem (too many file access problem on shared WinUAE folder):
 OBJDIR            = RAM:build/sasc-$(CPU)-$(OBJ_SUFFIX)
-OBJS              = $(OBJDIR)/DCTelnet.o $(OBJDIR)/Connect.o $(OBJDIR)/Guis.o $(OBJDIR)/Xfer.o $(OBJDIR)/Xem_wrapper.o $(OBJDIR)/requesters.o $(OBJDIR)/utils.o $(OBJDIR)/prefs.o $(OBJDIR)/prefs_file.o $(OBJDIR)/site_prefs.o $(OBJDIR)/palette.o
+OBJS              = $(OBJDIR)/DCTelnet.o $(OBJDIR)/Connect.o $(OBJDIR)/Guis.o $(OBJDIR)/Xfer.o $(OBJDIR)/Xem_wrapper.o $(OBJDIR)/requesters.o $(OBJDIR)/utils.o $(OBJDIR)/prefs.o $(OBJDIR)/prefs_file.o $(OBJDIR)/site_prefs.o $(OBJDIR)/palette.o $(OBJDIR)/screenfont.o $(OBJDIR)/progdir.o $(OBJDIR)/shipped.o $(OBJDIR)/listsel.o $(OBJDIR)/textedit.o $(OBJDIR)/dsr.o
 TARGET_EXE        = $(OBJDIR)/$(TARGET).$(CPU)
 MAKEFILE_UPTODATE = $(OBJDIR)/Makefile.uptodate
 
@@ -127,6 +127,30 @@ $(OBJDIR)/site_prefs.o: site_prefs.c $(DEPS) $(OBJDIR)
 	$(CC) $(CFLAGS) $*.c  ObjectName=$(OBJDIR)/
 
 $(OBJDIR)/palette.o: palette.c $(DEPS) $(OBJDIR)
+	@echo "------------- $@ --------------------"
+	$(CC) $(CFLAGS) $*.c  ObjectName=$(OBJDIR)/
+
+$(OBJDIR)/screenfont.o: screenfont.c $(DEPS) $(OBJDIR)
+	@echo "------------- $@ --------------------"
+	$(CC) $(CFLAGS) $*.c  ObjectName=$(OBJDIR)/
+
+$(OBJDIR)/progdir.o: progdir.c $(DEPS) $(OBJDIR)
+	@echo "------------- $@ --------------------"
+	$(CC) $(CFLAGS) $*.c  ObjectName=$(OBJDIR)/
+
+$(OBJDIR)/shipped.o: shipped.c $(DEPS) $(OBJDIR)
+	@echo "------------- $@ --------------------"
+	$(CC) $(CFLAGS) $*.c  ObjectName=$(OBJDIR)/
+
+$(OBJDIR)/listsel.o: listsel.c $(DEPS) $(OBJDIR)
+	@echo "------------- $@ --------------------"
+	$(CC) $(CFLAGS) $*.c  ObjectName=$(OBJDIR)/
+
+$(OBJDIR)/textedit.o: textedit.c $(DEPS) $(OBJDIR)
+	@echo "------------- $@ --------------------"
+	$(CC) $(CFLAGS) $*.c  ObjectName=$(OBJDIR)/
+
+$(OBJDIR)/dsr.o: dsr.c $(DEPS) $(OBJDIR)
 	@echo "------------- $@ --------------------"
 	$(CC) $(CFLAGS) $*.c  ObjectName=$(OBJDIR)/
 

@@ -240,6 +240,7 @@ CMD_DIE             EQU $7FF0   ; private: DevClose -> handler "exit"
 ; Colour codes then stay logical and are mapped at every pen that reaches
 ; graphics.library; the unit 1<->7 swap and the depth checks no longer apply.
 IBMCMD_SETPENS      EQU $7FE0
+IBMCMD_GETCURSOR    EQU $7FE1   ; 1.9: io_Actual = row<<16 | column (1-based)
 rp_Mask             EQU $18
 IOERR_OPENFAIL      EQU -1
 IOERR_NOCMD         EQU $FD     ; -3 as a byte
@@ -483,9 +484,9 @@ DevInit:                                ; was AJL_0_20
         move.l  A1,D0
         lea     LIB_VERSION(A5),A3
         move.w  D0,(A3)+                ; lib_Version  = 1
-        lea     6,A1                    ; 1.6: revision 6 (deferred wrap)
+        lea     9,A1                    ; 1.9: revision 9 (CUB/CUF, cursor query)
         move.l  A1,D0
-        move.w  D0,(A3)+                ; lib_Revision = 6
+        move.w  D0,(A3)+                ; lib_Revision = 9
         move.l  #DevIdString,(A3)+      ; lib_IdString
         lea     dev_RelocTab(A5),A3
         clr.l   (A3)+                   ; dev_RelocTab = NULL
@@ -864,21 +865,37 @@ HandlerProc:                            ; was JL_0_2EC
         movea.l g_CmdPort(A4),A0
         movea.l AbsExecBase.W,A6
         jsr     _LVOWaitPort(A6)
-        bra.b   .pollNext
+        bra.w   .pollNext
 .gotMsg:                                ; A5 = IOStdReq
         moveq   #0,D0
         move.w  IO_COMMAND(A5),D0
         cmpi.l  #IBMCMD_SETPENS,D0      ; 1.5: pen table from the client
         beq.b   .doSetPens
+        cmpi.l  #IBMCMD_GETCURSOR,D0    ; 1.9: where the cursor is, for a
+        beq.b   .doGetCursor            ;   client answering a BBS's DSR
         subq.l  #3,D0                   ; CMD_WRITE?
         beq.b   .doWrite
         subi.l  #CMD_DIE-CMD_WRITE,D0   ; CMD_DIE?
         bne.b   .reply                  ; anything else: just reply
+        move.l  g_CmdPort(A4),-(A7)     ; 1.8 FIXED: the handler deletes
+        bsr.w   DeletePort_             ;   its own port, so FreeSignal
+        addq.w  #4,A7                   ;   frees ITS signal. UnitClose
+        clr.l   g_CmdPort(A4)           ;   did it in the opener's task
+                                        ;   and freed the opener's bit
+                                        ;   (31: bsdsocket's -- stuck
+                                        ;   connections, DCTelnet #3)
         movea.l AbsExecBase.W,A6        ; CMD_DIE: reply under Forbid
         jsr     _LVOForbid(A6)          ;   and fall off the process
         movea.l A5,A1
         jsr     _LVOReplyMsg(A6)
         bra.b   .exit
+.doGetCursor:
+        moveq   #0,D0
+        move.w  $16+con_Row(A7),D0      ; con lives at $16 of the frame
+        swap    D0
+        move.w  $16+con_Col(A7),D0
+        move.l  D0,IO_ACTUAL(A5)        ; row<<16 | column
+        bra.b   .reply
 .doSetPens:
         move.l  IO_DATA(A5),-(A7)
         pea     $1A(A7)                 ; &con (one long pushed)
@@ -903,7 +920,7 @@ HandlerProc:                            ; was JL_0_2EC
         movea.l D0,A5
         movea.l $10(A7),A6
         tst.l   D0
-        bne.b   .gotMsg
+        bne.w   .gotMsg
         bra.w   .mainWait
 .exit:
         movem.l (A7)+,A3-A6
@@ -2006,6 +2023,12 @@ Csi_M_DeleteLines:                      ; was AJL_0_C60
 ;---------------------------------------------------------------------
 ; CSI 'L' -- insert N blank lines at the cursor row; lines from the
 ; cursor down move towards the bottom (negative dy scroll).
+; FIXED(1.7): the scroll's bottom edge was rows-1 -- a row count used as
+; a pixel row -- so only the top pixel lines moved and a fullscreen
+; editor scrolling up (ABBS, MBBS) left stale lines behind. It is now
+; rows*YSize-1, as in CSI M. And N was clamped to the rows BELOW the
+; cursor, so on the last row nothing was inserted; the cursor's row
+; counts too, as in CSI M.
 ;---------------------------------------------------------------------
 Csi_L_InsertLines:                      ; was AJL_0_D0C
         suba.w  #$C,A7
@@ -2021,7 +2044,7 @@ Csi_L_InsertLines:                      ; was AJL_0_D0C
         move.w  con_Row(A5),D0
         moveq   #1,D1
         cmp.w   D1,D0
-        bcs.b   .done
+        bcs.w   .done
         move.w  con_Rows(A5),D1
         cmp.w   D1,D0
         bhi.b   .done
@@ -2029,7 +2052,8 @@ Csi_L_InsertLines:                      ; was AJL_0_D0C
         move.w  D0,D2
         moveq   #0,D0
         move.w  D1,D0
-        sub.l   D2,D0                   ; rows below the cursor
+        sub.l   D2,D0
+        addq.l  #1,D0                   ; rows below incl. current
         moveq   #0,D1
         move.b  D7,D1
         cmp.l   D0,D1
@@ -2056,10 +2080,12 @@ Csi_L_InsertLines:                      ; was AJL_0_D0C
         moveq   #0,D1
         move.w  con_WidthPx(A5),D1
         subq.l  #1,D1                   ; xmax
-        moveq   #0,D2
+        movea.l g_RastPort(A4),A1
+        movea.l rp_Font(A1),A0
         move.w  con_Rows(A5),D2
-        subq.l  #1,D2                   ; NOTE: ymax = rows-1 (pixel
-        move.l  D0,D3                   ; row!), original quirk
+        mulu    tf_YSize(A0),D2
+        subq.l  #1,D2                   ; ymax = rows*YSize-1 (1.7 FIXED)
+        move.l  D0,D3
         move.l  D1,D4
         move.l  D2,D5
         movea.l con_RastPort(A5),A1
@@ -2452,9 +2478,8 @@ Csi_F_PrevLine:                         ; was AJL_0_10BE
         bra.w   CursorUpN               ; reuse the caller's arguments
 
 ;---------------------------------------------------------------------
-; CSI 'C' -- cursor right N.  At the right edge with auto-wrap on it
-; wraps (CR + cursor down); with auto-wrap off it stops there and
-; abandons the remaining count.
+; CSI 'C' -- cursor right N, stopping at the right margin (1.9; it used
+; to wrap to the next line with auto-wrap on).
 ;---------------------------------------------------------------------
 Csi_C_CursorRight:                      ; was AJL_0_10D2
         subq.w  #4,A7
@@ -2470,15 +2495,9 @@ Csi_C_CursorRight:                      ; was AJL_0_10D2
 .step:
         move.w  con_Col(A5),D0
         cmp.w   con_Cols(A5),D0
-        bcs.b   .advance
-        btst    #1,con_ModeFlags(A5)    ; at the edge: wrap allowed?
-        beq.b   .done
-        pea     1.W                     ; count (unused by callee)
-        pea     g_ParamOne1(A4)         ; params = {1}
-        move.l  A5,-(A7)
-        bsr.w   Csi_E_NextLine          ; CR + cursor down 1
-        lea     $C(A7),A7
-        bra.b   .loopCheck
+        bcc.b   .done                   ; 1.9 FIXED: CUF stops at the
+                                        ;   right margin (ANSI.SYS, VT100);
+                                        ;   it wrapped to the next line
 .advance:
         addq.w  #1,con_Col(A5)
 .loopCheck:
@@ -2492,9 +2511,8 @@ Csi_C_CursorRight:                      ; was AJL_0_10D2
         rts
 
 ;---------------------------------------------------------------------
-; CSI 'D' -- cursor left N.  At column 1 with auto-wrap on it jumps to
-; the last column of the previous line (cursor up); with auto-wrap off
-; it stops and abandons the remaining count.
+; CSI 'D' -- cursor left N, stopping at column 1 (1.9; it used to jump
+; to the end of the previous line with auto-wrap on).
 ;---------------------------------------------------------------------
 Csi_D_CursorLeft:                       ; was AJL_0_1128
         subq.w  #4,A7
@@ -2509,16 +2527,11 @@ Csi_D_CursorLeft:                       ; was AJL_0_1128
         bra.b   .loopCheck
 .step:
         cmpi.w  #1,con_Col(A5)
-        bhi.b   .retreat
-        btst    #1,con_ModeFlags(A5)
-        beq.b   .done
-        move.w  con_Cols(A5),con_Col(A5)
-        pea     1.W
-        pea     g_ParamOne2(A4)         ; params = {1}
-        move.l  A5,-(A7)
-        bsr.w   CursorUpN               ; up one line
-        lea     $C(A7),A7
-        bra.b   .loopCheck
+        bls.b   .done                   ; 1.9 FIXED: CUB stops at column
+                                        ;   1 (ANSI.SYS, VT100); it went
+                                        ;   up to the previous line, so
+                                        ;   CSI 79 D from short of column
+                                        ;   80 landed a line too high
 .retreat:
         subq.w  #1,con_Col(A5)
 .loopCheck:
@@ -3321,8 +3334,10 @@ UnitOpen:                               ; was JL_0_185A
 ; UnitClose -- device specific part of DevClose.
 ; In: A0 = ioreq, A6 = clone base.
 ; Builds a fake IORequest with io_Command = CMD_DIE on the stack,
-; sends it to the handler's command port and waits for the reply,
-; then deletes the handler's command port.
+; sends it to the handler's command port and waits for the reply.
+; The handler deletes its command port itself before replying: this
+; runs in the OPENER's task, and DeletePort_ here freed the opener's
+; signal bit of the same number (1.8 FIXED).
 ;---------------------------------------------------------------------
 UnitClose:                              ; was JL_0_1918
         suba.w  #$24,A7
@@ -3342,10 +3357,8 @@ UnitClose:                              ; was JL_0_1918
         jsr     _LVOWaitPort(A6)        ; handler replies under Forbid
         movea.l $1E(A7),A0
         jsr     -$2A0(A6)               ; DeleteMsgPort
-        move.l  g_CmdPort(A4),-(A7)
-        movea.l $10(A7),A6
-        bsr.w   DeletePort_             ; free the handler's port
-        addq.w  #4,A7
+        ; 1.8: the handler deleted its command port itself (a port's
+        ; signal belongs to the task that allocated it)
         movem.l (A7)+,A4-A6
         adda.w  #$24,A7
         rts
@@ -3366,6 +3379,8 @@ DevBeginIO:                             ; was AJL_0_1976
         move.w  IO_COMMAND(A1),D0
         move.l  A6,$8(A7)
         cmpi.l  #IBMCMD_SETPENS,D0      ; 1.5: pen table -> handler too
+        beq.b   .forward
+        cmpi.l  #IBMCMD_GETCURSOR,D0    ; 1.9: cursor position -> handler
         beq.b   .forward
         subq.l  #CMD_WRITE,D0
         bne.b   .badCmd
@@ -3952,7 +3967,7 @@ DevName:                                ; was AL_2_1C
         dc.b    "ibmcon.device",0,0
         dc.b    0
 DevIdString:                            ; was AL_2_2C
-        dc.b    "ibmcon.device 1.6",0,0
+        dc.b    "ibmcon.device 1.9",0,0
         dc.b    0
 
 ;=====================================================================
@@ -3966,7 +3981,7 @@ DevIdString:                            ; was AL_2_2C
 GlobalsInit:                            ; was SegmentBeginn3
         ds.l    1                       ; $000: (unused)
         dc.b    0                       ; $004
-        dc.b    "$VER: ibmcon.device 1.6 (Sep 27 2026)",0,0
+        dc.b    "$VER: ibmcon.device 1.9 (Sep 28 2026)",0,0
 
 ;--- $02C: CSI dispatch table ----------------------------------------
 ; 6 bytes per entry: function pointer, prefix char (0 = none), final

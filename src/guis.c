@@ -27,6 +27,9 @@
 #include "site_prefs.h"
 #include "prefs_file.h"             // Prefs_Palette()
 #include "Xem_wrapper.h"                 // SaveXemOptions()
+#include "listsel.h"
+#include "textedit.h"
+#include <intuition/sghooks.h>
 
 struct BookStruct
 {
@@ -688,13 +691,21 @@ delete:
                             //mysprintf(buf, "Delete \042%s\042?", worknode->ln_Name);
                             //if(rtEZRequestA(buf, "Delete|Cancel", NULL, NULL, (struct TagItem *)&reqtoolsTags))
                             {
+                                struct Node *n;
+                                UWORD remaining = 0;
+
+                                // GadTools must not see the list while it changes.
+                                GT_SetGadgetAttrs(aBookGadgets[GD_LIST], aBookWnd, NULL,
+                                                  GTLV_Labels, ~0UL, TAG_DONE);
                                 Remove(worknode);
                                 DeleteEntrySettings(((struct BookStruct *)worknode->ln_Name)->settingsId);
                                 FreeMem(worknode->ln_Name, sizeof(struct BookStruct));
                                 FreeMem(worknode, sizeof(struct Node));
-                                lastcode--;
-                                // BF: Why this test? lastcode is UWORD, how could it be negative?
-                                //if(lastcode < 0) lastcode = 0;
+                                for (n = listviewlist->lh_Head; n->ln_Succ; n = n->ln_Succ)
+                                    remaining++;
+                                // lastcode-- turned row 0 into 65535 (UWORD): nothing
+                                // selected, and the next Delete did nothing.
+                                lastcode = ListSel_AfterDelete(lastcode, remaining);
                                 GT_SetGadgetAttrs(aBookGadgets[GD_LIST],aBookWnd,0,GTLV_Labels,listviewlist,GTLV_Selected,lastcode,TAG_DONE);
                                 save = TRUE;
                             }
@@ -805,7 +816,7 @@ static struct Window         *editProfileWnd;           // "Edit Address Book Pr
 static struct Gadget         *editProfileGList;         // "Edit Address Book Profile" window GList
 static struct Gadget         *editProfileGadgets[editProfile_CNT]; // "Edit Address Book Profile" window gadgets
 #define editProfileWidth 450
-#define editProfileHeight 181
+#define editProfileHeight 185
 
 static UBYTE editProfileGTypes[] = {
     STRING_KIND,
@@ -828,14 +839,14 @@ static struct MyNewGadget editProfileNGad[] = {
     120, 5, 317, 13, (UBYTE *)"_Site Name:",
     120, 21, 317, 13, (UBYTE *)"_Address:",
     121, 37, 177, 13, (UBYTE *)"Last Called:",
-    3, 166, 101, 13, (UBYTE *)"_Ok",
-    345, 166, 101, 13, (UBYTE *)"_Cancel",
+    3, 170, 101, 13, (UBYTE *)"_Ok",
+    345, 170, 101, 13, (UBYTE *)"_Cancel",
     365, 37, 72, 13, (UBYTE *)"_Port:",
     120, 53, 317, 13, (UBYTE *)"_Username:",
     120, 68, 317, 13, (UBYTE *)"Pass_word:",
-    120, 130, 317, 13, (UBYTE *)"Settings:",
-    3, 146, 218, 13, (UBYTE *)"Se_ttings...",
-    228, 146, 218, 13, (UBYTE *)"Use _Global Settings",
+    120, 134, 317, 13, (UBYTE *)"Settings:",
+    3, 150, 218, 13, (UBYTE *)"Se_ttings...",
+    228, 150, 218, 13, (UBYTE *)"Use _Global Settings",
     120, 84, 317, 13, (UBYTE *)"Co_mment:",
     120, 100, 317, 13, (UBYTE *)"_Login Macro:",
     3, 114, 443, 12, NULL,
@@ -872,6 +883,63 @@ static ULONG editProfileGTags[] = {
 #define EP_TAG_LOGIN_MACRO 65
 #define EP_TAG_MACRO_HELP  72
 
+/*
+ * A field entered with Tab is replaced by what is typed (string edit hook):
+ * GadTools string gadgets have no select-all, and typing into a prefilled
+ * field appended to the old value. The first key in a field other than the
+ * one last typed or clicked in replaces its value; tabbing through keeps
+ * it, and a click positions the cursor for editing as before.
+ */
+static struct Gadget *lastEditedField;
+
+static ULONG __SAVE_DS__ __ASM__ ReplaceOnFirstKey(__REG__(a0, struct Hook *hook),
+                                                   __REG__(a2, struct SGWork *sgw),
+                                                   __REG__(a1, ULONG *msg))
+{
+    BOOL fresh;
+
+    if (*msg == SGH_CLICK)
+    {
+        lastEditedField = sgw->Gadget;      // clicked in: edit where the cursor is
+        return ~0UL;
+    }
+    if (*msg != SGH_KEY)
+        return 0;
+    fresh = sgw->Gadget != lastEditedField;
+    lastEditedField = sgw->Gadget;
+    if (fresh && (sgw->EditOp == EO_INSERTCHAR || sgw->EditOp == EO_REPLACECHAR))
+    {
+        TextEdit_FirstKey((char *)sgw->WorkBuffer, &sgw->BufferPos, &sgw->NumChars, TRUE);
+        if (sgw->StringInfo && (sgw->Gadget->Activation & GACT_LONGINT))
+            sgw->LongInt = (sgw->WorkBuffer[0] >= '0' && sgw->WorkBuffer[0] <= '9')
+                         ? sgw->WorkBuffer[0] - '0' : 0;
+        sgw->Actions |= SGA_REDISPLAY;
+    }
+    return ~0UL;
+}
+
+static struct Hook replaceOnFirstKey = { { NULL, NULL }, (HOOKFUNC)ReplaceOnFirstKey, NULL, NULL };
+
+// Put the hook on every string and integer gadget of a window's gadgets.
+static void InstallReplaceOnFirstKey(struct Gadget **gads, UWORD count)
+{
+    UWORD i;
+
+    lastEditedField = NULL;
+    for (i = 0; i < count; i++)
+    {
+        struct Gadget *g = gads[i];
+
+        if (g && (g->GadgetType & GTYP_GTYPEMASK) == GTYP_STRGADGET)
+        {
+            struct StringInfo *si = (struct StringInfo *)g->SpecialInfo;
+
+            if (si && si->Extension)
+                si->Extension->EditHook = &replaceOnFirstKey;
+        }
+    }
+}
+
 // Draw the Edit Address Book Profile window
 static int OpenEditProfileWindow( void )
 {
@@ -888,6 +956,7 @@ static int OpenEditProfileWindow( void )
         return( 1L );
 
     if(MakeGadgets(editProfileNGad, editProfileGadgets, editProfileGTags, g, editProfileGTypes, editProfile_CNT) != 0) return( 2L );
+    InstallReplaceOnFirstKey(editProfileGadgets, editProfile_CNT);
 
     x = ww + OffX + scr->WBorRight;
     y = wh + OffY + scr->WBorBottom;
@@ -924,7 +993,7 @@ static int OpenEditProfileWindow( void )
     DrawBevelBox( editProfileWnd->RPort, OffX + ComputeX( 3 ),
                     OffY + ComputeY( 1 ),
                     ComputeX( 444 ),
-                    ComputeY( 86 ),
+                    ComputeY( 128 ),   /* every field down to the macro help line */
                     GT_VisualInfo, visualInfos, TAG_DONE );
     return( 0L );
 }
@@ -962,7 +1031,7 @@ static ULONG NextSettingsId(struct List *list)
  */
 enum
 {
-    SG_SCREEN_OVR, SG_SCREEN_SUM, SG_SCREEN_CUR, SG_SCREEN_MODE, SG_SCREEN_FONT, SG_SCREEN_PALETTE, SG_SCREEN_WB,
+    SG_SCREEN_OVR, SG_SCREEN_SUM, SG_SCREEN_CUR, SG_SCREEN_FONT, SG_SCREEN_PALETTE,
     SG_TERM_OVR, SG_TERM_SUM, SG_TERM_CUR, SG_TERM_PETSCII, SG_TERM_XEMLIB, SG_TERM_DISPID,
     SG_TERM_RAW, SG_TERM_ECHO, SG_TERM_RENDERER,
     SG_KEY_OVR, SG_KEY_SUM, SG_KEY_CUR, SG_KEY_BSDEL, SG_KEY_CRLF, SG_KEY_FKEYS,
@@ -989,10 +1058,8 @@ static const struct SettingsGadgetDef settingsDefs[SG_COUNT] =
     {  80,   4, 112, 13, "Screen",               PLACETEXT_LEFT,  CYCLE_KIND    },
     { 196,   4, 300, 13, NULL,                   0,               TEXT_KIND     },
     { 500,   4, 112, 13, "Use Current",          PLACETEXT_IN,    BUTTON_KIND   },
-    {  80,  20, 128, 13, "Screen Mode...",       PLACETEXT_IN,    BUTTON_KIND   },
-    { 212,  20,  72, 13, "Font...",              PLACETEXT_IN,    BUTTON_KIND   },
-    { 288,  20,  96, 13, "Palette...",           PLACETEXT_IN,    BUTTON_KIND   },
-    { 396,  21,  26, 11, "Use Workbench",        PLACETEXT_RIGHT, CHECKBOX_KIND },
+    {  80,  20,  72, 13, "Font...",              PLACETEXT_IN,    BUTTON_KIND   },
+    { 156,  20,  96, 13, "Palette...",           PLACETEXT_IN,    BUTTON_KIND   },
 
     {  80,  42, 112, 13, "Terminal",             PLACETEXT_LEFT,  CYCLE_KIND    },
     { 196,  42, 300, 13, NULL,                   0,               TEXT_KIND     },
@@ -1075,7 +1142,6 @@ static void RefreshSettingsWindow(const struct SiteSettings *work)
         GT_SetGadgetAttrs(settingsGadgets[summaryGadget[g]], settingsWnd, NULL,
                           GTTX_Text, summary[g], TAG_DONE);
     }
-    SetChecked(SG_SCREEN_WB,    (shown.State & APP_FULLSCREEN) == 0);
     SetChecked(SG_TERM_PETSCII, (shown.State & APP_PETSCII_MODE) != 0);
     SetChecked(SG_TERM_RAW,     (shown.State & APP_RAW_CONNECTION) != 0);
     SetChecked(SG_TERM_ECHO,    (shown.State & APP_LOCAL_ECHO) != 0);
@@ -1232,11 +1298,6 @@ static BOOL EditEntrySettings(const char *entryName, struct SiteSettings *entry,
 
                 // A requester button seeds the group (so the requester starts from
                 // the values shown) and keeps the change only when not cancelled.
-                case SG_SCREEN_MODE:
-                    undo = work;
-                    OverrideGroup(&work, SITE_GROUP_SCREEN);
-                    if (!ScreenModeInto(&work.prefs)) work = undo;
-                    break;
                 case SG_SCREEN_FONT:
                     undo = work;
                     OverrideGroup(&work, SITE_GROUP_SCREEN);
@@ -1247,9 +1308,6 @@ static BOOL EditEntrySettings(const char *entryName, struct SiteSettings *entry,
                     undo = work;
                     OverrideGroup(&work, SITE_GROUP_SCREEN);
                     if (!EditPalette(&work.prefs)) work = undo;
-                    break;
-                case SG_SCREEN_WB:
-                    SetFlagFromGadget(&work, SITE_GROUP_SCREEN, SG_SCREEN_WB, APP_FULLSCREEN, TRUE);
                     break;
 
                 case SG_TERM_PETSCII:
@@ -1641,7 +1699,7 @@ void OpenScrollBack(UWORD sel)
                     PGA_NewLook,    TRUE,
                     PGA_Borderless,    TRUE,
                     PGA_Top,    sel,
-                    PGA_Visible,    (prefs.ScrollbackWinHeight - (prefs.FontSize + scr->WBorTop + 2)) / prefs.FontSize,
+                    PGA_Visible,    (prefs.ScrollbackWinHeight - (scr->Font->ta_YSize + scr->WBorTop + 2)) / scr->Font->ta_YSize,
                     PGA_Total,    nScrollbackLines,
                 TAG_DONE))
                 {
@@ -2083,7 +2141,7 @@ void OpenToolBarWindow(char setmenus)
 
             newWin.LeftEdge = 0;
             if STATE_IS(APP_TITLE_BAR_ENABLED)
-                newWin.TopEdge = prefs.FontSize + 3;
+                newWin.TopEdge = scr->BarHeight + 1;    // below the title bar as drawn
             else
                 newWin.TopEdge = 0;
 

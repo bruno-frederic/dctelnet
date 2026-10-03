@@ -37,6 +37,10 @@ static char MainWindowTitle[] =
 #include <proto/intuition.h>          // OpenWindow(),CloseWindow(), OnMenu(), OffMenu()...
 #include <graphics/videocontrol.h>    // VTAG_BORDERBLANK_SET
 #include <proto/graphics.h>           // Move(), SetAPen(), Text(), SetFont(), Draw()
+#include <proto/layers.h>             // InstallLayerInfoHook()
+// cybergraphics: vbcc ships the inline calls but not clib/cybergraphics_protos.h
+extern struct Library *CyberGfxBase;
+#include <inline/cybergraphics_protos.h> // ReadPixelArray(), WritePixelArray()
 #include <proto/gadtools.h>           // GT_GetIMsg(), GT_ReplyIMsg()...
 #include <proto/diskfont.h>           // OpenDiskFont()
 #include <proto/utility.h>            // GetTagData()
@@ -51,6 +55,10 @@ static char MainWindowTitle[] =
 #include "petscii_dispatch.h"
 #include "petscii_keymap.h"
 #include "site_prefs.h"
+#include "screenfont.h"
+#include "progdir.h"
+#include "dsr.h"
+#include "shipped.h"
 #ifdef __VBCC__
     #pragma popwarn
 #endif
@@ -168,7 +176,9 @@ static struct NewMenu mainMenuDesc[] =
 
 static void GetWindowMsg(struct Window *wwin);
 static void SendMisc(char *str, long len);
-static void SwitchPetsciiDisplay(void);
+static void ReopenTerminal(void);
+static void OpenAnsiFont(void);
+static void RenewWorkbenchPens(void);
 static void ResetTelnetContext(void);
 static void ResetZmodemContext(void);
 static void SetLocalEchoBack(BOOL wantedState);
@@ -183,6 +193,8 @@ struct IntuitionBase *IntuitionBase;
 struct GfxBase *GfxBase;
 struct Library *KeymapBase, *GadToolsBase, *AslBase, *SocketBase;
 struct Library *DiskfontBase, *IconBase, *WorkbenchBase, *UtilityBase;
+struct Library *LayersBase;     // V39, optional: the own screen's black background
+struct Library *CyberGfxBase;   // optional: recolours a true-colour terminal live
 
 struct Window *win, *scrollbackWin, *toolBarWin;
 static struct Window *packetWin;
@@ -199,6 +211,18 @@ static struct TextFont *petsciiFontLower = NULL; // shifted/lowercase charset fo
 // setup are up only while a connection is being made or live (connectionDisplay)
 // with PETSCII Mode on. Start-up and disconnected text keep the normal font.
 static BOOL connectionDisplay = FALSE;   // a connection is being prepared or is live
+// The Workbench window's place when the display was last closed: a reopen
+// (an entry's settings, a font change) keeps it. The saved place
+// (prefs.win_*) is only what Snapshot Windows stored.
+static struct IBox wbWindowBox;
+static BOOL wbWindowBoxValid = FALSE;
+// The height of the screen title bar's text: the LEDs are drawn inside the
+// bar as the screen made it (BarHeight is its height minus one, text plus
+// two border lines), not from prefs.FontSize, which is only the setting.
+#define BAR_TEXT_HEIGHT (scr->BarHeight - 2)
+
+static const char *consoleFrom = "the system";   // where ibmcon.device came from
+static char fontMissing[48];    // the font setting that could not be opened ("" = none)
 static BOOL displayIsPetscii = FALSE;    // the display was opened for PETSCII
 #define PETSCII_SESSION() (connectionDisplay && STATE_IS(APP_PETSCII_MODE))
 // 32+ colours with ibmcon.device: the 16 ANSI colours get pens of their own
@@ -420,6 +444,59 @@ long TCPSend(const UBYTE *buf, long len)
     return len;
 }
 
+#define IBMCMD_GETCURSOR 0x7FE1         // ibmcon.device 1.9: io_Actual = row<<16 | column
+
+// Answer a BBS's Device Status Report request (upstream #11: Absinthe and
+// 20 For Beers stalled waiting for it). CSI 5 n: "OK". CSI 6 n: where the
+// cursor is, asked from ibmcon 1.9; an older ibmcon and console.device
+// cannot tell, and get no answer, as before. The built-in renderer and XEM
+// (xem_swrite, see xpr_swrite) answer both themselves: DCTelnet does not
+// answer twice.
+static void AnswerDsr(int kind)
+{
+    char answer[16];
+    UWORD row = 1, col = 1;
+    size_t n;
+
+    if (STATE_IS(APP_RENDERER_BUILTIN | APP_RENDERER_XEM_LIB))
+        return;
+    if (kind == DSR_POSITION)
+    {
+        if (!STATE_IS(APP_RENDERER_IBMCON_DEVICE) || !isConDeviceOpened || STATE_IS(APP_ICONIFIED))
+            return;
+        writeConsoleReq->io_Command = IBMCMD_GETCURSOR;
+        writeConsoleReq->io_Data    = NULL;
+        writeConsoleReq->io_Length  = 0;
+        DoIO((struct IORequest *)writeConsoleReq);
+        if (writeConsoleReq->io_Error)
+            return;
+        row = (UWORD)(writeConsoleReq->io_Actual >> 16);
+        col = (UWORD)(writeConsoleReq->io_Actual & 0xFFFF);
+    }
+    n = Dsr_Answer(kind, row, col, answer, sizeof(answer));
+    if (n)
+        TCPSend(answer, (long)n);
+}
+
+// A BBS's text to the console. The text up to a Device Status Report
+// request is drawn first, so the position answered is the one asked about.
+static struct DsrScan bbsDsr;
+
+static void BbsWrite(char *data, long len)
+{
+    while (len > 0)
+    {
+        int kind;
+        size_t n = Dsr_Find(&bbsDsr, (const UBYTE *)data, (size_t)len, &kind);
+
+        ConWrite(data, (long)n);
+        if (kind != DSR_NONE && isConnected)
+            AnswerDsr(kind);
+        data += n;
+        len  -= (long)n;
+    }
+}
+
 
 /**
  * @brief Display a busy/wait mouse pointer in the specified window.
@@ -610,6 +687,8 @@ static void DisConnect(char remote, char quiet)
         {
             WORD optionsMenuNumber = GetMenuNumberFromID(MENU_TERMINAL);
 
+            ConWrite("\x1b[20l", 5);          // newline mode off: BBSes send CR LF
+
             if (optionsMenuNumber >= 0)
                 OnMenu(win, FULLMENUNUM(optionsMenuNumber, NOITEM, NOSUB));
 
@@ -626,6 +705,16 @@ static void DisConnect(char remote, char quiet)
     }
 }
 
+// Settings changed by hand while connected: kept for the run, never saved
+// (SavePrefs in prefs.c takes them back).
+struct SiteHandChanges handChanges;
+
+// The settings a menu pick started from: what the pick changed by hand is the
+// difference (IDCMP_MENUPICK). An entry session beginning or ending inside
+// the pick (an Address Book connect, Disconnect) moves it, so the entry's
+// settings coming or going are never taken for a change made by hand.
+static struct PrefsStruct handBaseline;
+
 // Address Book connect that waits for the display to be reopened with the
 // entry's settings (see BeginEntrySession); run by the main loop.
 static struct
@@ -637,6 +726,7 @@ static struct
     ULONG settingsId;
     char  username[42], password[42];
     char  loginMacro[SITE_LOGIN_MACRO_SIZE];
+    char  finger[64];       // a Finger query ("user@host") instead of a connect
 } pendingConnect;
 
 // Reopen the display when the C64 display it shows no longer matches what
@@ -644,15 +734,49 @@ static struct
 static void SyncPetsciiDisplay(void)
 {
     if ((PETSCII_SESSION() != 0) != displayIsPetscii)
-        shouldReopenConsole = TRUE;     // SwitchPetsciiDisplay() in the main loop
+        shouldReopenConsole = TRUE;     // ReopenTerminal() in the main loop
+}
+
+// The screen mode's pixel shape (DisplayInfo.Resolution), from OpenAppScreen:
+// which of topaz and Topaz Pro a font setting opens as (ScreenFont_ForMode).
+static UWORD modeResX, modeResY;
+
+// The font a setting actually opens on the current mode.
+static void EffectiveFont(struct PrefsStruct *p)
+{
+    struct ScreenFontChoice pick;
+
+    // (The built-in renderer keeps its 8x8 font: OpenAnsiFont.)
+    if (p->State & APP_RENDERER_BUILTIN)
+        return;
+    ScreenFont_ForMode((const char *)p->FontName, p->FontSize, modeResX, modeResY, &pick);
+    if (pick.name != (const char *)p->FontName)
+        strlcpy((char *)p->FontName, pick.name, sizeof(p->FontName));
+    p->FontSize = pick.size;
 }
 
 static void RequestDisplayReopen(const struct PrefsStruct *before)
 {
+    // Compared as they open: topaz and Topaz Pro are one face, so an entry
+    // naming the other one reopens nothing.
+    static struct PrefsStruct was, now;
     BOOL reopenScreen;
 
-    if (SitePrefs_DisplayDiffers(before, &prefs, &reopenScreen))
+    was = *before;
+    now = prefs;
+    EffectiveFont(&was);
+    EffectiveFont(&now);
+    if (SitePrefs_DisplayDiffers(&was, &now, &reopenScreen))
     {
+        // A new font or palette needs only the console reopened
+        // (ReopenTerminal): the window, and DCTelnet's own screen, stay. On
+        // the own screen the title bar and menus keep the screen's font
+        // until the screen is next opened.
+        if (SitePrefs_OnlyLookDiffers(&was, &now))
+        {
+            shouldReopenConsole = TRUE;
+            return;
+        }
         shouldRestart = TRUE;
         if (reopenScreen) shouldReopenScreen = TRUE;
     }
@@ -694,6 +818,7 @@ BOOL BeginEntrySession(ULONG settingsId, const struct SiteSettings *entry)
         RequestDisplayReopen(&before);
     }
     SyncPetsciiDisplay();
+    handBaseline = prefs;
     return shouldRestart || shouldReopenConsole;
 }
 
@@ -776,6 +901,7 @@ void EndEntrySession(void)
         RequestDisplayReopen(&before);
     }
     SyncPetsciiDisplay();
+    handBaseline = prefs;
 }
 
 void DeferConnect(const char *name, const char *host, UWORD port, ULONG settingsId,
@@ -811,9 +937,20 @@ void SendLoginMacro(const char *macro)
     }
 }
 
+static void StartFinger(char *query);
+
 static void RunPendingConnect(void)
 {
     pendingConnect.active = FALSE;
+    if (pendingConnect.finger[0])       // queued behind the display reopen
+    {
+        static char query[64];
+
+        strlcpy(query, pendingConnect.finger, sizeof(query));
+        pendingConnect.finger[0] = 0;
+        StartFinger(query);
+        return;
+    }
     tcpPort = pendingConnect.port;
     if (BeginServerConnection(pendingConnect.host, pendingConnect.port) == RETURN_OK)
     {
@@ -843,7 +980,7 @@ static BOOL InitializeReqToolsLib(ULONG reqtoolsTags[5])
     }
     else // ReqTools needs to be loaded now.
     {
-        ReqToolsBase = (struct ReqToolsBase *)OpenLibrary (REQTOOLSNAME, 0);
+        ReqToolsBase = (struct ReqToolsBase *)OpenNewestLibrary(REQTOOLSNAME, 0);
 
         if (ReqToolsBase)
         {
@@ -949,6 +1086,97 @@ UWORD AppScreenDepth(struct Screen *s)
     return s->BitMap.Depth;
 }
 
+/**
+ * @brief The text grid of the terminal window, as ibmcon draws it: the
+ *        window's text area (inside a Workbench window's title bar and
+ *        borders) divided by the font cell.
+ */
+static void TerminalGrid(UWORD *cols, UWORD *rows)
+{
+    struct TextFont *cell = win->RPort->Font;
+
+    ScreenFont_Grid(win->Width, win->Height, win->GZZWidth, win->GZZHeight,
+                    (win->Flags & WFLG_GIMMEZEROZERO) != 0,
+                    cell->tf_XSize, cell->tf_YSize, cols, rows);
+}
+
+// The columns BBS art is drawn for in this font: 40 in the C64 fonts, else 80.
+static UWORD ArtColumns(struct TextFont *cell)
+{
+    return (cell == petsciiFont || cell == petsciiFontLower)
+         ? SCREENFONT_PETSCII_COLUMNS : SCREENFONT_ANSI_COLUMNS;
+}
+
+/**
+ * @brief Size the Workbench window to cols x rows characters of its current
+ *        font (the BBS size is 80x25), kept on the screen. Waits for
+ *        Intuition to apply it (at most a second).
+ */
+static void SizeWorkbenchWindow(UWORD cols, UWORD rows)
+{
+    struct TextFont *cell = win->RPort->Font;
+    WORD width  = (WORD)(cols * cell->tf_XSize + win->BorderLeft + win->BorderRight);
+    WORD height = (WORD)(rows * cell->tf_YSize + win->BorderTop + win->BorderBottom);
+    WORD left = win->LeftEdge, top = win->TopEdge;
+    int wait;
+
+    if (width > scr->Width)   width = scr->Width;
+    if (height > scr->Height) height = scr->Height;
+    if (left + width > scr->Width)   left = scr->Width - width;
+    if (top + height > scr->Height)  top = scr->Height - height;
+    // Room to grow: the width up to this one (LimitTerminalWidth sets it again),
+    // the height up to the screen's -- a maximum of this height kept the window
+    // from being made taller by hand afterwards.
+    WindowLimits(win, 0, 0, (UWORD)width, (UWORD)scr->Height);
+    ChangeWindowBox(win, left, top, width, height);
+    for (wait = 0; wait < 50 && (win->Width != width || win->Height != height); wait++)
+        Delay(1);
+}
+
+/**
+ * @brief Keep the terminal at most 80 text columns wide (40 in PETSCII
+ *        Mode): BBS art is drawn for exactly that width and wraps at its
+ *        edge. A Workbench window stops there (WindowLimits); on DCTelnet's
+ *        own screen the window is that wide and centred, the screen's
+ *        background around it ANSI black (see OpenAppWindow). Called once the
+ *        console's font is final and after every Workbench resize.
+ */
+static void LimitTerminalWidth(void)
+{
+    struct TextFont *cell;
+    UWORD columns, maxWidth, width, left;
+    int wait;
+
+    if (!win)
+        return;
+    cell = win->RPort->Font;
+    columns = ArtColumns(cell);
+    maxWidth = ScreenFont_MaxWindowWidth(columns, cell->tf_XSize,
+                                         (UWORD)(win->BorderLeft + win->BorderRight));
+    if (STATE_IS_NOT(APP_FULLSCREEN))
+    {
+        width = win->Width > maxWidth ? maxWidth : win->Width;
+        left  = win->LeftEdge;
+    }
+    else
+    {
+        width = maxWidth > scr->Width ? scr->Width : maxWidth;
+        left  = (UWORD)((scr->Width - width) / 2);
+    }
+    if (win->Width != width || win->LeftEdge != left)
+    {
+        ChangeWindowBox(win, left, win->TopEdge, width, win->Height);
+        // Intuition applies it asynchronously: wait, so the console measures
+        // the new width before the next write (at most a second).
+        for (wait = 0; wait < 50 && (win->Width != width || win->LeftEdge != left); wait++)
+            Delay(1);
+    }
+    // WindowLimits() ignores a maximum below the current width: after the
+    // shrink above (or on the IDCMP_NEWSIZE that follows) it takes.
+    if (STATE_IS_NOT(APP_FULLSCREEN))
+        WindowLimits(win, 0, 0, maxWidth, 0);
+}
+
 /*
  * Backfill hook of the terminal window (layers.library protocol: A0 hook,
  * A2 RastPort, A1 message; the NDK's __REG__ macros say it for every
@@ -1011,65 +1239,301 @@ static void LoadAnsiPalette(struct PrefsStruct *target)
         LoadRGB4(&scr->ViewPort, Prefs_Palette(target), 16);
 }
 
-/**
- * @brief Palette requester for target's colours (the live settings, or an
- *        Address Book entry's copy): the renderer's palette (Prefs_Palette).
- *        The requester edits the screen itself, so the screen shows target's
- *        colours while it is open and gets the live ones back afterwards.
- *        TRUE when the user kept them.
+/*
+ * The 16 ANSI colours editor: a colour picker holding exactly the 16 ANSI
+ * colours in ANSI order, their name, and Red/Green/Blue sliders (0-15, the
+ * RGB4 the settings keep). It edits the palette target's renderer shows
+ * (Palette_Get/Put: AnsiColors or DeviceColors) of the live settings, or of
+ * an Address Book entry's copy. On DCTelnet's own screen the colours are
+ * shown on the terminal's own pens, so the terminal recolours while the
+ * sliders move; on the Workbench on 16 exclusive pens borrowed for the
+ * preview (the shared pens the terminal uses are never recoloured) and
+ * given back.
  */
+#define RECTFMT_ARGB 2          // cybergraphics: 4 bytes per pixel, 0xAARRGGBB
+#define RECOLOUR_STRIP 16       // rows read and written at a time
+
+// TRUE when the terminal's pixels hold colours rather than pen numbers (an
+// RTG screen deeper than 8 bits): recolouring a pen then changes nothing
+// already drawn, and RecolourTerminal() rewrites the pixels instead.
+static BOOL TerminalIsTrueColour(void)
+{
+    return CyberGfxBase && win && AppScreenDepth(scr) > 8;
+}
+
+// Every pixel of the terminal in colour from (0x00RRGGBB) becomes to.
+static void RecolourTerminal(ULONG from, ULONG to)
+{
+    BOOL gzz = (win->Flags & WFLG_GIMMEZEROZERO) != 0;
+    UWORD w = gzz ? win->GZZWidth : win->Width;
+    UWORD h = gzz ? win->GZZHeight : win->Height;
+    ULONG *px = AllocVec((ULONG)w * RECOLOUR_STRIP * 4, MEMF_ANY);
+    UWORD y, n;
+    ULONG i;
+
+    if (!px || from == to)
+    {
+        if (px) FreeVec(px);
+        return;
+    }
+    for (y = 0; y < h; y += RECOLOUR_STRIP)
+    {
+        n = (UWORD)(h - y < RECOLOUR_STRIP ? h - y : RECOLOUR_STRIP);
+        ReadPixelArray(px, 0, 0, (UWORD)(w * 4), win->RPort, 0, y, w, n, RECTFMT_ARGB);
+        for (i = 0; i < (ULONG)w * n; i++)
+            if ((px[i] & 0xFFFFFF) == from)
+                px[i] = (px[i] & 0xFF000000) | to;
+        WritePixelArray(px, 0, 0, (UWORD)(w * 4), win->RPort, 0, y, w, n, RECTFMT_ARGB);
+    }
+    FreeVec(px);
+}
+
+enum { PE_PALETTE, PE_NAME, PE_RED, PE_GREEN, PE_BLUE, PE_USE, PE_DEFAULT, PE_CANCEL, PE_COUNT };
+
+static UBYTE editPens[16];          // pen of each ANSI colour in the editor
+static BOOL  editPenOwned[16];      // borrowed for the preview: given back on close
+static BOOL  editLive;              // SetRGB32/SetRGB4 on editPens shows the colour
+
+static void ShowEditedColour(int ansi, UWORD rgb4)
+{
+    if (!editLive)
+        return;
+    SetRGB4(&scr->ViewPort, editPens[ansi], (rgb4 >> 8) & 0xF, (rgb4 >> 4) & 0xF, rgb4 & 0xF);
+}
+
+// The preview swatch right of the colour's name. On a true-colour screen
+// (RTG 15-bit and up) recolouring a pen does not change what is already
+// drawn, so the swatch and the colour picker are drawn again after every
+// change; on 256 colours and fewer they recolour by themselves.
+static struct { WORD x0, y0, x1, y1; } editSwatch;
+
+static void DrawEditPreview(struct Window *w, struct Gadget *picker, int sel)
+{
+    SetAPen(w->RPort, editPens[sel]);
+    SetDrMd(w->RPort, JAM1);
+    RectFill(w->RPort, editSwatch.x0, editSwatch.y0, editSwatch.x1, editSwatch.y1);
+    RefreshGList(picker, w, NULL, 1);
+}
+
+static void ShowSelectedColour(struct Window *w, struct Gadget **gads, const UWORD *pal, int sel)
+{
+    DrawEditPreview(w, gads[PE_PALETTE], sel);
+    GT_SetGadgetAttrs(gads[PE_NAME], w, NULL, GTTX_Text, (ULONG)Palette_Name(sel), TAG_DONE);
+    GT_SetGadgetAttrs(gads[PE_RED],   w, NULL, GTSL_Level, Palette_Channel(pal[sel], 0), TAG_DONE);
+    GT_SetGadgetAttrs(gads[PE_GREEN], w, NULL, GTSL_Level, Palette_Channel(pal[sel], 1), TAG_DONE);
+    GT_SetGadgetAttrs(gads[PE_BLUE],  w, NULL, GTSL_Level, Palette_Channel(pal[sel], 2), TAG_DONE);
+}
+
 BOOL EditPalette(struct PrefsStruct *target)
 {
-    APTR reqinfo;
-    ULONG reqtoolsTags[5];
-    BOOL kept = FALSE;
+    static UWORD pal[16], inUse[16];
+    static const char *labels[PE_COUNT] = { NULL, NULL, "Red", "Green", "Blue", "Use", "Default", "Cancel" };
+    struct Gadget *glist = NULL, *g, *gads[PE_COUNT];
+    struct NewGadget ng;
+    struct Window *pw = NULL;
+    struct TextFont *font = scr->RastPort.Font;
+    WORD fh = font->tf_YSize, cw = font->tf_XSize;
+    WORD x0 = cw, width = 34 * cw, labelW = 7 * cw, levelW = 4 * cw, y;
+    BOOL v39 = GfxBase->LibNode.lib_Version >= 39, done = FALSE, kept = FALSE;
+    BOOL onWorkbench = STATE_IS_NOT(APP_FULLSCREEN);
+    BOOL live = target == &prefs && TerminalIsTrueColour();  // recolour the terminal's pixels
+    BOOL deviceOrder = Prefs_Palette(&prefs) == prefs.DeviceColors;  // pens 0-15 hold ibmcon order
+    BOOL recolour = FALSE;
+    static ULONG shown[16];     // the colours the terminal's pixels have now
+    int sel = 0, i;
 
-    if (STATE_IS_NOT(APP_FULLSCREEN))
+    if (!v39 && onWorkbench)
     {
-        InfoReq(win, "The palette can only be edited on DCTelnet's own screen:\n"
-                     "on the Workbench its colours come from the Workbench palette.");
+        InfoReq(win, "The ANSI colours can be edited on the Workbench from OS 3.0 on.");
         return FALSE;
     }
-    InitializeReqToolsLib(reqtoolsTags);
+    Palette_Get(target, pal);
+    Palette_Get(&prefs, inUse);
+    for (i = 0; i < 16; i++)
+        shown[i] = Palette_RGB32(pal[i]);
 
-    reqinfo = rtAllocRequestA(RT_REQINFO, NULL);
-    if(reqinfo)
+    // The pens the editor shows the colours on.
+    editLive = TRUE;
+    for (i = 0; i < 16; i++)
     {
-        LoadAnsiPalette(target);
-        if(rtPaletteRequestA("Screen Palette..", reqinfo, (struct TagItem *)&reqtoolsTags) != -1)
+        editPenOwned[i] = FALSE;
+        if (onWorkbench)
         {
-            UWORD i;
-
-            if (ansiOwnPens && GfxBase->LibNode.lib_Version >= 39)
-            {
-                ULONG rgb[3];
-
-                for (i = 0; i < 16; i++)
-                {
-                    GetRGB32(scr->ViewPort.ColorMap, ansiColourPens[i], 1, rgb);
-                    Palette_SetAnsiColour(target->DeviceColors, i,
-                                          (rgb[0] >> 24) << 16 | (rgb[1] >> 24) << 8 | (rgb[2] >> 24));
-                }
-            }
+            ULONG c = Palette_RGB32(pal[i]);
+            LONG pen = ObtainPen(scr->ViewPort.ColorMap, (ULONG)-1, ((c >> 16) & 0xFF) * 0x01010101UL,
+                                 ((c >> 8) & 0xFF) * 0x01010101UL, (c & 0xFF) * 0x01010101UL,
+                                 PEN_EXCLUSIVE);
+            editPenOwned[i] = pen >= 0;
+            if (pen >= 0) editPens[i] = (UBYTE)pen;
             else
             {
-                UWORD *colors = Prefs_Palette(target);
-
-                for (i = 0; i < 16; i++)
-                    colors[i] = GetRGB4(scr->ViewPort.ColorMap, i);
+                // No free pen: the nearest colour already there, which cannot
+                // be recoloured and is not ours to give back.
+                editPens[i] = (UBYTE)FindColor(scr->ViewPort.ColorMap,
+                                  ((c >> 16) & 0xFF) * 0x01010101UL, ((c >> 8) & 0xFF) * 0x01010101UL,
+                                  (c & 0xFF) * 0x01010101UL, -1);
+                editLive = FALSE;
             }
-            kept = TRUE;
         }
-        if (target != &prefs)
-            LoadAnsiPalette(&prefs);
-        rtFreeRequest(reqinfo);
+        else
+            editPens[i] = ansiOwnPens ? ansiColourPens[i]
+                        : (UBYTE)(deviceOrder ? Palette_IbmconToAnsi(i) : i);
     }
+    for (i = 0; i < 16; i++)
+        ShowEditedColour(i, pal[i]);
+
+    // The gadgets, laid out in the screen font's cells.
+    y = scr->WBorTop + scr->Font->ta_YSize + 1 + fh / 2;
+    g = CreateContext(&glist);
+    for (i = 0; g && i < PE_COUNT; i++)
+    {
+        memset(&ng, 0, sizeof(ng));
+        ng.ng_TextAttr   = scr->Font;
+        ng.ng_VisualInfo = visualInfos;
+        ng.ng_GadgetID   = i;
+        ng.ng_GadgetText = (UBYTE *)labels[i];
+        switch (i)
+        {
+        case PE_PALETTE:
+            ng.ng_LeftEdge = x0; ng.ng_TopEdge = y; ng.ng_Width = width; ng.ng_Height = 2 * fh + 4;
+            g = v39 ? CreateGadget(PALETTE_KIND, g, &ng, GTPA_ColorTable, (ULONG)editPens,
+                                   GTPA_NumColors, 16, GTPA_Color, editPens[0], TAG_DONE)
+                    : CreateGadget(PALETTE_KIND, g, &ng, GTPA_Depth, 4, GTPA_Color, editPens[0], TAG_DONE);
+            y += 2 * fh + 4 + fh / 2;
+            break;
+        case PE_NAME:
+            ng.ng_LeftEdge = x0; ng.ng_TopEdge = y; ng.ng_Width = width - 9 * cw; ng.ng_Height = fh + 4;
+            editSwatch.x0 = x0 + width - 8 * cw; editSwatch.x1 = x0 + width - 1;
+            editSwatch.y0 = y;                   editSwatch.y1 = y + fh + 3;
+            g = CreateGadget(TEXT_KIND, g, &ng, GTTX_Text, (ULONG)Palette_Name(0), GTTX_Border, TRUE, TAG_DONE);
+            y += fh + 4 + fh / 2;
+            break;
+        case PE_RED: case PE_GREEN: case PE_BLUE:
+            ng.ng_LeftEdge = x0 + labelW; ng.ng_TopEdge = y;
+            ng.ng_Width = width - labelW - levelW; ng.ng_Height = fh + 2;
+            ng.ng_Flags = PLACETEXT_LEFT;
+            g = CreateGadget(SLIDER_KIND, g, &ng, GTSL_Min, 0, GTSL_Max, 15,
+                             GTSL_Level, Palette_Channel(pal[0], i - PE_RED),
+                             GTSL_MaxLevelLen, 2, GTSL_LevelFormat, (ULONG)"%2ld",
+                             GTSL_LevelPlace, PLACETEXT_RIGHT, GA_RelVerify, TRUE,
+                             GA_Immediate, TRUE, TAG_DONE);
+            y += fh + 2 + fh / 2;
+            break;
+        default:        // Use, Default, Cancel in one row
+            ng.ng_Width = (width - 2 * cw) / 3; ng.ng_Height = fh + 6;
+            ng.ng_LeftEdge = x0 + (i - PE_USE) * (ng.ng_Width + cw); ng.ng_TopEdge = y;
+            ng.ng_Flags = PLACETEXT_IN;
+            g = CreateGadget(BUTTON_KIND, g, &ng, TAG_DONE);
+            break;
+        }
+        gads[i] = g;
+    }
+    if (g)
+        pw = OpenWindowTags(NULL, WA_CustomScreen, (ULONG)scr, WA_Gadgets, (ULONG)glist,
+                            WA_Title, (ULONG)"ANSI Colours",
+                            WA_InnerWidth, width + 2 * cw, WA_InnerHeight, y + fh + 6 + fh / 2 - scr->WBorTop - scr->Font->ta_YSize - 1,
+                            WA_Left, (scr->Width - width) / 2, WA_Top, scr->BarHeight + 20,
+                            WA_IDCMP, PALETTEIDCMP | SLIDERIDCMP | BUTTONIDCMP | TEXTIDCMP
+                                      | IDCMP_CLOSEWINDOW | IDCMP_REFRESHWINDOW,
+                            WA_DragBar, TRUE, WA_DepthGadget, TRUE, WA_CloseGadget, TRUE,
+                            WA_Activate, TRUE, WA_RMBTrap, TRUE, WA_AutoAdjust, TRUE, TAG_DONE);
+    if (pw)
+    {
+        GT_RefreshWindow(pw, NULL);
+        DrawEditPreview(pw, gads[PE_PALETTE], sel);
+        while (!done)
+        {
+            struct IntuiMessage *m;
+
+            WaitPort(pw->UserPort);
+            while (!done && (m = GT_GetIMsg(pw->UserPort)))
+            {
+                ULONG class = m->Class;
+                UWORD code = m->Code;
+                struct Gadget *gad = (struct Gadget *)m->IAddress;
+
+                GT_ReplyIMsg(m);
+                if (class == IDCMP_CLOSEWINDOW) done = TRUE;
+                else if (class == IDCMP_REFRESHWINDOW)
+                {
+                    GT_BeginRefresh(pw);
+                    GT_EndRefresh(pw, TRUE);
+                    DrawEditPreview(pw, gads[PE_PALETTE], sel);
+                }
+                else if (class == IDCMP_GADGETUP || class == IDCMP_MOUSEMOVE || class == IDCMP_GADGETDOWN)
+                {
+                    switch (gad->GadgetID)
+                    {
+                    case PE_PALETTE:            // code = the pen clicked
+                        for (i = 0; i < 16; i++)
+                            if (editPens[i] == code) { sel = i; break; }
+                        if (!v39) sel = deviceOrder ? Palette_IbmconToAnsi(code) : code;
+                        ShowSelectedColour(pw, gads, pal, sel);
+                        break;
+                    case PE_RED: case PE_GREEN: case PE_BLUE:
+                        pal[sel] = Palette_WithChannel(pal[sel], gad->GadgetID - PE_RED, (UBYTE)code);
+                        ShowEditedColour(sel, pal[sel]);
+                        DrawEditPreview(pw, gads[PE_PALETTE], sel);
+                        recolour = live;        // once the queued moves are read
+                        break;
+                    case PE_DEFAULT:
+                        Palette_DefaultFor(target, pal);
+                        for (i = 0; i < 16; i++) ShowEditedColour(i, pal[i]);
+                        for (i = 0; live && i < 16; i++)
+                            if (Palette_SafeRecolour(shown, i, Palette_RGB32(pal[i])))
+                            {
+                                RecolourTerminal(shown[i], Palette_RGB32(pal[i]));
+                                shown[i] = Palette_RGB32(pal[i]);
+                            }
+                        ShowSelectedColour(pw, gads, pal, sel);     // redraws the preview
+                        break;
+                    case PE_USE:
+                        Palette_Put(target, pal);
+                        kept = done = TRUE;
+                        break;
+                    case PE_CANCEL:
+                        done = TRUE;
+                        break;
+                    }
+                }
+            }
+            // A drag queues many moves: the pixels follow once they are read.
+            if (recolour && Palette_SafeRecolour(shown, sel, Palette_RGB32(pal[sel])))
+            {
+                RecolourTerminal(shown[sel], Palette_RGB32(pal[sel]));
+                shown[sel] = Palette_RGB32(pal[sel]);
+            }
+            recolour = FALSE;
+        }
+        CloseWindow(pw);
+    }
+    FreeGadgets(glist);
+
+    // Not kept: the terminal's pixels get the colours in use back.
+    for (i = 0; live && !kept && i < 16; i++)
+        if (Palette_SafeRecolour(shown, i, Palette_RGB32(inUse[i])))
+        {
+            RecolourTerminal(shown[i], Palette_RGB32(inUse[i]));
+            shown[i] = Palette_RGB32(inUse[i]);
+        }
+
+    // Back to the live colours: the borrowed pens go back, and on the own
+    // screen the terminal's pens show the settings in use.
+    for (i = 0; i < 16; i++)
+        if (editPenOwned[i])
+            ReleasePen(scr->ViewPort.ColorMap, editPens[i]);
+    if (!onWorkbench)
+        LoadAnsiPalette(&prefs);
     return kept;
 }
 
 static void ChoosePalette(void)
 {
-    EditPalette(&prefs);
+    // On the own screen the terminal already shows the new colours; on the
+    // Workbench the running console takes new shared pens for them (a
+    // reopen would clear it).
+    if (EditPalette(&prefs) && STATE_IS_NOT(APP_FULLSCREEN))
+        RenewWorkbenchPens();
 }
 
 
@@ -1232,7 +1696,7 @@ static void Receive(void)
 
     if (STATE_IS(APP_RAW_CONNECTION))
     {
-        ConWrite(recvBuffer, len);
+        BbsWrite(recvBuffer, len);
         if (STATE_IS(APP_SCROLLBACK_ENABLED))
             AddBuf(recvBuffer, len);
 
@@ -1313,7 +1777,7 @@ static void Receive(void)
             }
             else
             {
-                ConWrite(outBuffer, outLen);
+                BbsWrite(outBuffer, outLen);
                 if (STATE_IS(APP_SCROLLBACK_ENABLED))
                     AddBuf(outBuffer, outLen);
             }
@@ -1419,12 +1883,12 @@ void LEDs(void)
     // Draw connection activity indicator when Title bar AND LEDs are enabled AND NOT iconified
     if (STATE_ARE_ALL(APP_TITLE_BAR_ENABLED | APP_LEDS_ENABLED)  &&  STATE_IS_NOT(APP_ICONIFIED))
     {
-        EraseRect(&scr->RastPort, scr->Width-72, 2, scr->Width-60, prefs.FontSize-1);
-        EraseRect(&scr->RastPort, scr->Width-86, 2, scr->Width-74, prefs.FontSize-1);
+        EraseRect(&scr->RastPort, scr->Width-72, 2, scr->Width-60, BAR_TEXT_HEIGHT-1);
+        EraseRect(&scr->RastPort, scr->Width-86, 2, scr->Width-74, BAR_TEXT_HEIGHT-1);
         if(isConnected)
         {
             SetAPen(&scr->RastPort, LegacyPen(15));
-            RectFill(&scr->RastPort, scr->Width-84, 3, scr->Width-76, prefs.FontSize-2);
+            RectFill(&scr->RastPort, scr->Width-84, 3, scr->Width-76, BAR_TEXT_HEIGHT-2);
         }
     }
 }
@@ -1560,56 +2024,76 @@ static void ClearScrollBack(void)
     scrollbackList->lh_Head = (struct Node *)&scrollbackList->lh_Tail;
 }
 
+// Send a Finger query ("user@host", modified in place) to host port 79 as a
+// raw connection: plain text, no telnet negotiation.
+static void StartFinger(char *query)
+{
+    char *host = strchr(query, '@');
+    BOOL originalState;
+
+    if (!host)
+        return;
+    originalState = STATE_IS(APP_RAW_CONNECTION);
+    *host++ = 0;
+
+    STATE_SET(APP_RAW_CONNECTION);     // Enable flag (NO telnet negotiation)
+    if(BeginServerConnection(host, 79) == RETURN_OK)
+    {
+        WORD optionsMenuNumber = GetMenuNumberFromID(MENU_TERMINAL);
+
+        mysprintf(buf, "/W %s\r\n", query);
+        send(tcpSocket, buf, strlen(buf), 0);
+
+        // Finger servers end lines with a bare LF (Unix), which on a
+        // terminal only moves down: the reply came out as a staircase.
+        // Newline mode (LNM, CSI 20 h) makes LF return to column 1 too,
+        // for the reply only.
+        ConWrite("\x1b[20h", 5);
+
+        // Prevent the user from toggling Raw Connection (or any other Terminal option)
+        // while this finger exchange relies on it. Re-enabled in DisConnect().
+        if (optionsMenuNumber >= 0)
+            OffMenu(win, FULLMENUNUM(optionsMenuNumber, NOITEM, NOSUB));
+
+        isFingerRequest = TRUE;
+    }
+    if (!originalState)
+        STATE_UNSET(APP_RAW_CONNECTION);    // Restore state
+}
+
 static void Finger(void)
 {
-    char tbuf[64] = "reiver@plan.cat";
+    static char tbuf[64] = "reiver@plan.cat";
 
     if (GetStringRequester(win,
                               "Finger",
                               "Enter EMail Address:",
                               tbuf, sizeof(tbuf))
-       )
+       && strchr(tbuf, '@'))
     {
-        char * host = strchr(tbuf, '@');
-        if(host)
+        // End any entry session (and its connection) BEFORE touching the
+        // flag: ending it later, inside the connect, would restore the
+        // global settings over APP_RAW_CONNECTION.
+        // Finger is plain text: no C64 display, whatever PETSCII Mode says.
+        if (isConnected) DisConnect(FALSE, FALSE);
+        EndEntrySession();
+        if (shouldRestart || shouldReopenConsole)
         {
-            BOOL originalState;
+            // The display reopens for the global settings first; a finger
+            // sent now would have its answer wiped by that reopen.
+            strlcpy(pendingConnect.finger, tbuf, sizeof(pendingConnect.finger));
+            pendingConnect.active = TRUE;
+        }
+        else
+        {
+            static char query[64];
 
-            // End any entry session (and its connection) BEFORE touching the
-            // flag: ending it later, inside the connect, would restore the
-            // global settings over APP_RAW_CONNECTION.
-            // Finger is plain text: no C64 display, whatever PETSCII Mode says.
-            if (isConnected) DisConnect(FALSE, FALSE);
-            EndEntrySession();
-            originalState = STATE_IS(APP_RAW_CONNECTION);
-
-            host[0] = 0;
-            *host++;
-
-            STATE_SET(APP_RAW_CONNECTION);     // Enable flag (NO telnet negotiation)
-            if(BeginServerConnection(host, 79) == RETURN_OK)
-            {
-                WORD optionsMenuNumber = GetMenuNumberFromID(MENU_TERMINAL);
-
-                mysprintf(buf, "/W %s\r\n", tbuf);
-                send(tcpSocket, buf, strlen(buf), 0);
-
-                // Prevent the user from toggling Raw Connection (or any other Terminal option)
-                // while this finger exchange relies on it. Re-enabled in DisConnect().
-                if (optionsMenuNumber >= 0)
-                    OffMenu(win, FULLMENUNUM(optionsMenuNumber, NOITEM, NOSUB));
-
-                isFingerRequest = TRUE;
-            }
-
-            // Restore state
-            if (originalState)
-                STATE_SET(APP_RAW_CONNECTION);
-            else
-                STATE_UNSET(APP_RAW_CONNECTION);
+            strlcpy(query, tbuf, sizeof(query));
+            StartFinger(query);
         }
     }
 }
+
 
 
 int main(int argc, char *argv[])
@@ -1695,9 +2179,11 @@ int main(int argc, char *argv[])
     }
 
 
-    // Workaround for connection freeze after changing display settings: ibmcon.device improperly
-    // frees signal bit 31 when being closed. We explicitly allocate signal 31 here to prevent it
-    // from being assigned elsewhere and accidentally released.
+    // Workaround for connection freeze after changing display settings: ibmcon.device before
+    // 1.8 frees signal bit 31 when being closed (its UnitClose deleted the handler's port in our
+    // task, issue #3). ibmcon 1.8 and later (built from ibmcon/) fix it; the reservation stays
+    // for every older ibmcon -- the one in the package's Devs drawer, one in DEVS:, one still
+    // in memory and in use elsewhere, which DCTelnet then shares.
     dontUseSig31 = AllocSignal(31L);
     if (dontUseSig31 != 31)
         InfoReq(NULL, "ERROR: cannot allocate sigbit 31!");
@@ -1718,6 +2204,9 @@ int main(int argc, char *argv[])
         goto clean_exit;
     }
 
+    LayersBase = OpenLibrary("layers.library", 39);
+    CyberGfxBase = OpenLibrary("cybergraphics.library", 40);   // Picasso96 / CyberGraphX
+
     UtilityBase = OpenLibrary("utility.library", 0);
     if (UtilityBase == NULL)
     {
@@ -1728,6 +2217,7 @@ int main(int argc, char *argv[])
 
 
     if (! LoadPrefs()) goto clean_exit;
+    SitePrefs_HandInit(&handChanges, &prefs);
 
     scrollbackList = AllocMem(sizeof(struct List), MEMF_CLEAR|MEMF_PUBLIC);
     if(!scrollbackList) goto clean_exit;
@@ -1933,11 +2423,11 @@ int main(int argc, char *argv[])
                     if (STATE_ARE_ALL(APP_TITLE_BAR_ENABLED | APP_LEDS_ENABLED))
                     {
                         SetAPen(&scr->RastPort, LegacyPen(10));
-                        RectFill(&scr->RastPort, scr->Width-70, 3, scr->Width-62, prefs.FontSize-2);
+                        RectFill(&scr->RastPort, scr->Width-70, 3, scr->Width-62, BAR_TEXT_HEIGHT-2);
                     }
                     Receive();
                     if (STATE_ARE_ALL(APP_TITLE_BAR_ENABLED | APP_LEDS_ENABLED))
-                        EraseRect(&scr->RastPort, scr->Width-72, 2, scr->Width-60, prefs.FontSize-1);
+                        EraseRect(&scr->RastPort, scr->Width-72, 2, scr->Width-60, BAR_TEXT_HEIGHT-1);
                 }
 
             } else {  // not connected
@@ -1947,7 +2437,13 @@ int main(int argc, char *argv[])
                 if(packetWin) sig |= 1L << packetWin->UserPort->mp_SigBit;
                 if (toolBarWin) sig |= 1L << toolBarWin->UserPort->mp_SigBit;
 
-                sigmask = Wait( sig | winsig | SIGBREAKF_CTRL_C );
+                // A display reopen or a connect already queued (an entry's
+                // settings, PETSCII Mode) runs now, not after the next event.
+                if (shouldRestart || shouldReopenConsole || pendingConnect.active)
+                    sigmask = SetSignal(0L, sig | winsig | SIGBREAKF_CTRL_C)
+                            & (sig | winsig | SIGBREAKF_CTRL_C);
+                else
+                    sigmask = Wait( sig | winsig | SIGBREAKF_CTRL_C );
 
                 if(scrollbackWin)
                 {
@@ -1978,7 +2474,7 @@ int main(int argc, char *argv[])
             }
             else if (shouldReopenConsole)
             {
-                SwitchPetsciiDisplay();
+                ReopenTerminal();
                 shouldReopenConsole = FALSE;
             }
 
@@ -2014,6 +2510,8 @@ clean_exit:
     if (DiskfontBase)  CloseLibrary(DiskfontBase);
     if (WorkbenchBase) CloseLibrary(WorkbenchBase);
     if (UtilityBase)   CloseLibrary(UtilityBase);
+    if (LayersBase)    CloseLibrary(LayersBase);
+    if (CyberGfxBase)  CloseLibrary(CyberGfxBase);
     if (GadToolsBase)  CloseLibrary(GadToolsBase);
     if (ReqToolsBase)  CloseLibrary((struct Library *) ReqToolsBase);
     if (AslBase)       CloseLibrary(AslBase);
@@ -2355,6 +2853,14 @@ static void GetWindowMsg(struct Window *wwin)
         case IDCMP_NEWSIZE:
             //LocalPrint("\017\233\164\233\165\233\166\233\167");
             if(wwin == scrollbackWin) resize = TRUE;
+            else if (wwin == win)
+            {
+                // A Workbench resize: keep the width limit, and tell the BBS
+                // the new grid so its next screen fits (the console does not
+                // reflow what is already drawn).
+                LimitTerminalWidth();
+                if (isConnected) TelnetSendWindowSize();
+            }
             break;
 
 
@@ -2514,7 +3020,9 @@ static void GetWindowMsg(struct Window *wwin)
             struct MenuItem *item = NULL;
             UWORD nextMenuNumber = MENUNULL;
             enum MenuItemID menuID;
-
+            // What the user changes by hand while connected to an entry
+            // stays for the rest of the run, but is not saved (below).
+            handBaseline = prefs;
             LEDs();
 
             while (menuNumber != MENUNULL)
@@ -2663,7 +3171,7 @@ static void GetWindowMsg(struct Window *wwin)
                             if(STATE_IS(APP_TITLE_BAR_ENABLED))
                             {
                                 SetAPen(&scr->RastPort, drawInfo->dri_Pens[BARBLOCKPEN]);
-                                RectFill(&scr->RastPort, scr->Width-86, 2, scr->Width-60, prefs.FontSize-1);
+                                RectFill(&scr->RastPort, scr->Width-86, 2, scr->Width-60, BAR_TEXT_HEIGHT-1);
                             }
                         }
                         break;
@@ -2849,14 +3357,20 @@ static void GetWindowMsg(struct Window *wwin)
                         break;
 
                     case MENU_SCREEN_FONT:
+                    {
+                        // The same reopen as an entry's font: on the Workbench
+                        // the console only, and a window at the BBS size stays
+                        // 80x25 in the new font (a 7x11 font came back in the
+                        // old 8x16 window: 91x36, cut to 80 columns).
+                        static struct PrefsStruct before;
+
+                        before = prefs;
                         if (FontRequester(win,
                                           prefs.FontName, sizeof(prefs.FontName),
                                           &prefs.FontSize))
-                        {
-                            shouldRestart = TRUE;
-                            shouldReopenScreen = TRUE;
-                        }
+                            RequestDisplayReopen(&before);
                         break;
+                    }
 
                     case MENU_SCREEN_PALETTE:
                         ChoosePalette();
@@ -2925,6 +3439,8 @@ static void GetWindowMsg(struct Window *wwin)
                         break;
 
                     case MENU_SNAPSHOT_WINDOWS:
+                        if (STATE_IS_NOT(APP_FULLSCREEN))   // this size, not the 80x25 BBS default
+                            STATE_SET(APP_WINDOW_SNAPSHOT);
                         prefs.MainWinTopEdge  = win->TopEdge;
                         prefs.MainWinLeftEdge = win->LeftEdge;
                         prefs.MainWinHeight   = win->Height;
@@ -2982,6 +3498,9 @@ static void GetWindowMsg(struct Window *wwin)
 
                 menuNumber = nextMenuNumber;
             } // while
+            // Changed while connected to an entry: kept for this run, not saved.
+            SitePrefs_HandChange(&handChanges, &globalPrefs, &handBaseline, &prefs,
+                                 sessionSettingsId != 0);
             break;
         }  // case IDCMP_MENUPICK
 
@@ -3001,7 +3520,7 @@ up:                if(lasttop > 0) lasttop--;
                 break;
 
             case GAD_DOWN:
-down:                if(lasttop+((scrollbackWin->Height - (prefs.FontSize + scr->WBorTop + 2)) / prefs.FontSize) < nScrollbackLines) lasttop++;
+down:                if(lasttop+((scrollbackWin->Height - (scr->Font->ta_YSize + scr->WBorTop + 2)) / scr->Font->ta_YSize) < nScrollbackLines) lasttop++;
                 break;
             }
             SetGadgetAttrs((struct Gadget *)Scroller, scrollbackWin, NULL,
@@ -3021,7 +3540,7 @@ down:                if(lasttop+((scrollbackWin->Height - (prefs.FontSize + scr-
         RefreshWindowFrame(scrollbackWin);
         RefreshListView(lasttop);
         SetGadgetAttrs((struct Gadget *)Scroller, scrollbackWin, NULL,
-            PGA_Visible,    (scrollbackWin->Height - (prefs.FontSize + scr->WBorTop + 2)) / prefs.FontSize,
+            PGA_Visible,    (scrollbackWin->Height - (scr->Font->ta_YSize + scr->WBorTop + 2)) / scr->Font->ta_YSize,
         TAG_END);
     }
     if(close) CloseScrollBack();
@@ -3131,7 +3650,7 @@ static UWORD EstablishTCPConnection(char *servername, UWORD port)
     if (STATE_ARE_ALL(APP_TITLE_BAR_ENABLED | APP_LEDS_ENABLED))
     {
         SetAPen(&scr->RastPort, LegacyPen(11));
-        RectFill(&scr->RastPort, scr->Width-84, 3, scr->Width-76, prefs.FontSize-2);
+        RectFill(&scr->RastPort, scr->Width-84, 3, scr->Width-76, BAR_TEXT_HEIGHT-2);
     }
 
     DisConnect(FALSE, FALSE);
@@ -3231,6 +3750,7 @@ static UWORD EstablishTCPConnection(char *servername, UWORD port)
         LocalPrint("\r\nPETSCII Mode: Petscii.font not found in FONTS: or PROGDIR:Fonts/, "
                    "showing CP437 lookalikes.\r\n");
 
+    Dsr_Init(&bbsDsr);      // a request cut off by the last disconnect is not this BBS's
     isConnected = TRUE;
 
     LEDs();
@@ -3240,24 +3760,25 @@ static UWORD EstablishTCPConnection(char *servername, UWORD port)
 
 
 /**
- * @brief Open a PETSCII font from FONTS:, else from the Fonts drawer next to the program.
+ * @brief Open a font DCTelnet ships (Petscii, PetsciiLower, TopazPro) from
+ *        FONTS:, else from the Fonts drawer next to the program.
  *
- * The release archive carries Petscii.font/PetsciiLower.font in DCTelnet/Fonts/, and not every
- * user copies them into FONTS:. diskfont.library accepts a path in ta_Name.
+ * The release archive carries them in DCTelnet/Fonts/, and not every user copies them into
+ * FONTS:. diskfont.library accepts a path in ta_Name.
  */
-static struct TextFont *OpenPetsciiFont(STRPTR name, STRPTR progdirPath)
+static struct TextFont *OpenBundledFont(STRPTR name, STRPTR progdirPath, UWORD ysize)
 {
     struct TextAttr attr;
     struct TextFont *font;
 
-    attr.ta_Name  = name;
-    attr.ta_YSize = 8;
+    attr.ta_Name  = progdirPath;     // DCTelnet's own drawer first
+    attr.ta_YSize = ysize;
     attr.ta_Style = FS_NORMAL;
     attr.ta_Flags = 0;
     font = OpenDiskFont(&attr);
     if (!font)
     {
-        attr.ta_Name = progdirPath;
+        attr.ta_Name = name;         // then FONTS:
         font = OpenDiskFont(&attr);
     }
     return font;
@@ -3278,9 +3799,9 @@ static void OpenPetsciiFonts(void)
          * byte, double-width (16x8) cells so 40 columns fill roughly the
          * physical width the normal 80-column font needs. Not installed:
          * both stay NULL and Receive() renders CP437 lookalikes instead. */
-        petsciiFont = OpenPetsciiFont("Petscii.font", "PROGDIR:Fonts/Petscii.font");
+        petsciiFont = OpenBundledFont("Petscii.font", "PROGDIR:Fonts/Petscii.font", 8);
         petsciiFontLower = petsciiFont
-            ? OpenPetsciiFont("PetsciiLower.font", "PROGDIR:Fonts/PetsciiLower.font") : NULL;
+            ? OpenBundledFont("PetsciiLower.font", "PROGDIR:Fonts/PetsciiLower.font", 8) : NULL;
     }
 }
 
@@ -3288,6 +3809,71 @@ static void ClosePetsciiFonts(void)
 {
     if(petsciiFont)           { CloseFont(petsciiFont);             petsciiFont = NULL; }
     if(petsciiFontLower)      { CloseFont(petsciiFontLower);        petsciiFontLower = NULL; }
+}
+
+// The ANSI colours for ibmcon on the Workbench: 16 shared pens of exactly
+// their colours from its palette (V39), given back with ReleaseWorkbenchPens().
+static void ObtainWorkbenchPens(void)
+{
+    UWORD i;
+
+    if (!STATE_IS(APP_RENDERER_IBMCON_DEVICE) || STATE_IS(APP_FULLSCREEN)
+        || GfxBase->LibNode.lib_Version < 39)
+        return;
+    for (i = 0; i < 16; i++)
+    {
+        ULONG c = Palette_AnsiColour(prefs.DeviceColors, i);
+        ULONG r = ((c >> 16) & 0xFF) * 0x01010101UL, g = ((c >> 8) & 0xFF) * 0x01010101UL,
+              bl = (c & 0xFF) * 0x01010101UL;
+        LONG pen = ObtainBestPen(scr->ViewPort.ColorMap, r, g, bl,
+                                 OBP_Precision, PRECISION_EXACT, TAG_DONE);
+
+        // No pen to share (-1): the nearest colour already there, which
+        // is not ours to release. -1 cast to UBYTE was pen 255.
+        wbPenOwned[i] = pen >= 0;
+        if (pen < 0)
+            pen = FindColor(scr->ViewPort.ColorMap, r, g, bl, -1);
+        ansiColourPens[i] = (UBYTE)pen;
+    }
+    wbPensObtained = TRUE;
+    ansiOwnPens = TRUE;
+}
+
+static void ReleaseWorkbenchPens(void)
+{
+    UWORD i;
+
+    if (!wbPensObtained)
+        return;
+    for (i = 0; i < 16; i++)
+        if (wbPenOwned[i])
+            ReleasePen(scr->ViewPort.ColorMap, ansiColourPens[i]);
+    wbPensObtained = FALSE;
+    ansiOwnPens = FALSE;
+}
+
+// ibmcon 1.5: the ANSI colours' own pens. An older ibmcon answers
+// IOERR_NOCMD and keeps pens 0-15. Also sent to an open console.
+static void SendPenTable(void)
+{
+    if (!ansiOwnPens || !STATE_IS(APP_RENDERER_IBMCON_DEVICE))
+        return;
+    writeConsoleReq->io_Command = IBMCMD_SETPENS;
+    writeConsoleReq->io_Data    = ansiColourPens;
+    writeConsoleReq->io_Length  = sizeof(ansiColourPens);
+    DoIO((struct IORequest *)writeConsoleReq);
+    penTableError = writeConsoleReq->io_Error;
+}
+
+// New ANSI colours on the Workbench without reopening the console (which
+// would clear it): new shared pens, handed to the running ibmcon.
+static void RenewWorkbenchPens(void)
+{
+    if (!isConDeviceOpened || !wbPensObtained)
+        return;
+    ReleaseWorkbenchPens();
+    ObtainWorkbenchPens();
+    SendPenTable();
 }
 
 /**
@@ -3338,29 +3924,7 @@ static BOOL OpenConsoleDevice(void)
 
     // ibmcon on the Workbench: the ANSI colours take 16 shared pens of exactly
     // their colours from its palette (V39); they go back in CloseConsoleDevice().
-    if (STATE_IS(APP_RENDERER_IBMCON_DEVICE) && STATE_IS_NOT(APP_FULLSCREEN)
-        && GfxBase->LibNode.lib_Version >= 39)
-    {
-        UWORD i;
-
-        for (i = 0; i < 16; i++)
-        {
-            ULONG c = Palette_AnsiColour(prefs.DeviceColors, i);
-            ULONG r = ((c >> 16) & 0xFF) * 0x01010101UL, g = ((c >> 8) & 0xFF) * 0x01010101UL,
-                  bl = (c & 0xFF) * 0x01010101UL;
-            LONG pen = ObtainBestPen(scr->ViewPort.ColorMap, r, g, bl,
-                                     OBP_Precision, PRECISION_EXACT, TAG_DONE);
-
-            // No pen to share (-1): the nearest colour already there, which
-            // is not ours to release. -1 cast to UBYTE was pen 255.
-            wbPenOwned[i] = pen >= 0;
-            if (pen < 0)
-                pen = FindColor(scr->ViewPort.ColorMap, r, g, bl, -1);
-            ansiColourPens[i] = (UBYTE)pen;
-        }
-        wbPensObtained = TRUE;
-        ansiOwnPens = TRUE;
-    }
+    ObtainWorkbenchPens();
 
     //the window that is used by the console device for output:
     writeConsoleReq->io_Data = win;
@@ -3373,7 +3937,8 @@ static BOOL OpenConsoleDevice(void)
         LogWindowsSigBit();
     #endif
 
-    b = OpenDevice(devName, unitNumber, (struct IORequest *)writeConsoleReq, CONFLAG_DEFAULT);
+    b = OpenNewestDevice(devName, unitNumber, (struct IORequest *)writeConsoleReq, CONFLAG_DEFAULT);
+    consoleFrom = ShippedFrom;      // for the start-up line
 
     #ifdef _DEBUG
         PutStr("   <-- OpenDevice()\n");
@@ -3387,17 +3952,9 @@ static BOOL OpenConsoleDevice(void)
     if(b == RETURN_OK)
     {
         isConDeviceOpened = TRUE;
+        LimitTerminalWidth();       // the font is final now
 
-        // ibmcon 1.5: the ANSI colours' own pens. An older ibmcon answers
-        // IOERR_NOCMD and keeps pens 0-15.
-        if (ansiOwnPens && STATE_IS(APP_RENDERER_IBMCON_DEVICE))
-        {
-            writeConsoleReq->io_Command = IBMCMD_SETPENS;
-            writeConsoleReq->io_Data    = ansiColourPens;
-            writeConsoleReq->io_Length  = sizeof(ansiColourPens);
-            DoIO((struct IORequest *)writeConsoleReq);
-            penTableError = writeConsoleReq->io_Error;
-        }
+        SendPenTable();
     }
     else
     {
@@ -3421,16 +3978,7 @@ static BOOL OpenConsoleDevice(void)
  */
 static void CloseConsoleDevice(void)
 {
-    if (wbPensObtained)
-    {
-        UWORD i;
-
-        for (i = 0; i < 16; i++)
-            if (wbPenOwned[i])
-                ReleasePen(scr->ViewPort.ColorMap, ansiColourPens[i]);
-        wbPensObtained = FALSE;
-        ansiOwnPens = FALSE;
-    }
+    ReleaseWorkbenchPens();
 
     // https://amigadev.elowar.com/read/ADCD_2.1/Devices_Manual_guide/node0190.html
     if (isConDeviceOpened)
@@ -3496,7 +4044,7 @@ static void CloseConsoleDevice(void)
  *        reads the RastPort font live). The built-in and XEM renderers take
  *        their font at setup: they get the full reopen instead.
  */
-static void SwitchPetsciiDisplay(void)
+static void ReopenTerminal(void)
 {
     if (!STATE_IS(APP_RENDERER_IBMCON_DEVICE | APP_RENDERER_CONSOLE_DEVICE) || !win)
     {
@@ -3504,10 +4052,24 @@ static void SwitchPetsciiDisplay(void)
         shouldReopenScreen = TRUE;
         return;
     }
-    CloseConsoleDevice();
-    ClosePetsciiFonts();
-    OpenPetsciiFonts();
-    SetFont(win->RPort, petsciiFont ? petsciiFont : ansiFont);
+    {
+        struct TextFont *oldAnsi = ansiFont;
+        UWORD cols, rows;
+        BOOL bbsSize;
+
+        TerminalGrid(&cols, &rows);
+        bbsSize = STATE_IS_NOT(APP_FULLSCREEN) && cols == ArtColumns(win->RPort->Font) && rows == SCREENFONT_BBS_ROWS;
+        CloseConsoleDevice();
+        OpenAnsiFont();                 // the settings' font (an entry's, the global one)
+        if (!STATE_IS_NOT(APP_FULLSCREEN))
+            LoadAnsiPalette(&prefs);    // the settings' colours on the terminal's pens
+        ClosePetsciiFonts();
+        OpenPetsciiFonts();
+        SetFont(win->RPort, petsciiFont ? petsciiFont : ansiFont);
+        if (oldAnsi) CloseFont(oldAnsi);
+        if (bbsSize)                    // still the BBS size: stays it in the new font
+            SizeWorkbenchWindow(ArtColumns(win->RPort->Font), SCREENFONT_BBS_ROWS);
+    }
     if (!OpenConsoleDevice())
     {
         shouldRestart = TRUE;       // could not reopen it in place: reopen everything
@@ -3516,22 +4078,88 @@ static void SwitchPetsciiDisplay(void)
     }
     if (displayIsPetscii)
         ConWrite(PETSCII_CONSOLE_SETUP, sizeof(PETSCII_CONSOLE_SETUP) - 1);
+    // The grid changed with the font: tell the BBS (on the Workbench the
+    // window's resize does it too, on the own screen nothing else would).
+    if (isConnected)
+        TelnetSendWindowSize();
+}
+
+/**
+ * @brief Open the terminal's ANSI font for the settings in use (ansiFont,
+ *        fontAttr): topaz and Topaz Pro are one face -- Topaz Pro on square
+ *        pixels (every RTG mode), topaz on the Amiga's tall ones -- for the
+ *        screen (title bar, menus) and the terminal alike.
+ */
+static void OpenAnsiFont(void)
+{
+    fontAttr.ta_Name = prefs.FontName;
+    fontAttr.ta_YSize = prefs.FontSize;
+    ansiFont = NULL;
+    {
+        struct DisplayInfo di;
+        struct ScreenFontChoice pick;
+        UWORD resX = 0, resY = 0;
+        ULONG modeID = prefs.DisplayID;
+
+        if (STATE_IS_NOT(APP_FULLSCREEN))
+        {
+            struct Screen *wb = LockPubScreen(NULL);
+
+            modeID = wb ? GetVPModeID(&wb->ViewPort) : INVALID_ID;
+            if (wb) UnlockPubScreen(NULL, wb);
+        }
+        if (modeID != INVALID_ID
+            && GetDisplayInfoData(NULL, (UBYTE *)&di, sizeof(di), DTAG_DISP, modeID))
+        {
+            resX = (UWORD)di.Resolution.x;
+            resY = (UWORD)di.Resolution.y;
+        }
+        modeResX = resX;
+        modeResY = resY;
+        // The built-in renderer draws 8x8 cells from the font it is given:
+        // the font stays as chosen (ValidateAndInitPrefs keeps it at 8).
+        if (STATE_IS_NOT(APP_RENDERER_BUILTIN))
+        {
+            ScreenFont_ForMode((const char *)prefs.FontName, prefs.FontSize, resX, resY, &pick);
+            fontAttr.ta_Name  = (STRPTR)pick.name;
+            fontAttr.ta_YSize = pick.size;
+            if (pick.topazPro)      // bundled: in the font list once open, so OpenScreen finds it
+                ansiFont = OpenBundledFont(TOPAZ_PRO_NAME, "PROGDIR:Fonts/" TOPAZ_PRO_NAME, TOPAZ_PRO_SIZE);
+        }
+    }
+    if (!ansiFont)
+    {
+        // DCTelnet's Fonts drawer first (the fonts it ships), then FONTS:
+        static char own[64];
+
+        if (ProgDir_Path("Fonts", (const char *)fontAttr.ta_Name, own, sizeof(own)))
+            ansiFont = OpenBundledFont(fontAttr.ta_Name, own, fontAttr.ta_YSize);
+        else
+            ansiFont = OpenDiskFont(&fontAttr);
+    }
+    fontMissing[0] = 0;
+    if(!ansiFont)
+    {
+        // The chosen font could not be opened: topaz, in the form the
+        // screen's pixels want (Topaz Pro on square ones), and say so.
+        struct ScreenFontChoice pick;
+
+        mysprintf(fontMissing, "%s %ld", prefs.FontName, (LONG)prefs.FontSize);
+        ScreenFont_ForMode("topaz.font", 8, modeResX, modeResY, &pick);
+        if (pick.topazPro)
+            ansiFont = OpenBundledFont(TOPAZ_PRO_NAME, "PROGDIR:Fonts/" TOPAZ_PRO_NAME, TOPAZ_PRO_SIZE);
+        fontAttr.ta_Name  = ansiFont ? (STRPTR)TOPAZ_PRO_NAME : (STRPTR)"topaz.font";
+        fontAttr.ta_YSize = ansiFont ? TOPAZ_PRO_SIZE : 8;
+        if (!ansiFont)
+            ansiFont = OpenFont(&fontAttr);
+    }
 }
 
 struct Screen* OpenAppScreen(void)
 {
     struct Screen *scr;
 
-    fontAttr.ta_Name = prefs.FontName;
-    fontAttr.ta_YSize = prefs.FontSize;
-    ansiFont = OpenDiskFont(&fontAttr);
-    if(!ansiFont)
-    {
-        fontAttr.ta_Name = "topaz.font";
-        fontAttr.ta_YSize = 8;
-        ansiFont = OpenFont(&fontAttr);
-    }
-
+    OpenAnsiFont();
     OpenPetsciiFonts();
 
     if (STATE_IS_NOT(APP_FULLSCREEN))
@@ -3652,13 +4280,21 @@ void OpenAppWindow(void)
         newWin.TopEdge    = prefs.MainWinTopEdge;
         newWin.Width      = prefs.MainWinWidth;
         newWin.Height     = prefs.MainWinHeight;
+        if (wbWindowBoxValid)   // a reopen: where the window was, not the snapshot
+        {
+            newWin.LeftEdge = wbWindowBox.Left;
+            newWin.TopEdge  = wbWindowBox.Top;
+            newWin.Width    = wbWindowBox.Width;
+            newWin.Height   = wbWindowBox.Height;
+        }
         newWin.MinWidth   = WIN_MIN_WIDTH;
         newWin.MinHeight  = WIN_MIN_HEIGHT;
         newWin.MaxWidth   = DISP_MAX_WIDTH;
         newWin.MaxHeight  = DISP_MAX_HEIGHT;
         newWin.IDCMPFlags = IDCMP_RAWKEY
                           | IDCMP_CLOSEWINDOW
-                          | IDCMP_MENUPICK;
+                          | IDCMP_MENUPICK
+                          | IDCMP_NEWSIZE;      // the BBS is told the new text area
         newWin.Flags      = WFLG_GIMMEZEROZERO
                           | WFLG_NEWLOOKMENUS   // Requests new-look menu treatment (V39)
                           | WFLG_SMART_REFRESH  // WFLG_SIMPLE_REFRESH
@@ -3673,7 +4309,20 @@ void OpenAppWindow(void)
 
         CheckDimensions(&newWin);
 
-        win = OpenWindowTags(&newWin, WA_BackFill, (ULONG)&terminalBackFill, TAG_END);
+        {
+            // No snapshot and not a reopen: the BBS size, 80x25 characters
+            // (40x25 in PETSCII Mode) of the terminal's font, on any mode.
+            struct TextFont *cell = petsciiFont ? petsciiFont : ansiFont;
+            BOOL bbsSize = !wbWindowBoxValid && STATE_IS_NOT(APP_WINDOW_SNAPSHOT);
+
+            win = OpenWindowTags(&newWin, WA_BackFill, (ULONG)&terminalBackFill,
+                                 bbsSize ? WA_InnerWidth : TAG_IGNORE,
+                                     (ULONG)(ArtColumns(cell) * cell->tf_XSize),
+                                 bbsSize ? WA_InnerHeight : TAG_IGNORE,
+                                     (ULONG)(SCREENFONT_BBS_ROWS * cell->tf_YSize),
+                                 WA_AutoAdjust, TRUE,
+                                 TAG_END);
+        }
 
         // Be sure to unlock the public screen when done with it.  Note that once a window is open
         // on the screen the program does not need to hold the screen lock, as the window acts as a
@@ -3707,8 +4356,11 @@ void OpenAppWindow(void)
             screenToBackGadget.LeftEdge = scr->Width - 20;
             screenToBackGadget.GadgetID = GADGET_SCREEN_TO_BACK;
         } else {
-            top = prefs.FontSize + 3;
-            height = scr->Height - (prefs.FontSize + 3);
+            // Below the title bar as the screen draws it: prefs.FontSize is the
+            // setting, not the opened font (Topaz Pro 16 for topaz 8), and the
+            // first rows went under the bar.
+            top = scr->BarHeight + 1;
+            height = scr->Height - top;
             backgad = 0;
         }
 
@@ -3727,22 +4379,26 @@ void OpenAppWindow(void)
         newWin.Title = 0;
         newWin.Width = scr->Width;
 
+        // The terminal window is 80 columns wide and centred
+        // (LimitTerminalWidth): the screen around it is terminal background,
+        // ANSI black, not the UI's pen 0 (grey on 32+ colours).
+        if (LayersBase)
+            InstallLayerInfoHook(&scr->LayerInfo, &terminalBackFill);
+
         if(STATE_IS(APP_PACKET_WINDOW_ENABLED))
         {
-            height -= (prefs.FontSize + 2);
-
-            strInfo.Buffer     = strBuffer;
-            strInfo.MaxChars   = BUFSIZE;
-
-            strGad.TopEdge     = 2;
-            strGad.Activation  = GACT_RELVERIFY | GACT_STRINGLEFT;
-            strGad.GadgetType  = GTYP_STRGADGET;
+            height -= (scr->Font->ta_YSize + 2);
+            strInfo.Buffer = strBuffer;
+            strInfo.MaxChars = BUFSIZE;
+            strGad.TopEdge = 2;
+            strGad.Activation = GACT_RELVERIFY | GACT_STRINGLEFT;
+            strGad.GadgetType = GTYP_STRGADGET;
             strGad.SpecialInfo = &strInfo;
-            strGad.Width       = scr->Width;
-            strGad.Height      = prefs.FontSize;
+            strGad.Width = scr->Width;
+            strGad.Height = scr->Font->ta_YSize;
 
-            newWin.TopEdge     = top+height;
-            newWin.Height      = prefs.FontSize+2,
+            newWin.TopEdge = top+height;
+            newWin.Height = scr->Font->ta_YSize + 2,
             newWin.FirstGadget = &strGad;
             newWin.IDCMPFlags  = IDCMP_MENUPICK
                                | IDCMP_GADGETUP;
@@ -3796,7 +4452,10 @@ void CreateAppMenus(void)
     else
     {
         GetNewMenuItemFromID(MENU_SCREEN_MODE   )->nm_Flags = NM_ITEMDISABLED;
-        GetNewMenuItemFromID(MENU_SCREEN_PALETTE)->nm_Flags = NM_ITEMDISABLED;
+        // The ANSI colours editor works on the Workbench too with ibmcon (OS
+        // 3.0): its colours are on shared pens of their own, not the Workbench's.
+        GetNewMenuItemFromID(MENU_SCREEN_PALETTE)->nm_Flags =
+            (STATE_IS(APP_RENDERER_IBMCON_DEVICE) && GfxBase->LibNode.lib_Version >= 39) ? 0 : NM_ITEMDISABLED;
     }
 
 
@@ -3848,7 +4507,17 @@ void CreateAppMenus(void)
 
 
     // Gadtools CreateMenuA() generates a list of Intuition Menu structs.
-    mainMenuStrip = CreateMenusA(mainMenuDesc, 0);
+    // Menu item text in the screen's menu text pen: without it GadTools
+    // uses pen 0, which on 16 colours is ANSI black but on 32+ colours the
+    // UI's grey -- every item looked disabled.
+    {
+        static ULONG ctags[] = { GTMN_FrontPen, 1, TAG_END };
+
+        // BARDETAILPEN is a V39 DrawInfo pen (dri_Version 2): OS 2.x keeps the default.
+        if (drawInfo && drawInfo->dri_Version >= 2)
+            ctags[1] = drawInfo->dri_Pens[BARDETAILPEN];
+        mainMenuStrip = CreateMenusA(mainMenuDesc, (struct TagItem *)ctags);
+    }
     #ifdef _DEBUG
         Printf("   <-- CreateMenusA() => %s\n", (mainMenuStrip != NULL) ? "succeeded" : "failed");
     #endif
@@ -4021,53 +4690,70 @@ BOOL OpenDisplay(void)
         if(flags & AFF_68040) cpu = '4';
         if(flags & AFF_68060) cpu = '6';
 
+        // One labelled line per fact, each shorter than 80 columns: the
+        // renderer, the screen, and the grid the console measured.
+        static char details[200];
+
+        details[0] = 0;
         switch (renderer)
         {
             case APP_RENDERER_BUILTIN:
-                strRenderer = "retro32-term";
-            break;
-
-            case APP_RENDERER_CONSOLE_DEVICE:
-                strRenderer = "console.device";
+                strRenderer = "retro32-term (built-in)";
             break;
 
             case APP_RENDERER_XEM_LIB:
                 strRenderer = prefs.XemLibrary;
             break;
 
+            case APP_RENDERER_CONSOLE_DEVICE:
             case APP_RENDERER_IBMCON_DEVICE:
             if (isConDeviceOpened)
             {
-                // Which ibmcon runs and how it draws the ANSI colours: it is
-                // opened from DEVS:, not from the Devs drawer next to DCTelnet.
-                static char engine[140];
+                static char engine[80];
+                char screenInfo[80];
+                struct TextFont *cell = win->RPort->Font;
+                UWORD cols, rows;
                 struct Library *dev = (struct Library *)writeConsoleReq->io_Device;
 
-                mysprintf(engine, "ibmcon.device %ld.%ld, %ld bit planes",
-                          (LONG)dev->lib_Version, (LONG)dev->lib_Revision,
-                          (LONG)AppScreenDepth(scr));
+                if (renderer == APP_RENDERER_IBMCON_DEVICE)
+                    mysprintf(engine, "ibmcon.device %ld.%ld from %s",
+                              (LONG)dev->lib_Version, (LONG)dev->lib_Revision, consoleFrom);
+                else
+                    mysprintf(engine, "console.device %ld.%ld",
+                              (LONG)dev->lib_Version, (LONG)dev->lib_Revision);
+                mysprintf(screenInfo, "%ld bit planes", (LONG)AppScreenDepth(scr));
                 if (ansiOwnPens && penTableError)
-                    strlcat(engine, "\r\n  ANSI colours NOT on their own pens: this ibmcon is\r\n"
-                                    "  older than 1.5 -- copy Devs/ibmcon.device to DEVS:",
-                            sizeof(engine));
+                    strlcat(screenInfo, ", ANSI colours on pens 0-15 (old ibmcon)", sizeof(screenInfo));
                 else if (ansiOwnPens)
-                    strlcat(engine, ", ANSI colours on their own pens", sizeof(engine));
+                    strlcat(screenInfo, ", ANSI colours on their own pens", sizeof(screenInfo));
+                TerminalGrid(&cols, &rows);
+                mysprintf(details, "›0;1;36mScreen: ›37m%s\r\n\r\n"
+                                   "›36mText area: ›37m%ld x %ld characters, font %ld x %ld\r\n\r\n",
+                          screenInfo, (LONG)cols, (LONG)rows, (LONG)cell->tf_XSize, (LONG)cell->tf_YSize);
+                if (fontMissing[0])
+                {
+                    char note[80];
+
+                    mysprintf(note, "›31mFont %s could not be opened\r\n\r\n", fontMissing);
+                    strlcat(details, note, sizeof(details));
+                }
                 strRenderer = engine;
             }
             else
-                strRenderer = "ibmcon.device";
+                strRenderer = (renderer == APP_RENDERER_IBMCON_DEVICE) ? "ibmcon.device" : "console.device";
             break;
         }
 
         LocalFmt("›0;1;36m\f\r\n\r\n"
                 "Processor: ›37m680%lc0\r\n\r\n›36m"
                 "Kickstart: ›37m%ld.%ld\r\n\r\n›36m"
-                "Renderer: ›37m%s\r\n\r\n›36m"
+                "Renderer: ›37m%s\r\n\r\n"
+                "%s›36m"
                 "TCP Stack: ›37m",
                 cpu,
                 (LONG)((struct Library *)SysBase)->lib_Version,
                 (LONG)SysBase->SoftVer,
-                strRenderer);
+                strRenderer, details);
 
         if(SocketBase)
         {
@@ -4136,6 +4822,14 @@ void CloseDisplay(BOOL manageScreen)
 
     if(win)
     {
+        if (STATE_IS_NOT(APP_FULLSCREEN))      // a reopen puts it back here (Snapshot Windows saves it)
+        {
+            wbWindowBox.Left   = win->LeftEdge;
+            wbWindowBox.Top    = win->TopEdge;
+            wbWindowBox.Width  = win->Width;
+            wbWindowBox.Height = win->Height;
+            wbWindowBoxValid = TRUE;
+        }
         ClearMenuStrip(win);
         CloseWindow(win);
         win = NULL;

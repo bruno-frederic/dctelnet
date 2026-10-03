@@ -30,6 +30,7 @@ enum
 #define OLD_RAW_CONNECTION      (1UL << 13)
 #define OLD_JUMP_SCROLL         (1UL << 14)
 #define OLD_PETSCII_MODE        (1UL << 15)
+#define OLD_WINDOW_SNAPSHOT     (1UL << 16)     // the pre-2.0 PETSCII/RTG builds
 
 static UWORD Word(const UBYTE *p) { return (UWORD)(p[0] << 8 | p[1]); }
 static ULONG Long(const UBYTE *p) { return (ULONG)p[0] << 24 | (ULONG)p[1] << 16 | (ULONG)p[2] << 8 | p[3]; }
@@ -63,6 +64,7 @@ static ULONG StateFromOldFlags(ULONG f)
     if (f & OLD_RAW_CONNECTION)         s |= APP_RAW_CONNECTION;
     if (f & OLD_JUMP_SCROLL)            s |= APP_FAST_SCROLL_ENABLED;
     if (f & OLD_PETSCII_MODE)           s |= APP_PETSCII_MODE;
+    if (f & OLD_WINDOW_SNAPSHOT)        s |= APP_WINDOW_SNAPSHOT;
     return s;
 }
 
