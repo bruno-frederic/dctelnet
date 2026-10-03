@@ -13,8 +13,21 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Build with vbcc
-        run: make -C src ci
+      # for debugging runner and builder container
+      #- name: Show environment
+      #  run: make -C src show_env
+
+      - name: Build with VBCC, DEBUG enabled
+        run: make -C src  ci-debug
+
+      - name: Build with VBCC
+        run: make -C src  ci
+
+      - name: Build ibmcon.device with VASM
+        run: make -C src  ibmcon
+
+      - name: Tests
+        run: make -C src  tests
 
       - name: Upload non-release build artifacts
         uses: actions/upload-artifact@v7
