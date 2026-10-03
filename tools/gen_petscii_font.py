@@ -129,7 +129,7 @@ def build_font_file(blob_path, font_dir, font_name, label_prefix, work_dir):
 
 if __name__ == '__main__':
     here = os.path.dirname(os.path.abspath(__file__))
-    fonts = os.path.join(here, '..', 'Fonts')
+    fonts = os.path.join(here, '..', 'build/package/DCTelnet/Fonts')
     with tempfile.TemporaryDirectory() as work:
-        build_font_file(os.path.join(here, 'glyphs', 'c64_upper_8x8.bin'), fonts, 'Petscii.font', 'pu', work)
-        build_font_file(os.path.join(here, 'glyphs', 'c64_lower_8x8.bin'), fonts, 'PetsciiLower.font', 'pl', work)
+        build_font_file(os.path.join(here, '../assets/glyphs', 'c64_upper_8x8.bin'), fonts, 'Petscii.font', 'pu', work)
+        build_font_file(os.path.join(here, '../assets/glyphs', 'c64_lower_8x8.bin'), fonts, 'PetsciiLower.font', 'pl', work)
