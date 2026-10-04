@@ -39,7 +39,26 @@ static void test_console_fkey_digit_0_is_c64_f1(void) {
     assert(petscii_fkey_from_console_digit('x') == -1);
 }
 
+
+/* CTRL/C= with the number row, as on a C64 and in CGTerm: colours and
+ * reverse video; anything else is not a C64 key. */
+static void test_number_row_sends_colours_and_reverse(void) {
+    assert(petscii_key_from_digit('1', 1, 0) == 0x90);   /* CTRL+1 black */
+    assert(petscii_key_from_digit('2', 1, 0) == 0x05);   /* CTRL+2 white */
+    assert(petscii_key_from_digit('8', 1, 0) == 0x9E);   /* CTRL+8 yellow */
+    assert(petscii_key_from_digit('9', 1, 0) == 0x12);   /* CTRL+9 RVS ON */
+    assert(petscii_key_from_digit('0', 1, 0) == 0x92);   /* CTRL+0 RVS OFF */
+    assert(petscii_key_from_digit('1', 0, 1) == 0x81);   /* C=+1 orange */
+    assert(petscii_key_from_digit('8', 0, 1) == 0x9B);   /* C=+8 light grey */
+    assert(petscii_key_from_digit('9', 0, 1) == -1);
+    assert(petscii_key_from_digit('0', 0, 1) == -1);
+    assert(petscii_key_from_digit('5', 0, 0) == -1);     /* plain digit: typed text */
+    assert(petscii_key_from_digit('a', 1, 1) == -1);
+    assert(petscii_key_from_digit('3', 1, 1) == 0x1C);   /* CTRL wins */
+}
+
 int main(void) {
+    test_number_row_sends_colours_and_reverse();
     test_console_fkey_digit_0_is_c64_f1();
     test_screencode_ranges();
     test_fallback_letters_swap_case();

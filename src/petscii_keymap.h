@@ -40,4 +40,14 @@ int petscii_translate_key(int ascii_or_special, int is_special);
  */
 int petscii_fkey_from_console_digit(char digit);
 
+/*
+ * The C64's number-row control keys (CGTerm 1.7b2 sends the same): with
+ * CTRL, 1-8 are the first eight colours (black, white, red, cyan, purple,
+ * green, blue, yellow), 9 RVS ON and 0 RVS OFF; with the Commodore key
+ * (C=), 1-8 the other eight (orange, brown, light red, dark grey, grey,
+ * light green, light blue, light grey). digit is '0'-'9'. Returns the
+ * PETSCII byte, -1 for any other combination (CTRL wins over C=).
+ */
+int petscii_key_from_digit(char digit, int ctrl, int commodore);
+
 #endif /* PETSCII_KEYMAP_H */
