@@ -4,9 +4,22 @@
 #include "petscii_screencode.h"
 #include "petscii_fallback.h"
 
+static void blank_cells(struct PetsciiCell *c, int n) {
+    int i;
+    for (i = 0; i < n; i++) { c[i].byte = 0x20; c[i].color = -1; c[i].reverse = 0; }
+}
+
+/* Next line; on the last row the screen scrolls up one row. */
+static void line_feed(struct PetsciiDispatchState *st) {
+    if (st->cursor_row < st->rows - 1) { st->cursor_row++; return; }
+    memmove(st->cells[0], st->cells[1], sizeof(st->cells[0]) * (size_t)(st->rows - 1));
+    blank_cells(st->cells[st->rows - 1], PETSCII_MAX_COLS);
+}
+
 void petscii_dispatch_init(struct PetsciiDispatchState *st, int cols, int rows) {
-    st->cols = cols;
-    st->rows = rows;
+    st->cols = cols > PETSCII_MAX_COLS ? PETSCII_MAX_COLS : cols;
+    st->rows = rows > PETSCII_MAX_ROWS ? PETSCII_MAX_ROWS : rows;
+    blank_cells(&st->cells[0][0], PETSCII_MAX_ROWS * PETSCII_MAX_COLS);
     st->cursor_row = 0;
     st->cursor_col = 0;
     st->reverse = 0;
@@ -79,8 +92,14 @@ void petscii_dispatch_byte(struct PetsciiDispatchState *st, uint8_t byte,
             if (st->reverse) code |= 0x80;
             *out_screencode = code;
         }
+        {
+            struct PetsciiCell *c = &st->cells[st->cursor_row][st->cursor_col];
+            c->byte = byte;
+            c->color = (int8_t)st->color;
+            c->reverse = (uint8_t)st->reverse;
+        }
         st->cursor_col++;
-        if (st->cursor_col >= st->cols) { st->cursor_col = 0; st->cursor_row++; }
+        if (st->cursor_col >= st->cols) { st->cursor_col = 0; line_feed(st); }
         return;
     }
 
@@ -89,11 +108,11 @@ void petscii_dispatch_byte(struct PetsciiDispatchState *st, uint8_t byte,
         case 13:  /* CR -- also cancels reverse video (SyncTerm petscii_cr(),
                    * cross-checked against a live amiexpress-web connection) */
             st->reverse = 0;
-            st->cursor_col = 0; st->cursor_row++;
+            st->cursor_col = 0; line_feed(st);
             break;
         case 141: /* "shifted CR" / LF -- no reverse-video change (SyncTerm
                    * petscii_lf(), distinct from byte 13) */
-            st->cursor_col = 0; st->cursor_row++;
+            st->cursor_col = 0; line_feed(st);
             break;
         case 14:  /* shift to lowercase/uppercase charset */
             st->shift_lowercase = 1;
@@ -113,15 +132,26 @@ void petscii_dispatch_byte(struct PetsciiDispatchState *st, uint8_t byte,
         case 147: /* CLR/HOME: clears screen, resets cursor -- Review
                     * Focus 4: does NOT touch shift or reverse state. */
             st->cursor_row = 0; st->cursor_col = 0;
+            blank_cells(&st->cells[0][0], PETSCII_MAX_ROWS * PETSCII_MAX_COLS);
             break;
-        case 17:  /* cursor down */
-            st->cursor_row++;
+        case 17:  /* cursor down (CSI B: stops at the last row) */
+            if (st->cursor_row < st->rows - 1) st->cursor_row++;
             break;
         case 145: /* cursor up */
             if (st->cursor_row > 0) st->cursor_row--;
             break;
-        case 29:  /* cursor right */
-            st->cursor_col++;
+        case 29:  /* cursor right (CSI C: stops at the last column) */
+            if (st->cursor_col < st->cols - 1) st->cursor_col++;
+            break;
+        case 20:  /* DEL: drawn as BS, space, BS -- the cell left of the
+                   * cursor (at column 0 the cursor's own) becomes a space */
+            if (st->cursor_col > 0) st->cursor_col--;
+            {
+                struct PetsciiCell *c = &st->cells[st->cursor_row][st->cursor_col];
+                c->byte = 0x20;
+                c->color = (int8_t)st->color;
+                c->reverse = (uint8_t)st->reverse;
+            }
             break;
         case 157: /* cursor left */
             if (st->cursor_col > 0) st->cursor_col--;
@@ -183,19 +213,38 @@ static size_t append_control_ansi(uint8_t byte, uint8_t *out, size_t out_max, si
     return len;
 }
 
-/* SGR 0, then the active colour, then reverse -- see COLOR_TABLE. */
-static size_t append_attributes(const struct PetsciiDispatchState *st,
-                                uint8_t *out, size_t out_max, size_t len) {
+/* SGR 0, then the colour, then reverse -- see COLOR_TABLE. */
+static size_t append_sgr(int color, int rev, uint8_t *out, size_t out_max, size_t len) {
     static const uint8_t reset[] = {27,'[','0','m'};
     static const uint8_t reverse[] = {27,'[','7','m'};
 
     len = append(out, out_max, len, reset, sizeof(reset));
-    if (st->color >= 0) {
-        const char *sgr = COLOR_TABLE[st->color].sgr;
+    if (color >= 0) {
+        const char *sgr = COLOR_TABLE[color].sgr;
         len = append(out, out_max, len, (const uint8_t *)sgr, strlen(sgr));
     }
-    if (st->reverse) len = append(out, out_max, len, reverse, sizeof(reverse));
+    if (rev) len = append(out, out_max, len, reverse, sizeof(reverse));
     return len;
+}
+
+static size_t append_attributes(const struct PetsciiDispatchState *st,
+                                uint8_t *out, size_t out_max, size_t len) {
+    return append_sgr(st->color, st->reverse, out, out_max, len);
+}
+
+/* CSI row;col H, both 1-based. */
+static size_t append_position(int row, int col, uint8_t *out, size_t out_max, size_t len) {
+    char seq[16];
+    int n = 0;
+
+    seq[n++] = 27; seq[n++] = '[';
+    if (row >= 10) seq[n++] = (char)('0' + row / 10);
+    seq[n++] = (char)('0' + row % 10);
+    seq[n++] = ';';
+    if (col >= 10) seq[n++] = (char)('0' + col / 10);
+    seq[n++] = (char)('0' + col % 10);
+    seq[n++] = 'H';
+    return append(out, out_max, len, (const uint8_t *)seq, (size_t)n);
 }
 
 /*
@@ -239,6 +288,31 @@ static size_t stream_translate(struct PetsciiDispatchState *st,
     }
 
     return len;
+}
+
+size_t petscii_repaint(const struct PetsciiDispatchState *st, int raw_glyphs,
+                       uint8_t *out, size_t out_max) {
+    size_t len = 0;
+    int r, c;
+
+    for (r = 0; r < st->rows; r++) {
+        int color = -2, rev = -1;          /* nothing emitted yet on this row */
+
+        len = append_position(r + 1, 1, out, out_max, len);
+        for (c = 0; c < st->cols; c++) {
+            const struct PetsciiCell *cell = &st->cells[r][c];
+            uint8_t glyph = raw_glyphs ? cell->byte : (uint8_t)petscii_fallback_cp437(cell->byte);
+
+            if (cell->color != color || cell->reverse != rev) {
+                color = cell->color;
+                rev = cell->reverse;
+                len = append_sgr(color, rev, out, out_max, len);
+            }
+            len = append(out, out_max, len, &glyph, 1);
+        }
+    }
+    len = append_position(st->cursor_row + 1, st->cursor_col + 1, out, out_max, len);
+    return append_attributes(st, out, out_max, len);
 }
 
 size_t petscii_stream_to_ansi(struct PetsciiDispatchState *st,
