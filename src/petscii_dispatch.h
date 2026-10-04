@@ -4,6 +4,18 @@
 
 #include <stdint.h>
 
+/* The C64 screen: 40 x 25 cells. */
+#define PETSCII_MAX_COLS 40
+#define PETSCII_MAX_ROWS 25
+
+/* One character cell of the screen model: what the renderer was last told
+ * to show there. */
+struct PetsciiCell {
+    uint8_t byte;         /* raw PETSCII byte of the glyph (0x20 when blank) */
+    int8_t  color;        /* colour-table index, -1 = console default */
+    uint8_t reverse;
+};
+
 struct PetsciiDispatchState {
     int cols, rows;
     int cursor_row, cursor_col;
@@ -12,6 +24,11 @@ struct PetsciiDispatchState {
     int bg_color;         /* current background color, VIC index 0-15 */
     int color;            /* current text colour: index into the colour table,
                            * -1 = console default (no colour code seen yet) */
+    /* Screen RAM: on a C64 the character set belongs to the whole screen,
+     * so a charset switch redraws every cell (petscii_repaint) from here.
+     * Kept as the ANSI stream below shows it: cursor moves stop at the
+     * edges, a line feed on the last row scrolls. */
+    struct PetsciiCell cells[PETSCII_MAX_ROWS][PETSCII_MAX_COLS];
 };
 
 void petscii_dispatch_init(struct PetsciiDispatchState *st, int cols, int rows);
@@ -105,6 +122,19 @@ struct PetsciiLocalText {
  * fonts, each part in the one it was sent for.
  */
 size_t petscii_part_length(const uint8_t *in, size_t len);
+
+/*
+ * The whole screen again, every cell from the screen model, in the font
+ * now selected: what a C64 shows when the character set switches (14/142)
+ * -- the characters already on screen change too, not only the ones that
+ * follow. Each row is positioned with CSI row;1H and drawn with its
+ * cells' attributes; the cursor and the current attributes are restored
+ * at the end. raw_glyphs as for the two stream functions. Returns the
+ * bytes written; out_max >= PETSCII_REPAINT_MAX never truncates.
+ */
+#define PETSCII_REPAINT_MAX (PETSCII_MAX_ROWS * (8 + PETSCII_MAX_COLS * (PETSCII_MAX_OUT_PER_BYTE + 1)) + 32)
+size_t petscii_repaint(const struct PetsciiDispatchState *st, int raw_glyphs,
+                       uint8_t *out, size_t out_max);
 
 void petscii_local_text_init(struct PetsciiLocalText *lt, int lowercase_font);
 void petscii_local_text(struct PetsciiLocalText *lt, char *buf, size_t len);

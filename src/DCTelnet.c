@@ -2283,8 +2283,9 @@ static void Receive(void)
                         AddBuf((char *)petsciiOut, petsciiOutLen);
 
                     /* Charset-shift control code (14/142) toggles between the
-                     * upper/graphics and shifted/lowercase C64 charsets --
-                     * swap the active font to match, for what follows. */
+                     * upper/graphics and shifted/lowercase C64 charsets. On a
+                     * C64 the set belongs to the whole screen: swap the font,
+                     * then redraw every cell from the screen model in it. */
                     if (win && petsciiFont && petsciiFontLower) {
                         struct TextFont *wanted = g_petsciiState.shift_lowercase ? petsciiFontLower : petsciiFont;
                         if (win->RPort->Font != wanted)
@@ -2300,6 +2301,12 @@ static void Receive(void)
                                 if (STATE_IS(APP_RENDERER_CONSOLE_DEVICE) && isConDeviceOpened
                                     && writeConsoleReq->io_Unit)
                                     ((struct ConUnit *)writeConsoleReq->io_Unit)->cu_Font = wanted;
+                            }
+                            {
+                                static UBYTE repaint[PETSCII_REPAINT_MAX];
+
+                                ConWrite((char *)repaint,
+                                         (LONG)petscii_repaint(&g_petsciiState, 1, repaint, sizeof(repaint)));
                             }
                         }
                     }
