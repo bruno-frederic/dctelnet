@@ -3,7 +3,7 @@
 /* ====================================================================== */
 
 
-#define DCTELNET_VERSION "1.9.1"
+#define DCTELNET_VERSION "1.10"
 const char __ver[] = "$VER: DCTelnet " DCTELNET_VERSION " " __AMIGADATE__;
 
 #ifndef BUILD_HASH
