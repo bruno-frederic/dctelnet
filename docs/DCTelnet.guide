@@ -454,7 +454,20 @@ Rendering issues occur on multiple BBSes, whether using ibmcon.device or
 XemVT340.library for display. Some screens freeze, misalign the UI, or fail
 to display animations.
 
+Improved with ibmcon.device 1.9: Cursor Backward and Forward stop
+at the edge of the line, and CTerm 24-bit colour sequences are ignored
+instead of moving the cursor. Not yet confirmed on every BBS in the report.
+
 Details on GitHub: https://github.com/bruno-frederic/dctelnet/issues/11
+
+---------------------------------------------
+
+@{b}Fullscreen editors leave old lines on screen (fixed in ibmcon.device 1.7)@{ub}
+
+Insert Lines (CSI L) moved only a few pixel lines, so an editor that scrolls
+down, such as on ABBS/MBBS, left old text behind.
+
+Details on GitHub: https://github.com/bruno-frederic/dctelnet/issues/9
 
 ---------------------------------------------
 
@@ -475,6 +488,9 @@ Details on GitHub: https://github.com/bruno-frederic/dctelnet/issues/13
 This issue had existed since DCTelnet 1.1 and occured when used with certain
 versions of "bsdsocket.library", notably UAE bsdsocket.library 4.1 (WinUAE)
 and Amiberry's built-in library.
+
+The cause is fixed in ibmcon.device 1.8: closing the console freed a signal
+of the program that opened it (bit 31, which bsdsocket.library can hold).
 
 Details on GitHub: https://github.com/bruno-frederic/dctelnet/issues/3
 
@@ -505,13 +521,10 @@ Starting with v1.8, a compatible version of the library is included in the
                                  @{b}@{u} History @{ub}@{uu}
                                  ~~~~~~~~~
 
----[ DCTelnet 2.0 ]-------------------------------------------------------
+---[ DCTelnet 1.10 ]-------------------------------------------------------
 
-TODO
-
-New Features:
-
-ibmcon.device (source now included in the "ibmcon" drawer):
+The ANSI renderer 'ibmcon.device' has received a major update. Version
+1.11 is now included with DCTelnet. The device’s changelog is as follows:
 - 1.5: pens for the ANSI colours (IBMCMD_SETPENS)
 - 1.6: deferred wrap at the last column; CTerm 24-bit colour ignored
 - 1.7: Insert Lines fixed (issue #9)
@@ -832,6 +845,10 @@ Build & Toolchain:
 - new 68000-compatible build by @{b}Bruno FREDERIC@{ub}
 
 - ReqTools is Copyright © Nico François and Magnus Holmgren
+
+- PETSCII Mode, per-BBS settings, RTG/256-colour support, the palette
+  editor and ibmcon.device 1.5-1.9 by @{b}spotUP@{ub}. The PETSCII key and
+  fallback tables are from SyncTERM by Rob Swindell (LGPL).
 
 
 - Thanks to Ray Akey for his help with the file tranfer code,
