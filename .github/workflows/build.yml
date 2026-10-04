@@ -2,6 +2,7 @@ name: Build
 
 on:
   pull_request:
+  workflow_call:
 
 jobs:
   build:
@@ -18,10 +19,10 @@ jobs:
       #  run: make -C src show_env
 
       - name: Build with VBCC, DEBUG enabled
-        run: make -C src  ci-debug
+        run: make -C src  docker-debug
 
       - name: Build with VBCC
-        run: make -C src  ci
+        run: make -C src  docker-release
 
       - name: Build ibmcon.device with VASM
         run: make -C src  ibmcon
@@ -29,12 +30,15 @@ jobs:
       - name: Tests
         run: make -C src  tests
 
-      - name: Upload non-release build artifacts
+      - name: Package LHA archives
+        run: make -C src package
+
+      - name: Upload LHA release packages
         uses: actions/upload-artifact@v7
         with:
-          name: DCTelnet-${{ github.sha }}
+          name: DCTelnet-LHA-${{ github.sha }}
           path: |
-            build/vbcc-68000-release/DCTelnet.68000
-            build/vbcc-68020-release/DCTelnet.68020
+            build/DCTelnet.lha
+            build/DCTelnet-debug.lha
           if-no-files-found: error
           retention-days: 60

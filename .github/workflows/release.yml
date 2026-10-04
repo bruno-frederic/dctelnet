@@ -1,0 +1,38 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    uses: ./.github/workflows/build.yml
+    permissions:
+      contents: read
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download LHA release packages
+        uses: actions/download-artifact@v7
+        with:
+          name: DCTelnet-LHA-${{ github.sha }}
+          path: dist
+
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [[ "$GITHUB_REF_NAME" == *-dev ]]; then
+            gh release create "$GITHUB_REF_NAME" dist/*.lha \
+              --title "$GITHUB_REF_NAME" --generate-notes --prerelease
+          # TODO: test it before enabling for real release
+          # else
+          #   gh release create "$GITHUB_REF_NAME" dist/*.lha \
+          #     --title "$GITHUB_REF_NAME" --generate-notes
+          fi

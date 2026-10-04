@@ -3,7 +3,7 @@
 # Official build (also used by GitHub CI workflow):
 #   Run "make ci" from "src" folder.
 #   Requires GNU Make and Docker (plus WSL on Windows), but no locally installed C compiler.
-#   Outputs binaries under build/vbcc-680x0-release.
+#   Outputs binaries under build/vbcc-680x0-...
 #
 # Local builds with compiler toolchain installed:
 #   Run from "src" with the selected compiler toolchain installed and its bin directory first in
@@ -12,9 +12,12 @@
 # make TOOLCHAIN=gcc      ->  build 68000 & 68020 release binaries with GCC
 # make 68000              ->  build only 68000 release binary
 # make debug              ->  build 68000 & 68020 debug binaries
-# make ci-debug           ->  build only 68000 debug binary
+# make docker-debug       ->  build only 68000 debug binary inside the Docker build container
 # make DEBUG=yes 68000    ->  build only 68000 debug binary
-# make clean              ->  clean debug & release output
+# make ibmcon             ->  build ibmcon.device binary with VASM inside the Docker build container
+# make DEBUG=yes clean    ->  clean debug binaries
+# make clean              ->  clean release binaries
+# make allclean           ->  clean debug & release binaries
 #
 # Tested on Windows with:
 #   VBCC 0.9h patch 3
@@ -157,7 +160,7 @@ MAKEFILE_UPTODATE=$(OBJDIR)/Makefile.uptodate
 
 
 # make treats a phony target as always out-of-date and runs its recipe when requested.
-.PHONY: all clean debug release ci ci-debug
+.PHONY: all clean allclean debug release ci docker-debug docker-release ibmcon tests package
 
 all: $(MAKEFILE_UPTODATE) 68000 68020
 
@@ -169,29 +172,42 @@ all: $(MAKEFILE_UPTODATE) 68000 68020
 
 build: $(TARGET_EXE)
 
-debug:
-	$(MAKE) DEBUG=yes all
 
-release:
-	$(MAKE) all
 
 # Setting properly the user avoids git warnings about safe.directory:
 DOCKER_USER := $(shell $(STAT) --format '%u:%g'  Makefile)
 
 # Recursive assignment with "=" so target-specific INTERACTIVE is expanded when the recipe runs:
 DOCKER_RUN = $(DOCKER) run $(INTERACTIVE) --user $(DOCKER_USER) -q --rm --volume "./..:/opt/code" --workdir /opt/code/src "$(BUILDER_IMAGE)"
-ci:
-	$(DOCKER_RUN) make
 
-ci-debug:
+# "ci" target matches the behavior implemented in the GitHub Actions workflow.
+# Keep in sync with `.github/workflows/build.yml`.
+ci: docker-debug  docker-release  ibmcon  tests  package
+
+docker-debug:
 	$(DOCKER_RUN) make DEBUG=yes 68000
 
+debug:
+	$(MAKE) DEBUG=yes all
+
+docker-release:
+	$(DOCKER_RUN) make all
+
+release:
+	$(MAKE) all
+
 ibmcon:
+	$(info =========================== make ibmcon ==================================)
 	$(DOCKER_RUN) make -C ../ibmcon
 
 tests:
-	$(DOCKER_RUN) make -C ../tests
+# v2.0 implements tests
+#	$(info =========================== make tests ==================================)
+#	$(DOCKER_RUN) make -C ../tests
 
+package:
+	$(info =========================== make package ==================================)
+	$(DOCKER_RUN) sh ../build/package.sh
 
 # for debugging builder container
 enter-builder: INTERACTIVE := --interactive --tty
@@ -238,22 +254,23 @@ $(INSTALLDIR):
 	@echo "------------- mkdir $@ --------------------"
 	$(MKDIR) $@
 
-
+# Slow; for regular development on DCTelnet, "make DEBUG=yes docker-debug ibmcon install" is much faster.
 install: $(TARGET_EXE) ibmcon | $(INSTALLDIR)
 	@echo "------------- $@ $^ --------------------"
 	cp $(TARGET_EXE) $(INSTALLDIR)
 	cp ../ibmcon/ibmcon.device $(INSTALLDIR)/Devs
 
-
 clean: 68000_clean 68020_clean
 
+allclean:
+	$(MAKE) DEBUG=no clean
+	$(MAKE) DEBUG=yes clean
+
 68000_clean:
-	$(MAKE) CPU=68000 DEBUG=no clean_cpu
-	$(MAKE) CPU=68000 DEBUG=yes clean_cpu
+	$(MAKE) CPU=68000 clean_cpu
 
 68020_clean:
-	$(MAKE) CPU=68020 DEBUG=no clean_cpu
-	$(MAKE) CPU=68020 DEBUG=yes clean_cpu
+	$(MAKE) CPU=68020 clean_cpu
 
 clean_cpu:
 	@echo "----------------- $@ $(CPU) ------------------------"
