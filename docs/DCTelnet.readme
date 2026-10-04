@@ -135,6 +135,11 @@ Rendering issues occur on multiple BBSes, whether using ibmcon.device or
 XemVT340.library for display. Some screens freeze, misalign the UI, or fail
 to display animations.
 
+Improved with ibmcon.device 1.9: DCTelnet now answers the BBS's cursor
+position requests (Device Status Report), Cursor Backward and Forward stop
+at the edge of the line, and CTerm 24-bit colour sequences are ignored
+instead of moving the cursor. Not yet confirmed on every BBS in the report.
+
 Details on GitHub: https://github.com/bruno-frederic/dctelnet/issues/11
 
 ### Network issues with AmiBerry and FS-UAE on Linux
@@ -146,12 +151,22 @@ different IP stack resolves the issue.
 
 Details on GitHub: https://github.com/bruno-frederic/dctelnet/issues/13
 
+### Fullscreen editors leave old lines on screen (fixed in ibmcon.device 1.7)
+
+Insert Lines (CSI L) moved only a few pixel lines, so an editor that scrolls
+down, such as on ABBS/MBBS, left old text behind.
+
+Details on GitHub: https://github.com/bruno-frederic/dctelnet/issues/9
+
 ### Connection stuck after changing display settings (fonts, XEM, screen
     mode) or iconifying the application (fixed in v1.8)
 
 This issue had existed since DCTelnet 1.1 and occured when used with
 certain versions of "bsdsocket.library", notably UAE bsdsocket.library 4.1
 (WinUAE) and Amiberry's built-in library.
+
+The cause is fixed in ibmcon.device 1.8: closing the console freed a signal
+of the program that opened it (bit 31, which bsdsocket.library can hold).
 
 Details on GitHub: https://github.com/bruno-frederic/dctelnet/issues/3
 
@@ -173,14 +188,18 @@ Starting with v1.8, a compatible version of the library is included in the
 
 ## Build environment
 
-As of August 2026:
+As of September 2026:
 
 - IDE: VS Code (on Windows)
-- Docker/Podman running a telnetd container for testing
-- Compiler: VBCC and GNU Make on Windows, using my custom toolchain :
-  https://github.com/bruno-frederic/vbcc-bin/tree/Bruno_toolchain
-- The project can also be built with SAS/C v6.58 under AmigaOS 3.2
-- Icon Editor : IconEdit from AmigaOS 3.2.3
+- Docker is used for the official build and can run a telnetd container for
+  testing.
+- Build instructions: See CONTRIBUTING.md on the github repository
+- Alternative build toolchains (outside the official CI build):
+  - VBCC on Windows, using my custom toolchain:
+    https://github.com/bruno-frederic/vbcc-bin/tree/Bruno_toolchain
+  - Bebbo's Amiga-GCC 6.5.0b
+  - SAS/C v6.58 on AmigaOS 3.2 can build all DCTelnet 1.x versions, but not 2.0,
+    which uses C99 features unsupported by SAS/C.
 
 ### Source code
 
@@ -203,6 +222,10 @@ The required third-party source code dependencies are also included:
 
 - DCTelnet was originally written by Zed.
 - new 68000-compatible build by Bruno FREDERIC
+- PETSCII Mode, per-BBS settings, RTG/256-colour support, the palette
+  editor and ibmcon.device 1.5-1.11 by spotUP (https://github.com/spotUP).
+  The PETSCII key and fallback tables are from SyncTERM by Rob Swindell
+  (LGPL).
 - ReqTools is Copyright © Nico François and Magnus Holmgren
 
 ---

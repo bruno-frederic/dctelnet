@@ -682,20 +682,41 @@ New Features:
   or from DEVS: / LIBS:
 - The start-up screen shows the display engine, screen and text area
 
-ibmcon.device (source now included in the "ibmcon" drawer):
-- 1.5: pens for the ANSI colours (IBMCMD_SETPENS)
-- 1.6: deferred wrap at the last column; CTerm 24-bit colour ignored
-- 1.7: Insert Lines fixed (issue #9)
-- 1.8: closing the console no longer frees the opener's signal (issue #3)
-- 1.9: cursor position for DSR answers; Cursor Backward/Forward stop at
-  the margins (issue #11)
-
 Bug Fixes:
 - Menu items were grey, as if disabled, on screens with 32+ colours
 - Deleting the first Address Book entry left no selection
 - Typing in a field entered with Tab now replaces its text
 - Finger replies are no longer shown as a staircase
 - F1 in PETSCII Mode sent the code of F2
+
+
+
+---[ DCTelnet 1.10 ]-------------------------------------------------------
+
+The ANSI renderer 'ibmcon.device' has received a major update. The version
+1.11 of this device is now included with DCTelnet.
+
+@{b}Many thanks to spotUP@{ub} for the tremendous work on 'ibmcon.device'.
+Starting from the disassembled v1.4 source published by Sante Nocciolino,
+SpotUp thoroughly documented and labeled the assembly code, and fixed the
+long-standing bugs.
+
+device’s detailed changelog is as follows:
+1.11 is now included with DCTelnet. The device’s changelog is as follows:
+- 1.5: pens for the ANSI colours (IBMCMD_SETPENS)
+- 1.6: deferred wrap at the last column; CTerm 24-bit colour ignored
+- 1.7: Insert Lines fixed (issue #9)
+- 1.8: closing the console no longer frees the opener's signal (issue #3)
+- 1.9: cursor position for DSR answers; Cursor Backward/Forward stop at
+  the margins (issue #11)
+- 1.10: iCE colours (bright backgrounds), erase characters (CSI X),
+  ESC 7 / ESC 8, application cursor key mode reported to DCTelnet
+- 1.11: blinking text; a copy of the screen DCTelnet can read back
+
+Build & Packaging
+- Switched to VBCC Docker builder image: walkero/docker4amigavbcc
+  (simplify reproducibility, help automate builds workflows)
+- Alternative build toolchain added: Bebbo's Amiga-GCC 6.5.0b
 
 
 
@@ -1009,7 +1030,7 @@ Build & Toolchain:
 - ReqTools is Copyright © Nico François and Magnus Holmgren
 
 - PETSCII Mode, per-BBS settings, RTG/256-colour support, the palette
-  editor and ibmcon.device 1.5-1.9 by @{b}spotUP@{ub}. The PETSCII key and
+  editor and ibmcon.device 1.5-1.11 by @{b}spotUP@{ub}. The PETSCII key and
   fallback tables are from SyncTERM by Rob Swindell (LGPL).
 
 
