@@ -4115,8 +4115,18 @@ static void GetWindowMsg(struct Window *wwin)
                 if(!(code & IECODE_UP_PREFIX))
                 {
                     int id = Keys_FromRawCode(code);
+                    int c64 = -1;
 
-                    if (id != KEY_NONE)
+                    // PETSCII: CTRL or C= (Left Amiga) with the number row (raw
+                    // keys 1-10 are 1-9, 0) sends the C64's colour and RVS bytes.
+                    if (PETSCII_SESSION() && code >= 0x01 && code <= 0x0A
+                        && (qual & (IEQUALIFIER_CONTROL | IEQUALIFIER_LCOMMAND)))
+                        c64 = petscii_key_from_digit(code == 0x0A ? '0' : (char)('0' + code),
+                                                     (qual & IEQUALIFIER_CONTROL) != 0,
+                                                     (qual & IEQUALIFIER_LCOMMAND) != 0);
+                    if (c64 >= 0)
+                        OutKey((unsigned char)c64);
+                    else if (id != KEY_NONE)
                         SendKey(id);
                     else
                     {
