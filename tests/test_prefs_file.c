@@ -111,9 +111,10 @@ static void test_an_old_prefs_file_keeps_all_its_settings(void)
 static void test_the_flags_of_the_builds_before_v2_carry(void)
 {
     struct PrefsStruct got;
-    size_t n = legacy_file((1UL << 3) | (1UL << 16));          /* Workbench, snapshot size */
+    size_t n = legacy_file((1UL << 3) | (1UL << 16) | (1UL << 17));  /* Workbench, snapshot size, VT keys */
     assert(Prefs_Decode(file, n, &got) == PREFS_FILE_LEGACY);
     assert(got.State & APP_WINDOW_SNAPSHOT);
+    assert(got.State & APP_VT_KEYS);
 }
 
 static void test_old_hide_options_and_xem_map_to_the_new_ones(void)

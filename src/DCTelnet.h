@@ -59,6 +59,7 @@ enum MenuItemID
         MENU_LOCAL_ECHO,
         MENU_BACKSPACE_DEL_SWAP,
         MENU_RETURN_SENDING_CRLF,
+        MENU_VT_KEYS,
 
         MENU_SCROLLBACK,
         MENU_SCROLLBACK_LINES,
@@ -100,6 +101,7 @@ extern char server[64];
 extern long nScrollbackLines;
 extern long tcpSocket, nBytesReceived;
 extern struct DrawInfo *drawInfo;
+extern UWORD modeResX, modeResY;
 extern struct Menu *mainMenuStrip;
 extern struct MsgPort *iconPort;
 extern struct NewWindow newWin;

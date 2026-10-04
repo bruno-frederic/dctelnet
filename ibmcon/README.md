@@ -1,4 +1,4 @@
-# ibmcon.device -- annotated disassembly (1.4 bug-fixed, 1.5 to 1.9)
+# ibmcon.device -- annotated disassembly (1.4 bug-fixed, 1.5 to 1.11)
 
 The ANSI console DCTelnet draws its terminal with. `ibmcon.device` 1.4
 (Mar 9 1998) was freeware and shipped as a binary only; this drawer holds
@@ -57,6 +57,9 @@ device binary (`ibmcon.device`; DCTelnet opens it from its own `Devs`
 drawer or from `DEVS:`) and then runs `make check`:
 
     vasmm68k_mot -Fhunkexe -kick1hunks -nosym -o ibmcon.device ibmcon.device.bugfixed.asm
+
+The package ships this build as `build/package/DCTelnet/Devs/ibmcon.device`;
+`make check-ibmcon` in `tests/` fails when the two differ.
 
 (`-kick1hunks` keeps the relocations as classic HUNK_RELOC32 like the
 original SAS/C binary instead of the V37+ RELOC32SHORT form; `-nosym`
@@ -140,3 +143,48 @@ A1200 (FS-UAE, AGA and Picasso96 screens) and on the Workbench.
   column (1-based), so a client can answer a BBS's Device Status Report
   (`CSI 6 n`): the console itself cannot send anything back.
 * Version 1.9 (lib_Revision 9).
+
+## 1.10 (2026-09-28)
+
+* **iCE colours.** `CSI ?33h` switches iCE mode on (as in SyncTERM): SGR 5
+  (blink) then gives a bright background (pens 8-15), which ANSI art drawn
+  for iCE uses for its 16 background colours. SGR 25 ends it. Without iCE
+  mode SGR 5 still draws nothing (there is no blink yet).
+* **`CSI X` erases characters** (ECH): N cells from the cursor, which stays.
+  It took the dispatch table slot of the `CSI R` stub: the table is full
+  (the assembler now fails if it grows past `$DA`, or if the `$VER` string
+  moves the table).
+* **`ESC 7` / `ESC 8`** save and restore the cursor (DECSC/DECRC), as
+  `CSI s` / `CSI u`; the restored position is clamped to a grid that
+  shrank since the save.
+* **DECCKM (`CSI ?1h/l`)** is kept in mode bit 3, and the new
+  `IBMCMD_GETMODES` ($7FE2) replies with `io_Actual` = the mode word, so a
+  client can send cursor keys as `ESC O x` when a host asks for it.
+* **A private prefix applies to the whole sequence.** `h`/`l` read the
+  prefix of parameter N from the Nth raw character, so `CSI ?1;7l` changed
+  mode 7 without its `?`.
+* **`CSI P` and `CSI @` in the last column** now act on that column (they
+  did nothing).
+* Version 1.10 (lib_Revision 10).
+
+## 1.11 (2026-09-28)
+
+* **Screen buffer.** ibmcon drew straight into the RastPort and kept
+  nothing, so no client could read the screen back. It now keeps every
+  cell (character, fg and bg pen, attribute flags; 4 bytes a cell,
+  allocated for the grid in `MeasureGrid` and kept where a resized grid
+  overlaps). Text, the erase commands (`J`, `K`, `X`), the scrolls
+  (`S`, `T`, `L`, `M`, line feed and cursor up at the margins) and
+  `@`/`P` all mirror themselves in it. Without memory for it the device
+  works as before.
+* **`IBMCMD_READTEXT` ($7FE3).** Copies row `io_Offset` (1-based) of the
+  buffer to `io_Data`, at most `io_Length` bytes; `io_Actual` = bytes (0
+  for a row outside the screen), `IOERR_NOCMD` without a buffer. For
+  clients copying text to the clipboard or saving the screen.
+* **Blink.** Cells drawn with SGR 5 blink every half second (a
+  `timer.device` request in the handler, redrawn from the buffer). In iCE
+  mode blink stays a bright background. Nothing is redrawn while no cell
+  blinks.
+* `tests/readtext_probe.c` checks the buffer on an Amiga: 17 cases, each
+  drawing path read back through `IBMCMD_READTEXT`.
+* Version 1.11 (lib_Revision 11).

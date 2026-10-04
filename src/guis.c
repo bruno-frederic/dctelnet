@@ -29,6 +29,8 @@
 #include "Xem_wrapper.h"                 // SaveXemOptions()
 #include "listsel.h"
 #include "textedit.h"
+#include "iconpens.h"
+#include "screenfont.h"
 #include <intuition/sghooks.h>
 
 struct BookStruct
@@ -1034,7 +1036,7 @@ enum
     SG_SCREEN_OVR, SG_SCREEN_SUM, SG_SCREEN_CUR, SG_SCREEN_FONT, SG_SCREEN_PALETTE,
     SG_TERM_OVR, SG_TERM_SUM, SG_TERM_CUR, SG_TERM_PETSCII, SG_TERM_XEMLIB, SG_TERM_DISPID,
     SG_TERM_RAW, SG_TERM_ECHO, SG_TERM_RENDERER,
-    SG_KEY_OVR, SG_KEY_SUM, SG_KEY_CUR, SG_KEY_BSDEL, SG_KEY_CRLF, SG_KEY_FKEYS,
+    SG_KEY_OVR, SG_KEY_SUM, SG_KEY_CUR, SG_KEY_BSDEL, SG_KEY_CRLF, SG_KEY_FKEYS, SG_KEY_VT,
     SG_XFER_OVR, SG_XFER_SUM, SG_XFER_CUR, SG_XFER_PROTO, SG_XFER_OPTS,
     SG_OK, SG_CANCEL,
     SG_COUNT
@@ -1051,7 +1053,7 @@ struct SettingsGadgetDef
 /* Design grid of 8-pixel characters (topaz 8), scaled by ComputeX/Y: a
  * button is its label's length * 8 + 16, a checkbox 26 plus its label. */
 #define settingsWidth  616
-#define settingsHeight 202
+#define settingsHeight 218
 
 static const struct SettingsGadgetDef settingsDefs[SG_COUNT] =
 {
@@ -1077,15 +1079,16 @@ static const struct SettingsGadgetDef settingsDefs[SG_COUNT] =
     {  80, 130,  26, 11, "BS/DEL Swap",          PLACETEXT_RIGHT, CHECKBOX_KIND },
     { 216, 130,  26, 11, "Return = CR + LF",     PLACETEXT_RIGHT, CHECKBOX_KIND },
     { 396, 129, 144, 13, "Function Keys...",     PLACETEXT_IN,    BUTTON_KIND   },
+    {  80, 146,  26, 11, "VT Keys",              PLACETEXT_RIGHT, CHECKBOX_KIND },
 
-    {  80, 151, 112, 13, "Transfer",             PLACETEXT_LEFT,  CYCLE_KIND    },
-    { 196, 151, 300, 13, NULL,                   0,               TEXT_KIND     },
-    { 500, 151, 112, 13, "Use Current",          PLACETEXT_IN,    BUTTON_KIND   },
-    {  80, 167, 104, 13, "Protocol...",          PLACETEXT_IN,    BUTTON_KIND   },
-    { 188, 167, 168, 13, "Protocol Options...",  PLACETEXT_IN,    BUTTON_KIND   },
+    {  80, 167, 112, 13, "Transfer",             PLACETEXT_LEFT,  CYCLE_KIND    },
+    { 196, 167, 300, 13, NULL,                   0,               TEXT_KIND     },
+    { 500, 167, 112, 13, "Use Current",          PLACETEXT_IN,    BUTTON_KIND   },
+    {  80, 183, 104, 13, "Protocol...",          PLACETEXT_IN,    BUTTON_KIND   },
+    { 188, 183, 168, 13, "Protocol Options...",  PLACETEXT_IN,    BUTTON_KIND   },
 
-    {   4, 186, 100, 13, "Ok",                   PLACETEXT_IN,    BUTTON_KIND   },
-    { 512, 186, 100, 13, "Cancel",               PLACETEXT_IN,    BUTTON_KIND   },
+    {   4, 202, 100, 13, "Ok",                   PLACETEXT_IN,    BUTTON_KIND   },
+    { 512, 202, 100, 13, "Cancel",               PLACETEXT_IN,    BUTTON_KIND   },
 };
 
 // The Override cycle gadget of each group: which settings the entry uses.
@@ -1147,6 +1150,7 @@ static void RefreshSettingsWindow(const struct SiteSettings *work)
     SetChecked(SG_TERM_ECHO,    (shown.State & APP_LOCAL_ECHO) != 0);
     SetChecked(SG_KEY_BSDEL,    (shown.State & APP_BACKSPACE_DEL_SWAPPED) != 0);
     SetChecked(SG_KEY_CRLF,     (shown.State & APP_RETURN_SENDING_CRLF) != 0);
+    SetChecked(SG_KEY_VT,       (shown.State & APP_VT_KEYS) != 0);
     GT_SetGadgetAttrs(settingsGadgets[SG_TERM_RENDERER], settingsWnd, NULL,
                       GTCY_Active, (ULONG)RendererIndex(shown.State), TAG_DONE);
 }
@@ -1344,6 +1348,9 @@ static BOOL EditEntrySettings(const char *entryName, struct SiteSettings *entry,
                     break;
                 case SG_KEY_CRLF:
                     SetFlagFromGadget(&work, SITE_GROUP_KEYBOARD, SG_KEY_CRLF, APP_RETURN_SENDING_CRLF, FALSE);
+                    break;
+                case SG_KEY_VT:
+                    SetFlagFromGadget(&work, SITE_GROUP_KEYBOARD, SG_KEY_VT, APP_VT_KEYS, FALSE);
                     break;
                 case SG_KEY_FKEYS:
                     undo = work;
@@ -2045,21 +2052,110 @@ void CheckDimensions(struct NewWindow *newwin)
     if(newwin->TopEdge + newwin->Height > scr->Height) newwin->TopEdge = 0;
 }
 
+// Tool bar icons that carry their colours (DCTELNET_PALETTE, iconpens.h) are
+// redrawn with the screen's closest pens: images drawn for fixed pens showed
+// whatever colours a screen had there (MagicWB icons on a standard Workbench,
+// on DCTelnet's own 256-colour screen). An icon without the tool type, such as
+// one a user drew, is shown as it is.
+static struct Image *toolImage[BUTTON_COUNT][2];
+static UBYTE toolPen[BUTTON_COUNT][ICONPENS_MAX];
+static BOOL  toolPenOwned[BUTTON_COUNT][ICONPENS_MAX];
+
+// The standard Workbench colours: the match without ObtainBestPen (OS 2).
+static const ULONG standardPens[4] = { 0xAAAAAA, 0x000000, 0xFFFFFF, 0x6688BB };
+
+static struct Image *RemapToolImage(const struct Image *img, const UBYTE *map, int n)
+{
+    struct Image *out;
+    UBYTE maxPen = 0;
+    UWORD depth;
+    ULONG plane;
+    int i;
+
+    for (i = 0; i < n; i++)
+        if (map[i] > maxPen) maxPen = map[i];
+    depth = IconPens_Depth(maxPen);
+    plane = IconPens_PlaneSize(img->Width, img->Height);
+    if (!(out = AllocVec(sizeof(struct Image), MEMF_CLEAR)))
+        return NULL;
+    if (!(out->ImageData = AllocVec(plane * depth, MEMF_CHIP)))
+    {
+        FreeVec(out);
+        return NULL;
+    }
+    out->LeftEdge   = img->LeftEdge;
+    out->TopEdge    = img->TopEdge;
+    out->Width      = img->Width;
+    out->Height     = img->Height;
+    out->Depth      = depth;
+    out->PlanePick  = (UBYTE)((1 << depth) - 1);
+    IconPens_Remap(img->ImageData, img->Width, img->Height, img->Depth, img->PlanePick,
+                   img->PlaneOnOff, map, n, out->ImageData, depth);
+    return out;
+}
+
+static void RemapToolIcon(UWORD i)
+{
+    struct Gadget *gad = &dob[i]->do_Gadget;
+    struct Image **render[2];
+    ULONG rgb[ICONPENS_MAX];
+    char *value;
+    int n, k;
+
+    value = (char *)FindToolType((CONST_STRPTR *)dob[i]->do_ToolTypes, ICONPENS_TOOLTYPE);
+    if (!value || !(n = IconPens_Parse(value, rgb)))
+        return;
+    for (k = 0; k < n; k++)
+    {
+        toolPenOwned[i][k] = FALSE;
+        if (k == 0)                                 // the icon's background
+            toolPen[i][k] = (UBYTE)drawInfo->dri_Pens[BACKGROUNDPEN];
+        else if (GfxBase->LibNode.lib_Version >= 39)
+            toolPen[i][k] = ObtainNearestPen(scr->ViewPort.ColorMap, rgb[k], PRECISION_IMAGE,
+                                             &toolPenOwned[i][k]);
+        else
+            toolPen[i][k] = (UBYTE)IconPens_Nearest(rgb[k], standardPens, 4);
+    }
+    render[0] = (struct Image **)&gad->GadgetRender;
+    render[1] = (struct Image **)&gad->SelectRender;
+    for (k = 0; k < 2; k++)
+        if (*render[k] && (toolImage[i][k] = RemapToolImage(*render[k], toolPen[i], n)))
+            *render[k] = toolImage[i][k];
+}
+
+static void FreeToolIcons(void)
+{
+    UWORD i, k;
+
+    for (i = 0; i < BUTTON_COUNT; i++)
+    {
+        for (k = 0; k < 2; k++)
+            if (toolImage[i][k])
+            {
+                FreeVec(toolImage[i][k]->ImageData);
+                FreeVec(toolImage[i][k]);
+                toolImage[i][k] = NULL;
+            }
+        for (k = 0; k < ICONPENS_MAX; k++)
+            if (toolPenOwned[i][k])
+            {
+                ReleasePen(scr->ViewPort.ColorMap, toolPen[i][k]);
+                toolPenOwned[i][k] = FALSE;
+            }
+        if (dob[i]) { FreeDiskObject(dob[i]);  dob[i] = NULL; }
+    }
+}
+
 void CloseToolBarWindow(void)
 {
     if (toolBarWin)
     {
         register struct MenuItem *item;
-         register UWORD i;
 
         ClearMenuStrip(toolBarWin);
         CloseWindow(toolBarWin);
         toolBarWin = NULL;
-
-        for(i=0; i<BUTTON_COUNT; i++)
-        {
-            if(dob[i]) { FreeDiskObject(dob[i]);  dob[i]= NULL; }
-        }
+        FreeToolIcons();
 
         item = GetMenuItemFromID(MENU_TOOL_BAR);
         if (item != NULL)
@@ -2080,13 +2176,15 @@ void OpenToolBarWindow(char setmenus)
 
         do
         {
-            strlcpy(buf,
-                    STATE_IS(APP_FULLSCREEN) ? "PROGDIR:SCIcons/" : "PROGDIR:WBIcons/",
-                    sizeof(buf));
+            // The icons carry their colours: one set for any screen, drawn
+            // for the shape of its pixels.
+            strlcpy(buf, ScreenFont_TallPixels(modeResX, modeResY) ? "PROGDIR:ToolBar/Wide/"
+                                                                   : "PROGDIR:ToolBar/Square/", sizeof(buf));
             strlcat(buf, icons[i], sizeof(buf));
             dob[i] = GetDiskObjectNew(buf);
             if(dob[i])
             {
+                RemapToolIcon(i);
                 if(gad) gad->NextGadget = &dob[i]->do_Gadget;
                 gad = &dob[i]->do_Gadget;
                 gad->NextGadget = 0;
@@ -2156,6 +2254,8 @@ void OpenToolBarWindow(char setmenus)
         CheckDimensions(&newWin);
 
         toolBarWin = OpenWindow(&newWin);
+        if (!toolBarWin)
+            FreeToolIcons();
         if (toolBarWin)
         {
             if(setmenus) ResetMenuStrip(toolBarWin, mainMenuStrip);

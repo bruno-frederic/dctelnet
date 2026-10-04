@@ -146,16 +146,21 @@
 ;   @ insert chars     A up           B down          C right
 ;   D left             E next line    F previous line H / f goto row;col
 ;   J erase display    K erase line   L insert lines  M delete lines
-;   P delete chars     R (stub)       S scroll up
+;   P delete chars     X erase chars  S scroll up
 ;   T scroll down      r set scroll region (DECSTBM top;bottom)
 ;   t set rows from 1st parameter     n (stub)
 ;   s save cursor+attrs               u restore cursor+attrs
 ;   h set mode:   20 = LNM (LF implies CR)
 ;                 >1 = scroll at margins    ?7 = auto-wrap
+;                 ?1 = cursor keys ESC O x (DECCKM, read by the client
+;                      with IBMCMD_GETMODES)
+;                 ?33 = iCE colours: SGR 5 is a bright background
 ;   l reset mode: same codes
 ;   m SGR: 0 reset, 1 bold (bright pens / pen 3 on 4-colour screens),
-;          3 italic, 4 underline, 7 reverse, 23/24 italic/underline
-;          off, 30-37/39 foreground, 40-47/49 background
+;          3 italic, 4 underline, 5 blink (1.11: the cells blink every
+;          half second; a bright background in iCE mode), 7 reverse, 23/24/25 italic/underline/blink off,
+;          30-37/39 foreground, 40-47/49 background
+; ESC 7 / ESC 8 save / restore the cursor, as CSI s / CSI u.
 ;
 ;=====================================================================
 
@@ -195,6 +200,13 @@ _LVOCloseLibrary    EQU -$19E
 _LVORawDoFmt        EQU -$20A
 _LVOOpenLibrary     EQU -$228
 _LVOCacheClearU     EQU -$27C    ; V36+
+_LVOWait            EQU -$13E   ; 1.11: blink timer
+_LVOOpenDevice      EQU -$1BC
+_LVOCloseDevice     EQU -$1C2
+_LVOSendIO          EQU -$1CE
+_LVOCheckIO         EQU -$1D4
+_LVOWaitIO          EQU -$1DA
+_LVOAbortIO         EQU -$1E0
 
 MEMF_PUB_CLEAR      EQU $10001   ; MEMF_PUBLIC|MEMF_CLEAR
 
@@ -241,6 +253,13 @@ CMD_DIE             EQU $7FF0   ; private: DevClose -> handler "exit"
 ; graphics.library; the unit 1<->7 swap and the depth checks no longer apply.
 IBMCMD_SETPENS      EQU $7FE0
 IBMCMD_GETCURSOR    EQU $7FE1   ; 1.9: io_Actual = row<<16 | column (1-based)
+IBMCMD_GETMODES     EQU $7FE2   ; 1.10: io_Actual = con_Modes (bit 3 = DECCKM:
+                                ;   the client sends cursor keys as ESC O x)
+IBMCMD_READTEXT     EQU $7FE3   ; 1.11: row io_Offset (1-based) of the screen
+                                ;   into io_Data, 4 bytes a cell (character, fg,
+                                ;   bg, flags), at most io_Length bytes;
+                                ;   io_Actual = bytes. IOERR_NOCMD: no buffer
+IO_OFFSET           EQU $2C
 rp_Mask             EQU $18
 IOERR_OPENFAIL      EQU -1
 IOERR_NOCMD         EQU $FD     ; -3 as a byte
@@ -390,7 +409,9 @@ con_RegBot          EQU $26     ; DECSTBM scroll region bottom row
 con_Col             EQU $28     ; cursor column, 1-based
 con_Row             EQU $2A     ; cursor row,    1-based
 con_Attrs           EQU $2C     ; long attribute state:
-con_AttrFlags       EQU $2C     ;   byte: bit4 bold, bit5 reverse
+con_AttrFlags       EQU $2C     ;   byte: bit4 bold, bit5 reverse,
+                                ;   bit6 blink (1.10: SGR 5; bright
+                                ;   background in iCE mode)
 con_SoftStyle       EQU $2F     ;   byte: bit0 underline, bit2 italic
                                 ;   (word $2E/$2F is fed to SetSoftStyle)
 con_FgPen           EQU $30
@@ -407,6 +428,8 @@ con_Modes           EQU $46     ; current mode word, low byte:
 con_ModeFlags       EQU $47     ;   bit0 LNM (LF implies CR)  [h/l 20]
                                 ;   bit1 auto-wrap            [?7]
                                 ;   bit2 scroll at margins    [>1]
+                                ;   bit3 DECCKM (1.10)        [?1]
+                                ;   bit4 iCE colours (1.10)   [?33]
 con_SavedModes      EQU $48     ; 's'/'u' snapshot of con_Modes
 con_InitModes       EQU $4A     ; initial mode word (set by handler)
 con_TextCol         EQU $4E     ; column where the pending text starts
@@ -428,7 +451,24 @@ con_PenMapOn        EQU $21A    ; word: <>0 once a client sent IBMCMD_SETPENS
 con_HeightPx        EQU $21C    ; drawable height when the grid was measured
 con_WrapPending     EQU $21E    ; 1.5: word, <>0 = a character filled the last
                                 ;   column; the next printable wraps first
-CON_FRAME           EQU $226    ; handler stack frame holding con (was $210)
+con_Shadow          EQU $220    ; 1.11: long, the screen buffer (4 bytes a cell)
+con_ShadowSize      EQU $224    ;   long: its size in bytes
+con_ShadowCols      EQU $228    ;   word: its columns (con_Cols when made)
+con_ShadowRows      EQU $22A    ;   word: its rows
+con_TimerReq        EQU $22C    ; 1.11: long, the blink timer's request
+con_TimerPort       EQU $230    ;   long: its reply port
+con_BlinkPhase      EQU $234    ;   word: 0 blinking cells shown, else hidden
+con_BlinkSeen       EQU $236    ;   word: <>0 once a blinking cell was drawn
+CON_FRAME           EQU $23E    ; handler stack frame holding con (was $210;
+                                ;   con starts at frame+6: $237 is its last byte)
+TIMEREQUEST_SIZE    EQU 40      ; struct timerequest
+TR_ADDREQUEST       EQU 9
+UNIT_VBLANK         EQU 1
+tr_Secs             EQU $20
+tr_Micro            EQU $24
+mn_ReplyPort        EQU $0E
+mn_Length           EQU $12
+BLINK_MICROS        EQU 500000  ; half a second on, half a second off
 
 ;=====================================================================
         SECTION "Segment0",CODE
@@ -484,9 +524,10 @@ DevInit:                                ; was AJL_0_20
         move.l  A1,D0
         lea     LIB_VERSION(A5),A3
         move.w  D0,(A3)+                ; lib_Version  = 1
-        lea     9,A1                    ; 1.9: revision 9 (CUB/CUF, cursor query)
+        lea     11,A1                   ; 1.11: revision 11 (screen buffer,
+                                        ;   IBMCMD_READTEXT, blink)
         move.l  A1,D0
-        move.w  D0,(A3)+                ; lib_Revision = 9
+        move.w  D0,(A3)+                ; lib_Revision = 11
         move.l  #DevIdString,(A3)+      ; lib_IdString
         lea     dev_RelocTab(A5),A3
         clr.l   (A3)+                   ; dev_RelocTab = NULL
@@ -779,6 +820,10 @@ DevExpunge:                             ; was AJL_0_27A
 HandlerProc:                            ; was JL_0_2EC
         suba.w  #CON_FRAME,A7
         movem.l A3-A6,-(A7)
+        clr.l   $16+con_Shadow(A7)      ; 1.11: no screen buffer yet,
+        clr.l   $16+con_TimerReq(A7)    ;   no blink timer
+        clr.l   $16+con_TimerPort(A7)
+        clr.l   $16+con_BlinkPhase(A7)  ;   (and con_BlinkSeen)
         move.l  A6,$10(A7)
         suba.l  A1,A1
         movea.l AbsExecBase.W,A6
@@ -861,22 +906,47 @@ HandlerProc:                            ; was JL_0_2EC
         pea     $1A(A7)                 ; &con (first pea still pushed)
         bsr.w   ToggleCursor            ; draw the initial cursor
         addq.w  #8,A7
+        lea     $16(A7),A5              ; 1.11: the blink timer (none:
+        bsr.w   BlinkOpen               ;   nothing blinks)
 .mainWait:
-        movea.l g_CmdPort(A4),A0
+        movea.l g_CmdPort(A4),A0        ; 1.11: wait for a command or the
+        moveq   #0,D0                   ;   blink timer
+        move.b  MP_SIGBIT(A0),D1
+        bset    D1,D0
+        move.l  $16+con_TimerPort(A7),D1
+        beq.b   .waitSigs
+        movea.l D1,A0
+        move.b  MP_SIGBIT(A0),D1
+        bset    D1,D0
+.waitSigs:
         movea.l AbsExecBase.W,A6
-        jsr     _LVOWaitPort(A6)
+        jsr     _LVOWait(A6)
+        move.l  $16+con_TimerReq(A7),D0
+        beq.w   .pollNext
+        movea.l D0,A1
+        jsr     _LVOCheckIO(A6)
+        tst.l   D0
+        beq.w   .pollNext               ; the timer is still running
+        movea.l $16+con_TimerReq(A7),A1
+        jsr     _LVOWaitIO(A6)          ; take its reply
+        lea     $16(A7),A5
+        bsr.w   BlinkTick
         bra.w   .pollNext
 .gotMsg:                                ; A5 = IOStdReq
         moveq   #0,D0
         move.w  IO_COMMAND(A5),D0
         cmpi.l  #IBMCMD_SETPENS,D0      ; 1.5: pen table from the client
-        beq.b   .doSetPens
+        beq.w   .doSetPens
         cmpi.l  #IBMCMD_GETCURSOR,D0    ; 1.9: where the cursor is, for a
         beq.b   .doGetCursor            ;   client answering a BBS's DSR
+        cmpi.l  #IBMCMD_GETMODES,D0     ; 1.10: the mode flags, for a client
+        beq.b   .doGetModes             ;   sending cursor keys (DECCKM)
+        cmpi.l  #IBMCMD_READTEXT,D0     ; 1.11: a row of the screen, for a
+        beq.b   .doReadText             ;   client copying or saving it
         subq.l  #3,D0                   ; CMD_WRITE?
-        beq.b   .doWrite
+        beq.w   .doWrite
         subi.l  #CMD_DIE-CMD_WRITE,D0   ; CMD_DIE?
-        bne.b   .reply                  ; anything else: just reply
+        bne.w   .reply                  ; anything else: just reply
         move.l  g_CmdPort(A4),-(A7)     ; 1.8 FIXED: the handler deletes
         bsr.w   DeletePort_             ;   its own port, so FreeSignal
         addq.w  #4,A7                   ;   frees ITS signal. UnitClose
@@ -888,13 +958,49 @@ HandlerProc:                            ; was JL_0_2EC
         jsr     _LVOForbid(A6)          ;   and fall off the process
         movea.l A5,A1
         jsr     _LVOReplyMsg(A6)
-        bra.b   .exit
+        bra.w   .exit
 .doGetCursor:
         moveq   #0,D0
         move.w  $16+con_Row(A7),D0      ; con lives at $16 of the frame
         swap    D0
         move.w  $16+con_Col(A7),D0
         move.l  D0,IO_ACTUAL(A5)        ; row<<16 | column
+        bra.b   .reply
+.doGetModes:
+        moveq   #0,D0
+        move.w  $16+con_Modes(A7),D0
+        move.l  D0,IO_ACTUAL(A5)        ; con_Modes
+        bra.b   .reply
+.doReadText:
+        movea.l A5,A3                   ; A3 = request (the startup
+        lea     $16(A7),A5              ;   message is long replied)
+        clr.l   IO_ACTUAL(A3)
+        move.l  IO_OFFSET(A3),D0        ; row
+        moveq   #1,D1
+        bsr.w   ShadowAddr
+        bne.b   .rtRow
+        tst.l   con_Shadow(A5)
+        bne.b   .rtDone                 ; no such row: 0 bytes
+        move.b  #IOERR_NOCMD,IO_ERROR(A3)
+        bra.b   .rtDone
+.rtRow:
+        moveq   #0,D1
+        move.w  con_ShadowCols(A5),D1
+        lsl.l   #2,D1                   ; bytes in a row
+        cmp.l   IO_LENGTH(A3),D1
+        bls.b   .rtLength
+        move.l  IO_LENGTH(A3),D1
+.rtLength:
+        move.l  D1,IO_ACTUAL(A3)
+        movea.l IO_DATA(A3),A1
+        bra.b   .rtNext
+.rtCopy:
+        move.b  (A0)+,(A1)+
+.rtNext:
+        subq.l  #1,D1
+        bpl.b   .rtCopy
+.rtDone:
+        movea.l A3,A5
         bra.b   .reply
 .doSetPens:
         move.l  IO_DATA(A5),-(A7)
@@ -923,6 +1029,9 @@ HandlerProc:                            ; was JL_0_2EC
         bne.w   .gotMsg
         bra.w   .mainWait
 .exit:
+        lea     $16(A7),A5              ; 1.11: con -- give the screen
+        bsr.w   ShadowFree              ;   buffer and the timer back
+        bsr.w   BlinkClose
         movem.l (A7)+,A3-A6
         adda.w  #CON_FRAME,A7
         rts                             ; process terminates
@@ -947,6 +1056,7 @@ ConInit:                                ; was JL_0_458 (1.5: grid via MeasureGri
         move.w  D1,con_Row(A5)          ; home the cursor
         move.w  D1,con_Col(A5)
         bsr.w   MeasureGrid             ; rows, cols, region, tab stops
+        bsr.w   ShadowFillAll           ; 1.11: the window was cleared
         addq.w  #4,A7
         clr.w   con_WrapPending(A5)
         moveq   #1,D1
@@ -1020,6 +1130,7 @@ MeasureGrid:
         move.w  #MAX_COLS,D0
 .colsOk:
         move.w  D0,con_Cols(A5)
+        bsr.w   ShadowResize            ; 1.11: a buffer of the new grid
         clr.w   con_WrapPending(A5)     ; a new grid: no wrap due
         move.w  #1,con_RegTop(A5)       ; scroll region = full window
         move.w  con_Rows(A5),con_RegBot(A5)
@@ -1163,6 +1274,7 @@ SetPenMap:
         bsr.w   MapPen
         movea.l con_RastPort(A5),A1
         jsr     _LVOSetRast(A6)         ; clear to the ANSI background
+        bsr.w   ShadowFillAll           ; 1.11: the screen buffer too
         move.l  A5,-(A7)
         bsr.w   ToggleCursor            ; draw the cursor with the new pens
         addq.w  #4,A7
@@ -1284,7 +1396,8 @@ Csi_AtSign_InsertChars:                 ; was AJL_0_600
 .haveCount:
         move.w  con_Col(A5),D0
         cmp.w   con_Cols(A5),D0
-        bcc.b   .done                   ; cursor beyond line: nothing
+        bhi.w   .done                   ; 1.10 FIXED: the last column
+                                        ;   counts too (was bcc)
         movea.l g_RastPort(A4),A1
         movea.l rp_Font(A1),A0          ; A0 = font
         moveq   #0,D1
@@ -1324,18 +1437,33 @@ Csi_AtSign_InsertChars:                 ; was AJL_0_600
         movea.l g_GfxBase(A4),A6
         moveq   #0,D1                   ; dy = 0
         jsr     _LVOScrollRaster(A6)
+        move.w  con_Row(A5),D0          ; 1.11: the screen buffer too
+        move.w  con_Col(A5),D1
+        moveq   #0,D3
+        move.b  D7,D3
+        bsr.w   ShadowInsertCells
 .done:
         movem.l (A7)+,D2-D5/D7/A5-A6
         adda.w  #$10,A7
         rts
 
 ;---------------------------------------------------------------------
-; CSI 'R' -- cursor position report: not implemented (the device has
-; no read channel), accepted and ignored.
+; CSI 'X' -- erase N characters (ECH, 1.10): blank N cells from the
+; cursor, clipped to the right edge; the cursor stays.  It took the
+; table slot of CSI 'R' (a report a terminal sends, never receives),
+; whose stub did nothing: an unknown sequence is dropped the same way.
 ;---------------------------------------------------------------------
-Csi_R_Stub:                             ; was AJL_0_6A4
-        subq.w  #4,A7
-        addq.w  #4,A7
+Csi_X_EraseChars:
+        movea.l $8(A7),A0               ; params
+        moveq   #0,D0
+        move.b  (A0),D0                 ; N (0 -> 1)
+        bne.b   .haveCount
+        moveq   #1,D0
+.haveCount:
+        move.l  D0,-(A7)
+        move.l  $8(A7),-(A7)            ; con
+        bsr.w   EraseCellsRight
+        addq.w  #8,A7
         rts
 
 ;---------------------------------------------------------------------
@@ -1358,7 +1486,7 @@ Csi_s_SaveCursor:                       ; was AJL_0_6AA
 
 ;---------------------------------------------------------------------
 ; CSI 'u' -- restore the state saved by 's' and re-apply pens and
-; soft style to the RastPort.
+; soft style to the RastPort. DECCKM and iCE colours stay as they are.
 ;---------------------------------------------------------------------
 Csi_u_RestoreCursor:                    ; was AJL_0_6DA
         subq.w  #4,A7
@@ -1373,7 +1501,21 @@ Csi_u_RestoreCursor:                    ; was AJL_0_6DA
         move.w  D0,(A1)+
         move.w  (A0)+,(A1)+             ; bg
         move.b  con_SavedMask(A5),con_CharMask(A5)
+        move.b  con_ModeFlags(A5),D0    ; 1.10: DECCKM and iCE colours are
+        andi.b  #$18,D0                 ;   terminal modes, not cursor
         move.w  con_SavedModes(A5),con_Modes(A5)
+        andi.b  #$E7,con_ModeFlags(A5)  ;   state: a restore keeps the
+        or.b    D0,con_ModeFlags(A5)    ;   current ones
+        move.w  con_Rows(A5),D0         ; 1.10: the grid may have shrunk
+        cmp.w   con_Row(A5),D0          ;   since the save (window
+        bcc.b   .rowOk                  ;   resize, font change)
+        move.w  D0,con_Row(A5)
+.rowOk:
+        move.w  con_Cols(A5),D0
+        cmp.w   con_Col(A5),D0
+        bcc.b   .colOk
+        move.w  D0,con_Col(A5)
+.colOk:
         moveq   #0,D0
         move.w  con_SavedFg(A5),D0
         bsr.w   MapPen
@@ -1403,6 +1545,9 @@ Csi_u_RestoreCursor:                    ; was AJL_0_6DA
 ;   (none) 20 -> LNM: LF implies CR        (bit 0)
 ;   '>'     1 -> scroll at margins on      (bit 2)
 ;   '?'     7 -> auto-wrap on (DECAWM)     (bit 1)
+;   '?'     1 -> cursor keys ESC O x (DECCKM, bit 3; 1.10)
+;   '?'    33 -> iCE colours: blink = bright background (bit 4; 1.10)
+; The prefix applies to every parameter of the sequence.
 ;---------------------------------------------------------------------
 Csi_h_SetMode:                          ; was AJL_0_748
         subq.w  #4,A7
@@ -1415,11 +1560,10 @@ Csi_h_SetMode:                          ; was AJL_0_748
         move.l  A6,$8(A7)
         bra.b   .loopCheck
 .body:
-        moveq   #0,D0
-        move.w  D6,D0
-        moveq   #0,D1
-        addi.l  #con_RawBuf,D0
-        move.b  0(A1,D0.L),D1           ; raw char for this param
+        moveq   #0,D1                   ; 1.10 FIXED: the prefix is the
+        move.b  con_RawBuf(A1),D1       ;   sequence's first raw char; it
+                                        ;   was the Nth for param N, so
+                                        ;   ?1;7h set LNM-less param 7
         tst.l   D1
         beq.b   .noPrefix
         moveq   #'>',D0
@@ -1447,10 +1591,21 @@ Csi_h_SetMode:                          ; was AJL_0_748
 .qmPrefix:
         moveq   #0,D0
         move.w  D6,D0
+        move.b  0(A0,D0.L),D0
         moveq   #7,D1
-        cmp.b   0(A0,D0.L),D1           ; ?7 = auto-wrap
-        bne.b   .next
+        cmp.b   D1,D0                   ; ?7 = auto-wrap
+        bne.b   .qmNot7
         bset    #1,con_ModeFlags(A1)
+.qmNot7:
+        moveq   #1,D1
+        cmp.b   D1,D0                   ; 1.10: ?1 = DECCKM
+        bne.b   .qmNot1
+        bset    #3,con_ModeFlags(A1)
+.qmNot1:
+        moveq   #33,D1
+        cmp.b   D1,D0                   ; 1.10: ?33 = iCE colours
+        bne.b   .next
+        bset    #4,con_ModeFlags(A1)
 .next:
         addq.w  #1,D6
 .loopCheck:
@@ -1476,11 +1631,8 @@ Csi_l_ResetMode:                        ; was AJL_0_7D0
         move.l  A6,$8(A7)
         bra.b   .loopCheck
 .body:
-        moveq   #0,D0
-        move.w  D6,D0
-        moveq   #0,D1
-        addi.l  #con_RawBuf,D0
-        move.b  0(A1,D0.L),D1
+        moveq   #0,D1                   ; 1.10 FIXED: sequence prefix
+        move.b  con_RawBuf(A1),D1
         tst.l   D1
         beq.b   .noPrefix
         moveq   #'>',D0
@@ -1508,10 +1660,21 @@ Csi_l_ResetMode:                        ; was AJL_0_7D0
 .qmPrefix:
         moveq   #0,D0
         move.w  D6,D0
+        move.b  0(A0,D0.L),D0
         moveq   #7,D1
-        cmp.b   0(A0,D0.L),D1
-        bne.b   .next
+        cmp.b   D1,D0
+        bne.b   .qmNot7
         bclr    #1,con_ModeFlags(A1)    ; auto-wrap off
+.qmNot7:
+        moveq   #1,D1
+        cmp.b   D1,D0
+        bne.b   .qmNot1
+        bclr    #3,con_ModeFlags(A1)    ; 1.10: DECCKM off
+.qmNot1:
+        moveq   #33,D1
+        cmp.b   D1,D0
+        bne.b   .next
+        bclr    #4,con_ModeFlags(A1)    ; 1.10: iCE colours off
 .next:
         addq.w  #1,D6
 .loopCheck:
@@ -1563,7 +1726,7 @@ Csi_m_SetGraphics:                      ; was AJL_0_858
         dc.w    .next-.jBase            ;  2 (faint) unsupported
         dc.w    .sgrItalic-.jBase       ;  3 italic
         dc.w    .sgrUnderline-.jBase    ;  4 underline
-        dc.w    .next-.jBase            ;  5 (blink) unsupported
+        dc.w    .sgrBlink-.jBase        ;  5 blink (1.10)
         dc.w    .next-.jBase            ;  6
         dc.w    .sgrReverse-.jBase      ;  7 reverse video
         dc.w    .next-.jBase            ;  8
@@ -1583,7 +1746,7 @@ Csi_m_SetGraphics:                      ; was AJL_0_858
         dc.w    .next-.jBase            ; 22 (normal) unsupported
         dc.w    .sgrItalicOff-.jBase    ; 23 italic off
         dc.w    .sgrUnderlOff-.jBase    ; 24 underline off
-        dc.w    .next-.jBase            ; 25
+        dc.w    .sgrBlinkOff-.jBase     ; 25 blink off (1.10)
         dc.w    .next-.jBase            ; 26
         dc.w    .next-.jBase            ; 27 (reverse off) unsupported
         dc.w    .next-.jBase            ; 28
@@ -1634,6 +1797,15 @@ Csi_m_SetGraphics:                      ; was AJL_0_858
         bra.w   .next
 .sgrReverse:                            ; 7
         bset    #5,con_AttrFlags(A5)
+        bra.w   .next
+.sgrBlink:                              ; 5 (1.10): a bright background in
+        bset    #6,con_AttrFlags(A5)    ;   iCE mode, applied with the bg
+        move.w  #1,$2A(A7)              ;   pen below
+        bra.w   .next
+.sgrBlinkOff:                           ; 25 (1.10): bit 3 of the bg pen
+        bclr    #6,con_AttrFlags(A5)    ;   is only ever set by iCE (SGR
+        bclr    #3,con_BgPen+1(A5)      ;   40-47 give 0-7)
+        move.w  #1,$2A(A7)
         bra.w   .next
 .sgrItalicOff:                          ; 23
         bclr    #2,con_SoftStyle(A5)
@@ -1765,6 +1937,16 @@ Csi_m_SetGraphics:                      ; was AJL_0_858
         movea.l $24(A7),A6
         tst.w   $2A(A7)
         beq.b   .applyStyle
+        btst    #6,con_AttrFlags(A5)    ; 1.10: blink in iCE mode on a
+        beq.b   .setBPen                ;   screen with bright pens: the
+        btst    #4,con_ModeFlags(A5)    ;   background gets pen+8 (kept
+        beq.b   .setBPen                ;   in con_BgPen, as bold keeps
+        tst.w   con_BoldPens(A5)        ;   its bright pen in con_FgPen,
+        beq.b   .setBPen                ;   so erases use it too)
+        tst.w   con_FixedPen(A5)
+        bne.b   .setBPen
+        bset    #3,con_BgPen+1(A5)
+.setBPen:
         moveq   #0,D0
         move.w  con_BgPen(A5),D0
         bsr.w   MapPen
@@ -1839,6 +2021,14 @@ Csi_S_ScrollUp:                         ; was AJL_0_ADE
         move.l  D0,D2
         move.l  D0,D3
         jsr     _LVOScrollRaster(A6)
+        move.l  A5,-(A7)                ; 1.11: the screen buffer too
+        movea.l $30(A7),A5              ;   (con: $2C + the push)
+        moveq   #1,D0
+        move.w  con_Rows(A5),D1
+        moveq   #0,D3
+        move.b  D7,D3
+        bsr.w   ShadowScrollUp
+        movea.l (A7)+,A5
         movem.l (A7)+,D2-D5/D7/A6
         adda.w  #$10,A7
         rts
@@ -1884,6 +2074,14 @@ Csi_T_ScrollDown:                       ; was AJL_0_B4E
         move.l  D0,D2
         move.l  D0,D3
         jsr     _LVOScrollRaster(A6)
+        move.l  A5,-(A7)                ; 1.11: the screen buffer too
+        movea.l $30(A7),A5
+        moveq   #1,D0
+        move.w  con_Rows(A5),D1
+        moveq   #0,D3
+        move.b  D7,D3
+        bsr.w   ShadowScrollDown
+        movea.l (A7)+,A5
         movem.l (A7)+,D2-D5/D7/A6
         adda.w  #$10,A7
         rts
@@ -1905,7 +2103,8 @@ Csi_P_DeleteChars:                      ; was AJL_0_BBE
 .haveCount:
         move.w  con_Col(A5),D0
         cmp.w   con_Cols(A5),D0
-        bcc.b   .done
+        bhi.w   .done                   ; 1.10 FIXED: the last column
+                                        ;   counts too (was bcc)
         movea.l g_RastPort(A4),A1
         movea.l rp_Font(A1),A0
         moveq   #0,D1
@@ -1944,6 +2143,11 @@ Csi_P_DeleteChars:                      ; was AJL_0_BBE
         movea.l g_GfxBase(A4),A6
         moveq   #0,D1                   ; dy = 0
         jsr     _LVOScrollRaster(A6)
+        move.w  con_Row(A5),D0          ; 1.11: the screen buffer too
+        move.w  con_Col(A5),D1
+        moveq   #0,D3
+        move.b  D7,D3
+        bsr.w   ShadowDeleteCells
 .done:
         movem.l (A7)+,D2-D5/D7/A5-A6
         adda.w  #$10,A7
@@ -1967,10 +2171,10 @@ Csi_M_DeleteLines:                      ; was AJL_0_C60
         move.w  con_Row(A5),D0
         moveq   #1,D1
         cmp.w   D1,D0
-        bcs.b   .done                   ; row out of range
+        bcs.w   .done                   ; row out of range
         move.w  con_Rows(A5),D1
         cmp.w   D1,D0
-        bhi.b   .done
+        bhi.w   .done
         moveq   #0,D2
         move.w  D0,D2
         moveq   #0,D0
@@ -2015,6 +2219,11 @@ Csi_M_DeleteLines:                      ; was AJL_0_C60
         moveq   #0,D0                   ; dx=0
         move.l  D0,D2                   ; xmin=0
         jsr     _LVOScrollRaster(A6)
+        move.w  con_Row(A5),D0          ; 1.11: the screen buffer too
+        move.w  con_Rows(A5),D1
+        moveq   #0,D3
+        move.b  D7,D3
+        bsr.w   ShadowScrollUp
 .done:
         movem.l (A7)+,D2-D5/D7/A5-A6
         adda.w  #$C,A7
@@ -2047,7 +2256,7 @@ Csi_L_InsertLines:                      ; was AJL_0_D0C
         bcs.w   .done
         move.w  con_Rows(A5),D1
         cmp.w   D1,D0
-        bhi.b   .done
+        bhi.w   .done
         moveq   #0,D2
         move.w  D0,D2
         moveq   #0,D0
@@ -2094,6 +2303,11 @@ Csi_L_InsertLines:                      ; was AJL_0_D0C
         moveq   #0,D0
         move.l  D0,D2
         jsr     _LVOScrollRaster(A6)
+        move.w  con_Row(A5),D0          ; 1.11: the screen buffer too
+        move.w  con_Rows(A5),D1
+        moveq   #0,D3
+        move.b  D7,D3
+        bsr.w   ShadowScrollDown
 .done:
         movem.l (A7)+,D2-D5/D7/A5-A6
         adda.w  #$C,A7
@@ -2161,6 +2375,10 @@ EraseCellsRight:                        ; was JL_0_E1A
         subq.w  #4,A7
         movem.l D2-D5/D7/A5,-(A7)
         movea.l $20(A7),A5              ; con
+        move.w  con_Row(A5),D0          ; 1.11: the screen buffer too
+        move.w  con_Col(A5),D1
+        move.w  $26(A7),D3              ; n
+        bsr.w   ShadowFill
         move.w  con_Col(A5),D0
         move.w  $26(A7),D1              ; n
         add.w   D0,D1
@@ -2217,6 +2435,10 @@ EraseLineToCursor:                      ; was JL_0_E90
         moveq   #1,D1
         cmp.w   D1,D0
         bls.b   .done
+        move.w  D0,D3                   ; 1.11: the screen buffer too:
+        move.w  con_Row(A5),D0          ;   columns 1 to the cursor
+        bsr.w   ShadowFill
+        move.w  D3,D0
         movea.l g_RastPort(A4),A1
         movea.l rp_Font(A1),A0
         move.w  con_Row(A5),D1
@@ -2297,6 +2519,10 @@ EraseTopToCursor:                       ; was JL_0_F3E
         subq.w  #4,A7
         movem.l D2/A5,-(A7)
         movea.l $10(A7),A5              ; con
+        moveq   #1,D0                   ; 1.11: the screen buffer too:
+        move.w  con_Row(A5),D1          ;   rows above the cursor
+        subq.w  #1,D1
+        bsr.w   ShadowFillRows
         move.l  A6,$8(A7)
         move.w  con_Row(A5),D0
         moveq   #1,D1
@@ -2332,6 +2558,11 @@ EraseLinesFrom:                         ; was JL_0_F92
         subq.w  #4,A7
         movem.l D2-D3/D7/A5,-(A7)
         movea.l $18(A7),A5              ; con
+        move.w  con_Row(A5),D0          ; 1.11: the screen buffer too
+        move.w  D0,D1
+        add.w   $1E(A7),D1              ; n
+        subq.w  #1,D1
+        bsr.w   ShadowFillRows
         move.w  con_Row(A5),D0
         move.w  $1E(A7),D1              ; n
         add.w   D0,D1
@@ -2692,10 +2923,582 @@ FlushText:                              ; was JL_0_124E
         movea.l g_GfxBase(A4),A6
         jsr     _LVOText(A6)
 .flushed:
+        bsr.w   ShadowPutRun            ; 1.11: the screen buffer too
         clr.w   con_TextLen(A5)
         movem.l (A7)+,D2-D3/A5-A6
         adda.w  #$10,A7
         rts
+
+;---------------------------------------------------------------------
+; Screen buffer (1.11) -- what every cell shows: 4 bytes, the character,
+; the logical fg and bg pens and the attribute flags (con_AttrFlags bits
+; 4-6: bold, reverse, blink; soft style bits 0/2: underline, italic).
+; ibmcon drew straight into the RastPort and kept nothing, so no client
+; could read the screen back (IBMCMD_READTEXT: copy, save) and nothing
+; could redraw a cell. Every drawing path mirrors itself here.
+; The helpers take con in A5 and arguments in data registers, and keep
+; every register. Without a buffer (no memory) they do nothing.
+;---------------------------------------------------------------------
+
+; ShadowAddr -- A0 = the cell at row D0.w, column D1.w (1-based).
+; Returns with Z set when there is no such cell. Keeps D0/D1.
+ShadowAddr:
+        movem.l D1-D2,-(A7)
+        tst.l   con_Shadow(A5)
+        beq.b   .none
+        move.w  D0,D2
+        subq.w  #1,D2
+        cmp.w   con_ShadowRows(A5),D2
+        bcc.b   .none                   ; (row 0 wraps to $FFFF: none)
+        subq.w  #1,D1
+        cmp.w   con_ShadowCols(A5),D1
+        bcc.b   .none
+        mulu    con_ShadowCols(A5),D2   ; (row-1)*cols
+        andi.l  #$FFFF,D1
+        add.l   D1,D2
+        lsl.l   #2,D2
+        movea.l con_Shadow(A5),A0
+        adda.l  D2,A0
+        movem.l (A7)+,D1-D2
+        andi.b  #$FB,CCR                ; Z clear: a cell
+        rts
+.none:
+        movem.l (A7)+,D1-D2
+        ori.b   #$04,CCR                ; Z set: none
+        rts
+
+; ShadowAttr -- D2 = the current attributes as a cell with character 0.
+ShadowAttr:
+        move.l  D0,-(A7)
+        moveq   #0,D2
+        move.b  con_FgPen+1(A5),D2
+        lsl.w   #8,D2
+        move.b  con_BgPen+1(A5),D2
+        lsl.l   #8,D2
+        move.b  con_AttrFlags(A5),D2
+        andi.b  #$70,D2
+        move.b  con_SoftStyle(A5),D0
+        andi.b  #$05,D0
+        or.b    D0,D2
+        move.l  (A7)+,D0
+        rts
+
+; ShadowBlank -- D2 = an erased cell: a space on the current background.
+ShadowBlank:
+        moveq   #' ',D2
+        lsl.w   #8,D2
+        move.b  con_DefaultPen+1(A5),D2
+        lsl.l   #8,D2
+        move.b  con_BgPen+1(A5),D2
+        lsl.l   #8,D2
+        rts
+
+; ShadowPutRun -- the pending text run (FlushText) into the buffer.
+ShadowPutRun:
+        movem.l D0-D3/A0-A1,-(A7)
+        bsr.b   ShadowAttr
+        move.w  con_Row(A5),D0
+        move.w  con_TextCol(A5),D1
+        lea     con_TextBuf(A5),A1
+        move.w  con_TextLen(A5),D3
+        bra.b   .next
+.cell:
+        bsr.w   ShadowAddr
+        beq.b   .skip
+        move.l  D2,(A0)
+        move.b  (A1),(A0)               ; the character, as drawn
+        btst    #6,D2                   ; blinking: the timer redraws it
+        beq.b   .skip
+        move.w  #1,con_BlinkSeen(A5)
+.skip:
+        addq.w  #1,A1
+        addq.w  #1,D1
+.next:
+        dbra    D3,.cell
+        movem.l (A7)+,D0-D3/A0-A1
+        rts
+
+; ShadowFill -- blank D3.w cells of row D0.w from column D1.w.
+ShadowFill:
+        movem.l D1-D3/A0,-(A7)
+        tst.w   D3
+        ble.b   .done
+        bsr.b   ShadowBlank
+        subq.w  #1,D3
+.cell:
+        bsr.w   ShadowAddr
+        beq.b   .skip
+        move.l  D2,(A0)
+.skip:
+        addq.w  #1,D1
+        dbra    D3,.cell
+.done:
+        movem.l (A7)+,D1-D3/A0
+        rts
+
+; ShadowFillRows -- blank rows D0.w to D1.w (none when D0 > D1).
+ShadowFillRows:
+        movem.l D0-D3,-(A7)
+        move.w  D1,D2
+        bra.b   .next
+.row:
+        moveq   #1,D1
+        move.w  con_ShadowCols(A5),D3
+        bsr.b   ShadowFill
+        addq.w  #1,D0
+.next:
+        cmp.w   D2,D0
+        ble.b   .row
+        movem.l (A7)+,D0-D3
+        rts
+
+; ShadowFillAll -- blank the whole buffer (SetRast).
+ShadowFillAll:
+        movem.l D0-D1,-(A7)
+        moveq   #1,D0
+        move.w  con_ShadowRows(A5),D1
+        bsr.b   ShadowFillRows
+        movem.l (A7)+,D0-D1
+        rts
+
+; ShadowCopyRow -- row D0.w onto row D4.w.
+ShadowCopyRow:
+        movem.l D0-D2/A0-A1,-(A7)
+        moveq   #1,D1
+        bsr.w   ShadowAddr
+        beq.b   .done
+        movea.l A0,A1                   ; source
+        move.w  D4,D0
+        bsr.w   ShadowAddr
+        beq.b   .done
+        move.w  con_ShadowCols(A5),D2
+        bra.b   .next
+.cell:
+        move.l  (A1)+,(A0)+
+.next:
+        dbra    D2,.cell
+.done:
+        movem.l (A7)+,D0-D2/A0-A1
+        rts
+
+; ShadowScrollUp -- rows D0.w..D1.w move up D3.w rows; blanks below.
+ShadowScrollUp:
+        movem.l D0-D5,-(A7)
+        move.w  D0,D4                   ; destination row
+        move.w  D1,D5                   ; bottom
+.row:
+        cmp.w   D5,D4
+        bgt.b   .done
+        move.w  D4,D0
+        add.w   D3,D0                   ; source row
+        cmp.w   D5,D0
+        bgt.b   .blank
+        bsr.b   ShadowCopyRow
+        bra.b   .next
+.blank:
+        move.w  D4,D0
+        move.w  D4,D1
+        bsr.w   ShadowFillRows
+.next:
+        addq.w  #1,D4
+        bra.b   .row
+.done:
+        movem.l (A7)+,D0-D5
+        rts
+
+; ShadowScrollDown -- rows D0.w..D1.w move down D3.w rows; blanks above.
+ShadowScrollDown:
+        movem.l D0-D5,-(A7)
+        move.w  D0,D5                   ; top
+        move.w  D1,D4                   ; destination row
+.row:
+        cmp.w   D5,D4
+        blt.b   .done
+        move.w  D4,D0
+        sub.w   D3,D0                   ; source row
+        cmp.w   D5,D0
+        blt.b   .blank
+        bsr.b   ShadowCopyRow
+        bra.b   .next
+.blank:
+        move.w  D4,D0
+        move.w  D4,D1
+        bsr.w   ShadowFillRows
+.next:
+        subq.w  #1,D4
+        bra.b   .row
+.done:
+        movem.l (A7)+,D0-D5
+        rts
+
+; ShadowDeleteCells -- in row D0.w, D3.w cells at column D1.w go; the
+; rest of the row moves left, blanks at the end (CSI P).
+ShadowDeleteCells:
+        movem.l D1-D5/A0-A1,-(A7)
+        bsr.w   ShadowBlank
+        move.w  D1,D4                   ; destination column
+        move.w  con_ShadowCols(A5),D5
+.cell:
+        cmp.w   D5,D4
+        bgt.b   .done
+        move.w  D4,D1
+        add.w   D3,D1                   ; source column
+        cmp.w   D5,D1
+        bgt.b   .blank
+        bsr.w   ShadowAddr
+        beq.b   .next
+        movea.l A0,A1
+        move.w  D4,D1
+        bsr.w   ShadowAddr
+        beq.b   .next
+        move.l  (A1),(A0)
+        bra.b   .next
+.blank:
+        move.w  D4,D1
+        bsr.w   ShadowAddr
+        beq.b   .next
+        move.l  D2,(A0)
+.next:
+        addq.w  #1,D4
+        bra.b   .cell
+.done:
+        movem.l (A7)+,D1-D5/A0-A1
+        rts
+
+; ShadowInsertCells -- in row D0.w, D3.w blanks at column D1.w; the rest
+; of the row moves right (CSI @).
+ShadowInsertCells:
+        movem.l D1-D5/A0-A1,-(A7)
+        bsr.w   ShadowBlank
+        move.w  D1,D5                   ; first column
+        move.w  con_ShadowCols(A5),D4   ; destination column
+.cell:
+        cmp.w   D5,D4
+        blt.b   .done
+        move.w  D4,D1
+        sub.w   D3,D1                   ; source column
+        cmp.w   D5,D1
+        blt.b   .blank
+        bsr.w   ShadowAddr
+        beq.b   .next
+        movea.l A0,A1
+        move.w  D4,D1
+        bsr.w   ShadowAddr
+        beq.b   .next
+        move.l  (A1),(A0)
+        bra.b   .next
+.blank:
+        move.w  D4,D1
+        bsr.w   ShadowAddr
+        beq.b   .next
+        move.l  D2,(A0)
+.next:
+        subq.w  #1,D4
+        bra.b   .cell
+.done:
+        movem.l (A7)+,D1-D5/A0-A1
+        rts
+
+; ShadowResize -- a buffer for con_Cols x con_Rows (MeasureGrid). What
+; the old one held is kept where the two overlap.
+ShadowResize:
+        movem.l D0-D7/A0-A2/A6,-(A7)
+        move.w  con_Cols(A5),D4
+        move.w  con_Rows(A5),D5
+        tst.l   con_Shadow(A5)
+        beq.b   .alloc
+        cmp.w   con_ShadowCols(A5),D4
+        bne.b   .alloc
+        cmp.w   con_ShadowRows(A5),D5
+        beq.w   .done
+.alloc:
+        moveq   #0,D3
+        move.w  D4,D3
+        mulu    D5,D3
+        lsl.l   #2,D3                   ; bytes
+        move.l  D3,D0
+        moveq   #0,D1                   ; MEMF_ANY
+        movea.l AbsExecBase.W,A6
+        jsr     _LVOAllocMem(A6)
+        movea.l con_Shadow(A5),A2       ; the old buffer ...
+        move.l  con_ShadowSize(A5),D6
+        move.w  con_ShadowCols(A5),D7
+        swap    D7
+        move.w  con_ShadowRows(A5),D7   ; ... D7 = cols<<16 | rows
+        move.l  D0,con_Shadow(A5)
+        beq.b   .freeOld                ; no memory: no buffer
+        move.l  D3,con_ShadowSize(A5)
+        move.w  D4,con_ShadowCols(A5)
+        move.w  D5,con_ShadowRows(A5)
+        bsr.w   ShadowFillAll
+        move.l  A2,D0
+        beq.b   .done
+        cmp.w   D7,D5                   ; rows to keep: the fewer
+        bls.b   .rowsKept
+        move.w  D7,D5
+.rowsKept:
+        swap    D7                      ; old cols
+        move.w  D4,D2                   ; columns to keep: the fewer
+        cmp.w   D7,D2
+        bls.b   .colsKept
+        move.w  D7,D2
+.colsKept:
+        movea.l con_Shadow(A5),A0
+        movea.l A2,A1
+        bra.b   .nextRow
+.row:
+        movem.l A0-A1,-(A7)
+        move.w  D2,D1
+        bra.b   .nextCell
+.cell:
+        move.l  (A1)+,(A0)+
+.nextCell:
+        dbra    D1,.cell
+        movem.l (A7)+,A0-A1
+        moveq   #0,D0
+        move.w  D4,D0
+        lsl.l   #2,D0
+        adda.l  D0,A0                   ; next row of each
+        moveq   #0,D0
+        move.w  D7,D0
+        lsl.l   #2,D0
+        adda.l  D0,A1
+.nextRow:
+        dbra    D5,.row
+.freeOld:
+        move.l  A2,D0
+        beq.b   .done
+        movea.l A2,A1
+        move.l  D6,D0
+        movea.l AbsExecBase.W,A6
+        jsr     _LVOFreeMem(A6)
+.done:
+        movem.l (A7)+,D0-D7/A0-A2/A6
+        rts
+
+; ShadowFree -- give the buffer back (handler exit).
+ShadowFree:
+        movem.l D0-D1/A0-A1/A6,-(A7)
+        movea.l con_Shadow(A5),A1
+        move.l  A1,D0
+        beq.b   .done
+        move.l  con_ShadowSize(A5),D0
+        movea.l AbsExecBase.W,A6
+        jsr     _LVOFreeMem(A6)
+        clr.l   con_Shadow(A5)
+.done:
+        movem.l (A7)+,D0-D1/A0-A1/A6
+        rts
+
+; BlinkOpen -- the blink timer: a reply port, timer.device (vblank unit)
+; and the first half-second request. On any failure there is no timer and
+; nothing blinks.
+BlinkOpen:
+        movem.l D0-D1/A0-A1/A6,-(A7)
+        clr.l   -(A7)
+        clr.l   -(A7)
+        bsr.w   CreatePort_
+        addq.w  #8,A7
+        move.l  D0,con_TimerPort(A5)
+        beq.b   .done
+        move.l  #TIMEREQUEST_SIZE,D0
+        move.l  #$10001,D1              ; MEMF_PUBLIC|MEMF_CLEAR
+        movea.l AbsExecBase.W,A6
+        jsr     _LVOAllocMem(A6)
+        tst.l   D0
+        beq.b   .noRequest
+        movea.l D0,A1
+        move.l  con_TimerPort(A5),mn_ReplyPort(A1)
+        move.w  #TIMEREQUEST_SIZE,mn_Length(A1)
+        move.l  A1,con_TimerReq(A5)
+        lea     TimerName(PC),A0
+        moveq   #UNIT_VBLANK,D0
+        moveq   #0,D1
+        jsr     _LVOOpenDevice(A6)
+        tst.b   D0
+        beq.b   .opened
+        movea.l con_TimerReq(A5),A1     ; no timer.device
+        move.l  #TIMEREQUEST_SIZE,D0
+        jsr     _LVOFreeMem(A6)
+        clr.l   con_TimerReq(A5)
+.noRequest:
+        move.l  con_TimerPort(A5),-(A7)
+        bsr.w   DeletePort_
+        addq.w  #4,A7
+        clr.l   con_TimerPort(A5)
+        bra.b   .done
+.opened:
+        bsr.b   BlinkSend
+.done:
+        movem.l (A7)+,D0-D1/A0-A1/A6
+        rts
+
+; BlinkSend -- the next half-second request.
+BlinkSend:
+        movem.l D0-D1/A0-A1/A6,-(A7)
+        movea.l con_TimerReq(A5),A1
+        move.w  #TR_ADDREQUEST,IO_COMMAND(A1)
+        clr.l   tr_Secs(A1)
+        move.l  #BLINK_MICROS,tr_Micro(A1)
+        movea.l AbsExecBase.W,A6
+        jsr     _LVOSendIO(A6)
+        movem.l (A7)+,D0-D1/A0-A1/A6
+        rts
+
+; BlinkClose -- stop and give back the timer.
+BlinkClose:
+        movem.l D0-D1/A0-A1/A6,-(A7)
+        movea.l AbsExecBase.W,A6
+        move.l  con_TimerReq(A5),D0
+        beq.b   .noRequest
+        movea.l D0,A1
+        jsr     _LVOAbortIO(A6)
+        movea.l con_TimerReq(A5),A1
+        jsr     _LVOWaitIO(A6)
+        movea.l con_TimerReq(A5),A1
+        jsr     _LVOCloseDevice(A6)
+        movea.l con_TimerReq(A5),A1
+        move.l  #TIMEREQUEST_SIZE,D0
+        jsr     _LVOFreeMem(A6)
+        clr.l   con_TimerReq(A5)
+.noRequest:
+        move.l  con_TimerPort(A5),D0
+        beq.b   .done
+        move.l  D0,-(A7)
+        bsr.w   DeletePort_
+        addq.w  #4,A7
+        clr.l   con_TimerPort(A5)
+.done:
+        movem.l (A7)+,D0-D1/A0-A1/A6
+        rts
+
+; BlinkTick -- every half second: blinking cells hide or show again.
+; Only while some were drawn (con_BlinkSeen); a pass that finds none
+; stops the redraws until the next one is drawn.
+BlinkTick:
+        movem.l D0-D1/A0-A1,-(A7)
+        not.w   con_BlinkPhase(A5)
+        tst.w   con_BlinkSeen(A5)
+        beq.b   .send
+        move.l  A5,-(A7)
+        bsr.w   ToggleCursor            ; the cursor off the cells
+        bsr.b   ShadowBlinkDraw
+        move.l  D0,(A7)                 ; the count: ToggleCursor
+        move.l  A5,-(A7)                ;   clobbers D0
+        bsr.w   ToggleCursor
+        addq.w  #4,A7
+        move.l  (A7)+,D0
+        bne.b   .send
+        clr.w   con_BlinkSeen(A5)       ; none left
+.send:
+        bsr.w   BlinkSend
+        movem.l (A7)+,D0-D1/A0-A1
+        rts
+
+; ShadowBlinkDraw -- every blinking cell drawn for con_BlinkPhase: its
+; character, or a blank on its background. D0 = how many there are.
+; In iCE mode blink is a bright background: nothing to redraw.
+ShadowBlinkDraw:
+        movem.l D1-D7/A0-A3/A6,-(A7)
+        moveq   #0,D7                   ; blinking cells
+        tst.l   con_Shadow(A5)
+        beq.w   .done
+        btst    #4,con_ModeFlags(A5)
+        bne.w   .done
+        movea.l g_GfxBase(A4),A6
+        movea.l con_RastPort(A5),A2
+        movea.l g_RastPort(A4),A0
+        movea.l rp_Font(A0),A3          ; the cell size
+        move.l  con_Shadow(A5),D4       ; D4 = the cell
+        moveq   #1,D5                   ; row
+.row:
+        moveq   #1,D6                   ; column
+.cell:
+        movea.l D4,A0
+        btst    #6,3(A0)
+        beq.w   .next
+        addq.l  #1,D7
+        moveq   #JAM2,D0
+        btst    #5,3(A0)                ; reverse
+        beq.b   .mode
+        moveq   #JAM2_INVERS,D0
+.mode:
+        movea.l A2,A1
+        jsr     _LVOSetDrMd(A6)
+        movea.l D4,A0
+        moveq   #0,D0
+        move.b  1(A0),D0                ; fg
+        bsr.w   MapPen
+        movea.l A2,A1
+        jsr     _LVOSetAPen(A6)
+        movea.l D4,A0
+        moveq   #0,D0
+        move.b  2(A0),D0                ; bg
+        bsr.w   MapPen
+        movea.l A2,A1
+        jsr     _LVOSetBPen(A6)
+        movea.l D4,A0
+        moveq   #0,D0
+        move.b  3(A0),D0
+        andi.b  #$05,D0                 ; underline, italic
+        moveq   #STYLE_ENABLE,D1
+        movea.l A2,A1
+        jsr     _LVOSetSoftStyle(A6)
+        move.w  D6,D0
+        subq.w  #1,D0
+        mulu    tf_XSize(A3),D0         ; x = (col-1)*XSize
+        move.w  D5,D1
+        subq.w  #1,D1
+        mulu    tf_YSize(A3),D1
+        add.w   tf_Baseline(A3),D1      ; y = (row-1)*YSize + baseline
+        movea.l A2,A1
+        jsr     _LVOGfxMove(A6)
+        movea.l D4,A0                   ; the character ...
+        tst.w   con_BlinkPhase(A5)
+        beq.b   .draw
+        lea     BlinkBlank(PC),A0       ; ... or a blank
+.draw:
+        moveq   #1,D0
+        movea.l A2,A1
+        jsr     _LVOText(A6)
+.next:
+        addq.l  #4,D4
+        addq.w  #1,D6
+        cmp.w   con_ShadowCols(A5),D6
+        bls.w   .cell
+        addq.w  #1,D5
+        cmp.w   con_ShadowRows(A5),D5
+        bls.w   .row
+        tst.l   D7                      ; the RastPort as the text needs it
+        beq.b   .done
+        moveq   #0,D0
+        move.w  con_FgPen(A5),D0
+        bsr.w   MapPen
+        movea.l A2,A1
+        jsr     _LVOSetAPen(A6)
+        moveq   #0,D0
+        move.w  con_BgPen(A5),D0
+        bsr.w   MapPen
+        movea.l A2,A1
+        jsr     _LVOSetBPen(A6)
+        move.l  con_Attrs(A5),D0
+        andi.l  #$FFFF,D0               ; style word ($2E/$2F)
+        moveq   #STYLE_ENABLE,D1
+        movea.l A2,A1
+        jsr     _LVOSetSoftStyle(A6)
+        moveq   #JAM2,D0
+        movea.l A2,A1
+        jsr     _LVOSetDrMd(A6)
+.done:
+        move.l  D7,D0
+        movem.l (A7)+,D1-D7/A0-A3/A6
+        rts
+
+BlinkBlank:
+        dc.b    ' ',0
+TimerName:
+        dc.b    "timer.device",0
+        even
 
 ;---------------------------------------------------------------------
 ; CSI 'E' -- cursor to column 1, then N lines down (also the internal
@@ -2777,6 +3580,10 @@ CursorDownN:                            ; was AJL_0_1326
         moveq   #0,D0                   ; dx = 0
         move.l  D0,D2                   ; xmin = 0
         jsr     _LVOScrollRaster(A6)
+        move.w  con_RegTop(A5),D0       ; 1.11: the screen buffer too
+        move.w  con_RegBot(A5),D1
+        move.w  D7,D3
+        bsr.w   ShadowScrollUp
 .restoreA6:
         movea.l $2C(A7),A6
         bra.b   .done
@@ -2818,7 +3625,7 @@ CursorUpN:                              ; was AJL_0_1406
         move.w  con_Row(A5),D1
         sub.l   D0,D1                   ; D1 = target row
         btst    #2,con_ModeFlags(A5)
-        beq.b   .noScrollMode
+        beq.w   .noScrollMode
         moveq   #0,D0
         move.w  con_RegTop(A5),D0       ; FIXED(r): margin = region
         cmp.w   con_Row(A5),D0          ;   top; a cursor above the
@@ -2831,6 +3638,7 @@ CursorUpN:                              ; was AJL_0_1406
         move.w  D0,con_Row(A5)          ; cursor to the top margin
         sub.l   D1,D0                   ; lines = margin - target
         move.l  D0,D1                   ;   (subsumes fix 11)
+        move.l  D0,D6                   ; 1.11: kept for the buffer
         movea.l g_RastPort(A4),A1
         movea.l rp_Font(A1),A0
         moveq   #0,D2
@@ -2858,6 +3666,10 @@ CursorUpN:                              ; was AJL_0_1406
         moveq   #0,D0                   ; dx = 0
         move.l  D0,D2                   ; xmin = 0
         jsr     _LVOScrollRaster(A6)
+        move.w  con_RegTop(A5),D0       ; 1.11: the screen buffer too
+        move.w  con_RegBot(A5),D1
+        move.w  D6,D3
+        bsr.w   ShadowScrollDown
 .restoreA6:
         movea.l $28(A7),A6
         bra.b   .done
@@ -2889,6 +3701,7 @@ ClearScreenHome:                        ; was JL_0_14C8
         move.w  con_BgPen(A5),D0        ; FIXED: clear to the current
         bsr.w   MapPen                  ;   background pen (was 0)
         jsr     _LVOSetRast(A6)
+        bsr.w   ShadowFillAll           ; 1.11: the screen buffer too
         moveq   #1,D0
         move.w  D0,con_Row(A5)
         move.w  D0,con_Col(A5)
@@ -2957,6 +3770,12 @@ ConWrite:                               ; was JL_0_14F6
         tst.w   con_EscPending(A5)      ; --- state: after ESC -------
         beq.b   .notEsc
         clr.w   con_EscPending(A5)
+        moveq   #'7',D0                 ; 1.10: ESC 7 / ESC 8 (DECSC /
+        cmp.b   D0,D4                   ;   DECRC) = CSI s / CSI u
+        beq.b   .escSaveRestore
+        moveq   #'8',D0
+        cmp.b   D0,D4
+        beq.b   .escSaveRestore
         moveq   #'[',D0
         cmp.b   D0,D4
         bne.w   .nextChar               ; ESC + anything else: drop
@@ -2965,6 +3784,26 @@ ConWrite:                               ; was JL_0_14F6
         addq.w  #4,A7
         moveq   #1,D0
         move.w  D0,con_InCsi(A5)        ; enter CSI collection
+        bra.w   .nextChar
+
+.escSaveRestore:
+        tst.w   con_TextLen(A5)         ; pending text first, as the CSI
+        beq.b   .escNoFlush             ;   dispatch does
+        move.l  A5,-(A7)
+        bsr.w   FlushText
+        addq.w  #4,A7
+.escNoFlush:
+        clr.w   con_WrapPending(A5)
+        move.l  A5,-(A7)
+        moveq   #'7',D0
+        cmp.b   D0,D4
+        bne.b   .escRestore
+        bsr.w   Csi_s_SaveCursor
+        bra.b   .escSRDone
+.escRestore:
+        bsr.w   Csi_u_RestoreCursor
+.escSRDone:
+        addq.w  #4,A7
         bra.w   .nextChar
 
 .notEsc:
@@ -3381,6 +4220,10 @@ DevBeginIO:                             ; was AJL_0_1976
         cmpi.l  #IBMCMD_SETPENS,D0      ; 1.5: pen table -> handler too
         beq.b   .forward
         cmpi.l  #IBMCMD_GETCURSOR,D0    ; 1.9: cursor position -> handler
+        beq.b   .forward
+        cmpi.l  #IBMCMD_GETMODES,D0     ; 1.10: mode flags -> handler
+        beq.b   .forward
+        cmpi.l  #IBMCMD_READTEXT,D0     ; 1.11: a row of the screen
         beq.b   .forward
         subq.l  #CMD_WRITE,D0
         bne.b   .badCmd
@@ -3967,7 +4810,7 @@ DevName:                                ; was AL_2_1C
         dc.b    "ibmcon.device",0,0
         dc.b    0
 DevIdString:                            ; was AL_2_2C
-        dc.b    "ibmcon.device 1.9",0,0
+        dc.b    "ibmcon.device 1.11",0
         dc.b    0
 
 ;=====================================================================
@@ -3981,7 +4824,10 @@ DevIdString:                            ; was AL_2_2C
 GlobalsInit:                            ; was SegmentBeginn3
         ds.l    1                       ; $000: (unused)
         dc.b    0                       ; $004
-        dc.b    "$VER: ibmcon.device 1.9 (Sep 28 2026)",0,0
+        dc.b    "$VER: ibmcon.device 1.11 (28.9.26)",0,0,0,0,0
+        ifne    *-GlobalsInit-$2C
+        fail    "the $VER string must end where EscTable ($2C) starts"
+        endif
 
 ;--- $02C: CSI dispatch table ----------------------------------------
 ; 6 bytes per entry: function pointer, prefix char (0 = none), final
@@ -4013,8 +4859,8 @@ EscTable:                               ; = g_EscTable, was AL_3_2C
         dc.b    0,'M'                   ; delete lines
         dc.l    Csi_P_DeleteChars
         dc.b    0,'P'                   ; delete characters
-        dc.l    Csi_R_Stub
-        dc.b    0,'R'                   ; (cursor position report)
+        dc.l    Csi_X_EraseChars
+        dc.b    0,'X'                   ; erase characters (1.10)
         dc.l    Csi_r_SetRegion
         dc.b    0,'r'                   ; set scroll region (DECSTBM)
         dc.l    Csi_S_ScrollUp
@@ -4045,6 +4891,9 @@ EscTable:                               ; = g_EscTable, was AL_3_2C
         dc.b    0,'s'                   ; save cursor
         dc.l    Csi_u_RestoreCursor
         dc.b    0,'u'                   ; restore cursor
+        ifne    *-GlobalsInit-$DA
+        fail    "the CSI table is full: it must end at $DA (see g_ParamOne1)"
+        endif
         dc.w    0                       ; $0DA: NULL terminator
         dc.l    0                       ; $0DC: (pad)
 
