@@ -4511,11 +4511,10 @@ void CreateAppMenus(void)
     // uses pen 0, which on 16 colours is ANSI black but on 32+ colours the
     // UI's grey -- every item looked disabled.
     {
-        static ULONG ctags[] = { GTMN_FrontPen, 1, TAG_END };
+        static ULONG ctags[] = { GTMN_FrontPen, 0, TAG_END };
 
-        // BARDETAILPEN is a V39 DrawInfo pen (dri_Version 2): OS 2.x keeps the default.
-        if (drawInfo && drawInfo->dri_Version >= 2)
-            ctags[1] = drawInfo->dri_Pens[BARDETAILPEN];
+        ctags[1] = drawInfo ? Palette_MenuTextPen(drawInfo->dri_Version, drawInfo->dri_Pens)
+                            : Palette_MenuTextPen(0, NULL);
         mainMenuStrip = CreateMenusA(mainMenuDesc, (struct TagItem *)ctags);
     }
     #ifdef _DEBUG

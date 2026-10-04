@@ -83,7 +83,23 @@ static void test_a_recolour_that_would_merge_colours_is_refused(void) {
     assert(!Palette_SafeRecolour(shown, 1, 0xABCDEF));     /* colour 3 shares its pixels */
 }
 
+/* Issue #49: on AmigaOS 2.04 the menu items were drawn in pen 1, the pen
+ * Intuition fills the menus with before V39 -- text invisible. Before V39 the
+ * text keeps GadTools' default pen 0; from V39 on it is BARDETAILPEN. */
+static void test_menu_text_is_legible_on_os2_and_os3(void) {
+    UWORD pens[12];
+    int i;
+
+    for (i = 0; i < 12; i++) pens[i] = (UWORD)(100 + i);
+    pens[1] = 1;   /* BLOCKPEN: the menu fill before V39 */
+    assert(Palette_MenuTextPen(1, pens) == 0);      /* OS 2.04 (dri_Version 1) */
+    assert(Palette_MenuTextPen(1, pens) != pens[1]);
+    assert(Palette_MenuTextPen(0, NULL) == 0);      /* no DrawInfo */
+    assert(Palette_MenuTextPen(2, pens) == 109);    /* OS 3.x: BARDETAILPEN (9) */
+}
+
 int main(void) {
+    test_menu_text_is_legible_on_os2_and_os3();
     test_the_editor_sees_the_renderers_palette_in_ansi_order();
     test_channels_are_the_four_bits_the_prefs_keep();
     test_a_recolour_that_would_merge_colours_is_refused();

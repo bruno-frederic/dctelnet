@@ -144,3 +144,15 @@ BOOL Palette_SafeRecolour(const ULONG shown[16], int sel, ULONG newRGB)
             return FALSE;
     return TRUE;
 }
+
+
+#ifndef BARDETAILPEN
+#define BARDETAILPEN 0x0009   /* intuition/screens.h, V39 */
+#endif
+
+UWORD Palette_MenuTextPen(UWORD driVersion, const UWORD *driPens)
+{
+    if (driVersion >= 2 && driPens != NULL)
+        return driPens[BARDETAILPEN];
+    return 0;
+}
