@@ -53,4 +53,12 @@ ULONG Palette_RGB32(UWORD rgb4);
  * colours' pixels would merge for good. */
 BOOL Palette_SafeRecolour(const ULONG shown[16], int sel, ULONG newRGB);
 
+/* The pen GadTools draws the menu item text in (GTMN_FrontPen), from the
+ * screen's DrawInfo: its version (dri_Version, 0 when there is none) and
+ * pens (dri_Pens). On V39+ (dri_Version 2) BARDETAILPEN, the text pen of
+ * the menus BARBLOCKPEN fills. Before V39 Intuition fills the menus with
+ * the screen's BlockPen -- pen 1 on a default screen -- and only GadTools'
+ * own default, pen 0, is legible on it; so 0. */
+UWORD Palette_MenuTextPen(UWORD driVersion, const UWORD *driPens);
+
 #endif /* PALETTE_H */
