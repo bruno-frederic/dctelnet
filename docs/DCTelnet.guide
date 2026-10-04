@@ -535,6 +535,11 @@ The ANSI renderer 'ibmcon.device' has received a major update. Version
   ESC 7 / ESC 8, application cursor key mode reported to DCTelnet
 - 1.11: blinking text; a copy of the screen DCTelnet can read back
 
+Build & Packaging
+- Switched to VBCC Docker builder image: walkero/docker4amigavbcc
+  (simplify reproducibility, help automate builds workflows)
+- Alternative build toolchain added: Bebbo's Amiga-GCC 6.5.0b
+
 
 
 ---[ DCTelnet 1.9.1 ]-------------------------------------------------------
