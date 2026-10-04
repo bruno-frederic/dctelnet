@@ -1,56 +1,83 @@
-# Makefile for VBCC (tested on Windows with VBCC and GNU Make for Windows).
+# Makefile for building with VBCC or GCC
 #
-# make must be run in "src" folder under Powershell.
+# Official build (also used by GitHub CI workflow):
+#   Run "make ci" from "src" folder.
+#   Requires GNU Make and Docker (plus WSL on Windows), but no locally installed C compiler.
+#   Outputs binaries under build/vbcc-680x0-release.
 #
-# make                    ->  build 68000 & 68020 release binaries
+# Local builds with compiler toolchain installed:
+#   Run from "src" with the selected compiler toolchain installed and its bin directory first in
+#   PATH. Use PowerShell on Windows.
+# make                    ->  build 68000 & 68020 release binaries with VBCC
+# make TOOLCHAIN=gcc      ->  build 68000 & 68020 release binaries with GCC
 # make 68000              ->  build only 68000 release binary
 # make debug              ->  build 68000 & 68020 debug binaries
+# make ci-debug           ->  build only 68000 debug binary
 # make DEBUG=yes 68000    ->  build only 68000 debug binary
-# make DEBUG=yes clean    ->  clean debug binaries
-# make clean              ->  clean release binaries
-
-# Include path configuration:
-#   - On AmigaOS, add the following paths to vincludeos3:
-#       -I<PATH_TO_NDK3.2R4>/Include_H
-#       -Ithird_party/netinclude
-#       -Ithird_party/ReqTools/include
+# make clean              ->  clean debug & release output
 #
-#   - On other OS, edit vbcc/config/aos68k and append the same include paths to the end of
-#     the -cc= and -ccv= lines, AFTER: -I%%VBCC%%/targets/m68k-amigaos/include
+# Tested on Windows with:
+#   VBCC 0.9h patch 3
+#   Bebbo's Amiga-GCC 6.5.0b
+#   GNU Make 4.2.90 built for Windows32 & 4.4.1 built for x86_64-pc-msys
+#
+# Notes:
+#  - Put the selected toolchain's bin directory first in PATH.
+#    Otherwise, commands from the other toolchain may be picked up instead.
+#  - On Windows, Bebbo's Amiga-GCC 6.5.0b replaces GNU Make with a patched executable that is
+#    unreliable with current versions of GNU Make. Restore the original executable from the GCC
+#    toolchain before building:
+#      copy amiga-gcc\bin\_make.exe amiga-gcc\bin\make.exe
+#
+# Include path configuration with VBCC:
+#  - For local builds without Docker under Windows/Linux, set NDK32_INC and NET_INC environment variables.
+#      NDK32_INC : /path/to/NDK3.2R4/Include_H
+#      NET_INC   : /path/to/Roadshow-SDK/netinclude
+#
+#  - The Docker builder used by "make ci" defines NDK32_INC and NET_INC automatically.
+#
+#  - On Windows, if either variable is unset, Makefile falls back to its corresponding legacy default:
+#      NDK32_INC : $(VBCC)/NDK3.2R4/Include_H
+#      NET_INC   : third_party/netinclude
+#
+#  - TODO: On MacOS
+#
+#  - On AmigaOS, add the following paths to the "vincludeos3:" assign in this order:
+#      assign >NIL: vincludeos3:  <path/to/NDK3.2R4>/Include_H       ADD
+#      assign >NIL: vincludeos3:  <path/to/Roadshow-SDK>/netinclude  ADD
+#      assign >NIL: vincludeos3:  third_party/ReqTools/include       ADD
+$(info =========================== make $(MAKECMDGOALS) ==================================)
 
-# These includes can be placed here:
+BUILDER_IMAGE := walkero/docker4amigavbcc:m68k-amigaos-2.0.0
+# vbcc or gcc
+TOOLCHAIN ?= vbcc
+CPU       ?= 68000
+
+ifeq ($(OS),Windows_NT)
+	NDK32_INC ?= $(VBCC)/NDK3.2R4/Include_H
+	NET_INC   ?= third_party/netinclude
+endif
+
 INCLUDES := \
+	-I$(NDK32_INC) \
+	-I$(NET_INC) \
+	-Ithird_party/ReqTools/include \
 	-Ithird_party/Xem/INCLUDE \
 	-Ithird_party/Xpr/include
 
-# Do not use spaces or '.' VC passes '.' to the linker, which causes problems.
-COMPILER_STRING=VBCC_0_9h_patch_3
-BUILD_HASH := $(shell git rev-parse --short HEAD)
-
-CC=vc
-
-TARGET     := DCTelnet
-CPU        ?= 68000
-CFLAGS     := +aos68k -warn=-1 "-dontwarn=163,166,167,168,170,307" -warnings-as-errors -cpu=$(CPU) -DCOMPILER_STRING=$(COMPILER_STRING) -DBUILD_HASH=$(BUILD_HASH) $(INCLUDES)
-SRCS       := DCTelnet.c connect.c guis.c Xfer.c Xem_wrapper.c requesters.c utils.c
-DEPS       := abook.h connect.h DCTelnet.h DCTelnet-debug.h DCTelnet-protocol.h edit.h fkey.h guis.h Xfer.h Xem_wrapper.h requesters.h utils.h
-INSTALLDIR := ../build/installed/DCTelnet
-
-# OBJ subdir depends on DEBUG flag (use DEBUG=yes to enable)
-OBJ_SUFFIX ?= release
-ifeq ($(DEBUG),yes)
-	CFLAGS += -g -D_DEBUG
-	OBJ_SUFFIX := debug
-else
-	CFLAGS += -O3 -size
-	OBJ_SUFFIX := release
+ifeq ($(MAKECMDGOALS),build)
+  ifeq ($(strip $(NDK32_INC)),)
+    $(error NDK32_INC environment variable is not set. Set it to your AmgiaOS 3.2 NDK Include_H directory.)
+  endif
+  ifeq ($(strip $(NET_INC)),)
+    $(error NET_INC environment variable is not set. Set it to your Roadshow SDK netinclude directory.)
+  endif
 endif
 
-# final OBJDIR depends on CPU and OBJ_SUFFIX
-OBJDIR     := ../build/vbcc-$(CPU)-$(OBJ_SUFFIX)
-OBJS       := $(SRCS:%.c=$(OBJDIR)/%.o)
-TARGET_EXE := $(OBJDIR)/$(TARGET).$(CPU)
-MAKEFILE_UPTODATE=$(OBJDIR)/Makefile.uptodate
+# Submodules must be checked out before anything else can be built.
+ifeq (,$(wildcard third_party/retro32-term/term-engine.c))
+  $(error third_party/retro32-term/term-engine.c is missing. Run 'git submodule update --init --recursive')
+endif
 
 ifeq ($(OS),Windows_NT)
 #    Windows-specific: PowerShell accepts '/' as path separator which eases cross-platform Makefile,
@@ -61,15 +88,76 @@ ifeq ($(OS),Windows_NT)
 	RM    := function rmps{ foreach ($$f in $$args){rm -Literal $$f -EA Silent} } ; rmps
 	TOUCH := $$null = New-Item -ItemType File -Force -Path
 	MKDIR := function mdps{ foreach ($$f in $$args){$$null = mkdir -Force -Path  $$f} } ; mdps
+#   PODMAN_USERNS=keep-id needed when podman is used instead of docker:
+	DOCKER := wsl -- env PODMAN_USERNS=keep-id  docker
+	STAT   := wsl stat
+	NULL   := $$null
 else
 	RM:=rm -f
 	TOUCH:=touch
 	MKDIR := mkdir -p
+	DOCKER := env PODMAN_USERNS=keep-id  docker
+	STAT   := stat
+	NULL   := /dev/null
 endif
+
+ifeq ($(TOOLCHAIN),vbcc)
+  ifeq ($(MAKECMDGOALS),build)
+    ifeq ($(strip $(VBCC)),)
+      $(error VBCC environment variable is not set. Set it to your VBCC installation directory)
+    endif
+  endif
+	CC              := vc
+#	Do not use spaces, which causes problems:
+	COMPILER_STRING := VBCC-$(word 2,$(shell vbccm68k 2>$(NULL)))
+#	VBCC's customized headers MUST take priority over the NDK, ReqTools, and project headers:
+	INCLUDES        := -I$(VBCC)/targets/m68k-amigaos/include  $(INCLUDES)
+	WARN            := -warn=-1 "-dontwarn=163,166,167,168,170,307,65" -warnings-as-errors	# TODO re-enable warning #65
+	CFLAGS          := +aos68k $(WARN) -cpu=$(CPU)
+		DEBUG_CFLAGS    := -g -D_DEBUG -stack-check
+		RELEASE_CFLAGS  := -O3 -size # v2.0 switch from -size to -speed
+else ifeq ($(TOOLCHAIN),gcc)
+	CC              := m68k-amigaos-gcc
+	COMPILER_STRING := GCC-v$(shell m68k-amigaos-gcc -dumpversion)
+#	TODO: analyse all these GCC warning then re-enable -Wall:
+	WARN            := -Wno-incompatible-pointer-types -Wno-int-conversion -Wno-overflow -Wno-discarded-qualifiers
+#	WARN           := -Wall -Wextra -Werror
+	CFLAGS          := -noixemul -fbaserel $(WARN) -m$(CPU) -D__AMIGADATE__=__DATE__
+		DEBUG_CFLAGS    := -g -D_DEBUG -fstack-check
+		RELEASE_CFLAGS  := -O3
+else
+	$(error Invalid TOOLCHAIN value '$(TOOLCHAIN)'; choose 'vbcc' or 'gcc')
+endif
+
+BUILD_HASH := $(shell git rev-parse --short HEAD)
+
+CFLAGS += -D"COMPILER_STRING=$(COMPILER_STRING)" -DBUILD_HASH=$(BUILD_HASH) $(INCLUDES)
+
+
+TARGET     := DCTelnet
+SRCS       := DCTelnet.c connect.c guis.c Xfer.c Xem_wrapper.c requesters.c utils.c
+DEPS       := abook.h connect.h DCTelnet.h DCTelnet-debug.h DCTelnet-protocol.h edit.h fkey.h guis.h Xfer.h Xem_wrapper.h requesters.h utils.h
+INSTALLDIR := ../build/installed/DCTelnet
+
+# OBJ subdir depends on TOOLCHAIN and DEBUG flag (use DEBUG=yes to enable)
+OBJ_SUFFIX ?= release
+ifeq ($(DEBUG),yes)
+	CFLAGS += $(DEBUG_CFLAGS)
+	OBJ_SUFFIX := debug
+else
+	CFLAGS += $(RELEASE_CFLAGS)
+	OBJ_SUFFIX := release
+endif
+
+# final OBJDIR depends on TOOLCHAIN, CPU and OBJ_SUFFIX
+OBJDIR     := ../build/$(TOOLCHAIN)-$(CPU)-$(OBJ_SUFFIX)
+OBJS       := $(SRCS:%.c=$(OBJDIR)/%.o)
+TARGET_EXE := $(OBJDIR)/$(TARGET).$(CPU)
+MAKEFILE_UPTODATE=$(OBJDIR)/Makefile.uptodate
 
 
 # make treats a phony target as always out-of-date and runs its recipe when requested.
-.PHONY: all clean debug release
+.PHONY: all clean debug release ci ci-debug
 
 all: $(MAKEFILE_UPTODATE) 68000 68020
 
@@ -87,6 +175,44 @@ debug:
 release:
 	$(MAKE) all
 
+# Setting properly the user avoids git warnings about safe.directory:
+DOCKER_USER := $(shell $(STAT) --format '%u:%g'  Makefile)
+
+# Recursive assignment with "=" so target-specific INTERACTIVE is expanded when the recipe runs:
+DOCKER_RUN = $(DOCKER) run $(INTERACTIVE) --user $(DOCKER_USER) -q --rm --volume "./..:/opt/code" --workdir /opt/code/src "$(BUILDER_IMAGE)"
+ci:
+	$(DOCKER_RUN) make
+
+ci-debug:
+	$(DOCKER_RUN) make DEBUG=yes 68000
+
+ibmcon:
+	$(DOCKER_RUN) make -C ../ibmcon
+
+tests:
+	$(DOCKER_RUN) make -C ../tests
+
+
+# for debugging builder container
+enter-builder: INTERACTIVE := --interactive --tty
+enter-builder:
+	$(DOCKER_RUN) bash
+
+# Add "show_env" to target "build:" prerequisites for debugging runners and containers
+show_env:
+ifeq ($(OS),Windows_NT)
+	-@echo Windows_NT
+	-@whoami
+else
+	-@grep PRETTY_NAME= /etc/*release
+	-@id
+	-@env | sort
+	-pwd
+	-ls -ln       | head
+	-ls -ln ..    | head
+	-ls -ln ../.. | head
+endif
+	@echo ---
 
 LIBS := -lamiga     # needed for NewObject() in guis.c. It is a varargs stub for NewObjectA().
 
@@ -113,18 +239,21 @@ $(INSTALLDIR):
 	$(MKDIR) $@
 
 
-install: $(TARGET_EXE) | $(INSTALLDIR)
+install: $(TARGET_EXE) ibmcon | $(INSTALLDIR)
 	@echo "------------- $@ $^ --------------------"
 	cp $(TARGET_EXE) $(INSTALLDIR)
+	cp ../ibmcon/ibmcon.device $(INSTALLDIR)/Devs
 
 
 clean: 68000_clean 68020_clean
 
 68000_clean:
-	$(MAKE) CPU=68000 clean_cpu
+	$(MAKE) CPU=68000 DEBUG=no clean_cpu
+	$(MAKE) CPU=68000 DEBUG=yes clean_cpu
 
 68020_clean:
-	$(MAKE) CPU=68020 clean_cpu
+	$(MAKE) CPU=68020 DEBUG=no clean_cpu
+	$(MAKE) CPU=68020 DEBUG=yes clean_cpu
 
 clean_cpu:
 	@echo "----------------- $@ $(CPU) ------------------------"

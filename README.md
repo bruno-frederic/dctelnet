@@ -120,7 +120,19 @@ Rendering issues occur on multiple BBSes, whether using ibmcon.device or
 XemVT340.library for display. Some screens freeze, misalign the UI, or fail
 to display animations.
 
+Improved with ibmcon.device 1.9: Cursor Backward and Forward stop
+at the edge of the line, and CTerm 24-bit colour sequences are ignored
+instead of moving the cursor. Not yet confirmed on every BBS in the report.
+
 Details on [GitHub issue #11](https://github.com/bruno-frederic/dctelnet/issues/11).
+
+
+#### Fullscreen editors leave old lines on screen (fixed in ibmcon.device 1.7)
+
+Insert Lines (CSI L) moved only a few pixel lines, so an editor that scrolls
+down, such as on ABBS/MBBS, left old text behind.
+
+Details on [GitHub issue #9](https://github.com/bruno-frederic/dctelnet/issues/9)
 
 
 ### Network issues with AmiBerry and FS-UAE on Linux
@@ -135,6 +147,9 @@ Details on [GitHub issue #13](https://github.com/bruno-frederic/dctelnet/issues/
 This issue had existed since **DCTelnet 1.1** and occured when used with certain
 versions of "bsdsocket.library", notably UAE bsdsocket.library 4.1 (WinUAE)
 and Amiberry's built-in library.
+
+The cause is fixed in ibmcon.device 1.8: closing the console freed a signal
+of the program that opened it (bit 31, which bsdsocket.library can hold).
 
 Details on [GitHub issue #3](https://github.com/bruno-frederic/dctelnet/issues/3).
 
@@ -189,6 +204,9 @@ The required third-party source code dependencies are also included:
 
 - **DCTelnet** was originally written by **Zed**.
 - new 68000-compatible build by **Bruno FREDERIC**
+- PETSCII Mode, per-BBS settings, RTG/256-colour support, the palette
+  editor and ibmcon.device 1.5-1.11 by [**spotUP**](https://github.com/spotUP).
+  The PETSCII key and fallback tables are from SyncTERM by Rob Swindell (LGPL).
 - ReqTools is Copyright © Nico François and Magnus Holmgren
 
 ---

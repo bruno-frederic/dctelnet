@@ -19,6 +19,8 @@ build/installed/DCTelnet/**
 build/package.info
 build/sasc-*/**
 build/sasc-*.info
+build/gcc-*/**
+build/gcc-*.info
 build/vbcc-*/**
 build/vbcc-*.info
 build/Build-output*.txt

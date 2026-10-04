@@ -3,9 +3,9 @@
 | | | | |     | | / _ \ || '_ \ / _ \ __|
 | |_| | |___  | ||  __/ || | | |  __/ |_
 |____/ \____| |_| \___|_||_| |_|\___|___|
-DCTelnet v1.9.1 (29 Aug 2026)
+DCTelnet v1.10 (04 Oct 2026)
 A classic Amiga Telnet/BBS client with Zmodem
-* NEW v1.9.1: New toolbar icons in fullscreen
+* NEW v1.10: Fixes glitches on several BBSes
 * 68000 compatible
 * Fullscreen, windowed, and iconified modes
 * Fast: uses the TCP/IP stack directly

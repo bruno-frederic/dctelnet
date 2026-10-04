@@ -29,6 +29,8 @@ COPY  FROM "build/package"                        TO RAM:             ALL
 
 COPY  FROM build/vbcc-68000-release/DCTelnet.68000  TO RAM:DCTelnet/DCTelnet
 COPY  FROM build/vbcc-68020-release/DCTelnet.68020  TO RAM:DCTelnet/DCTelnet.020
+MAKEDIR RAM:DCTelnet/Devs
+COPY  FROM ibmcon/ibmcon.device                     TO RAM:DCTelnet/Devs/ibmcon.device
 COPY  FROM LICENSE                                  TO RAM:DCTelnet/Docs
 COPY  FROM docs/DCTelnet.#?                         TO RAM:DCTelnet/Docs
 COPY  FROM docs/FILE_ID.DIZ                         TO RAM:

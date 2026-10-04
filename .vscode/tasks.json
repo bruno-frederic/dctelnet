@@ -10,7 +10,7 @@
         {
             "label": "Build Debug 68000",
             "type": "shell",
-            "command": "make --directory=${workspaceFolder}/src  DEBUG=yes 68000 install",
+            "command": "make --directory=${workspaceFolder}/src  DEBUG=yes ci-debug  install",
             "problemMatcher": {
                 "owner": "cpp",
                 "fileLocation": ["relative", "${workspaceFolder}/src"],

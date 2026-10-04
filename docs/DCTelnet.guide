@@ -1,9 +1,9 @@
 @DATABASE "DCTelnet.guide"
-@$VER: DCTelnet.guide 1.9.1 (29.8.26)
+@$VER: DCTelnet.guide 1.10 (04.10.26)
 @node "MAIN" "DCTelnet Guide"
 @author "Shane, Zed and Bruno FREDERIC"
 @TOC "MAIN"
-                              @{b}DCTelnet v1.9.1@{ub}
+                              @{b}DCTelnet v1.10@{ub}
      ______  ______ ____________________    __    ___________________
     /\\_____\\/\\_____\\\\_________\\______\\__\\  /\\_\\  /\\__\\______\\_________\\
    / /  ___ \\/  ___//___   ___/  ____/  / / /  \\/ /  /  ____/___   ___/
@@ -454,7 +454,20 @@ Rendering issues occur on multiple BBSes, whether using ibmcon.device or
 XemVT340.library for display. Some screens freeze, misalign the UI, or fail
 to display animations.
 
+Improved with ibmcon.device 1.9: Cursor Backward and Forward stop
+at the edge of the line, and CTerm 24-bit colour sequences are ignored
+instead of moving the cursor. Not yet confirmed on every BBS in the report.
+
 Details on GitHub: https://github.com/bruno-frederic/dctelnet/issues/11
+
+---------------------------------------------
+
+@{b}Fullscreen editors leave old lines on screen (fixed in ibmcon.device 1.7)@{ub}
+
+Insert Lines (CSI L) moved only a few pixel lines, so an editor that scrolls
+down, such as on ABBS/MBBS, left old text behind.
+
+Details on GitHub: https://github.com/bruno-frederic/dctelnet/issues/9
 
 ---------------------------------------------
 
@@ -475,6 +488,9 @@ Details on GitHub: https://github.com/bruno-frederic/dctelnet/issues/13
 This issue had existed since DCTelnet 1.1 and occured when used with certain
 versions of "bsdsocket.library", notably UAE bsdsocket.library 4.1 (WinUAE)
 and Amiberry's built-in library.
+
+The cause is fixed in ibmcon.device 1.8: closing the console freed a signal
+of the program that opened it (bit 31, which bsdsocket.library can hold).
 
 Details on GitHub: https://github.com/bruno-frederic/dctelnet/issues/3
 
@@ -504,6 +520,27 @@ Starting with v1.8, a compatible version of the library is included in the
 
                                  @{b}@{u} History @{ub}@{uu}
                                  ~~~~~~~~~
+
+---[ DCTelnet 1.10 ]-------------------------------------------------------
+
+The ANSI renderer 'ibmcon.device' has received a major update. Version
+1.11 is now included with DCTelnet. The device’s changelog is as follows:
+- 1.5: pens for the ANSI colours (IBMCMD_SETPENS)
+- 1.6: deferred wrap at the last column; CTerm 24-bit colour ignored
+- 1.7: Insert Lines fixed (issue #9)
+- 1.8: closing the console no longer frees the opener's signal (issue #3)
+- 1.9: cursor position for DSR answers; Cursor Backward/Forward stop at
+  the margins (issue #11)
+- 1.10: iCE colours (bright backgrounds), erase characters (CSI X),
+  ESC 7 / ESC 8, application cursor key mode reported to DCTelnet
+- 1.11: blinking text; a copy of the screen DCTelnet can read back
+
+Build & Packaging
+- Switched to VBCC Docker builder image: walkero/docker4amigavbcc
+  (simplify reproducibility, help automate builds workflows)
+- Alternative build toolchain added: Bebbo's Amiga-GCC 6.5.0b
+
+
 
 ---[ DCTelnet 1.9.1 ]-------------------------------------------------------
 
@@ -813,6 +850,10 @@ Build & Toolchain:
 - new 68000-compatible build by @{b}Bruno FREDERIC@{ub}
 
 - ReqTools is Copyright © Nico François and Magnus Holmgren
+
+- PETSCII Mode, per-BBS settings, RTG/256-colour support, the palette
+  editor and ibmcon.device 1.5-1.9 by @{b}spotUP@{ub}. The PETSCII key and
+  fallback tables are from SyncTERM by Rob Swindell (LGPL).
 
 
 - Thanks to Ray Akey for his help with the file tranfer code,
