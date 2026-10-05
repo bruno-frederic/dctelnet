@@ -37,6 +37,11 @@ void ScreenFont_Grid(UWORD width, UWORD height, UWORD gzzWidth, UWORD gzzHeight,
 #define SCREENFONT_BBS_ROWS        25   /* the Workbench window opens 80x25 (40x25) */
 UWORD ScreenFont_MaxWindowWidth(UWORD columns, UWORD cellX, UWORD borders);
 
+/* TRUE on a mode whose pixels are taller than wide (hires or super-hires
+ * without interlace: resolution ticks y > x). Art drawn for square pixels
+ * looks squeezed there; the tool bar takes its wide icons. */
+BOOL ScreenFont_TallPixels(UWORD resolutionX, UWORD resolutionY);
+
 #define TOPAZ_PRO_NAME "TopazPro.font"
 #define TOPAZ_PRO_SIZE 16
 

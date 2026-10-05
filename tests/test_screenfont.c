@@ -64,7 +64,18 @@ static void test_window_stops_at_80_columns(void) {
     assert(ScreenFont_MaxWindowWidth(SCREENFONT_PETSCII_COLUMNS, 16, 22) == 662);
 }
 
+/* 24x24 tool bar symbols drawn for square pixels looked tall and thin on
+ * DCTelnet's own 640x256 screen (hires: ticks 22 x 44). */
+static void test_hires_without_interlace_has_tall_pixels(void) {
+    assert(ScreenFont_TallPixels(22, 44));      /* hires */
+    assert(ScreenFont_TallPixels(11, 44));      /* super-hires */
+    assert(!ScreenFont_TallPixels(44, 44));     /* lores */
+    assert(!ScreenFont_TallPixels(22, 22));     /* hires interlaced */
+    assert(!ScreenFont_TallPixels(0, 0));       /* unknown: square */
+}
+
 int main(void) {
+    test_hires_without_interlace_has_tall_pixels();
     test_window_stops_at_80_columns();
     test_topaz_on_square_pixels_becomes_topaz_pro();
     test_topaz_pro_on_tall_pixels_becomes_topaz();
