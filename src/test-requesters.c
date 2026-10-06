@@ -155,7 +155,7 @@ int main(void)
 
 
     WRITE_CONST_STR("--> ScreenModeRequester()\n");
-    displayID = (PAL_MONITOR_ID | HIRES_KEY); // PAL High Res (640×256), no interlaced
+    displayID = (PAL_MONITOR_ID | HIRES_KEY); // PAL High Res (640x256), no interlaced
     displayWidth = 640;
     displayHeight = 256;
     displayDepth = 4;

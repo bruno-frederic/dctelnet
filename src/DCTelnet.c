@@ -501,7 +501,7 @@ static void BbsWrite(char *data, long len)
 /**
  * @brief Display a busy/wait mouse pointer in the specified window.
  *
- * Replaces the window's current pointer with a custom 16×16 "wait" pointer to indicate that a modal
+ * Replaces the window's current pointer with a custom 16x16 "wait" pointer to indicate that a modal
  * operation or lengthy processing is in progress.
  *
  * The pointer remains active until removed with ClearPointer().
@@ -1559,8 +1559,8 @@ struct Scroll
  *
  * Some CSI sequences (notably 'C', 'H', and 'B') require prematurely flushing the current buffer.
  * To avoid duplicating the line?finalization logic, the function uses three goto jumps that
- * redirect execution to the common “add” block. This structure triggers VBCC warning 175 (“this
- * code is weird”) when optimization is enabled, hence the conditional suppression pragma.
+ * redirect execution to the common "add" block. This structure triggers VBCC warning 175 ("this
+ * code is weird") when optimization is enabled, hence the conditional suppression pragma.
  *
  * @param str   Pointer to the raw input byte buffer.
  * @param size  Number of bytes to process from the buffer.
@@ -2329,7 +2329,7 @@ int main(int argc, char *argv[])
                 FD_SET(tcpSocket, &rd);
                 sigmask = SIGBREAKF_CTRL_C | SIGBREAKF_CTRL_F | iconsig;
 
-                // https://wiki.amigaos.net/amiga/autodocs/bsdsocket.doc.txt (tout à la fin)
+                // https://wiki.amigaos.net/amiga/autodocs/bsdsocket.doc.txt (at the end)
                 // WaitSelect() should probably return the time remaining from the original timeout,
                 // if any, by modifying the time value in place. This may be implemented in future
                 // versions of the system. Thus, it is unwise to assume that the timeout value will

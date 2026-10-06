@@ -6,9 +6,9 @@
 
 ;---[ Start installation ]----------------------------------------------------
 
-(message "\n\n--××·· -÷- ··××---÷---××·· -÷- ··××---÷---××·· -÷- ··××-- -÷-\n\n"
+(message "\n\n--xx·· -÷- ··xx---÷---xx·· -÷- ··xx---÷---xx·· -÷- ··xx-- -÷-\n\n"
          "DCTelnet - A classic Amiga Telnet/BBS client with Zmodem\n\n"
-         "--××·· -÷- ··××---÷---××·· -÷- ··××---÷---××·· -÷- ··××-- -÷-")
+         "--xx·· -÷- ··xx---÷---xx·· -÷- ··xx---÷---xx·· -÷- ··xx-- -÷-")
 
 
 (set #os-vernum (getversion "libs:version.library"))
