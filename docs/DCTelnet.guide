@@ -701,8 +701,8 @@ Starting from the disassembled v1.4 source published by Sante Nocciolino,
 SpotUp thoroughly documented and labeled the assembly code, and fixed the
 long-standing bugs.
 
-device’s detailed changelog is as follows:
-1.11 is now included with DCTelnet. The device’s changelog is as follows:
+device's detailed changelog is as follows:
+1.11 is now included with DCTelnet. The device's changelog is as follows:
 - 1.5: pens for the ANSI colours (IBMCMD_SETPENS)
 - 1.6: deferred wrap at the last column; CTerm 24-bit colour ignored
 - 1.7: Insert Lines fixed (issue #9)
@@ -1027,12 +1027,14 @@ Build & Toolchain:
 
 - new 68000-compatible build by @{b}Bruno FREDERIC@{ub}
 
-- ReqTools is Copyright © Nico François and Magnus Holmgren
+- ReqTools is Copyright © Nico Francois and Magnus Holmgren
 
 - PETSCII Mode, per-BBS settings, RTG/256-colour support, the palette
   editor and ibmcon.device 1.5-1.11 by @{b}spotUP@{ub}. The PETSCII key and
   fallback tables are from SyncTERM by Rob Swindell (LGPL).
 
+- VBCC Docker builder image by George Sokianos
+  (https://github.com/walkero-gr).
 
 - Thanks to Ray Akey for his help with the file tranfer code,
   it wouldn't have worked without his help.
