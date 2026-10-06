@@ -4,9 +4,13 @@ Thanks for your interest in contributing to DCTelnet. For significant changes, o
 
 ## Build and verify
 
-The official DCTelnet build method, also used by CI, is `make ci`. It builds both the 68000 and 68020 release binaries with the VBCC Docker builder image: [walkero/docker4amigavbcc](https://hub.docker.com/r/walkero/docker4amigavbcc)
+The official DCTelnet build method, also used by CI, is: `make ci`
 
-Git, GNU Make and Docker are required; WSL is also required on Windows. You do not need to install a C compiler locally.
+It builds the DCTelnet and ibmcon.device binaries, runs the tests, and packages an LHA archive containing everything needed to install DCTelnet on an Amiga.
+
+- The build uses the VBCC Docker builder image: [walkero/docker4amigavbcc](https://hub.docker.com/r/walkero/docker4amigavbcc)
+- Git, GNU Make and Docker are required; WSL is also required on Windows.
+- You do not need to install a C compiler locally.
 
 From the repository root, initialize the pinned submodule revisions and build:
 
@@ -16,9 +20,11 @@ cd src
 make ci
 ```
 
-This checks out the submodule revisions selected by the repository. The build outputs are written to `build/vbcc-68000-release/` and `build/vbcc-68020-release/`. GitHub Actions checks out the submodules recursively and runs this build for pull requests.
+This checks out the submodule revisions selected by the repository. The build outputs are written to `build/`.
 
 Before considering code changes complete, run `make ci` and report the result. Documentation-only changes do not require a build. If the build cannot be run for another reason, explain why.
+
+GitHub Actions runs this build for pull requests.
 
 ## Open a pull request
 
@@ -34,7 +40,7 @@ Before considering code changes complete, run `make ci` and report the result. D
 
 The application is written in C, using the C99 features supported by VBCC, and split into modules under `src/`:
 
-- `DCTelnet.c` coordinates application startup, the main interface, and Telnet sessions.
+- `DCTelnet.c` coordinates application startup, the main interface.
 - `connect.c` implements the connection-progress window. `guis.c` contains the address book, profile editor, function-key editor, and scrollback window.
 - `prefs.c` and `prefs_file.c` manage preferences and their on-disk format. `requesters.c` provides native AmigaOS requester helpers, while `utils.c` contains shared utilities.
 - `Xfer.c` integrates XPR file transfers. `Xem_wrapper.c` adapts the XEM library callbacks.
