@@ -174,7 +174,7 @@ static void ProtoClean(void)
     XProtocolCleanup(&xio);
     CloseLibrary(XProtocolBase);
     XProtocolBase = NULL;
-    //ConWrite("", 1);
+    //ConWrite("\x0F", 1);  // SHIFT IN [SI]
 }
 
 /*

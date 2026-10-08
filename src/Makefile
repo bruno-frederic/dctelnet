@@ -201,9 +201,8 @@ ibmcon:
 	$(DOCKER_RUN) make -C ../ibmcon
 
 tests:
-# v2.0 implements tests
-#	$(info =========================== make tests ==================================)
-#	$(DOCKER_RUN) make -C ../tests
+	$(info =========================== make tests ==================================)
+	$(DOCKER_RUN) make -C ../tests
 
 package:
 	$(info =========================== make package ==================================)

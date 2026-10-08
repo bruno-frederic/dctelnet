@@ -42,7 +42,7 @@ https://eab.abime.net/showthread.php?t=121939
 v1.10 Changelog
 
 The ANSI renderer 'ibmcon.device' has received a major update. Version
-1.11 is now included with DCTelnet. The device’s changelog is as follows:
+1.11 is now included with DCTelnet. The device's changelog is as follows:
 - 1.5: pens for the ANSI colours (IBMCMD_SETPENS)
 - 1.6: deferred wrap at the last column; CTerm 24-bit colour ignored
 - 1.7: Insert Lines fixed (issue #9)
@@ -202,14 +202,18 @@ Starting with v1.8, a compatible version of the library is included in the
 
 ## Build environment
 
-As of August 2026:
+As of September 2026:
 
 - IDE: VS Code (on Windows)
-- Docker/Podman running a telnetd container for testing
-- Compiler: VBCC and GNU Make on Windows, using my custom toolchain :
+- Docker is used for the official build and can run a telnetd container for
+  testing.
+- Build instructions: See CONTRIBUTING.md on the github repository
+- Alternative build toolchains (outside the official CI build):
+  - VBCC on Windows, using my custom toolchain:
   https://github.com/bruno-frederic/vbcc-bin/tree/Bruno_toolchain
-- The project can also be built with SAS/C v6.58 under AmigaOS 3.2
-- Icon Editor : IconEdit from AmigaOS 3.2.3
+  - Bebbo's Amiga-GCC 6.5.0b
+  - SAS/C v6.58 on AmigaOS 3.2 can build all DCTelnet 1.x versions, but not 2.0,
+    which uses C99 features unsupported by SAS/C.
 
 ### Source code
 
@@ -236,7 +240,9 @@ The required third-party source code dependencies are also included:
   editor and ibmcon.device 1.5-1.11 by spotUP (https://github.com/spotUP).
   The PETSCII key and fallback tables are from SyncTERM by Rob Swindell
   (LGPL).
-- ReqTools is Copyright © Nico François and Magnus Holmgren
+- VBCC Docker builder image by George Sokianos
+  (https://github.com/walkero-gr).
+- ReqTools is Copyright © Nico Francois and Magnus Holmgren
 
 ---
 

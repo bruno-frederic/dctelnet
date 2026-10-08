@@ -207,6 +207,7 @@ The required third-party source code dependencies are also included:
 - PETSCII Mode, per-BBS settings, RTG/256-colour support, the palette
   editor and ibmcon.device 1.5-1.11 by [**spotUP**](https://github.com/spotUP).
   The PETSCII key and fallback tables are from SyncTERM by Rob Swindell (LGPL).
+- VBCC Docker builder image by [**George Sokianos**](https://github.com/walkero-gr)
 - ReqTools is Copyright © Nico François and Magnus Holmgren
 
 ---

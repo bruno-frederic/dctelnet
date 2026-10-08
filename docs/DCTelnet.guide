@@ -523,8 +523,12 @@ Starting with v1.8, a compatible version of the library is included in the
 
 ---[ DCTelnet 1.10 ]-------------------------------------------------------
 
-The ANSI renderer 'ibmcon.device' has received a major update. Version
-1.11 is now included with DCTelnet. The device’s changelog is as follows:
+The ANSI renderer 'ibmcon.device' has received a major update. The version
+1.11 of this device is now included with DCTelnet.
+
+@{b}Many thanks to spotUP@{ub} for the tremendous work on 'ibmcon.device'.
+
+device's detailed changelog is as follows:
 - 1.5: pens for the ANSI colours (IBMCMD_SETPENS)
 - 1.6: deferred wrap at the last column; CTerm 24-bit colour ignored
 - 1.7: Insert Lines fixed (issue #9)
@@ -849,12 +853,14 @@ Build & Toolchain:
 
 - new 68000-compatible build by @{b}Bruno FREDERIC@{ub}
 
-- ReqTools is Copyright © Nico François and Magnus Holmgren
+- ReqTools is Copyright © Nico Francois and Magnus Holmgren
 
 - PETSCII Mode, per-BBS settings, RTG/256-colour support, the palette
-  editor and ibmcon.device 1.5-1.9 by @{b}spotUP@{ub}. The PETSCII key and
+  editor and ibmcon.device 1.5-1.11 by @{b}spotUP@{ub}. The PETSCII key and
   fallback tables are from SyncTERM by Rob Swindell (LGPL).
 
+- VBCC Docker builder image by George Sokianos
+  (https://github.com/walkero-gr).
 
 - Thanks to Ray Akey for his help with the file tranfer code,
   it wouldn't have worked without his help.
