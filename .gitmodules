@@ -4,4 +4,4 @@
 	branch = feat/dctelnet-integration
 [submodule "src/third_party/vtcon"]
 	path = src/third_party/vtcon
-	url = /Users/spot/Code/vtcon
+	url = https://github.com/spotUP/UP-Term.git
