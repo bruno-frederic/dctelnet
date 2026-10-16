@@ -15,7 +15,11 @@ struct GfxBase { struct Library LibNode; };
 struct BitMap { UWORD BytesPerRow, Rows; UBYTE Flags, Depth; UWORD pad; UBYTE *Planes[8]; };
 struct TextFont { UWORD tf_YSize, tf_XSize, tf_Baseline; UBYTE tf_LoChar, tf_HiChar; void *tf_CharData; UWORD tf_Modulo; void *tf_CharLoc; };
 struct RastPort { struct BitMap *BitMap; UBYTE Mask, FgPen, BgPen, DrawMode; WORD cx, cy; struct TextFont *Font; };
-struct Screen { WORD Width, Height; struct RastPort RastPort; };
+struct Rectangle { WORD MinX, MinY, MaxX, MaxY; };
+struct Layer { struct Layer *back; struct Rectangle bounds; };
+struct Layer_Info { struct Layer *top_layer; };
+struct Screen { WORD Width, Height; struct RastPort RastPort; struct Layer_Info LayerInfo; };
+struct Window { WORD LeftEdge, TopEdge, Width, Height; BYTE BorderLeft, BorderTop, BorderRight, BorderBottom; struct Layer *WLayer; };
 #define JAM1 0
 #define JAM2 1
 #define COMPLEMENT 2
@@ -40,7 +44,20 @@ static void call(const char *fmt, long a, long b, long c, long d, long e)
     strcat(calls, line);
 }
 
-static void WaitBlit(void) {}
+/* The screen's LayerInfo, as Intuition sees it: the drawing that went into
+ * the planes while it was not held, and the planes as they were given back. */
+static int layerLocks, bltUnlocked, blitBusy, unlockedBusy;
+static UBYTE atUnlock[4][BPR * H];
+static void WaitBlit(void) { blitBusy = 0; }
+static void LockLayerInfo(struct Layer_Info *li) { (void)li; layerLocks++; }
+static void UnlockLayerInfo(struct Layer_Info *li)
+{
+    (void)li;
+    assert(layerLocks > 0);
+    layerLocks--;
+    unlockedBusy += blitBusy;
+    memcpy(atUnlock, planes, sizeof(atUnlock));
+}
 static ULONG GetBitMapAttr(struct BitMap *b, ULONG attr) { (void)b; return attr == BMA_FLAGS ? bitmapFlags : 0; }
 static void SetFont(struct RastPort *rp, struct TextFont *tf) { rp->Font = tf; }
 static void SetAPen(struct RastPort *rp, ULONG pen) { rp->FgPen = (UBYTE)pen; }
@@ -76,6 +93,9 @@ static LONG BltBitMap(struct BitMap *s, WORD sx, WORD sy, struct BitMap *d, WORD
     WORD p, y;
 
     (void)tmp;
+    blitBusy = 1;
+    if (!layerLocks)
+        bltUnlocked++;
     for (p = 0; p < 4; p++) {
         if (!(mask & (1 << p)))
             continue;
@@ -92,9 +112,27 @@ static LONG BltBitMap(struct BitMap *s, WORD sx, WORD sy, struct BitMap *d, WORD
     return 4;
 }
 
-static void send_data_(const UBYTE *d, LONG n) { (void)d; (void)n; }
+/* An answer to the BBS. A menu opens meanwhile when menuOnSend is set. */
+static struct Layer winLayer, menuLayer;
+static struct Screen screen;
+static int sentLocked, menuOnSend;
+static void send_data_(const UBYTE *d, LONG n)
+{
+    (void)d; (void)n;
+    sentLocked += layerLocks;
+    if (menuOnSend)
+        screen.LayerInfo.top_layer = &menuLayer;
+}
 #define send_data(d, n) send_data_((d), (n))
 #include "../src/third_party/retro32-term/term-engine.c"
+
+/* DCTelnet's side of vtbuiltin.c: its screen, the terminal window and
+ * layers.library. */
+static struct Library layers = { 40 };
+static struct Library *LayersBase = &layers;
+static struct Screen *scr = &screen;
+static struct Window window, *win = &window;
+#include "../src/vtbuiltin.c"
 
 /* A font whose glyphs all differ: row r of character c is c ^ (r * 37). */
 static UBYTE fontData[8][256];
@@ -104,7 +142,6 @@ static struct TextFont font = { 8, 8, 6, 0, 255, fontData, 256, fontLoc };
 static UBYTE wideData[8][512];
 static ULONG wideLoc[256];
 static struct TextFont wide = { 8, 16, 6, 0, 255, wideData, 512, wideLoc };
-static struct Screen screen = { W, H, { &bm, 0xFF, 0, 0, 0, 0, 0, NULL } };
 static struct RastPort winRp;
 
 /* The terminal of a 640x245 window at y = 11, under a title bar: 30 rows. */
@@ -127,6 +164,19 @@ static void setup(void)
     memset(planes, 0x55, sizeof(planes));           /* "the title bar and other windows" */
     memset(&winRp, 0, sizeof(winRp));
     winRp.Mask = 0xFF;
+    screen.Width = W; screen.Height = H;
+    screen.RastPort.BitMap = &bm; screen.RastPort.Mask = 0xFF;
+    /* the terminal window, the screen's only window: nothing over it */
+    window.LeftEdge = 0; window.TopEdge = 0; window.Width = W; window.Height = H;
+    window.BorderTop = TOP;
+    window.WLayer = &winLayer;
+    winLayer.bounds.MaxX = W - 1; winLayer.bounds.MaxY = H - 1;
+    screen.LayerInfo.top_layer = &winLayer;
+    /* a menu strip's layer over the terminal's top rows */
+    menuLayer.back = &winLayer;
+    menuLayer.bounds.MinX = 0; menuLayer.bounds.MinY = 0;
+    menuLayer.bounds.MaxX = 199; menuLayer.bounds.MaxY = 40;
+    layerLocks = bltUnlocked = blitBusy = unlockedBusy = sentLocked = menuOnSend = 0;
     assert(term_init_area(&screen, &winRp, 0, TOP, 0, TOP, W, H - TOP, &font) == 0);
     calls[0] = 0;
 }
@@ -271,6 +321,74 @@ static void test_a_16_pixel_font_gives_40_columns(void)
     assert(calls[0] == 0);
 }
 
+static void vt_write_str(const char *s)
+{
+    VtWrite((const UBYTE *)s, (long)strlen(s));
+}
+
+/* Upstream todos: a menu opened between the look at the layers and the
+ * drawing was drawn over. Intuition makes a menu's layer under the screen's
+ * LayerInfo: while the terminal draws straight into the bitmap, the lock is
+ * held from the look to the end of the drawing, the blitter's too. */
+static void test_a_menu_cannot_open_while_the_terminal_draws_into_the_bitmap(void)
+{
+    int i;
+
+    setup();
+    assert(VtOpen() == 0);
+    bltUnlocked = 0;                            /* (term_init_area's clear) */
+    for (i = 0; i < 32; i++)
+        vt_write_str("line\r\n");             /* scrolls: blits */
+    assert(calls[0] == 0);                      /* drawn straight into the bitmap */
+    assert(bltUnlocked == 0);                   /* every blit with the layers held */
+    assert(unlockedBusy == 0);                  /* and done before they were given back */
+    assert(memcmp(atUnlock, planes, sizeof(planes)) == 0);    /* nothing drawn after */
+    assert(planes[0][(TOP + 29 * 8) * BPR + 1] == 0);         /* (the new bottom row, */
+    assert(planes[0][(TOP + 29 * 8) * BPR] == 0xFF);          /*  the cursor in it)   */
+    assert(planes[0][(TOP + 28 * 8) * BPR] == 'l');
+    assert(layerLocks == 0);
+    vt_write_str("\x1b[?25l\n");     /* a scroll and no cursor: the write ends on a blit */
+    assert(bltUnlocked == 0 && unlockedBusy == 0);
+    VtClose();
+}
+
+static void test_a_menu_open_over_the_terminal_is_drawn_around(void)
+{
+    static UBYTE before[sizeof(planes)];
+
+    setup();
+    assert(VtOpen() == 0);
+    screen.LayerInfo.top_layer = &menuLayer;
+    memcpy(before, planes, sizeof(planes));
+    vt_write_str("Hello");
+    assert(memcmp(before, planes, sizeof(planes)) == 0);
+    assert(strstr(calls, "\"Hello\""));
+    assert(layerLocks == 0);                    /* the RastPort's layer clips: not held */
+    screen.LayerInfo.top_layer = &winLayer;     /* the menu closes */
+    calls[0] = 0;
+    vt_write_str("\rA");
+    assert(calls[0] == 0 && planes[0][TOP * BPR] == 'A');
+    VtClose();
+}
+
+/* A send can wait for the network, and every window on the screen with it:
+ * the layers are given back for it, and looked at again after. */
+static void test_a_menu_opened_while_an_answer_is_sent_is_drawn_around(void)
+{
+    static UBYTE before[sizeof(planes)];
+
+    setup();
+    assert(VtOpen() == 0);
+    menuOnSend = 1;
+    memcpy(before, planes, sizeof(planes));
+    vt_write_str("A\x1b[6nB");                  /* the BBS asks where the cursor is */
+    assert(sentLocked == 0);
+    assert(memcmp(before, planes, sizeof(planes)) == 0);
+    assert(strstr(calls, "\"AB\""));
+    assert(layerLocks == 0);
+    VtClose();
+}
+
 int main(void)
 {
     test_the_terminal_starts_below_the_title_bar_and_matches_the_window_rows();
@@ -280,6 +398,9 @@ int main(void)
     test_the_pen_map_colours_the_rastport_path_and_stops_direct_drawing();
     test_an_8_plane_screen_takes_the_rastport();
     test_a_16_pixel_font_gives_40_columns();
+    test_a_menu_cannot_open_while_the_terminal_draws_into_the_bitmap();
+    test_a_menu_open_over_the_terminal_is_drawn_around();
+    test_a_menu_opened_while_an_answer_is_sent_is_drawn_around();
     printf("term_engine: all assertions passed\n");
     return 0;
 }
