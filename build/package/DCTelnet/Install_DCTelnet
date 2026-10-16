@@ -49,6 +49,7 @@
 
 (SET #destDir       (TACKON #destDir "DCTelnet"))
 (SET #docsDir       (TACKON #destDir "Docs"))
+(SET #scIconsDir    (TACKON #destDir "SCIcons"))
 (SET #toolBarDir    (TACKON #destDir "ToolBar"))
 (SET #rexxDir       (TACKON #destDir "Rexx"))
 (SET @default-dest  #destDir)
@@ -121,6 +122,15 @@
     )
 )
 
+
+    (COPYFILES
+        (prompt    "Installing the DCTelnet SCIcons (own screen) icons.")
+        (help    "\n\nDCTelnet's own screen shows these icons on the tool bar. They are\n"
+            "drawn with the terminal's colours; the Workbench uses the ToolBar icons.")
+        (source "SCIcons")
+        (dest     #scIconsDir)
+        (all)
+    )
 
     (COPYFILES
         (prompt    "Installing the DCTelnet tool bar icons.")
