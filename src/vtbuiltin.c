@@ -29,6 +29,10 @@ static vt_term *vtTerm;
 static void VtDraw(void *user, int x0, int y0, int x1, int y1)
 {
     int x, y, n;
+    /* vt_new() draws its blank screen before it returns the terminal:
+     * term_init_area() has cleared the area already. */
+    if (!vtTerm)
+        return;
     for (y = y0; y < y1; y++) {
         const vt_cell *c = vt_row(vtTerm, y, &n);
         if (!c)
@@ -63,9 +67,72 @@ static void VtScroll(void *user, int top, int bottom, int n)
     term_rect_scroll(0, (WORD)top, term_cols, (WORD)(bottom - top), 0, (WORD)-n, 0);
 }
 
+/* The screen's layers while the engine draws straight into its bitmap.
+ * It does only while no layer lies over the terminal (a requester, another
+ * DCTelnet window, an open menu): such a layer owns those pixels. Intuition
+ * takes the screen's LayerInfo to make a layer, so holding it from the look
+ * to the end of the drawing (the blitter's too) keeps a menu or window from
+ * opening in between and being drawn over. */
+static BOOL vtLayersHeld;
+
+/* Is a layer in front of the terminal window over its inner area? The
+ * caller holds the screen's LayerInfo. */
+static BOOL VtCovered(void)
+{
+    struct Layer *l;
+    WORD x0 = win->LeftEdge + win->BorderLeft;
+    WORD y0 = win->TopEdge + win->BorderTop;
+    WORD x1 = win->LeftEdge + win->Width - win->BorderRight - 1;
+    WORD y1 = win->TopEdge + win->Height - win->BorderBottom - 1;
+
+    for (l = scr->LayerInfo.top_layer; l && l != win->WLayer; l = l->back)
+        if (l->bounds.MinX <= x1 && l->bounds.MaxX >= x0
+         && l->bounds.MinY <= y1 && l->bounds.MaxY >= y0)
+            return TRUE;
+    return FALSE;
+}
+
+/* Before drawing. Covered, the engine draws through the window's RastPort,
+ * whose layer clips, and the lock is given back at once; otherwise it draws
+ * straight into the bitmap and the layers stay locked until
+ * VtLayersUnlock(). Without layers.library: the RastPort. */
+static void VtLayersLock(void)
+{
+    BOOL covered = TRUE;
+
+    if (!scr || !win)
+        return;
+    if (LayersBase) {
+        LockLayerInfo(&scr->LayerInfo);
+        covered = VtCovered();
+    }
+    term_covered(covered);
+    if (covered && LayersBase)
+        UnlockLayerInfo(&scr->LayerInfo);
+    else if (!covered)
+        vtLayersHeld = TRUE;
+}
+
+static void VtLayersUnlock(void)
+{
+    if (!vtLayersHeld)
+        return;
+    term_blit_sync();       /* the blitter is done with the planes too */
+    vtLayersHeld = FALSE;
+    UnlockLayerInfo(&scr->LayerInfo);
+}
+
+/* An answer to the BBS, in the middle of a write: sent with the layers
+ * unlocked (a send that waits would hold up every window on the screen),
+ * looked at again after. */
 static void VtReply(void *user, const vt_u8 *buf, long len)
 {
+    BOOL held = vtLayersHeld;
+
+    VtLayersUnlock();
     send_data((const UBYTE *)buf, len);
+    if (held)
+        VtLayersLock();
 }
 
 /* After the engine has drawn: the cursor where the engine has it. */
@@ -83,7 +150,7 @@ static void VtSyncCursor(void)
  * cleared). 0 when it is ready. */
 static int VtOpen(void)
 {
-    static const vt_callbacks cb = { VtDraw, VtScroll, VtReply, NULL, NULL, NULL };
+    static const vt_callbacks cb = { VtDraw, VtScroll, VtReply, NULL, NULL, NULL, NULL };
 
     if (vtTerm)
         vt_free(vtTerm);
@@ -108,9 +175,11 @@ static void VtClose(void)
  * changed, put the cursor back. Drawing happens with the cursor hidden. */
 static void VtWrite(const UBYTE *data, long len)
 {
+    VtLayersLock();
     cursor_hide();
     vt_write(vtTerm, data, len);
     term_flush();
     VtSyncCursor();
     cursor_show();
+    VtLayersUnlock();
 }
