@@ -63,7 +63,7 @@ test_textedit: test_textedit.c ../src/textedit.c ../src/textedit.h
 test_dsr: test_dsr.c ../src/dsr.c ../src/dsr.h
 	$(CC) $(CFLAGS) -Ishim -o $@ $(filter %.c,$^)
 
-test_iconpens: test_iconpens.c ../src/iconpens.c ../src/iconpens.h
+test_iconpens: test_iconpens.c ../src/iconpens.c ../src/iconpens.h ../src/palette.c ../src/palette.h ../src/prefs.h ../src/prefs_file.c ../src/prefs_file.h
 	$(CC) $(CFLAGS) -Ishim -o $@ $(filter %.c,$^)
 
 clean:

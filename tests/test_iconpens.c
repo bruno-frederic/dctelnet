@@ -4,6 +4,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "iconpens.h"
+#include "palette.h"
 
 /* The palette the shipped icons carry (tools/toolbar_icons.py). */
 static const char shipped[] = "AAAAAA,000000,FFFFFF,6688BB,717171,383838,99B0D2,CCD7E8";
@@ -207,8 +208,9 @@ static void test_an_identity_map_needs_no_remap(void)
 }
 
 /* SCIcons carry the default terminal colours of pens 0-7 (defaultDeviceColors in
- * src/palette.c; tools/toolbar_icons.py check ties this string to that table). On
- * a screen with those colours every pen is its own nearest: the map is identity. */
+ * src/palette.c, ibmcon pen order). The string must match that table, so a
+ * palette change that leaves the icons behind fails here. On the default
+ * terminal screen every icon pen is then its own nearest: the map is identity. */
 static void test_scicons_palette_is_the_default_terminal_pens(void)
 {
     static const char sc[] = "000000,DDDDDD,00DD00,DDDD00,0000DD,DD00DD,00DDDD,DD0000";
@@ -216,11 +218,11 @@ static void test_scicons_palette_is_the_default_terminal_pens(void)
     UBYTE map[8];
     int i;
 
+    for (i = 0; i < 16; i++)                         /* device pen i, as 0xRRGGBB */
+        screen[i] = Palette_AnsiColour(defaultDeviceColors, Palette_IbmconToAnsi(i));
     assert(IconPens_Parse(sc, rgb) == 8);
     for (i = 0; i < 8; i++)
-        screen[i] = rgb[i];
-    for (i = 8; i < 16; i++)
-        screen[i] = 0x555555 + 0x080808 * (ULONG)i;     /* the bright half: other colours */
+        assert(rgb[i] == screen[i]);
     for (i = 0; i < 8; i++)
         map[i] = (UBYTE)IconPens_Nearest(rgb[i], screen, 16);
     assert(IconPens_IsIdentity(map, 8, 3, IconPens_Depth(7)));
