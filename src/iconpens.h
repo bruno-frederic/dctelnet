@@ -28,6 +28,14 @@ UWORD IconPens_Depth(UBYTE maxPen);
 /* Bytes of one plane of an image: a row is a whole number of words. */
 ULONG IconPens_PlaneSize(UWORD width, UWORD height);
 
+/* Whether map leaves every pen of a srcDepth image as it is (map[p] == p, all
+ * pens of the image in the map) and the destination has the same depth: the image
+ * is then drawn as it is and IconPens_Remap is not called. */
+int IconPens_IsIdentity(const UBYTE *map, int n, UWORD srcDepth, UWORD dstDepth);
+
+/* How many images IconPens_Remap has redrawn (the sentinel of the tests). */
+extern ULONG IconPens_RemapCount;
+
 /* Redraws a planar image (struct Image data: srcDepth planes, PlanePick pick,
  * PlaneOnOff onoff) with pen map[p] for every pixel of pen p, into dst:
  * dstDepth full planes. Pens beyond the map's n entries keep pen 0's. */

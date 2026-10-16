@@ -20,11 +20,16 @@ rsvg-convert: black on grey normally, white on blue pressed, with two blend
 colours each for the antialiased edges. Every byte of the icon other than the
 two images and the tool types is kept.
 
+SCIcons, the hand-drawn icons for DCTelnet's own screens, are not rendered: build
+only gives them the tool type naming the terminal colours (pens 0-7) they were
+drawn with, check verifies it.
+
   toolbar_icons.py build [ICONDIR...]  render the SVGs into the icons (default: both drawers)
   toolbar_icons.py check [ICONDIR...]  verify every icon
   toolbar_icons.py preview OUT.png [ICONDIR]
 """
 import os
+import re
 import struct
 import subprocess
 import sys
@@ -32,7 +37,8 @@ import zlib
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 PACKAGE = os.path.join(HERE, "..", "build", "package", "DCTelnet")
-ICONDIRS = [os.path.join(PACKAGE, "ToolBar", "Square"), os.path.join(PACKAGE, "ToolBar", "Wide")]
+SCICONS = os.path.join(PACKAGE, "SCIcons")
+ICONDIRS = [os.path.join(PACKAGE, "ToolBar", "Square"), os.path.join(PACKAGE, "ToolBar", "Wide"), SCICONS]
 # Symbol size (width, height) in pixels per set.
 SYMBOL_SIZES = {"Square": (24, 24), "Wide": (48, 24)}
 SVGDIR = os.path.join(HERE, "toolbar_icons")
@@ -50,6 +56,15 @@ NORMAL = (0, 4, 5, 1)    # background, 1/3, 2/3, full symbol
 PRESSED = (3, 6, 7, 2)
 DEPTH = 3
 PALETTE_TOOLTYPE = "DCTELNET_PALETTE=" + ",".join("%02X%02X%02X" % c for c in PALETTE)
+
+# SCIcons (DCTelnet's own screens) are hand-drawn pixel art, not rendered from the
+# SVGs. They use the terminal pens 0-7 of the default ibmcon palette
+# (defaultDeviceColors in src/palette.c, 4 bits per channel, each x17). On an
+# own screen with that palette DCTelnet's pen map is the identity and they are
+# drawn as authored; on any other palette they are mapped to the closest pens.
+DEVICE_COLORS = [0x000, 0xDDD, 0x0D0, 0xDD0, 0x00D, 0xD0D, 0x0DD, 0xD00]
+SC_PALETTE_TOOLTYPE = "DCTELNET_PALETTE=" + ",".join(
+    "%02X%02X%02X" % ((c >> 8 & 15) * 17, (c >> 4 & 15) * 17, (c & 15) * 17) for c in DEVICE_COLORS)
 
 
 HEADER = 78          # struct DiskObject as stored
@@ -127,8 +142,12 @@ class Icon:
         return offset + 4 + length
 
     def rebuilt(self, normal, pressed, tool_types):
-        """The icon with new images and tool types; every other byte kept."""
-        images = self.images[0].encode(normal) + self.images[1].encode(pressed)
+        """The icon with new images and tool types; every other byte kept.
+        normal None keeps both images as they are."""
+        if normal is None:
+            images = self.raw[self.image_start:self.image_end]
+        else:
+            images = self.images[0].encode(normal) + self.images[1].encode(pressed)
         types = struct.pack(">I", (len(tool_types) + 1) * 4)
         for t in tool_types:
             data = t.encode("latin-1") + b"\0"
@@ -156,7 +175,19 @@ def compose(cover, width, height, pens):
              else pens[0] for x in range(width)] for y in range(height)]
 
 
+def palette_tooltype(icondir):
+    return SC_PALETTE_TOOLTYPE if os.path.basename(os.path.normpath(icondir)) == "SCIcons" else PALETTE_TOOLTYPE
+
+
 def build(icondir):
+    if palette_tooltype(icondir) == SC_PALETTE_TOOLTYPE:
+        # Hand-drawn art: only the tool type is written, the pixels stay.
+        for icon_name in SYMBOLS:
+            path = os.path.join(icondir, icon_name + ".info")
+            icon = Icon(open(path, "rb").read())
+            label = icon.tool_types[:1]
+            open(path, "wb").write(icon.rebuilt(None, None, label + [SC_PALETTE_TOOLTYPE]))
+        return
     for icon_name, symbol in SYMBOLS.items():
         path = os.path.join(icondir, icon_name + ".info")
         icon = Icon(open(path, "rb").read())
@@ -182,9 +213,20 @@ def pixels(icon, raw, image):
     return rows
 
 
+def device_colors_match_source():
+    """DEVICE_COLORS is the defaultDeviceColors table of src/palette.c, pens 0-7."""
+    text = open(os.path.join(HERE, "..", "src", "palette.c")).read()
+    table = text.split("defaultDeviceColors[16]", 1)[1].split("};", 1)[0]
+    values = [int(v, 16) for v in re.findall(r"0x([0-9A-Fa-f]{4})\s*,?\s*(?://|$)", table, re.M)]
+    return values[:len(DEVICE_COLORS)] == DEVICE_COLORS
+
+
 def check(icondir):
     """Every tool bar icon parses to its last byte and carries the palette of its pens."""
     errors = []
+    want = palette_tooltype(icondir)
+    if want == SC_PALETTE_TOOLTYPE and not device_colors_match_source():
+        errors.append("DEVICE_COLORS differs from defaultDeviceColors in src/palette.c")
     for icon_name in SYMBOLS:
         path = os.path.join(icondir, icon_name + ".info")
         try:
@@ -193,13 +235,19 @@ def check(icondir):
                 errors.append("%s: %d bytes after the last field" % (path, len(icon.raw) - icon.end))
             if len(icon.images) != 2:
                 errors.append("%s: %d images, want normal + pressed" % (path, len(icon.images)))
+            raw = icon.raw
             for image in icon.images:
-                if image.depth != DEPTH or image.pick != (1 << DEPTH) - 1:
+                if want == SC_PALETTE_TOOLTYPE:
+                    used = {p for row in pixels(icon, raw, image) for p in row}
+                    if image.depth != DEPTH or max(used) >= len(DEVICE_COLORS):
+                        errors.append("%s: pens %s, want only pens 0-%d of the palette"
+                                      % (path, sorted(used), len(DEVICE_COLORS) - 1))
+                elif image.depth != DEPTH or image.pick != (1 << DEPTH) - 1:
                     errors.append("%s: depth %d PlanePick %d, want %d and %d"
                                   % (path, image.depth, image.pick, DEPTH, (1 << DEPTH) - 1))
             if not icon.tool_types or icon.tool_types[0].startswith("DCTELNET_"):
                 errors.append(path + ": no label (the tool bar shows the first tool type)")
-            if PALETTE_TOOLTYPE not in icon.tool_types:
+            if want not in icon.tool_types:
                 errors.append(path + ": no DCTELNET_PALETTE tool type: its pens would draw in"
                               " whatever colours the screen has there")
         except ValueError as e:

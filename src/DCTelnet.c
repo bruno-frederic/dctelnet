@@ -5274,14 +5274,22 @@ struct Screen* OpenAppScreen(void)
     // The screen shares its free pens (SA_SharePens): the terminal's ANSI
     // pens and the AGA pointer pens 16-19 are ours, so that no ObtainBestPen()
     // (the tool bar's icons) takes one and recolours it. They go with the
-    // screen.
-    if (ansiOwnPens && GfxBase->LibNode.lib_Version >= 39)
+    // screen. Without ANSI pens of their own (16 colours, the builtin renderer)
+    // the terminal's colours sit on pens 0-15 itself: every pen of a screen up
+    // to 16 colours, pens 0-19 above. The tool bar then finds its colours among
+    // the pens the screen holds (FindColor) instead of recolouring one.
+    if (scr && STATE_IS(APP_FULLSCREEN) && GfxBase->LibNode.lib_Version >= 39)
     {
-        UWORD i;
+        UWORD i, depth = AppScreenDepth(scr);
+        UWORD last = depth >= 5 ? 20 : (UWORD)(1 << depth);
 
-        for (i = 0; i < 16; i++)
-            ObtainPen(scr->ViewPort.ColorMap, ansiColourPens[i], 0, 0, 0, PEN_EXCLUSIVE | PEN_NO_SETCOLOR);
-        for (i = 16; i < 20; i++)
+        if (ansiOwnPens)
+            for (i = 0; i < 16; i++)
+                ObtainPen(scr->ViewPort.ColorMap, ansiColourPens[i], 0, 0, 0, PEN_EXCLUSIVE | PEN_NO_SETCOLOR);
+        else
+            for (i = 0; i < 16 && i < last; i++)
+                ObtainPen(scr->ViewPort.ColorMap, i, 0, 0, 0, PEN_EXCLUSIVE | PEN_NO_SETCOLOR);
+        for (i = 16; i < last; i++)
             ObtainPen(scr->ViewPort.ColorMap, i, 0, 0, 0, PEN_EXCLUSIVE | PEN_NO_SETCOLOR);
     }
 
