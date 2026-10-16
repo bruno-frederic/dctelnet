@@ -157,7 +157,7 @@ test_booklist: test_booklist.c ../src/booklist.c ../src/booklist.h
 test_connectaddr: test_connectaddr.c ../src/connectaddr.c ../src/connectaddr.h
 	$(CC) $(CFLAGS) -Ishim -o $@ $(filter %.c,$^)
 
-test_iconpens: test_iconpens.c ../src/iconpens.c ../src/iconpens.h
+test_iconpens: test_iconpens.c ../src/iconpens.c ../src/iconpens.h ../src/palette.c ../src/palette.h ../src/prefs.h ../src/prefs_file.c ../src/prefs_file.h
 	$(CC) $(CFLAGS) -Ishim -o $@ $(filter %.c,$^)
 
 clean:
