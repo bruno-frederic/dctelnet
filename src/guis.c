@@ -2053,23 +2053,29 @@ void CheckDimensions(struct NewWindow *newwin)
 // on DCTelnet's own 256-colour screen). An icon without the tool type, such as
 // one a user drew, is shown as it is.
 static struct Image *toolImage[BUTTON_COUNT][2];
-static UBYTE toolPen[BUTTON_COUNT][ICONPENS_MAX];
-static BOOL  toolPenOwned[BUTTON_COUNT][ICONPENS_MAX];
+
+// The icons of a set share one palette, so the pens are found once per tool bar
+// opening, not once per icon (an ObtainBestPen is a pass over the colour map):
+// one entry per distinct DCTELNET_PALETTE value.
+struct ToolPalette
+{
+    char  value[ICONPENS_MAX * 7 + 4];   // text + NUL, rounded to 4: no padding
+    int   n;
+    UWORD depth;                // planes the pens need
+    UBYTE pen[ICONPENS_MAX];
+    BOOL  owned[ICONPENS_MAX];
+};
+static struct ToolPalette toolPalette[BUTTON_COUNT];
+static UWORD toolPalettes;
 
 // The standard Workbench colours: the match without ObtainBestPen (OS 2).
 static const ULONG standardPens[4] = { 0xAAAAAA, 0x000000, 0xFFFFFF, 0x6688BB };
 
-static struct Image *RemapToolImage(const struct Image *img, const UBYTE *map, int n)
+static struct Image *RemapToolImage(const struct Image *img, const UBYTE *map, int n, UWORD depth)
 {
     struct Image *out;
-    UBYTE maxPen = 0;
-    UWORD depth;
     ULONG plane;
-    int i;
 
-    for (i = 0; i < n; i++)
-        if (map[i] > maxPen) maxPen = map[i];
-    depth = IconPens_Depth(maxPen);
     plane = IconPens_PlaneSize(img->Width, img->Height);
     if (!(out = AllocVec(sizeof(struct Image), MEMF_CLEAR)))
         return NULL;
@@ -2089,39 +2095,78 @@ static struct Image *RemapToolImage(const struct Image *img, const UBYTE *map, i
     return out;
 }
 
+// The pens for the palette value: the ones found for an earlier icon with the
+// same value, or new ones.
+static struct ToolPalette *ToolPaletteFor(const char *value, const ULONG *rgb, int n)
+{
+    struct ToolPalette *tp;
+    UBYTE maxPen;
+    UWORD j;
+    int k;
+
+    for (j = 0; j < toolPalettes; j++)
+        if (strcmp(toolPalette[j].value, value) == 0)
+            return &toolPalette[j];
+    tp = &toolPalette[toolPalettes++];
+    strlcpy(tp->value, value, sizeof(tp->value));
+    tp->n = n;
+    for (k = 0; k < n; k++)
+    {
+        tp->owned[k] = FALSE;
+        if (k == 0)                                 // the icon's background
+            tp->pen[k] = (UBYTE)drawInfo->dri_Pens[BACKGROUNDPEN];
+        else if (GfxBase->LibNode.lib_Version >= 39)
+            tp->pen[k] = ObtainNearestPen(scr->ViewPort.ColorMap, rgb[k], PRECISION_IMAGE,
+                                          &tp->owned[k]);
+        else
+            tp->pen[k] = (UBYTE)IconPens_Nearest(rgb[k], standardPens, 4);
+    }
+    for (k = 0, maxPen = 0; k < n; k++)
+        if (tp->pen[k] > maxPen) maxPen = tp->pen[k];
+    tp->depth = IconPens_Depth(maxPen);
+    return tp;
+}
+
 static void RemapToolIcon(UWORD i)
 {
     struct Gadget *gad = &dob[i]->do_Gadget;
     struct Image **render[2];
+    struct ToolPalette *tp;
     ULONG rgb[ICONPENS_MAX];
     char *value;
     int n, k;
 
     value = (char *)FindToolType((CONST_STRPTR *)dob[i]->do_ToolTypes, ICONPENS_TOOLTYPE);
-    if (!value || !(n = IconPens_Parse(value, rgb)))
+    if (!value || strlen(value) >= sizeof(tp->value) || !(n = IconPens_Parse(value, rgb)))
         return;
-    for (k = 0; k < n; k++)
-    {
-        toolPenOwned[i][k] = FALSE;
-        if (k == 0)                                 // the icon's background
-            toolPen[i][k] = (UBYTE)drawInfo->dri_Pens[BACKGROUNDPEN];
-        else if (GfxBase->LibNode.lib_Version >= 39)
-            toolPen[i][k] = ObtainNearestPen(scr->ViewPort.ColorMap, rgb[k], PRECISION_IMAGE,
-                                             &toolPenOwned[i][k]);
-        else
-            toolPen[i][k] = (UBYTE)IconPens_Nearest(rgb[k], standardPens, 4);
-    }
+    tp = ToolPaletteFor(value, rgb, n);
     render[0] = (struct Image **)&gad->GadgetRender;
     render[1] = (struct Image **)&gad->SelectRender;
     for (k = 0; k < 2; k++)
-        if (*render[k] && (toolImage[i][k] = RemapToolImage(*render[k], toolPen[i], n)))
+    {
+        struct Image *img = *render[k];
+
+        // The screen has the icon's colours on the icon's own pens (the default
+        // terminal palette and SCIcons): it is drawn as it was authored.
+        if (!img || IconPens_IsIdentity(tp->pen, n, img->Depth, tp->depth))
+            continue;
+        if ((toolImage[i][k] = RemapToolImage(img, tp->pen, n, tp->depth)))
             *render[k] = toolImage[i][k];
+    }
 }
 
 static void FreeToolIcons(void)
 {
     UWORD i, k;
 
+    for (i = 0; i < toolPalettes; i++)
+        for (k = 0; k < toolPalette[i].n; k++)
+            if (toolPalette[i].owned[k])
+            {
+                ReleasePen(scr->ViewPort.ColorMap, toolPalette[i].pen[k]);
+                toolPalette[i].owned[k] = FALSE;
+            }
+    toolPalettes = 0;
     for (i = 0; i < BUTTON_COUNT; i++)
     {
         for (k = 0; k < 2; k++)
@@ -2130,12 +2175,6 @@ static void FreeToolIcons(void)
                 FreeVec(toolImage[i][k]->ImageData);
                 FreeVec(toolImage[i][k]);
                 toolImage[i][k] = NULL;
-            }
-        for (k = 0; k < ICONPENS_MAX; k++)
-            if (toolPenOwned[i][k])
-            {
-                ReleasePen(scr->ViewPort.ColorMap, toolPen[i][k]);
-                toolPenOwned[i][k] = FALSE;
             }
         if (dob[i]) { FreeDiskObject(dob[i]);  dob[i] = NULL; }
     }
@@ -2171,10 +2210,15 @@ void OpenToolBarWindow(char setmenus)
 
         do
         {
-            // The icons carry their colours: one set for any screen, drawn
-            // for the shape of its pixels.
-            strlcpy(buf, ScreenFont_TallPixels(modeResX, modeResY) ? "PROGDIR:ToolBar/Wide/"
-                                                                   : "PROGDIR:ToolBar/Square/", sizeof(buf));
+            // The icons carry their colours. On the own screen SCIcons, drawn
+            // for its terminal pens (the pen map is then the identity: they
+            // are shown as drawn, with no redraw); on the Workbench the
+            // Lucide set, in the shape of its pixels.
+            if (STATE_IS(APP_FULLSCREEN))
+                strlcpy(buf, "PROGDIR:SCIcons/", sizeof(buf));
+            else
+                strlcpy(buf, ScreenFont_TallPixels(modeResX, modeResY) ? "PROGDIR:ToolBar/Wide/"
+                                                                       : "PROGDIR:ToolBar/Square/", sizeof(buf));
             strlcat(buf, icons[i], sizeof(buf));
             dob[i] = GetDiskObjectNew(buf);
             if(dob[i])

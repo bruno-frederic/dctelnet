@@ -87,40 +87,78 @@ ULONG IconPens_PlaneSize(UWORD width, UWORD height)
     return (ULONG)((width + 15) >> 4) * 2 * height;
 }
 
+ULONG IconPens_RemapCount = 0;
+
+int IconPens_IsIdentity(const UBYTE *map, int n, UWORD srcDepth, UWORD dstDepth)
+{
+    int i;
+
+    if (srcDepth != dstDepth || (1 << srcDepth) > n)
+        return 0;
+    for (i = 0; i < n; i++)
+        if (map[i] != i)
+            return 0;
+    return 1;
+}
+
+/* A word of a plane holds 16 pixels, so the pens of 16 pixels are found at once:
+ * the mask of the pixels of pen p is the AND of each source plane's word (or its
+ * complement), and the destination plane d gets the masks of all pens whose
+ * mapped pen has bit d. Planes are walked by pointer: on a 68000 a multiply
+ * costs more than the whole mask of a pen. */
 void IconPens_Remap(const UWORD *src, UWORD width, UWORD height, UWORD srcDepth,
                     UBYTE pick, UBYTE onoff, const UBYTE *map, int n,
                     UWORD *dst, UWORD dstDepth)
 {
     ULONG words = (ULONG)((width + 15) >> 4) * height;   /* one plane, in words */
+    const UWORD *sp[8];       /* next word of each stored source plane */
+    UWORD *dp[8];             /* next word of each destination plane */
+    UBYTE out[256];
+    UWORD pens = (UWORD)(1 << srcDepth), p;
+    UWORD plane, stored = 0;
     ULONG w;
-    UWORD plane;
 
-    for (w = 0; w < words * dstDepth; w++)
-        dst[w] = 0;
+    IconPens_RemapCount++;
+    for (plane = 0; plane < srcDepth; plane++)
+        if (pick & (1 << plane))
+        {
+            sp[stored] = src + stored * words;      /* once per image, not per word */
+            stored++;
+        }
+    for (plane = 0; plane < dstDepth; plane++)
+        dp[plane] = dst + plane * words;
+    for (p = 0; p < pens; p++)
+        out[p] = map[p < n ? p : 0];
     for (w = 0; w < words; w++)
     {
-        UWORD bit;
+        UWORD in[8], res[8];
 
-        for (bit = 0; bit < 16; bit++)
+        stored = 0;
+        for (plane = 0; plane < srcDepth; plane++)
         {
-            UWORD mask = (UWORD)(0x8000 >> bit), pen = 0, stored = 0;
-            UBYTE out;
-
-            for (plane = 0; plane < srcDepth; plane++)
+            if (pick & (1 << plane))
             {
-                if (pick & (1 << plane))
-                {
-                    if (src[stored * words + w] & mask)
-                        pen |= (UWORD)(1 << plane);
-                    stored++;
-                }
-                else if (onoff & (1 << plane))
-                    pen |= (UWORD)(1 << plane);
+                in[plane] = *sp[stored]++;
+                stored++;
             }
-            out = map[pen < n ? pen : 0];
-            for (plane = 0; plane < dstDepth; plane++)
-                if (out & (1 << plane))
-                    dst[plane * words + w] |= mask;
+            else
+                in[plane] = (onoff & (1 << plane)) ? 0xFFFF : 0;
         }
+        for (plane = 0; plane < dstDepth; plane++)
+            res[plane] = 0;
+        for (p = 0; p < pens; p++)
+        {
+            UWORD mask = 0xFFFF, o = out[p];
+
+            for (plane = 0; plane < srcDepth && mask; plane++)
+                mask &= (p & (1 << plane)) ? in[plane] : (UWORD)~in[plane];
+            if (!mask)
+                continue;
+            for (plane = 0; plane < dstDepth; plane++)
+                if (o & (1 << plane))
+                    res[plane] |= mask;
+        }
+        for (plane = 0; plane < dstDepth; plane++)
+            *dp[plane]++ = res[plane];
     }
 }
