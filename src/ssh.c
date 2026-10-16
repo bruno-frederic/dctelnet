@@ -849,7 +849,7 @@ static BOOL ReadPacket(struct Ssh *s)
         if (memcmp(mac, p + total, 32)) { Fail(s, "SSH: corrupt packet (bad MAC)"); return FALSE; }
     }
     s->in.seq++;
-    if (p[4] + 5 > total) { Fail(s, "SSH: corrupt packet (bad padding)"); return FALSE; }
+    if ((ULONG)p[4] + 5 > total) { Fail(s, "SSH: corrupt packet (bad padding)"); return FALSE; }
     OnMessage(s, p + 5, total - 5 - p[4]);
     memmove(s->rx, s->rx + total + macLen, s->rxLen - total - macLen);
     s->rxLen -= total + macLen;
