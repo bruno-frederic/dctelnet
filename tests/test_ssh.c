@@ -334,6 +334,23 @@ static void test_nothing_before_the_keys(void)
     assert(strstr(ssh.error, "key exchange"));
 }
 
+/* A padding length longer than the packet is refused, not read as a
+ * message of negative length. */
+static void test_padding_longer_than_the_packet(void)
+{
+    static const UBYTE version[] = "SSH-2.0-x\r\n";
+    UBYTE pkt[64];
+    size_t len;
+
+    Ssh_Init(&ssh, "u", "p", "ansi", 80, 25, FALSE, HostKey, Ask);
+    Ssh_Receive(&ssh, version, sizeof(version) - 1);
+    len = PlainPacket(2, pkt, 0, pkt);                                 /* IGNORE */
+    pkt[4] = 255;
+    Ssh_Receive(&ssh, pkt, (ULONG)len);
+    assert(ssh.state == SSH_CLOSED);
+    assert(strstr(ssh.error, "bad padding"));
+}
+
 static void test_fingerprint_is_openssh_format(void)
 {
     UBYTE fp[32];
@@ -355,6 +372,7 @@ int main(int argc, char **argv)
     test_fingerprint_is_openssh_format();
     test_slow_cpu_refuses_group14_only_servers();
     test_nothing_before_the_keys();
+    test_padding_longer_than_the_packet();
     test_curve25519_password_and_a_rekey();
     test_group14_keyboard_interactive();
     printf("ssh: all assertions passed\n");
