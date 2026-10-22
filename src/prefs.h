@@ -112,11 +112,13 @@ struct PrefsStruct
     UBYTE ConnectTimeout;       // seconds a connect may take; 0: the TCP stack's own limit
 
     UBYTE Charset;              // what the BBS sends: CHARSET_CP437 (0), _LATIN1, _UTF8 (charset.h)
+    UBYTE Bell;                 // BEL: BELL_FLASH (0), BELL_SOUND, BELL_OFF
+    UBYTE AnsiMusic;            // <>0: play ANSI music (ansimusic.h)
 
     // Keeps the struct a multiple of 4 bytes with no padding a compiler adds
     // on its own (every byte is a field: site_prefs.c carries them all). A
     // new UBYTE field takes one of these.
-    UBYTE Reserved[3];
+    UBYTE Reserved[1];
 };
 
 /*
@@ -163,6 +165,11 @@ struct PrefsStruct
 
 #define APP_TITLE_BAR_ENABLED        (1UL << 25)  //  2x in main loop for each Receive() (and 1x in LEDs(), LEDs() is not used in hot-path)
 #define APP_LEDS_ENABLED             (1UL << 26)  //  2x in main loop for each Receive)) (and 1x in LEDs(), LEDs() is not used in hot-path)
+
+// prefs.Bell
+#define BELL_FLASH 0     // the screen flashes (DisplayBeep)
+#define BELL_SOUND 1     // a short tone
+#define BELL_OFF   2
 
 // Persist bits 0 through APP_LEDS_ENABLED
 #define STATE_PERSISTENT_MASK    ((APP_LEDS_ENABLED << 1) - 1)

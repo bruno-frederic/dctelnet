@@ -77,8 +77,18 @@ static void test_unit_order_pens_are_swapped_back(void)
     assert(strcmp(out, "\033[0;31;40mr\r\n") == 0);
 }
 
+static void test_bells_are_taken_out(void)
+{
+    UBYTE text[] = "a\ab\a\a";
+    size_t len = sizeof(text) - 1;
+
+    assert(Ansi_StripByte(text, &len, 7) == 3 && len == 2 && memcmp(text, "ab", 2) == 0);
+    assert(Ansi_StripByte(text, &len, 7) == 0 && len == 2);
+}
+
 int main(void)
 {
+    test_bells_are_taken_out();
     test_private_parameters_are_skipped_whole();
     test_find_ignores_case();
     test_screen_row_as_ansi();

@@ -25,4 +25,8 @@ long Ansi_FindText(const char *hay, size_t len, const char *needle);
 #define ANSI_ATTR_RESET 0xFFFFFFFFUL
 size_t Ansi_ScreenRow(const UBYTE *cells, UWORD cols, BOOL swap17, ULONG *attr, char *out);
 
+/* Removes every byte b from data[0..*len) in place; returns how many went
+ * (BEL, when the Bell is a sound or off: the console would flash). */
+size_t Ansi_StripByte(UBYTE *data, size_t *len, UBYTE b);
+
 #endif /* ANSISCAN_H */
