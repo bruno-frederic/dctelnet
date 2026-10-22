@@ -107,6 +107,18 @@ static void test_an_old_prefs_file_keeps_all_its_settings(void)
                          | APP_RENDERER_IBMCON_DEVICE));
 }
 
+/* The builds before v2.0 appended settings at 444 (a 508-byte struct). */
+static void test_the_extension_block_of_the_builds_before_v2_carries(void)
+{
+    struct PrefsStruct got;
+    legacy_file(0);
+    memset(file + 376, 0, 508 - 376);
+    file[444] = 3; file[445] = 20; file[446] = 5; file[447] = 30;
+    assert(Prefs_Decode(file, 508, &got) == PREFS_FILE_LEGACY);
+    assert(got.RedialTries == 3 && got.RedialDelay == 20 && got.AntiIdleMinutes == 5 && got.ConnectTimeout == 30);
+    assert(Prefs_Decode(file, 444, &got) == PREFS_FILE_LEGACY && got.RedialTries == 0);
+}
+
 /* The builds before v2.0 added their own flags after bit 15. */
 static void test_the_flags_of_the_builds_before_v2_carry(void)
 {
@@ -166,6 +178,7 @@ int main(void)
     test_an_old_prefs_file_keeps_all_its_settings();
     test_old_hide_options_and_xem_map_to_the_new_ones();
     test_the_flags_of_the_builds_before_v2_carry();
+    test_the_extension_block_of_the_builds_before_v2_carries();
     test_a_short_old_file_keeps_the_essentials();
     test_a_256_colour_screen_does_not_fit_the_built_in_renderer();
     printf("prefs_file: all assertions passed\n");

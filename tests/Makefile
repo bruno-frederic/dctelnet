@@ -3,7 +3,7 @@
 CC := cc
 CFLAGS := -std=c99 -Wall -Wextra -Werror -I../src
 
-TESTS := test_petscii_modules test_petscii_dispatch test_prefs_file test_site_prefs test_palette test_screenfont test_progdir test_listsel test_textedit test_dsr test_keys test_clip test_ansiscan
+TESTS := test_petscii_modules test_petscii_dispatch test_prefs_file test_site_prefs test_palette test_screenfont test_progdir test_listsel test_textedit test_dsr test_keys test_clip test_ansiscan test_ticks
 
 .PHONY: all clean check-encoding check-fonts
 all: $(TESTS) check-encoding check-fonts
@@ -80,6 +80,9 @@ test_clip: test_clip.c ../src/clip.c ../src/clip.h ../src/charset.c ../src/chars
 	$(CC) $(CFLAGS) -Ishim -o $@ $(filter %.c,$^)
 
 test_ansiscan: test_ansiscan.c ../src/ansiscan.c ../src/ansiscan.h
+	$(CC) $(CFLAGS) -Ishim -o $@ $(filter %.c,$^)
+
+test_ticks: test_ticks.c ../src/ticks.c ../src/ticks.h
 	$(CC) $(CFLAGS) -Ishim -o $@ $(filter %.c,$^)
 
 clean:
