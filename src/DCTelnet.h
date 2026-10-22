@@ -32,6 +32,7 @@ enum MenuItemID
         MENU_QUIT,
 
     MENU_EDIT,
+        MENU_COPY,
         MENU_PASTE,
         MENU_COPY_SCREEN,
 
