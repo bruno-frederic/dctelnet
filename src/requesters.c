@@ -645,6 +645,13 @@ BOOL GetStringRequester(struct Window *parent, STRPTR title, STRPTR prompt,
 
                     switch(gid)
                     {
+                        case GID_STRING:
+                            // Return in the field ends it with GADGETUP (code 0),
+                            // not a VANILLAKEY: it had to be pressed twice. Tab
+                            // (code 9) only leaves the field.
+                            if (code == 9)
+                                break;
+                            /* fall through */
                         case GID_OK:
                             result = TRUE;
                             done = TRUE;
