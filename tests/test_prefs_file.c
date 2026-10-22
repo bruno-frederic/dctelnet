@@ -124,11 +124,12 @@ static void test_the_extension_block_of_the_builds_before_v2_carries(void)
 static void test_the_flags_of_the_builds_before_v2_carry(void)
 {
     struct PrefsStruct got;
-    size_t n = legacy_file((1UL << 3) | (1UL << 16) | (1UL << 17) | (1UL << 18));  /* + VT keys, Rlogin */
+    size_t n = legacy_file((1UL << 3) | (1UL << 16) | (1UL << 17) | (1UL << 18) | (1UL << 19));  /* + VT keys, Rlogin, 132 columns */
     assert(Prefs_Decode(file, n, &got) == PREFS_FILE_LEGACY);
     assert(got.State & APP_WINDOW_SNAPSHOT);
     assert(got.State & APP_VT_KEYS);
     assert(got.State & APP_RLOGIN);
+    assert(got.State & APP_132_COLUMNS);
 }
 
 static void test_old_hide_options_and_xem_map_to_the_new_ones(void)
