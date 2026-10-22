@@ -25,6 +25,7 @@ size_t strlcpy(char *dst, const char *src, size_t dstSize);
 size_t strlcat(char *dst, const char *src, size_t dstSize);
 void mysprintf(char *Buffer, char *ctl, ...);
 UBYTE *ReadWholeFile(const char *path, LONG *size, LONG max);
+LONG FileLength(const char *path);
 
 #ifdef __VBCC__
 int stricmp(const char *a, const char *b);
