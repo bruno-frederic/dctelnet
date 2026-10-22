@@ -136,6 +136,8 @@ struct PrefsStruct
 #define APP_PETSCII_MODE             (1UL << 15)
 #define APP_WINDOW_SNAPSHOT          (1UL << 16)  // MainWin* hold a Snapshot Windows size;
                                                   // clear: the Workbench window opens 80x25
+#define APP_VT_KEYS                  (1UL << 17)  // Home/End/Page/Insert send VT codes (ESC[1~ ...);
+                                                  // clear: ANSI-BBS (ESC[H ...)
 
 #define APP_CUSTOM_SCREEN_OPENED     (1UL << 23)  // Rarely accessed (during display initalization)
 

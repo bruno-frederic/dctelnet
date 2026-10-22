@@ -33,7 +33,7 @@ static void replace_keeping_geometry(struct PrefsStruct *live, const struct Pref
 }
 
 #define TERMINAL_GROUP_FLAGS  (APP_PETSCII_MODE | APP_RENDERER_ALL | APP_RAW_CONNECTION | APP_LOCAL_ECHO)
-#define KEYBOARD_GROUP_FLAGS  (APP_BACKSPACE_DEL_SWAPPED | APP_RETURN_SENDING_CRLF)
+#define KEYBOARD_GROUP_FLAGS  (APP_BACKSPACE_DEL_SWAPPED | APP_RETURN_SENDING_CRLF | APP_VT_KEYS)
 
 static void copy_flags(struct PrefsStruct *to, const struct PrefsStruct *from, ULONG mask)
 {
@@ -407,6 +407,11 @@ void SitePrefs_GroupSummary(ULONG group, const struct PrefsStruct *p, char *out,
         {
             if (len) put(out, &len, max, ", ");
             put(out, &len, max, "Return = CR + LF");
+        }
+        if (p->State & APP_VT_KEYS)
+        {
+            if (len) put(out, &len, max, ", ");
+            put(out, &len, max, "VT Keys");
         }
         if (!len) put(out, &len, max, "Standard keys");
     }
