@@ -51,6 +51,7 @@
 (SET #docsDir       (TACKON #destDir "Docs"))
 (SET #scIconsDir    (TACKON #destDir "SCIcons"))
 (SET #wbIconsDir    (TACKON #destDir "WBIcons"))
+(SET #rexxDir       (TACKON #destDir "Rexx"))
 (SET @default-dest  #destDir)
 
 (if (= (exists #destDir) 1)  ; 1 <=> it is a file
@@ -139,6 +140,14 @@
             "otherwise it will load and use the ANSI (SC) style icons.")
         (source "WBIcons")
         (dest     #wbIconsDir)
+        (all)
+    )
+
+    (COPYFILES
+        (prompt    "Installing the example ARexx script.")
+        (help    "\n\nLogin.rexx logs in to a BBS through DCTelnet's ARexx port.")
+        (source "Rexx")
+        (dest     #rexxDir)
         (all)
     )
 

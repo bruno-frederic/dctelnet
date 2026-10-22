@@ -15,7 +15,8 @@
 #define TICK_MACRO   0x01
 #define TICK_REDIAL  0x02
 #define TICK_NOP     0x04
-#define TICK_KINDS   3
+#define TICK_WAITFOR 0x08       /* a wait for a text times out */
+#define TICK_KINDS   4
 
 struct Ticks
 {

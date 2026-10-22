@@ -269,14 +269,26 @@ static size_t append_str(char *out, size_t len, size_t max, const char *str)
 }
 
 size_t SitePrefs_NextMacroSegment(const char **cursor, const char *user, const char *pass,
-                                  char *out, size_t max, BOOL *wait)
+                                  char *out, size_t max, BOOL *wait,
+                                  char *waitText, size_t waitMax)
 {
     const char *c = *cursor;
     size_t len = 0;
 
     *wait = FALSE;
+    waitText[0] = 0;
     while (*c && len < max)
     {
+        if (c[0] == '\\' && c[1] == 'w' && c[2] == '"')
+        {
+            size_t n = 0;
+
+            for (c += 3; *c && *c != '"'; c++)          /* \w"text": wait for it */
+                if (n + 1 < waitMax) waitText[n++] = *c;
+            waitText[n] = 0;
+            if (*c == '"') c++;
+            break;
+        }
         if (c[0] == '\\' && c[1])
         {
             switch (c[1])
