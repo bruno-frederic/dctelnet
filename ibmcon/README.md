@@ -1,4 +1,4 @@
-# ibmcon.device -- annotated disassembly (1.4 bug-fixed, 1.5 to 1.10)
+# ibmcon.device -- annotated disassembly (1.4 bug-fixed, 1.5 to 1.11)
 
 The ANSI console DCTelnet draws its terminal with. `ibmcon.device` 1.4
 (Mar 9 1998) was freeware and shipped as a binary only; this drawer holds
@@ -163,3 +163,25 @@ A1200 (FS-UAE, AGA and Picasso96 screens) and on the Workbench.
 * **`CSI P` and `CSI @` in the last column** now act on that column (they
   did nothing).
 * Version 1.10 (lib_Revision 10).
+
+## 1.11 (2026-09-28)
+
+* **Screen buffer.** ibmcon drew straight into the RastPort and kept
+  nothing, so no client could read the screen back. It now keeps every
+  cell (character, fg and bg pen, attribute flags; 4 bytes a cell,
+  allocated for the grid in `MeasureGrid` and kept where a resized grid
+  overlaps). Text, the erase commands (`J`, `K`, `X`), the scrolls
+  (`S`, `T`, `L`, `M`, line feed and cursor up at the margins) and
+  `@`/`P` all mirror themselves in it. Without memory for it the device
+  works as before.
+* **`IBMCMD_READTEXT` ($7FE3).** Copies row `io_Offset` (1-based) of the
+  buffer to `io_Data`, at most `io_Length` bytes; `io_Actual` = bytes (0
+  for a row outside the screen), `IOERR_NOCMD` without a buffer. For
+  clients copying text to the clipboard or saving the screen.
+* **Blink.** Cells drawn with SGR 5 blink every half second (a
+  `timer.device` request in the handler, redrawn from the buffer). In iCE
+  mode blink stays a bright background. Nothing is redrawn while no cell
+  blinks.
+* `tests/readtext_probe.c` checks the buffer on an Amiga: 17 cases, each
+  drawing path read back through `IBMCMD_READTEXT`.
+* Version 1.11 (lib_Revision 11).
