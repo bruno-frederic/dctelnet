@@ -26,8 +26,7 @@ BOOL Clip_RowSpan(const struct ClipRange *r, UWORD row, UWORD cols, UWORD *from,
     return *from <= *to;
 }
 
-size_t Clip_RowText(const UBYTE *cells, UWORD cols, UWORD from, UWORD to,
-                    BOOL petscii, BOOL lowerCase, char *out)
+size_t Clip_RowText(const UBYTE *cells, UWORD cols, UWORD from, UWORD to, int chars, char *out)
 {
     size_t n = 0, kept = 0;
     UWORD c;
@@ -37,7 +36,12 @@ size_t Clip_RowText(const UBYTE *cells, UWORD cols, UWORD from, UWORD to,
     {
         UBYTE ch = cells[(c - 1) * CLIP_CELL];
 
-        ch = petscii ? Charset_PetsciiToLatin1(ch, lowerCase) : Charset_Cp437ToLatin1(ch);
+        if (chars == CLIP_CP437)
+            ch = Charset_Cp437ToLatin1(ch);
+        else if (chars != CLIP_LATIN1)
+            ch = Charset_PetsciiToLatin1(ch, chars == CLIP_PETSCII_LOWER);
+        else if (ch < 0x20)
+            ch = ' ';
         out[n++] = (char)ch;
         if (ch != ' ' && ch != 0xA0)
             kept = n;
@@ -121,4 +125,11 @@ size_t Clip_PasteBytes(const char *text, size_t len, BOOL crlf, BOOL doubleIac, 
         }
     }
     return n;
+}
+
+size_t Clip_TrimEmptyLines(const char *text, size_t len)
+{
+    while (len > 0 && text[len - 1] == '\n')
+        len--;
+    return len;
 }

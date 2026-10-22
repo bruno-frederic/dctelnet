@@ -21,12 +21,19 @@ void Clip_Order(UWORD downRow, UWORD downCol, UWORD row, UWORD col, struct ClipR
 /* The columns of row `row` a range covers (from..to), FALSE if none. */
 BOOL Clip_RowSpan(const struct ClipRange *r, UWORD row, UWORD cols, UWORD *from, UWORD *to);
 
+/* What the screen's characters are: CP437 (IBM PC BBSes, and UTF-8 text,
+ * which is shown in CP437), ISO-8859-1 (Amiga BBSes), or PETSCII in the
+ * C64's upper-case or lower-case set. */
+enum { CLIP_CP437, CLIP_LATIN1, CLIP_PETSCII_UPPER, CLIP_PETSCII_LOWER };
+
 /* Columns from..to (1-based, inclusive) of one screen row of `cols` cells,
- * as ISO-8859-1 text without its trailing blanks. petscii: the cells hold
- * PETSCII (lowerCase: the C64's upper/lower case set), else CP437.
- * Returns the length written to out (at most to-from+1 bytes). */
-size_t Clip_RowText(const UBYTE *cells, UWORD cols, UWORD from, UWORD to,
-                    BOOL petscii, BOOL lowerCase, char *out);
+ * as ISO-8859-1 text without its trailing blanks. Returns the length
+ * written to out (at most to-from+1 bytes). */
+size_t Clip_RowText(const UBYTE *cells, UWORD cols, UWORD from, UWORD to, int chars, char *out);
+
+/* The length of text without the empty lines at its end (a copied screen's
+ * blank rows below the text). */
+size_t Clip_TrimEmptyLines(const char *text, size_t len);
 
 /* text as an IFF FTXT file with one CHRS chunk. Returns its size, 0 when
  * max is too small. */

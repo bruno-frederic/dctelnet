@@ -63,6 +63,10 @@ enum MenuItemID
         MENU_RLOGIN,
 //      MENU_INCOMING_LF_TO_CRLF,
         MENU_PETSCII_MODE,
+        MENU_CHARSET,
+            MENU_CHARSET_CP437,     // CP437, LATIN1, UTF8 in this order:
+            MENU_CHARSET_LATIN1,    //   minus MENU_CHARSET_CP437 is the
+            MENU_CHARSET_UTF8,      //   charset.h value
 
         MENU_LOCAL_ECHO,
         MENU_BACKSPACE_DEL_SWAP,
