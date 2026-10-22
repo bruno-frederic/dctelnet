@@ -29,6 +29,10 @@ enum MenuItemID
         MENU_RESET_SCREEN,
         MENU_QUIT,
 
+    MENU_EDIT,
+        MENU_PASTE,
+        MENU_COPY_SCREEN,
+
     MENU_TRANSFER,
         MENU_UPLOAD,
 
