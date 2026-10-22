@@ -1,4 +1,4 @@
-# ibmcon.device -- annotated disassembly (1.4 bug-fixed, 1.5 to 1.9)
+# ibmcon.device -- annotated disassembly (1.4 bug-fixed, 1.5 to 1.10)
 
 The ANSI console DCTelnet draws its terminal with. `ibmcon.device` 1.4
 (Mar 9 1998) was freeware and shipped as a binary only; this drawer holds
@@ -140,3 +140,26 @@ A1200 (FS-UAE, AGA and Picasso96 screens) and on the Workbench.
   column (1-based), so a client can answer a BBS's Device Status Report
   (`CSI 6 n`): the console itself cannot send anything back.
 * Version 1.9 (lib_Revision 9).
+
+## 1.10 (2026-09-28)
+
+* **iCE colours.** `CSI ?33h` switches iCE mode on (as in SyncTERM): SGR 5
+  (blink) then gives a bright background (pens 8-15), which ANSI art drawn
+  for iCE uses for its 16 background colours. SGR 25 ends it. Without iCE
+  mode SGR 5 still draws nothing (there is no blink yet).
+* **`CSI X` erases characters** (ECH): N cells from the cursor, which stays.
+  It took the dispatch table slot of the `CSI R` stub: the table is full
+  (the assembler now fails if it grows past `$DA`, or if the `$VER` string
+  moves the table).
+* **`ESC 7` / `ESC 8`** save and restore the cursor (DECSC/DECRC), as
+  `CSI s` / `CSI u`; the restored position is clamped to a grid that
+  shrank since the save.
+* **DECCKM (`CSI ?1h/l`)** is kept in mode bit 3, and the new
+  `IBMCMD_GETMODES` ($7FE2) replies with `io_Actual` = the mode word, so a
+  client can send cursor keys as `ESC O x` when a host asks for it.
+* **A private prefix applies to the whole sequence.** `h`/`l` read the
+  prefix of parameter N from the Nth raw character, so `CSI ?1;7l` changed
+  mode 7 without its `?`.
+* **`CSI P` and `CSI @` in the last column** now act on that column (they
+  did nothing).
+* Version 1.10 (lib_Revision 10).
