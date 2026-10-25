@@ -1,29 +1,11 @@
-<<<<<<< HEAD
-﻿# Docker image providing a standard Telnet server and a raw TCP shell service on port 4444, with
-# full ZMODEM file transfer support (via the lrzsz package).
-#
-# For raw TCP access, make sure to select the “✔ Raw Connection” option in DCTelnet.
-=======
 ﻿# Docker image for a small test server.
 # Supports Telnet, Rlogin, SSH, and a Raw Connection shell (on TCP port 4444).
 # Includes full ZMODEM file-transfer support via lrzsz.
->>>>>>> tests/improve_test-server
 #
 # Build the image:
 #   sudo docker build -t zmodem-server .
 #
 # Run the container with interactive debug output:
-<<<<<<< HEAD
-#   sudo docker run -ti -p 23:23 -p 4444:4444 zmodem-server
-#
-# Once connected, you can use sz/rz to send and receive files using ZMODEM.
-
-FROM debian:stable-slim
-
-RUN apt-get update && \
-    apt-get install -y lrzsz socat xinetd inetutils-telnetd  && \
-    apt-get clean
-=======
 #   sudo docker run -ti --init --cap-add AUDIT_WRITE -p22:22 -p23:23 -p513:513 -p4444:4444 zmodem-server
 #
 # Important notes:
@@ -45,7 +27,6 @@ RUN apt-get update && \
     mkdir /run/sshd     # needed by sshd on Debian bookworm
 
 EXPOSE 22/tcp 23/tcp 513/tcp 4444/tcp
->>>>>>> tests/improve_test-server
 
 RUN cat << 'EOF' > /etc/motd
 [1;36m+-----------------------------------------------------------+[0m
@@ -54,34 +35,20 @@ RUN cat << 'EOF' > /etc/motd
 [1;36m+-----------------------------------------------------------+[0m
 EOF
 
-<<<<<<< HEAD
-# https://manpages.debian.org/latest/passwd/useradd.8.html
-RUN useradd --create-home --shell /bin/bash user  &&  echo "user:***" | chpasswd
-
-
-RUN cat << 'EOF' > /home/user/.profile
-=======
 # https://manpages.debian.org/bookworm/passwd/useradd.8.en.html
 RUN useradd --create-home --shell /bin/bash user  &&  echo "user:***" | chpasswd && \
     cat << 'EOF' > /home/user/.profile
->>>>>>> tests/improve_test-server
 alias ll='ls -alF'
 alias download='sz'
 alias upload='rz'
 EOF
 
-<<<<<<< HEAD
-# https://manpages.debian.org/latest/inetutils-telnetd/telnetd.8.en.html
-EXPOSE 23
-RUN cat << 'EOF' > /etc/xinetd.d/telnet
-=======
 # Container entry point: run xinetd in foreground with debugging output:
 CMD ["/usr/sbin/xinetd", "-dontfork", "-d"]
 
 # Configure Telnet, raw TCP shell, Rlogin, and SSH as services under xinetd.
 RUN cat << 'EOF' >> /etc/xinetd.conf
 # TelnetD: https://manpages.debian.org/bookworm/inetutils-telnetd/telnetd.8.en.html
->>>>>>> tests/improve_test-server
 service telnet
 {
     disable     = no
@@ -93,23 +60,12 @@ service telnet
     server_args = --debug --no-hostinfo --exec-login /bin/login
     log_on_failure += USERID
 }
-<<<<<<< HEAD
-EOF
-
-# Create a socat xinetd service for a raw TCP shell on port 4444
-#
-# Note: socat could also be used standalone in a container:
-#   CMD socat TCP-LISTEN:4444,reuseaddr,fork EXEC:"/bin/login",pty,stderr
-EXPOSE 4444
-RUN cat << 'EOF' > /etc/xinetd.d/rawtcp
-=======
 
 # Raw Connection: create a socat xinetd service for a raw TCP shell on port 4444
 # https://manpages.debian.org/bookworm/socat/socat1.1.en.html
 #
 # Note: socat could also be used standalone in a container:
 #   CMD socat TCP-LISTEN:4444,reuseaddr,fork EXEC:"/bin/login",pty,stderr
->>>>>>> tests/improve_test-server
 service rawtcp
 {
     disable     = no
@@ -123,13 +79,6 @@ service rawtcp
     server_args = STDIO EXEC:/bin/login,pty,stderr
     log_on_failure += USERID
 }
-<<<<<<< HEAD
-EOF
-
-# Start xinetd in foreground with debugging output:
-ENTRYPOINT ["xinetd"]
-CMD ["-dontfork", "-d"]
-=======
 
 # RloginD: https://manpages.debian.org/bookworm/rsh-redone-server/rlogind.8
 #
@@ -183,4 +132,3 @@ service ssh
     log_on_failure += USERID
 }
 EOF
->>>>>>> tests/improve_test-server
