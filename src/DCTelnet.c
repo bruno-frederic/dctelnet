@@ -159,10 +159,12 @@ static void SetLocalEchoBack(BOOL wantedState);
 
 extern struct ExecBase *SysBase;
 #ifdef __GNUC__
-    struct Library      *ReqToolsBase = NULL;
+    typedef struct Library      ReqToolsBaseType;
 #else
-    struct ReqToolsBase *ReqToolsBase = NULL;
+    typedef struct ReqToolsBase ReqToolsBaseType;
 #endif
+ReqToolsBaseType *ReqToolsBase = NULL;
+
 struct IntuitionBase *IntuitionBase;
 struct GfxBase *GfxBase;
 struct Library *KeymapBase, *GadToolsBase, *AslBase, *SocketBase;
@@ -545,7 +547,7 @@ static BOOL InitializeReqToolsLib(ULONG reqtoolsTags[5])
     }
     else // ReqTools needs to be loaded now.
     {
-        ReqToolsBase = (struct ReqToolsBase *)OpenLibrary (REQTOOLSNAME, 0);
+        ReqToolsBase = (ReqToolsBaseType *)OpenLibrary (REQTOOLSNAME, 0);
 
         if (ReqToolsBase)
         {
