@@ -2317,6 +2317,31 @@ static UWORD toolPalettes;
 
 // The standard Workbench colours: the match without ObtainBestPen (OS 2).
 static const ULONG standardPens[4] = { 0xAAAAAA, 0x000000, 0xFFFFFF, 0x6688BB };
+static const UWORD standardRoles[4] = { BACKGROUNDPEN, SHADOWPEN, SHINEPEN, FILLPEN };
+
+// The Workbench pen for an icon colour (OS 3): the icons are drawn in the
+// standard colours and blends of them (antialiased edges). A standard colour
+// takes the screen's pen of the same role, a blend the closest pen to the same
+// blend of those pens' colours. Matched on colour alone, the edges of a custom
+// palette (a dark background, a light symbol) fell on unrelated pens.
+static UBYTE ToolPen(ULONG rgb, BOOL *owned)
+{
+    struct ColorMap *cm = scr->ViewPort.ColorMap;
+    ULONG role[4], c[3];
+    int j;
+
+    *owned = FALSE;
+    for (j = 0; j < 4; j++)
+        if (rgb == standardPens[j])
+            return (UBYTE)drawInfo->dri_Pens[standardRoles[j]];
+    for (j = 0; j < 4; j++)
+    {
+        GetRGB32(cm, drawInfo->dri_Pens[standardRoles[j]], 1, c);
+        role[j] = ((c[0] >> 8) & 0xFF0000) | ((c[1] >> 16) & 0xFF00) | (c[2] >> 24);
+    }
+    return ObtainNearestPen(cm, IconPens_Translate(rgb, standardPens, role, 4), PRECISION_IMAGE,
+                            owned);
+}
 
 static struct Image *RemapToolImage(const struct Image *img, const UBYTE *map, int n, UWORD depth)
 {
@@ -2365,8 +2390,7 @@ static struct ToolPalette *ToolPaletteFor(const char *value, const ULONG *rgb, i
         else if (k == 0)                            // the icon's background
             tp->pen[k] = (UBYTE)drawInfo->dri_Pens[BACKGROUNDPEN];
         else if (GfxBase->LibNode.lib_Version >= 39)
-            tp->pen[k] = ObtainNearestPen(scr->ViewPort.ColorMap, rgb[k], PRECISION_IMAGE,
-                                          &tp->owned[k]);
+            tp->pen[k] = ToolPen(rgb[k], &tp->owned[k]);
         else
             tp->pen[k] = (UBYTE)IconPens_Nearest(rgb[k], standardPens, 4);
     }

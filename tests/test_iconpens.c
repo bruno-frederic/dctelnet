@@ -43,6 +43,36 @@ static void test_nearest_colour_keeps_greys_grey(void)
     assert(IconPens_Nearest(0x6080C0, wb, 4) == 3);
 }
 
+static int near(ULONG a, ULONG b)
+{
+    int shift;
+
+    for (shift = 0; shift <= 16; shift += 8)
+        if (abs((int)((a >> shift) & 0xFF) - (int)((b >> shift) & 0xFF)) > 1)
+            return 0;
+    return 1;
+}
+
+/* #27: on a dark custom Workbench (pen 0 #222222, pen 1 light grey) the
+ * antialiased edges matched pens by colour and the outlines looked soft. The
+ * edge greys are blends of background and symbol: they become the same
+ * blends of the screen's background and symbol colours. */
+static void test_edges_on_a_dark_workbench_blend_its_own_colours(void)
+{
+    static const ULONG wb[4] = { 0xAAAAAA, 0x000000, 0xFFFFFF, 0x6688BB };
+    static const ULONG dark[4] = { 0x222222, 0xC8C8C8, 0x9A9A9A, 0x3E7A96 };
+    int j;
+
+    for (j = 0; j < 4; j++)                               /* roles map exactly */
+        assert(IconPens_Translate(wb[j], wb, dark, 4) == dark[j]);
+    assert(near(IconPens_Translate(0x717171, wb, dark, 4), 0x595959));  /* 1/3 */
+    assert(near(IconPens_Translate(0x383838, wb, dark, 4), 0x919191));  /* 2/3 */
+    assert(near(IconPens_Translate(0x99B0D2, wb, dark, 4), 0x5D8597));  /* fill to shine */
+    /* On the standard palette nothing moves. */
+    assert(IconPens_Translate(0x717171, wb, wb, 4) == 0x717171);
+    assert(near(IconPens_Translate(0xCCD7E8, wb, wb, 4), 0xCCD7E8));
+}
+
 static void test_depth_for_pens(void)
 {
     assert(IconPens_Depth(0) == 1 && IconPens_Depth(1) == 1);
@@ -240,6 +270,7 @@ int main(void)
     test_parses_the_shipped_palette();
     test_rejects_a_malformed_palette();
     test_nearest_colour_keeps_greys_grey();
+    test_edges_on_a_dark_workbench_blend_its_own_colours();
     test_depth_for_pens();
     test_every_pen_draws_as_its_matched_screen_pen();
     test_plane_pick_and_onoff();

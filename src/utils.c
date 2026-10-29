@@ -22,6 +22,7 @@
     #pragma popwarn
 #endif
 #include "utils.h"
+#include "iconpens.h"                 // IconPens_Distance()
 #include "requesters.h"
 
 
@@ -341,6 +342,24 @@ UBYTE ObtainNearestPen(struct ColorMap *cm, ULONG rgb, LONG precision, BOOL *own
     // -1 cast to UBYTE was pen 255.
     *owned = pen >= 0;
     if (pen < 0)
-        pen = FindColor(cm, r, g, b, -1);
+    {
+        // No free pen: the closest as the eye sees it. FindColor() measures
+        // plain RGB, where a dark grey is nearer a blue than a grey.
+        ULONG best = 0xFFFFFFFFUL, c[3];
+        UWORD i;
+
+        for (i = 0, pen = 0; i < cm->Count; i++)
+        {
+            ULONG d;
+
+            GetRGB32(cm, i, 1, c);
+            d = IconPens_Distance(rgb, ((c[0] >> 8) & 0xFF0000) | ((c[1] >> 16) & 0xFF00) | (c[2] >> 24));
+            if (d < best)
+            {
+                best = d;
+                pen = i;
+            }
+        }
+    }
     return (UBYTE)pen;
 }

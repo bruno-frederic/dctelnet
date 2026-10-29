@@ -50,20 +50,24 @@ static void luma_chroma(ULONG c, LONG *y, LONG *cr, LONG *cb)
     *cb = b - *y;
 }
 
+ULONG IconPens_Distance(ULONG a, ULONG b)
+{
+    LONG y, cr, cb, py, pcr, pcb;
+
+    luma_chroma(a, &y, &cr, &cb);
+    luma_chroma(b, &py, &pcr, &pcb);
+    return (ULONG)((y - py) * (y - py) + 4 * ((cr - pcr) * (cr - pcr) + (cb - pcb) * (cb - pcb)));
+}
+
 int IconPens_Nearest(ULONG rgb, const ULONG *palette, int n)
 {
     int i, best = 0;
     ULONG bestDist = 0xFFFFFFFFUL;
-    LONG y, cr, cb;
 
-    luma_chroma(rgb, &y, &cr, &cb);
     for (i = 0; i < n; i++)
     {
-        LONG py, pcr, pcb;
-        ULONG d;
+        ULONG d = IconPens_Distance(rgb, palette[i]);
 
-        luma_chroma(palette[i], &py, &pcr, &pcb);
-        d = (ULONG)((y - py) * (y - py) + 4 * ((cr - pcr) * (cr - pcr) + (cb - pcb) * (cb - pcb)));
         if (d < bestDist)
         {
             bestDist = d;
@@ -71,6 +75,62 @@ int IconPens_Nearest(ULONG rgb, const ULONG *palette, int n)
         }
     }
     return best;
+}
+
+static LONG channel(ULONG c, int shift)
+{
+    return (LONG)((c >> shift) & 0xFF);
+}
+
+ULONG IconPens_Translate(ULONG rgb, const ULONG *from, const ULONG *to, int n)
+{
+    int a, b, shift, bestA = 0, bestB = 0;
+    LONG num = 0, den = 1;
+    ULONG bestDist = 0xFFFFFFFFUL, bestLen = 0, out = 0;
+
+    for (a = 0; a < n; a++)
+        if (from[a] == rgb)
+            return to[a];
+    for (a = 0; a < n; a++)
+        for (b = a + 1; b < n; b++)
+        {
+            LONG dot = 0, len = 0, t;
+            ULONG dist = 0;
+
+            for (shift = 0; shift <= 16; shift += 8)
+            {
+                LONG d = channel(from[b], shift) - channel(from[a], shift);
+
+                dot += (channel(rgb, shift) - channel(from[a], shift)) * d;
+                len += d * d;
+            }
+            if (len == 0)
+                continue;
+            if (dot < 0) dot = 0;
+            if (dot > len) dot = len;
+            for (shift = 0; shift <= 16; shift += 8)
+            {
+                t = channel(rgb, shift) - (channel(from[a], shift) +
+                    (channel(from[b], shift) - channel(from[a], shift)) * dot / len);
+                dist += (ULONG)(t * t);
+            }
+            if (dist < bestDist || (dist == bestDist && (ULONG)len < bestLen))
+            {
+                bestDist = dist;
+                bestLen = (ULONG)len;
+                bestA = a;
+                bestB = b;
+                num = dot;
+                den = len;
+            }
+        }
+    for (shift = 0; shift <= 16; shift += 8)
+    {
+        LONG ca = channel(to[bestA], shift), d = channel(to[bestB], shift) - ca;
+
+        out |= (ULONG)(ca + (d * num + (d < 0 ? -den : den) / 2) / den) << shift;
+    }
+    return out;
 }
 
 UWORD IconPens_Depth(UBYTE maxPen)
