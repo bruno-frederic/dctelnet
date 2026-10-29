@@ -137,6 +137,7 @@ void DeferConnect(const char *name, const char *host, UWORD port, ULONG settings
                   const char *user, const char *pass, const char *loginMacro);
 void SendLoginMacro(const char *macro);
 BOOL SessionOverridesKeyboard(void);
+UWORD LegacyPen(UWORD ibmconIndex);
 void AdoptEntrySession(ULONG settingsId, ULONG groups);
 BOOL ScreenModeInto(struct PrefsStruct *target);
 const struct PrefsStruct *GlobalSettings(void);

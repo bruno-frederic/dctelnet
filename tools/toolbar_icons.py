@@ -60,8 +60,9 @@ PALETTE_TOOLTYPE = "DCTELNET_PALETTE=" + ",".join("%02X%02X%02X" % c for c in PA
 # SCIcons (DCTelnet's own screens) are hand-drawn pixel art, not rendered from the
 # SVGs. They use the terminal pens 0-7 of the default ibmcon palette
 # (defaultDeviceColors in src/palette.c, 4 bits per channel, each x17). On an
-# own screen with that palette DCTelnet's pen map is the identity and they are
-# drawn as authored; on any other palette they are mapped to the closest pens.
+# own screen DCTelnet draws pen k with the pen of terminal colour k, whatever
+# the palette: the identity on the console renderers (drawn as authored), the
+# ANSI pens on the built-in renderer. Their colours are not matched.
 DEVICE_COLORS = [0x000, 0xDDD, 0x0D0, 0xDD0, 0x00D, 0xD0D, 0x0DD, 0xD00]
 SC_PALETTE_TOOLTYPE = "DCTELNET_PALETTE=" + ",".join(
     "%02X%02X%02X" % ((c >> 8 & 15) * 17, (c >> 4 & 15) * 17, (c & 15) * 17) for c in DEVICE_COLORS)
