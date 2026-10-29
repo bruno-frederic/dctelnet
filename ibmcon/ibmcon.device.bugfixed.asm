@@ -4824,7 +4824,7 @@ DevIdString:                            ; was AL_2_2C
 GlobalsInit:                            ; was SegmentBeginn3
         ds.l    1                       ; $000: (unused)
         dc.b    0                       ; $004
-        dc.b    "$VER: ibmcon.device 1.11 (28.9.26)",0,0,0,0,0
+        dc.b    "$VER: ibmcon.device 1.11 (28.9.2026)",0,0,0
         ifne    *-GlobalsInit-$2C
         fail    "the $VER string must end where EscTable ($2C) starts"
         endif

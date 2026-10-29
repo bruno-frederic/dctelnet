@@ -126,6 +126,7 @@ void mysprintf(char *Buffer, char *ctl, ...)
  * @return Length of src, excluding the terminating NUL.
  *         A return value >= dstSize indicates truncation.
  */
+#ifndef __GNUC__
 size_t strlcpy(char *dst, const char *src, size_t dstSize)
 {
     char *d   = dst;
@@ -163,7 +164,7 @@ size_t strlcpy(char *dst, const char *src, size_t dstSize)
 
     return (size_t) (s - src - 1);
 }
-
+#endif
 
 /**
  * @brief Safe string concatenation with truncation detection.

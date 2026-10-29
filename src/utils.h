@@ -21,7 +21,9 @@
 // Functions exported
 ULONG mytime(void);
 void myctime(ULONG secs, char *outbuf, size_t maxLen);
+#ifndef __GNUC__
 size_t strlcpy(char *dst, const char *src, size_t dstSize);
+#endif
 size_t strlcat(char *dst, const char *src, size_t dstSize);
 void mysprintf(char *Buffer, char *ctl, ...);
 UBYTE *ReadWholeFile(const char *path, LONG *size, LONG max);

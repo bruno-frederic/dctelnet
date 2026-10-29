@@ -51,7 +51,6 @@
 #      assign >NIL: vincludeos3:  third_party/ReqTools/include       ADD
 $(info =========================== make $(MAKECMDGOALS) ==================================)
 
-BUILDER_IMAGE := walkero/docker4amigavbcc:m68k-amigaos-2.0.0
 # vbcc or gcc
 TOOLCHAIN ?= vbcc
 CPU       ?= 68000
@@ -61,10 +60,15 @@ ifeq ($(OS),Windows_NT)
 	NET_INC   ?= third_party/netinclude
 endif
 
+ifeq ($(TOOLCHAIN),gcc)
+#	These variables are not set in AmigaDev GCC builder image but CROSS_ROOT is defined:
+	export NDK32_INC=$(CROSS_ROOT)/m68k-amigaos/ndk-include
+	export NET_INC=$(NDK32_INC)
+endif
+
 INCLUDES := \
 	-I$(NDK32_INC) \
 	-I$(NET_INC) \
-	-Ithird_party/ReqTools/include \
 	-Ithird_party/retro32-term \
 	-Ithird_party/Xem/INCLUDE \
 	-Ithird_party/Xpr/include
@@ -96,6 +100,7 @@ ifeq ($(OS),Windows_NT)
 	DOCKER := wsl -- env PODMAN_USERNS=keep-id  docker
 	STAT   := wsl stat
 	NULL   := $$null
+	AMIGADATE = $(shell Get-Date -Format 'd.M.yyyy')
 else
 	RM:=rm -f
 	TOUCH:=touch
@@ -103,30 +108,43 @@ else
 	DOCKER := env PODMAN_USERNS=keep-id  docker
 	STAT   := stat
 	NULL   := /dev/null
+	AMIGADATE = $(shell date +"%-d.%-m.%Y")
 endif
 
 ifeq ($(TOOLCHAIN),vbcc)
+	BUILDER_IMAGE := walkero/docker4amigavbcc:m68k-amigaos-2.0.0
+
   ifeq ($(MAKECMDGOALS),build)
     ifeq ($(strip $(VBCC)),)
       $(error VBCC environment variable is not set. Set it to your VBCC installation directory)
     endif
   endif
+
 	CC              := vc
 #	Do not use spaces, which causes problems:
 	COMPILER_STRING := VBCC-$(word 2,$(shell vbccm68k 2>$(NULL)))
 #	VBCC's customized headers MUST take priority over the NDK, ReqTools, and project headers:
-	INCLUDES        := -I$(VBCC)/targets/m68k-amigaos/include  $(INCLUDES)
+	INCLUDES        := -I$(VBCC)/targets/m68k-amigaos/include  $(INCLUDES)  -Ithird_party/ReqTools/include
 	WARN            := -warn=-1 "-dontwarn=163,166,167,168,170,307,65" -warnings-as-errors	# TODO re-enable warning #65
 	CFLAGS          := +aos68k $(WARN) -cpu=$(CPU)
 		DEBUG_CFLAGS    := -g -D_DEBUG -stack-check
 		RELEASE_CFLAGS  := -O3 -speed
 else ifeq ($(TOOLCHAIN),gcc)
+	BUILDER_IMAGE := amigadev/crosstools:m68k-amigaos-gcc10
+
 	CC              := m68k-amigaos-gcc
-	COMPILER_STRING := GCC-v$(shell m68k-amigaos-gcc -dumpversion)
-#	TODO: analyse all these GCC warning then re-enable -Wall:
-	WARN            := -Wno-incompatible-pointer-types -Wno-int-conversion -Wno-overflow -Wno-discarded-qualifiers
-#	WARN           := -Wall -Wextra -Werror
-	CFLAGS          := -noixemul -fbaserel $(WARN) -m$(CPU) -D__AMIGADATE__=__DATE__
+	COMPILER_STRING := GCC-v$(shell m68k-amigaos-gcc -dumpfullversion 2>$(NULL))
+#	TODO: Review the temporarily disabled GCC warnings below one by one and fix code to enable them
+	WARN            := -Wall -Wextra -Werror \
+                       -Wno-unused-value \
+                       -Wno-switch -Wno-return-type \
+                       -Wno-implicit-fallthrough \
+                       -Wno-sign-compare \
+                       -Wno-discarded-qualifiers \
+                       -Wno-unused-parameter \
+                       -Wno-attributes \
+	                   -Wno-pointer-sign -Wno-parentheses -Wno-missing-braces # These 3 warnings cannot be re-enabled.
+	CFLAGS          := -mcrt=nix20 $(WARN) -m$(CPU)
 		DEBUG_CFLAGS    := -g -D_DEBUG -fstack-check
 		RELEASE_CFLAGS  := -O3
 else
@@ -135,7 +153,7 @@ endif
 
 BUILD_HASH := $(shell git rev-parse --short HEAD)
 
-CFLAGS += -D"COMPILER_STRING=$(COMPILER_STRING)" -DBUILD_HASH=$(BUILD_HASH) $(INCLUDES)
+CFLAGS += -D"COMPILER_STRING=$(COMPILER_STRING)" -DBUILD_HASH=$(BUILD_HASH) -D"AMIGADATE=$(AMIGADATE)"  $(INCLUDES)
 
 
 TARGET     := DCTelnet
@@ -188,13 +206,13 @@ DOCKER_RUN = $(DOCKER) run $(INTERACTIVE) --user $(DOCKER_USER) -q --rm --volume
 ci: docker-debug  docker-release  ibmcon  tests  package
 
 docker-debug:
-	$(DOCKER_RUN) make DEBUG=yes 68000
+	$(DOCKER_RUN) make TOOLCHAIN=$(TOOLCHAIN) DEBUG=yes 68000
 
 debug:
 	$(MAKE) DEBUG=yes all
 
 docker-release:
-	$(DOCKER_RUN) make all
+	$(DOCKER_RUN) make TOOLCHAIN=$(TOOLCHAIN) all
 
 release:
 	$(MAKE) all
@@ -209,7 +227,7 @@ tests:
 
 package:
 	$(info =========================== make package ==================================)
-	$(DOCKER_RUN) sh ../build/package.sh
+	$(DOCKER_RUN) env TOOLCHAIN=$(TOOLCHAIN) sh ../build/package.sh
 
 # for debugging builder container
 enter-builder: INTERACTIVE := --interactive --tty
