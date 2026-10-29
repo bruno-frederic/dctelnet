@@ -16,6 +16,8 @@
 #include <string.h>
 #include "crypto/aes.h"
 #include "crypto/sha256.h"
+#include "crypto/bignum.h"
+#include "crypto/x25519.h"
 
 #define SSH_BUF    36000            /* a whole packet (RFC 4253: 35000) */
 #define SSH_MSG    17000            /* our largest message: one data chunk */
@@ -93,6 +95,24 @@ struct Ssh
     ULONG textLen;
     UBYTE pend[4096];               /* keys typed while they cannot be sent yet */
     UWORD pendLen;
+
+    /* Big temporaries of the engine, here and not on the stack: the Workbench
+     * default is 4 KB and a library runs on its caller's. Each user finishes
+     * with them before it calls anything that uses the same ones. */
+    struct HmacSha256 hmac;         /* SendMsg, ReadPacket */
+    UBYTE mac[32];
+    struct { struct Sha256 h; UBYTE fp[32], iv[32], key[32]; } kx;  /* OnKexReply, Derive */
+    UBYTE mp[4 + 257];              /* an mpint being hashed or sent */
+    union
+    {
+        struct X25519Work x;        /* curve25519 */
+        struct
+        {
+            struct BnMod mod;       /* group14 */
+            UBYTE two[256], fb[256], secret[256], pm1[256];
+        } dh;
+        struct { char text[256], answer[64]; } ki;  /* keyboard-interactive */
+    } work;
 };
 
 void   Ssh_Init(struct Ssh *s, const char *user, const char *pass, const char *term,

@@ -198,14 +198,14 @@ static void SendMsg(struct Ssh *s)
     Random_Bytes(p + 5 + s->msgLen, pad);
     if (s->out.on)
     {
-        struct HmacSha256 h;
+        struct HmacSha256 *h = &s->hmac;
         UBYTE seq[4];
         seq[0] = (UBYTE)(s->out.seq >> 24); seq[1] = (UBYTE)(s->out.seq >> 16);
         seq[2] = (UBYTE)(s->out.seq >> 8); seq[3] = (UBYTE)s->out.seq;
-        HmacSha256_Init(&h, s->out.mac, 32);
-        HmacSha256_Add(&h, seq, 4);
-        HmacSha256_Add(&h, p, total);
-        HmacSha256_Done(&h, p + total);
+        HmacSha256_Init(h, s->out.mac, 32);
+        HmacSha256_Add(h, seq, 4);
+        HmacSha256_Add(h, p, total);
+        HmacSha256_Done(h, p + total);
         Aes128Ctr_Crypt(&s->out.aes, p, total);
         total += 32;
     }
@@ -326,20 +326,19 @@ static void OnKexInit(struct Ssh *s, const UBYTE *payload, ULONG len)
     if (!s->kex)
     {
         Random_Bytes(s->xPriv, 32);
-        X25519_Base(s->xPub, s->xPriv);
+        X25519_Base(s->xPub, s->xPriv, &s->work.x);
         PutString(s, s->xPub, 32);
     }
     else
     {
-        static struct BnMod mod;
-        static UBYTE two[256];
-        UBYTE mp[4 + 257];
-        Bn_SetMod(&mod, group14, 256);
+        struct BnMod *mod = &s->work.dh.mod;
+        UBYTE *two = s->work.dh.two;
+        Bn_SetMod(mod, group14, 256);
         memset(two, 0, 256); two[255] = 2;
         Random_Bytes(s->dhX, 32);
         s->dhX[0] &= 0x7F;
-        Bn_ModExp(&mod, two, s->dhX, 32, s->dhE);
-        Put(s, mp, Mpint(s->dhE, 256, mp));
+        Bn_ModExp(mod, two, s->dhX, 32, s->dhE);
+        Put(s, s->mp, Mpint(s->dhE, 256, s->mp));
     }
     SendMsg(s);
     s->state = SSH_KEXREPLY;
@@ -347,13 +346,13 @@ static void OnKexInit(struct Ssh *s, const UBYTE *payload, ULONG len)
 
 static void Derive(struct Ssh *s, char letter, UBYTE out[32])
 {
-    struct Sha256 h;
-    Sha256_Init(&h);
-    Sha256_Add(&h, s->K, s->kLen);
-    Sha256_Add(&h, s->H, 32);
-    Sha256_Add(&h, &letter, 1);
-    Sha256_Add(&h, s->sessionId, 32);
-    Sha256_Done(&h, out);
+    struct Sha256 *h = &s->kx.h;
+    Sha256_Init(h);
+    Sha256_Add(h, s->K, s->kLen);
+    Sha256_Add(h, s->H, 32);
+    Sha256_Add(h, &letter, 1);
+    Sha256_Add(h, s->sessionId, 32);
+    Sha256_Done(h, out);
 }
 
 static void OnKexReply(struct Ssh *s, const UBYTE *payload, ULONG len)
@@ -361,8 +360,8 @@ static void OnKexReply(struct Ssh *s, const UBYTE *payload, ULONG len)
     struct Reader r, k;
     const UBYTE *ks, *f, *sigBlob, *name, *e, *n, *sig;
     ULONG ksLen, fLen, sigBlobLen, nameLen, eLen, nLen, sigLen;
-    UBYTE fp[32], iv[32], key[32];
-    struct Sha256 h;
+    UBYTE *fp = s->kx.fp, *iv = s->kx.iv, *key = s->kx.key;
+    struct Sha256 *h = &s->kx.h;
 
     r.p = payload + 1; r.left = len - 1; r.bad = FALSE;
     ks = GetString(&r, &ksLen);
@@ -376,48 +375,46 @@ static void OnKexReply(struct Ssh *s, const UBYTE *payload, ULONG len)
         UBYTE secret[32], any = 0;
         int i;
         if (fLen != 32) { Fail(s, "SSH: bad curve25519 key from the server"); return; }
-        X25519(secret, s->xPriv, f);
+        X25519(secret, s->xPriv, f, &s->work.x);
         for (i = 0; i < 32; i++) any |= secret[i];
         if (!any) { Fail(s, "SSH: the server's curve25519 key is weak"); return; }
         s->kLen = (UWORD)Mpint(secret, 32, s->K);
     }
     else
     {
-        static struct BnMod mod;
-        static UBYTE fb[256], secret[256];
-        UBYTE pm1[256];
+        struct BnMod *mod = &s->work.dh.mod;
+        UBYTE *fb = s->work.dh.fb, *secret = s->work.dh.secret, *pm1 = s->work.dh.pm1;
         int i;
-        Bn_SetMod(&mod, group14, 256);
+        Bn_SetMod(mod, group14, 256);
         while (fLen && !*f) { f++; fLen--; }
         memcpy(pm1, group14, 256); pm1[255]--;        /* p - 1 (p ends in FF) */
         Bn_Fit(f, fLen, fb, 256);
         if (fLen > 256 || memcmp(fb, pm1, 256) >= 0) { Fail(s, "SSH: bad group14 key from the server"); return; }
         for (i = 0; i < 255 && !fb[i]; i++) ;
         if (i == 255 && fb[255] <= 1) { Fail(s, "SSH: bad group14 key from the server"); return; }
-        Bn_ModExp(&mod, fb, s->dhX, 32, secret);
+        Bn_ModExp(mod, fb, s->dhX, 32, secret);
         s->kLen = (UWORD)Mpint(secret, 256, s->K);
     }
 
     /* The exchange hash H. */
-    Sha256_Init(&h);
-    HashString(&h, s->vc, strlen(s->vc));
-    HashString(&h, s->vs, strlen(s->vs));
-    HashString(&h, s->ic, s->icLen);
-    HashString(&h, s->is, s->isLen);
-    HashString(&h, ks, ksLen);
+    Sha256_Init(h);
+    HashString(h, s->vc, strlen(s->vc));
+    HashString(h, s->vs, strlen(s->vs));
+    HashString(h, s->ic, s->icLen);
+    HashString(h, s->is, s->isLen);
+    HashString(h, ks, ksLen);
     if (!s->kex)
     {
-        HashString(&h, s->xPub, 32);
-        HashString(&h, f, fLen);
+        HashString(h, s->xPub, 32);
+        HashString(h, f, fLen);
     }
     else
     {
-        UBYTE mp[4 + 257];
-        Sha256_Add(&h, mp, Mpint(s->dhE, 256, mp));
-        Sha256_Add(&h, mp, Mpint(f, fLen, mp));
+        Sha256_Add(h, s->mp, Mpint(s->dhE, 256, s->mp));
+        Sha256_Add(h, s->mp, Mpint(f, fLen, s->mp));
     }
-    Sha256_Add(&h, s->K, s->kLen);
-    Sha256_Done(&h, s->H);
+    Sha256_Add(h, s->K, s->kLen);
+    Sha256_Done(h, s->H);
     if (!s->haveSession) memcpy(s->sessionId, s->H, 32);
 
     /* The host key: ssh-rsa e n, and its signature of H. */
@@ -464,7 +461,8 @@ static void OnKexReply(struct Ssh *s, const UBYTE *payload, ULONG len)
     Derive(s, 'B', iv); Derive(s, 'D', key); Aes128Ctr_Init(&s->nextIn.aes, key, iv);
     Derive(s, 'F', s->nextIn.mac);
     s->nextOut.on = s->nextIn.on = TRUE;
-    memset(key, 0, sizeof(key));
+    memset(key, 0, 32);
+    memset(&s->work, 0, sizeof(s->work));   /* the DH secret and the ladder's values */
     memset(s->xPriv, 0, 32);
     memset(s->dhX, 0, 32);
 
@@ -550,7 +548,7 @@ static void TryNextAuth(struct Ssh *s, const UBYTE *methods, ULONG len)
 static void OnInfoRequest(struct Ssh *s, const UBYTE *payload, ULONG len)
 {
     struct Reader r;
-    char text[256], answer[64];
+    char *text = s->work.ki.text, *answer = s->work.ki.answer;
     ULONG prompts, i, n;
     const UBYTE *p;
 
@@ -565,7 +563,7 @@ static void OnInfoRequest(struct Ssh *s, const UBYTE *payload, ULONG len)
     for (i = 0; i < prompts; i++)
     {
         UBYTE echo;
-        GetText(&r, text, sizeof(text));
+        GetText(&r, text, sizeof(s->work.ki.text));
         echo = GetByte(&r);
         /* A password prompt gets the stored password once; the rest are asked. */
         if (!echo && s->pass[0] && !s->kiPassUsed)
@@ -573,11 +571,11 @@ static void OnInfoRequest(struct Ssh *s, const UBYTE *payload, ULONG len)
             strcpy(answer, s->pass);
             s->kiPassUsed = TRUE;
         }
-        else if (!s->ask || !s->ask(s, text, echo, answer, sizeof(answer)))
+        else if (!s->ask || !s->ask(s, text, echo, answer, sizeof(s->work.ki.answer)))
             { Fail(s, "SSH: login cancelled"); return; }
         PutText(s, answer);
     }
-    memset(answer, 0, sizeof(answer));
+    memset(answer, 0, sizeof(s->work.ki.answer));
     if (r.bad) { Fail(s, "SSH: bad keyboard-interactive request"); return; }
     SendMsg(s);
 }
@@ -837,15 +835,15 @@ static BOOL ReadPacket(struct Ssh *s)
     if (s->rxLen < total + macLen) return FALSE;
     if (s->in.on)
     {
-        struct HmacSha256 h;
-        UBYTE seq[4], mac[32];
+        struct HmacSha256 *h = &s->hmac;
+        UBYTE seq[4], *mac = s->mac;
         Aes128Ctr_Crypt(&s->in.aes, p + 16, total - 16);
         seq[0] = (UBYTE)(s->in.seq >> 24); seq[1] = (UBYTE)(s->in.seq >> 16);
         seq[2] = (UBYTE)(s->in.seq >> 8); seq[3] = (UBYTE)s->in.seq;
-        HmacSha256_Init(&h, s->in.mac, 32);
-        HmacSha256_Add(&h, seq, 4);
-        HmacSha256_Add(&h, p, total);
-        HmacSha256_Done(&h, mac);
+        HmacSha256_Init(h, s->in.mac, 32);
+        HmacSha256_Add(h, seq, 4);
+        HmacSha256_Add(h, p, total);
+        HmacSha256_Done(h, mac);
         if (memcmp(mac, p + total, 32)) { Fail(s, "SSH: corrupt packet (bad MAC)"); return FALSE; }
     }
     s->in.seq++;

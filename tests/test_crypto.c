@@ -124,6 +124,7 @@ static void test_group14_modexp(void)
 #ifndef X25519_ITERATIONS
 #define X25519_ITERATIONS 1000      /* 1 when run on a real (slow) Amiga */
 #endif
+static struct X25519Work xw;
 static void test_x25519_iterated(void)
 {
     UBYTE k[32], u[32], r[32];
@@ -133,7 +134,7 @@ static void test_x25519_iterated(void)
     memcpy(u, k, 32);
     for (i = 1; i <= X25519_ITERATIONS; i++)
     {
-        X25519(r, k, u);
+        X25519(r, k, u, &xw);
         memcpy(u, k, 32);
         memcpy(k, r, 32);
         if (i == 1) assert(same(k, "422c8e7a6227d7bca1350b3e2bb7279f7897b87bb6854b783c60e80311ae3079"));
@@ -233,16 +234,16 @@ static void test_x25519(void)
 
     hex("a546e36bf0527c9d3b16154b82465edd62144c0ac1fc5a18506a2244ba449ac4", k, 32);
     hex("e6db6867583030db3594c1a424b15f7c726624ec26b3353b10a903a6d0ab1c4c", u, 32);
-    X25519(out, k, u);
+    X25519(out, k, u, &xw);
     assert(same(out, "c3da55379de9c6908e94ea4df28d084f32eccf03491c71f754b4075577a28552"));
     hex("77076d0a7318a57d3c16c17251b26645df4c2f87ebc0992ab177fba51db92c2a", alice, 32);
     hex("5dab087e624a8a4b79e17f8b83800ee66f3bb1292618b6fd1c2f8b27ff88e0eb", bob, 32);
-    X25519_Base(alicePub, alice);
-    X25519_Base(bobPub, bob);
+    X25519_Base(alicePub, alice, &xw);
+    X25519_Base(bobPub, bob, &xw);
     assert(same(alicePub, "8520f0098930a754748b7ddcb43ef75a0dbf3a0d26381af4eba4a98eaa9b4e6a"));
     assert(same(bobPub, "de9edb7d7b7dc1b4d35b61c2ece435373f8343c85b78674dadfc7e146f882b4f"));
-    X25519(s1, alice, bobPub);
-    X25519(s2, bob, alicePub);
+    X25519(s1, alice, bobPub, &xw);
+    X25519(s2, bob, alicePub, &xw);
     assert(same(s1, "4a5d9d5ba4ce2de1728e3bf480350f25e07e21c947d19e3376f09b3c1e161742"));
     assert(memcmp(s1, s2, 32) == 0);
 }
