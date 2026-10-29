@@ -25,9 +25,9 @@ int petscii_translate_key(int ascii_or_special, int is_special) {
         }
     }
     if (ascii_or_special >= 'A' && ascii_or_special <= 'Z')
-        return ascii_or_special - 'A' + 'a';
+        return ascii_or_special - 'A' + 0xC1;   /* shifted letter, as the C64 keyboard sends it */
     if (ascii_or_special >= 'a' && ascii_or_special <= 'z')
-        return ascii_or_special - 'a' + 'A';
+        return ascii_or_special - 'a' + 0x41;
     return ascii_or_special; /* digits, punctuation: unchanged */
 }
 
