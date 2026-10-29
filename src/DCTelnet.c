@@ -2,23 +2,22 @@
 /* ============================= DC TELNET ============================== */
 /* ====================================================================== */
 
+// Stringify macro :
+#define STR_(x) #x
+#define STR(x) STR_(x)
 
 #define DCTELNET_VERSION "1.10"
-const char __ver[] = "$VER: DCTelnet " DCTELNET_VERSION " " __AMIGADATE__;
+const char __ver[] = "$VER: DCTelnet " DCTELNET_VERSION " (" STR(AMIGADATE) ")";
 
 #ifndef BUILD_HASH
 #define BUILD_HASH unknown
 #endif
 
-// Stringify macro :
-#define STR_(x) #x
-#define STR(x) STR_(x)
-
 static char MainWindowTitle[] =
 #ifdef _DEBUG
-  "DCTelnet " DCTELNET_VERSION " (" STR(BUILD_HASH) ") " __AMIGADATE__ " - A classic Amiga Telnet/BBS client";
+  "DCTelnet " DCTELNET_VERSION " (" STR(BUILD_HASH) ") " STR(AMIGADATE) " - A classic Amiga Telnet/BBS client";
 #else
-  "DCTelnet " DCTELNET_VERSION " " __AMIGADATE__ " - A classic Amiga Telnet/BBS client";
+  "DCTelnet " DCTELNET_VERSION " " STR(AMIGADATE) " - A classic Amiga Telnet/BBS client";
 #endif
 
 #define __USE_SYSBASE

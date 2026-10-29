@@ -95,6 +95,7 @@ ifeq ($(OS),Windows_NT)
 	DOCKER := wsl -- env PODMAN_USERNS=keep-id  docker
 	STAT   := wsl stat
 	NULL   := $$null
+	AMIGADATE = $(shell Get-Date -Format 'd.M.yyyy')
 else
 	RM:=rm -f
 	TOUCH:=touch
@@ -102,6 +103,7 @@ else
 	DOCKER := env PODMAN_USERNS=keep-id  docker
 	STAT   := stat
 	NULL   := /dev/null
+	AMIGADATE = $(shell date +"%-d.%-m.%Y")
 endif
 
 ifeq ($(TOOLCHAIN),vbcc)
@@ -125,7 +127,7 @@ else ifeq ($(TOOLCHAIN),gcc)
 #	TODO: analyse all these GCC warning then re-enable -Wall:
 	WARN            := -Wno-incompatible-pointer-types -Wno-int-conversion -Wno-overflow -Wno-discarded-qualifiers
 #	WARN           := -Wall -Wextra -Werror
-	CFLAGS          := -noixemul -fbaserel $(WARN) -m$(CPU) -D__AMIGADATE__=__DATE__
+	CFLAGS          := -noixemul -fbaserel $(WARN) -m$(CPU)
 		DEBUG_CFLAGS    := -g -D_DEBUG -fstack-check
 		RELEASE_CFLAGS  := -O3
 else
@@ -134,7 +136,7 @@ endif
 
 BUILD_HASH := $(shell git rev-parse --short HEAD)
 
-CFLAGS += -D"COMPILER_STRING=$(COMPILER_STRING)" -DBUILD_HASH=$(BUILD_HASH) $(INCLUDES)
+CFLAGS += -D"COMPILER_STRING=$(COMPILER_STRING)" -DBUILD_HASH=$(BUILD_HASH) -D"AMIGADATE=$(AMIGADATE)"  $(INCLUDES)
 
 
 TARGET     := DCTelnet
