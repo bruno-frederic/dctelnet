@@ -27,8 +27,8 @@ enum PetsciiSpecialKey {
 
 /*
  * is_special == 0: ascii_or_special is a plain ASCII char, returns the
- * case-swapped PETSCII byte to transmit (digits/punctuation pass through
- * unchanged).
+ * PETSCII byte a C64 keyboard sends: a-z as 0x41-0x5A, A-Z as 0xC1-0xDA
+ * (digits/punctuation pass through unchanged).
  * is_special == 1: ascii_or_special is a PetsciiSpecialKey value, returns
  * the PETSCII control byte for that key.
  */

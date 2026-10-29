@@ -20,8 +20,20 @@ static void test_fallback_letters_swap_case(void) {
 }
 
 static void test_keymap(void) {
-    assert(petscii_translate_key('a', 0) == 'A');
-    assert(petscii_translate_key('A', 0) == 'a');
+    int c;
+
+    /* a C64 keyboard sends 0x41-0x5A unshifted and 0xC1-0xDA shifted; a
+     * capital sent as 0x61-0x7A broke mixed-case BBS passwords */
+    assert(petscii_translate_key('a', 0) == 0x41);
+    assert(petscii_translate_key('z', 0) == 0x5A);
+    assert(petscii_translate_key('A', 0) == 0xC1);
+    assert(petscii_translate_key('Z', 0) == 0xDA);
+    assert(petscii_translate_key('!', 0) == '!');
+    for (c = 'A'; c <= 'z'; c++)
+    {
+        int b = petscii_translate_key(c, 0);
+        assert(b < 0x61 || b > 0x7A || (c > 'Z' && c < 'a'));
+    }
     assert(petscii_translate_key('7', 0) == '7');
     assert(petscii_translate_key(PETSCII_KEY_UP, 1) == 145);
     assert(petscii_translate_key(PETSCII_KEY_DEL, 1) == 20);
