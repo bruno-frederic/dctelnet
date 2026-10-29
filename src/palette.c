@@ -52,6 +52,13 @@ int Palette_IbmconToAnsi(int index)
     }
 }
 
+UBYTE Palette_TerminalPen(int ibmconIndex, const UBYTE *ansiPens, BOOL ansiOrder)
+{
+    if (ansiPens)
+        return ansiPens[Palette_IbmconToAnsi(ibmconIndex)];
+    return (UBYTE)(ansiOrder ? Palette_IbmconToAnsi(ibmconIndex) : ibmconIndex);
+}
+
 ULONG Palette_AnsiColour(const UWORD deviceColors[16], int ansi)
 {
     UWORD c = deviceColors[Palette_IbmconToAnsi(ansi)];
