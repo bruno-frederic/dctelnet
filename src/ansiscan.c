@@ -131,36 +131,47 @@ static void Swap17Sgr(UBYTE *seq, UWORD n)
 
 size_t Ansi_Swap17(struct AnsiSwap17 *st, const UBYTE *in, size_t len, UBYTE *out)
 {
-    size_t o = 0, k;
+    size_t o = 0, k = 0;
+    UBYTE state = st->state;        /* local across the loop, written back at the end */
 
-    for (k = 0; k < len; k++)
+    while (k < len)
     {
-        UBYTE b = in[k];
+        UBYTE b;
 
-        if (st->state == 0)
+        if (state == 0)
         {
-            if (b == 0x1B || b == 0x9B)
+            /* plain text: copy up to the next ESC / CSI in one tight loop */
+            const UBYTE *p = in + k, *end = in + len;
+            UBYTE *q = out + o;
+
+            while (p < end && (b = *p) != 0x1B && b != 0x9B)
             {
-                st->held[0] = b;
-                st->n = 1;
-                st->state = b == 0x1B ? 1 : 2;
+                *q++ = b;
+                p++;
             }
-            else
-                out[o++] = b;
+            o = (size_t)(q - out);
+            k = (size_t)(p - in);
+            if (k >= len)
+                break;
+            st->held[0] = *p;
+            st->n = 1;
+            state = *p == 0x1B ? 1 : 2;
+            k++;
             continue;
         }
-        if (st->state == 1)
+        b = in[k++];
+        if (state == 1)
         {
             if (b == '[')
             {
                 st->held[st->n++] = b;
-                st->state = 2;
+                state = 2;
                 continue;
             }
             memcpy(out + o, st->held, st->n);       /* not a CSI: as it was */
             o += st->n;
             st->n = 0;
-            st->state = 0;
+            state = 0;
             k--;                                    /* b again, as text */
             continue;
         }
@@ -178,14 +189,15 @@ size_t Ansi_Swap17(struct AnsiSwap17 *st, const UBYTE *in, size_t len, UBYTE *ou
             memcpy(out + o, st->held, st->n);
             o += st->n;
             st->n = 0;
-            st->state = 0;
+            state = 0;
             continue;
         }
         memcpy(out + o, st->held, st->n);           /* broken off or too long: as it was */
         o += st->n;
         st->n = 0;
-        st->state = 0;
+        state = 0;
         k--;
     }
+    st->state = state;
     return o;
 }

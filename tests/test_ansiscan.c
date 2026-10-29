@@ -119,10 +119,40 @@ static void test_console_colours_swap_red_and_white_in_sgr_only(void)
     assert(strcmp(out, "a\x1b[37mb\x9b" "41m\x1b" "c") == 0);
 }
 
+/* Plain runs, SGR, other CSI, lone ESC, ESC ESC, 8-bit CSI, a broken sequence:
+ * the same bytes in one call and split at every offset across two calls give
+ * the literal result. */
+static void test_swap_long_mixed_input_split_at_every_offset(void)
+{
+    static const char in[] =
+        "plain text run one \x1b[31mred\x1b[1;37;41m more plain \x1b[2Jx"
+        "\x1b" "Qtail\x9b" "47m\x1b[31;37Hz\x1b\x1b[91m\x1b[3\x01w\x1b[38;5;31mend";
+    static const char want[] =
+        "plain text run one \x1b[37mred\x1b[1;31;47m more plain \x1b[2Jx"
+        "\x1b" "Qtail\x9b" "41m\x1b[31;37Hz\x1b\x1b[97m\x1b[3\x01w\x1b[38;5;31mend";
+    size_t len = sizeof(in) - 1, cut;
+    struct AnsiSwap17 st;
+    UBYTE out[sizeof(in) + ANSI_SWAP17_HELD];
+    size_t n;
+
+    assert(sizeof(want) == sizeof(in));
+    memset(&st, 0, sizeof(st));
+    n = Ansi_Swap17(&st, (const UBYTE *)in, len, out);
+    assert(n == len && memcmp(out, want, len) == 0);
+    for (cut = 0; cut <= len; cut++)
+    {
+        memset(&st, 0, sizeof(st));
+        n = Ansi_Swap17(&st, (const UBYTE *)in, cut, out);
+        n += Ansi_Swap17(&st, (const UBYTE *)in + cut, len - cut, out + n);
+        assert(n == len && memcmp(out, want, len) == 0);
+    }
+}
+
 int main(void)
 {
     test_bells_are_taken_out();
     test_console_colours_swap_red_and_white_in_sgr_only();
+    test_swap_long_mixed_input_split_at_every_offset();
     test_private_parameters_are_skipped_whole();
     test_find_ignores_case();
     test_screen_row_as_ansi();
