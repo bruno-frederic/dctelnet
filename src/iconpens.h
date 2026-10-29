@@ -22,6 +22,16 @@ int IconPens_Parse(const char *value, ULONG rgb[ICONPENS_MAX]);
 /* The index of the colour in palette[0..n) closest to rgb. */
 int IconPens_Nearest(ULONG rgb, const ULONG *palette, int n);
 
+/* How far apart two 0x00RRGGBB colours look (IconPens_Nearest's measure). */
+ULONG IconPens_Distance(ULONG a, ULONG b);
+
+/* rgb carried from the palette from[0..n) to to[0..n): a colour of from
+ * becomes the colour of to at the same index, and a blend of two of them (an
+ * antialiased edge between symbol and background) the same blend of their
+ * counterparts. The blend is read from the nearest segment between two
+ * colours, the shorter one on a tie. */
+ULONG IconPens_Translate(ULONG rgb, const ULONG *from, const ULONG *to, int n);
+
 /* The planes needed to draw pens up to maxPen (1-8). */
 UWORD IconPens_Depth(UBYTE maxPen);
 
