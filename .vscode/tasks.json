@@ -8,7 +8,7 @@
     "version": "2.0.0",
     "tasks": [
         {
-            "label": "Build Debug 68000",
+            "label": "Build Debug 68000 with VBCC",
             "type": "shell",
             "command": "make --directory=${workspaceFolder}/src  DEBUG=yes docker-debug ibmcon install",
             "problemMatcher": {
@@ -25,6 +25,27 @@
             "group": {
                 "kind": "build",
                 "isDefault": true
+            }
+        },
+        {
+            "label": "Build Debug 68000 with GCC",
+            "type": "shell",
+            "command": "make --directory=${workspaceFolder}/src  TOOLCHAIN=gcc DEBUG=yes docker-debug ibmcon install",
+            "problemMatcher": {
+                "owner": "cpp",
+                "fileLocation": ["relative", "${workspaceFolder}/src"],
+                "pattern": {
+                    "regexp": "^(.*):(\\d+):(\\d+):\\s+(warning|error):\\s+(.*)$",
+                    "file": 1,
+                    "line": 2,
+                    "column": 3,
+                    "severity": 4,
+                    "message": 5
+                }
+            },
+            "group": {
+                "kind": "build",
+                "isDefault": false
             }
         },
         {

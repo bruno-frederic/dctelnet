@@ -2,6 +2,7 @@
 #define XFER_H
 
 #include <exec/types.h>
+#include "libraries/Xpr.h"
 
 // Functions exported
 void Upload(char *library);

@@ -1,7 +1,7 @@
 {
     "configurations": [
         {
-            "name": "Win32",
+            "name": "VBCC",
             "includePath": [
                 "${workspaceFolder}/**",
                 "${env:VBCC}/targets/m68k-amigaos/include",
@@ -63,6 +63,63 @@
             "cStandard": "c99",
             "cppStandard": "c++98",
             "intelliSenseMode": "clang-arm",
+            "compilerPath": ""
+        },
+        {
+            "name": "GCC",
+            "includePath": [
+                "${workspaceFolder}/**",
+                "${workspaceFolder}/../gcc-16-m68k-amigaos/libnix/include",
+                "${workspaceFolder}/../gcc-16-m68k-amigaos/ndk-include",
+                "${workspaceFolder}/../gcc-16-m68k-amigaos/include"
+            ],
+            "forcedInclude": [
+                "${workspaceFolder}/.vscode/suppress-warnings.h"
+            ],
+            "defines": [
+                "_DEBUG=",
+                // TODO: below are macros defined by VBCC should be properly replaced with GCC ones
+                // https://github.com/AmigaPorts/m68k-amigaos-gcc/blob/master/doc/predefines.md
+                "__reg(x)=register",
+                "__typeof(x)=1",
+                "__alignof(x)=1",
+                "__offsetof(P,M)=offsetof(P,M)",
+                "__vattr(x)=__attribute__((x))",
+                "__amigainterrupt=",
+                "__chip=",
+                "__far=",
+                "__interrupt=",
+                "__near=",
+                "__regargs=",
+                "__saveds=",
+                "__section(x)=",
+                "__stdargs",
+                "__GNUC__",
+                "__entry=__vattr(\"entry\")",
+                "__str(x)=#x",
+                "__asm(x)=",
+                "__regsused(x)=__vattr(\"regused(\"x\")\")",
+                "__varsused(x)=__vattr(\"varused(\"x\")\")",
+                "__varsmodified(x)=__vattr(\"varchanged(\"x\")\")",
+                "__noreturn(x)=__vattr(\"noreturn()\")",
+                "__alwaysreturn(x)=__vattr(\"alwaysreturn()\")",
+                "__nosidefx(x)=__vattr(\"\")",
+                "__varsmodified(x)=__vattr(\"nosidefx()\")",
+                "__stack(x)=__vattr(__str(stack1(x)))",
+                "__stack2(x)=__vattr(__str(stack2(x)))",
+                "__noinline=__vattr(\"noinline()\")",
+                "__STDC_VERSION__=199901L",
+                "__STDC__=1L",
+                "__AMIGADATE__=__DATE__",
+                "__INTSIZE=32",
+                "__M68K__",
+                "__M68000",
+                "__inline=inline",
+                "__aligned="
+            ],
+            "cStandard": "c99",
+            "cppStandard": "c++98",
+            "intelliSenseMode": "gcc-arm",
             "compilerPath": ""
         }
     ],

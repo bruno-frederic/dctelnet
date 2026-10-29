@@ -2,23 +2,22 @@
 /* ============================= DC TELNET ============================== */
 /* ====================================================================== */
 
+// Stringify macro :
+#define STR_(x) #x
+#define STR(x) STR_(x)
 
 #define DCTELNET_VERSION "1.10"
-const char __ver[] = "$VER: DCTelnet " DCTELNET_VERSION " " __AMIGADATE__;
+const char __ver[] = "$VER: DCTelnet " DCTELNET_VERSION " (" STR(AMIGADATE) ")";
 
 #ifndef BUILD_HASH
 #define BUILD_HASH unknown
 #endif
 
-// Stringify macro :
-#define STR_(x) #x
-#define STR(x) STR_(x)
-
 static char MainWindowTitle[] =
 #ifdef _DEBUG
-  "DCTelnet " DCTELNET_VERSION " (" STR(BUILD_HASH) ") " __AMIGADATE__ " - A classic Amiga Telnet/BBS client";
+  "DCTelnet " DCTELNET_VERSION " (" STR(BUILD_HASH) ") " STR(AMIGADATE) " - A classic Amiga Telnet/BBS client";
 #else
-  "DCTelnet " DCTELNET_VERSION " " __AMIGADATE__ " - A classic Amiga Telnet/BBS client";
+  "DCTelnet " DCTELNET_VERSION " " STR(AMIGADATE) " - A classic Amiga Telnet/BBS client";
 #endif
 
 #define __USE_SYSBASE
@@ -60,7 +59,7 @@ static char MainWindowTitle[] =
 
 #define ESC_CHAR '\x1B'  // ASCII Escape character (decimal 27, octal 033)
 #define ESC_STR  "\x1B"  // ASCII Escape character (decimal 27, octal 033) as a C string
-#define CSI_CHAR '\x9B'  // Amiga console CSI=Control Sequence Introducer ('›', decimal 155,
+#define CSI_CHAR 0x9B  // Amiga console CSI=Control Sequence Introducer ('›', decimal 155,
                          // octal 233) cf. Amiga ROM Kernel Reference Manual v2.04 - Devices (1991),
                          // section "Control Sequences for Window Output"
 #define DEL_CHAR '\x7F'  // ASCII DEL character (decimal 127, octal 177)
@@ -160,10 +159,12 @@ static void SetLocalEchoBack(BOOL wantedState);
 
 extern struct ExecBase *SysBase;
 #ifdef __GNUC__
-    struct Library      *ReqToolsBase = NULL;
+    typedef struct Library      ReqToolsBaseType;
 #else
-    struct ReqToolsBase *ReqToolsBase = NULL;
+    typedef struct ReqToolsBase ReqToolsBaseType;
 #endif
+ReqToolsBaseType *ReqToolsBase = NULL;
+
 struct IntuitionBase *IntuitionBase;
 struct GfxBase *GfxBase;
 struct Library *KeymapBase, *GadToolsBase, *AslBase, *SocketBase;
@@ -546,7 +547,7 @@ static BOOL InitializeReqToolsLib(ULONG reqtoolsTags[5])
     }
     else // ReqTools needs to be loaded now.
     {
-        ReqToolsBase = (struct ReqToolsBase *)OpenLibrary (REQTOOLSNAME, 0);
+        ReqToolsBase = (ReqToolsBaseType *)OpenLibrary (REQTOOLSNAME, 0);
 
         if (ReqToolsBase)
         {
