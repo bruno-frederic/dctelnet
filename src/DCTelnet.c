@@ -59,7 +59,7 @@ static char MainWindowTitle[] =
 
 #define ESC_CHAR '\x1B'  // ASCII Escape character (decimal 27, octal 033)
 #define ESC_STR  "\x1B"  // ASCII Escape character (decimal 27, octal 033) as a C string
-#define CSI_CHAR '\x9B'  // Amiga console CSI=Control Sequence Introducer ('›', decimal 155,
+#define CSI_CHAR 0x9B  // Amiga console CSI=Control Sequence Introducer ('›', decimal 155,
                          // octal 233) cf. Amiga ROM Kernel Reference Manual v2.04 - Devices (1991),
                          // section "Control Sequences for Window Output"
 #define DEL_CHAR '\x7F'  // ASCII DEL character (decimal 127, octal 177)

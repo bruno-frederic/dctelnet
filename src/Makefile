@@ -135,7 +135,6 @@ else ifeq ($(TOOLCHAIN),gcc)
 	COMPILER_STRING := GCC-v$(shell m68k-amigaos-gcc -dumpfullversion 2>$(NULL))
 #	TODO: Review the temporarily disabled GCC warnings below one by one and fix code to enable them
 	WARN            := -Wall -Wextra -Werror \
-                       -Wno-switch-outside-range \
                        -Wno-unused-value \
                        -Wno-switch -Wno-return-type \
                        -Wno-implicit-fallthrough \
