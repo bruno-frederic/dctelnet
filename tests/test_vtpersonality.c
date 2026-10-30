@@ -87,9 +87,14 @@ static void test_ma2_13_unix_with_cp437_swaps_to_utf8_only(void)
         }
 }
 
+static struct PrefsStruct sniffPrefs;
+static UBYTE sniffPre[3];
+static long sniffNpre, sniffNdata;
+
 static BOOL sniff(struct VtUtf8Sniffer *s, const char *b)
 {
-    return Vt_Utf8SnifferFeed(s, (const UBYTE *)b, (long)strlen(b));
+    return Vt_Utf8SnifferFeed(s, &sniffPrefs, (const UBYTE *)b, (long)strlen(b),
+                              sniffPre, &sniffNpre, &sniffNdata);
 }
 
 /* MA2-14: the detector alone. */
@@ -106,6 +111,19 @@ static void test_ma2_14_first_valid_utf8_sequence_fires_once_invalid_bytes_never
     Vt_Utf8SnifferReset(&s);                           /* split across reads */
     assert(!sniff(&s, "\xE2\x96"));
     assert(sniff(&s, "\x88"));
+
+    Vt_Utf8SnifferReset(&s);                           /* split: prefix held, not drawn */
+    assert(!sniff(&s, "ab\xE2"));
+    assert(sniffNpre == 0 && sniffNdata == 2 && s.nheld == 1);
+    assert(!sniff(&s, "\x96"));
+    assert(sniffNpre == 0 && sniffNdata == 0 && s.nheld == 2);
+    assert(sniff(&s, "\x88z"));
+    assert(sniffNpre == 2 && sniffNdata == 2 && s.nheld == 0);
+
+    Vt_Utf8SnifferReset(&s);                           /* held prefix turns invalid: given back */
+    assert(!sniff(&s, "\xE2"));
+    assert(!sniff(&s, "A"));
+    assert(sniffNpre == 1 && sniffPre[0] == 0xE2 && sniffNdata == 1 && s.nheld == 0);
 
     Vt_Utf8SnifferReset(&s);                           /* CP437 art first: never */
     assert(!sniff(&s, "\xC9\xCD\xBB"));
@@ -135,6 +153,29 @@ static void test_ma2_14_first_valid_utf8_sequence_fires_once_invalid_bytes_never
     assert(!Vt_Utf8SnifferActive(&p));
 }
 
+/* MA2-14: a fired sniffer keeps UTF-8 across a personality recomputation. */
+static void test_ma2_14_fired_sniffer_keeps_utf8_until_the_user_changes_prefs(void)
+{
+    struct VtUtf8Sniffer s;
+    struct PrefsStruct p;
+
+    memset(&p, 0, sizeof(p));
+    p.TermType = TERMTYPE_UNIX; p.Charset = CHARSET_CP437;
+    sniffPrefs = p;
+    Vt_Utf8SnifferReset(&s);
+    assert(Vt_PersonalityForConnection(&p, &s).charset == VT_CS_CP437);   /* not fired */
+    assert(sniff(&s, "\xC3\xA9"));
+    assert(Vt_PersonalityForConnection(&p, &s).charset == VT_CS_UTF8);
+    assert(Vt_PersonalityForConnection(&p, &s).personality == VT_XTERM);
+    p.Charset = CHARSET_LATIN1;                                          /* user changed it */
+    assert(Vt_PersonalityForConnection(&p, &s).charset == VT_CS_LATIN1);
+    p.Charset = CHARSET_CP437; p.TermType = TERMTYPE_BBS;                /* no longer Unix */
+    assert(Vt_PersonalityForConnection(&p, &s).charset == VT_CS_CP437);
+    Vt_Utf8SnifferReset(&s);
+    p.TermType = TERMTYPE_UNIX;
+    assert(Vt_PersonalityForConnection(&p, &s).charset == VT_CS_CP437);   /* new connection */
+}
+
 int main(void)
 {
     test_terminal_type_picks_the_personality();
@@ -142,6 +183,7 @@ int main(void)
     test_cp437_and_latin1_sites_are_pc_ansi_cp437();
     test_ma2_13_unix_with_cp437_swaps_to_utf8_only();
     test_ma2_14_first_valid_utf8_sequence_fires_once_invalid_bytes_never();
+    test_ma2_14_fired_sniffer_keeps_utf8_until_the_user_changes_prefs();
     printf("vtpersonality: all assertions passed\n");
     return 0;
 }

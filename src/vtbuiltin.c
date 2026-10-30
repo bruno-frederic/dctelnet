@@ -165,20 +165,20 @@ static void VtSyncCursor(void)
     cursor_visible = (vt_modes(vtTerm) & VT_MODE_CURSOR_VISIBLE) != 0;
 }
 
+/* MA2-14: per connection, whether the host turned out to speak UTF-8. */
+static struct VtUtf8Sniffer vtSniff;
+
 /* The personality and character set the preferences ask for (Terminal >
  * Terminal Type, Character Set): at open, and when either menu changes. */
 static void VtApplyPersonality(void)
 {
-    struct VtPersonality pers = Vt_PersonalityFor(&prefs);
+    struct VtPersonality pers = Vt_PersonalityForConnection(&prefs, &vtSniff);
 
     if (!vtTerm)
         return;
     vt_set_personality(vtTerm, pers.personality);
     vt_set_charset(vtTerm, pers.charset);
 }
-
-/* MA2-14: per connection, whether the host turned out to speak UTF-8. */
-static struct VtUtf8Sniffer vtSniff;
 
 static void VtSniffReset(void)
 {
@@ -231,10 +231,19 @@ static void VtWrite(const UBYTE *data, long len)
     VtLayersLock();
     cursor_hide();
     /* Unix host, Character Set not UTF-8: the first valid UTF-8 sequence moves
-     * the engine to UTF-8 for the rest of the connection; prefs stay as they are. */
-    if (Vt_Utf8SnifferActive(&prefs) && Vt_Utf8SnifferFeed(&vtSniff, data, len))
-        vt_set_charset(vtTerm, VT_CS_UTF8);
-    vt_write(vtTerm, data, len);
+     * the engine to UTF-8 for the rest of the connection; prefs stay as they are.
+     * A trailing incomplete prefix is held back until the next write decides it. */
+    if (Vt_Utf8SnifferActive(&prefs) || vtSniff.nheld) {
+        UBYTE pre[3];
+        long npre, ndata;
+
+        if (Vt_Utf8SnifferFeed(&vtSniff, &prefs, data, len, pre, &npre, &ndata))
+            vt_set_charset(vtTerm, VT_CS_UTF8);
+        if (npre)
+            vt_write(vtTerm, pre, npre);
+        vt_write(vtTerm, data, ndata);
+    } else
+        vt_write(vtTerm, data, len);
     term_flush();
     VtSyncCursor();
     cursor_show();
