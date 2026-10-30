@@ -36,6 +36,9 @@ existing reply path (VtReply, vtbuiltin.c:128-135, to send_data).
 - [x] MA3-4 [DONE a1c56a7: test_ma3_4_5_mouse_press_release_bytes_and_selection_fallthrough] Mouse press: with "\e[?1000h\e[?1006h" sent, a left click at cell (10,5) sends
       the bytes of "\e[<0;11;6M" (SGR, 1-based). Assert the exact bytes at send_data.
       Release gives "\e[<0;11;6m". Wheel and right button codes asserted (64/65, 2).
+- Wheel (owner decision 2026-10-30, wheel only; the right button stays with the menus): NewMouse IDCMP_RAWKEY 0x7A/0x7B
+  report buttons 64/65, press only, only while a mouse mode is on and Shift is not held (Vt_WheelButton,
+  test_ma3_wheel_reports_press_only_in_mouse_modes). Otherwise the key goes where it went before.
 - [x] MA3-5 [DONE a1c56a7: test_ma3_4_5_mouse_press_release_bytes_and_selection_fallthrough] With no mouse mode on, a click still starts a selection (existing behaviour
       unchanged; sentinel: send_data not called).
 - [x] MA3-6 [DONE a1c56a7: test_ma3_6_motion_modes_and_the_mouse_move_flag, test_ma3_6_idcmp_move_only_for_motion_modes] Motion modes: ?1002 reports drag only while a button is held, ?1003 reports all

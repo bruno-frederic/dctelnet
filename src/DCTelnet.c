@@ -4155,7 +4155,16 @@ static void GetWindowMsg(struct Window *wwin)
                     break;
                 }
             }
-            if(wwin == win  ||  wwin == toolBarWin)
+            if (wwin == win && Vt_WheelButton(code) >= 0
+                && VtMouseOwned((qual & (IEQUALIFIER_LSHIFT | IEQUALIFIER_RSHIFT)) != 0))
+            {
+                // NewMouse wheel to a program that asked for the mouse: press only, no release.
+                UWORD row, col;
+
+                SelectionCell(mouseX, mouseY, &row, &col);
+                VtMouseButton(Vt_WheelButton(code), TRUE, col - 1, row - 1, QualifierToVtMods(qual));
+            }
+            else if(wwin == win  ||  wwin == toolBarWin)
             {
                 struct InputEvent ie;
                 register ULONG i, length;

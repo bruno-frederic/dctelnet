@@ -78,12 +78,43 @@ static void test_ma3_6_idcmp_move_only_for_motion_modes(void)
     vt_free(t);
 }
 
+static void test_ma3_wheel_reports_press_only_in_mouse_modes(void)
+{
+    struct VtMouse m;
+    UBYTE out[32];
+    vt_term *t = term_with("\x1b[?1000h\x1b[?1006h");
+    int n;
+
+    assert(Vt_WheelButton(0x7A) == 64);
+    assert(Vt_WheelButton(0x7B) == 65);
+    assert(Vt_WheelButton(0x7C) == -1 && Vt_WheelButton(0x79) == -1 && Vt_WheelButton(0xFA) == -1);
+
+    Vt_MouseReset(&m);
+    n = Vt_MouseButton(&m, t, Vt_WheelButton(0x7A), TRUE, 4, 2, 0, out);
+    assert(n == (int)strlen("\x1b[<64;5;3M") && memcmp(out, "\x1b[<64;5;3M", (size_t)n) == 0);
+    n = Vt_MouseButton(&m, t, Vt_WheelButton(0x7B), TRUE, 4, 2, 0, out);
+    assert(n == (int)strlen("\x1b[<65;5;3M") && memcmp(out, "\x1b[<65;5;3M", (size_t)n) == 0);
+    assert(m.held == 0);                        /* the wheel is never a held button */
+    vt_free(t);
+
+    t = term_with("\x1b[?1000h");              /* legacy encoding: ESC [ M, button + 32 */
+    n = Vt_MouseButton(&m, t, 64, TRUE, 0, 0, 0, out);
+    assert(n == 6 && out[3] == 32 + 64);
+    vt_free(t);
+
+    t = term_with("");                          /* no mouse mode: nothing, and not owned */
+    assert(Vt_MouseOwned(t, FALSE) == FALSE);
+    assert(Vt_MouseButton(&m, t, 64, TRUE, 0, 0, 0, out) == 0);
+    vt_free(t);
+}
+
 int main(void)
 {
     test_ma3_7_bracketed_paste_wraps_exactly();
     test_ma3_8_paste_cannot_inject_the_end_marker();
     test_ma3_title_text_latin1_and_fallback();
     test_ma3_6_idcmp_move_only_for_motion_modes();
+    test_ma3_wheel_reports_press_only_in_mouse_modes();
     printf("vtinput: all assertions passed\n");
     return 0;
 }
