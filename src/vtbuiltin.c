@@ -267,14 +267,19 @@ static char vtTitleSeen[256];   /* the engine's title as last looked at (UTF-8) 
 static void VtSetTitle(const char *utf8)
 {
     char text[sizeof(vtTitleShown)];
+    const char *screenTitle;
     ULONG keepScreenTitle;
 
     Vt_TitleText(utf8, MainWindowTitle, text, sizeof(text));
     if (!win || strcmp(text, vtTitleShown) == 0)
         return;
     strcpy(vtTitleShown, text);
+    screenTitle = Vt_ScreenTitleFor(win->Flags, WFLG_BACKDROP, vtTitleShown);
     keepScreenTitle = 0xFFFFFFFFUL;         /* -1: the screen title stays */
-    SetWindowTitles(win, (UBYTE *)vtTitleShown, (UBYTE *)(size_t)keepScreenTitle);
+    SetWindowTitles(win, (UBYTE *)vtTitleShown,
+                    screenTitle ? (UBYTE *)screenTitle : (UBYTE *)(size_t)keepScreenTitle);
+    if (screenTitle)
+        LEDs();                             /* the bar redraw erased the activity LEDs */
 }
 
 static void VtTitle(void *user, const char *utf8)

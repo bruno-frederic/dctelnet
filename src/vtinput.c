@@ -60,6 +60,11 @@ ULONG Vt_IdcmpFor(ULONG base, ULONG moveFlag, const vt_term *t, BOOL keepMove)
     return base & ~moveFlag;
 }
 
+const char *Vt_ScreenTitleFor(ULONG winFlags, ULONG backdropFlag, const char *title)
+{
+    return (winFlags & backdropFlag) ? title : NULL;
+}
+
 void Vt_TitleText(const char *utf8, const char *own, char *out, size_t max)
 {
     const unsigned char *s = (const unsigned char *)utf8;
