@@ -65,7 +65,7 @@ pens the screen really has.
 - [x] MA2-8 VtDraw uses the mapper instead of `& 15`. Host test: "\e[38;5;196m" and
       "\e[38;2;255;0;0m" give the same term_pen_fg on a 16-pen screen; assert the number.
       DONE: test_term_engine.c test_ma2_8_256_colour_and_24_bit_give_the_same_pen
-- [ ] MA2-9 [host code DONE f2b18b4 + retro32-term 0a02a3a, 4 host tests; rig RTG pixel read open] 24-bit on a true-colour (RTG) screen: RGB drawn directly or through
+- [x] MA2-9 (host f2b18b4 + retro32-term 0a02a3a, 4 host tests; rig 3 rtg 2026-10-30: one ObtainBestPen, pen 224, glyph pixel GetRGB32 12121212 34343434 56565656, ReadRGBPixel 00123456) 24-bit on a true-colour (RTG) screen: RGB drawn directly or through
       allocated pens; rig test on an RTG screen: a cell written "\e[38;2;18;52;86m" reads
       back the right RGB from the bitmap pixel (assert 0x12 0x34 0x56).
       Design (2026-10-30, owner: implement in #56): only on a screen whose bitmap is
@@ -77,7 +77,7 @@ pens the screen really has.
       pen) setter, the RastPort path indexes it by the full byte (no & 0xF). The planar
       direct path and every screen of 8 bits or less are unchanged (no ObtainBestPen call:
       sentinel in the host test), so the 68000 path keeps its speed.
-- [ ] MA2-10 [16 pens DONE rig 3 2026-10-30: 0xFF0000 -> pen 9 = host Vt_PenFor on the rig palette, 0x123456 -> 8 both, no crash; 256 pens open] 24-bit on a palette screen (AGA, 16 and 256 pens): rig test, pen chosen is the
+- [x] MA2-10 (rig 3 2026-10-30, 16 pens: 0xFF0000 -> pen 9 = host Vt_PenFor on the rig palette, 0x123456 -> 8 both, no crash; 256 pens (aga256): no ObtainBestPen, 0x123456 -> 8, 0xFF0000 -> 9 = host Vt_PenFor, no crash) 24-bit on a palette screen (AGA, 16 and 256 pens): rig test, pen chosen is the
       mapper's answer (number from MA2-7), no crash, cell shows the colour.
 - [x] MA2-11 UTF-8 split across reads: bytes E2 | 96 88 sent in two VtWrite calls give
       one cell 0x2588 (the engine keeps state).
@@ -96,7 +96,7 @@ characters the font has.
 
 ## Implementation decisions (MA2, host part)
 
-Items MA2-1 to 8 and 11. MA2-9, 10, 12 (rig / RTG) stay open for a later session.
+Items MA2-1 to 12 all done; MA2-9, 10 and 12 verified on rig 3 (thoughts/spot/ma-rig-items.md).
 
 - Pref byte: PrefsStruct has NO free Reserved byte left (MA1 took the last). `UBYTE TermType`
   is appended after Blink with `UBYTE Reserved[3]` so the struct stays a multiple of 4. The
