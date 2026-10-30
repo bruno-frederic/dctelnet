@@ -39,4 +39,9 @@ UWORD Renderer_Index(ULONG state);
 /* The State with its renderer replaced by the one at cycle position index. */
 ULONG Renderer_Select(ULONG state, UWORD index);
 
+/* The renderer a fresh prefs file starts on. A 68000/68010 (no 68020 in
+ * ExecBase->AttnFlags) gets ibmcon.device, the lighter engine; a 68020+ gets
+ * the built-in renderer. Saved prefs never go through this. */
+ULONG Renderer_DefaultForCpu(BOOL has68020);
+
 #endif

@@ -76,6 +76,8 @@ Source: ~/.claude/REACHABILITY_PROTOCOL.md sections 1, 8, 9.
    Automatic) overrides it when set. Automatic follows the Character Set.
 3. MA2: fallback glyph is the font's box ('?' only when the font has no box glyph).
 4. MA1: blink is drawn steady with a written exemption; iCE colours respected; no timer.
+5. Fresh prefs on a 68000/68010 start on ibmcon.device (APP_RENDERER_IBMCON_DEVICE); 68020+ starts
+   on the built-in renderer. Saved prefs always win (Renderer_DefaultForCpu, renderer.c).
 
 ## Findings against the research (checked in code)
 

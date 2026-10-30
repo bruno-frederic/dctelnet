@@ -19,6 +19,13 @@ static void test_only_the_builtin_renderer_reaches_vtcon(void)
     assert(Renderer_Route(APP_RENDERER_XEM_LIB | other) == ROUTE_XEM);
 }
 
+static void test_fresh_prefs_renderer_follows_the_cpu(void)
+{
+    /* 68000/68010: no AFF_68020 -> ibmcon.device; 68020+ -> built-in. */
+    assert(Renderer_DefaultForCpu(FALSE) == APP_RENDERER_IBMCON_DEVICE);
+    assert(Renderer_DefaultForCpu(TRUE) == APP_RENDERER_BUILTIN);
+}
+
 static void test_iconified_draws_nothing(void)
 {
     UWORD i;
@@ -45,6 +52,7 @@ static void test_the_cycle_visits_all_four_in_bit_order(void)
 int main(void)
 {
     test_only_the_builtin_renderer_reaches_vtcon();
+    test_fresh_prefs_renderer_follows_the_cpu();
     test_iconified_draws_nothing();
     test_the_cycle_visits_all_four_in_bit_order();
     printf("test_renderer: all passed\n");
