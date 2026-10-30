@@ -78,6 +78,20 @@ BOOL Palette_OwnPens(ULONG state, UWORD depth, UBYTE pens[16])
 {
     if (!(state & (APP_RENDERER_IBMCON_DEVICE | APP_RENDERER_BUILTIN)))
         return FALSE;
+    if (depth == 4 && (state & APP_RENDERER_BUILTIN))
+    {
+        // 16 colours: no pens to spare, so the same 16 colours change places.
+        // Pens 0-3 are Intuition's 4-colour order (background, shadow and
+        // text, shine, fill): light grey, black, bright white, blue. The other
+        // twelve follow in ANSI order. Only the built-in renderer draws
+        // through a pen table; XEM, console.device and ibmcon use pens 0-15.
+        static const UBYTE pen[16] = { 1, 4, 5, 6, 3, 7, 8, 0, 9, 10, 11, 12, 13, 14, 15, 2 };
+        int i;
+
+        for (i = 0; i < 16; i++)
+            pens[i] = pen[i];
+        return TRUE;
+    }
     return Palette_AnsiPens(depth, pens);
 }
 

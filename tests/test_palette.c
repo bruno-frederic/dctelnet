@@ -112,7 +112,9 @@ static void test_the_builtin_renderer_gets_its_own_ansi_pens_on_deep_screens(voi
     for (i = 0; i < 8; i++)  assert(pens[i] == 8 + i);
     for (i = 8; i < 16; i++) assert(pens[i] == 20 + (i - 8));
     assert(Palette_OwnPens(APP_RENDERER_IBMCON_DEVICE, 5, pens));
-    assert(!Palette_OwnPens(APP_RENDERER_BUILTIN, 4, pens));          /* 16 colours */
+    assert(!Palette_OwnPens(APP_RENDERER_XEM_LIB, 4, pens));          /* 16 colours: pens 0-15 */
+    assert(!Palette_OwnPens(APP_RENDERER_CONSOLE_DEVICE, 4, pens));
+    assert(!Palette_OwnPens(APP_RENDERER_IBMCON_DEVICE, 4, pens));
     assert(!Palette_OwnPens(APP_RENDERER_XEM_LIB, 5, pens));
     assert(!Palette_OwnPens(APP_RENDERER_CONSOLE_DEVICE, 5, pens));
 
@@ -123,6 +125,27 @@ static void test_the_builtin_renderer_gets_its_own_ansi_pens_on_deep_screens(voi
     Palette_Get(&p, pal);
     for (i = 0; i < 16; i++) assert(pal[i] == defaultAnsiColors[i]);
     assert(pal[1] == 0x0A00 && pal[4] == 0x000A);
+}
+
+/* 16 colours, built-in renderer: the same 16 colours in Intuition's 4-colour
+ * order, so that window interiors (pen 0) are grey and not ANSI black. */
+static void test_the_builtin_renderer_puts_the_ui_colours_on_pens_0_to_3_on_16_colours(void) {
+    static const UBYTE want[16] = { 1, 4, 5, 6, 3, 7, 8, 0, 9, 10, 11, 12, 13, 14, 15, 2 };
+    UBYTE pens[16], seen[16];
+    int i;
+
+    memset(pens, 0xEE, sizeof(pens));
+    assert(Palette_OwnPens(APP_RENDERER_BUILTIN, 4, pens));
+    for (i = 0; i < 16; i++) assert(pens[i] == want[i]);
+    assert(pens[7] == 0 && pens[0] == 1 && pens[15] == 2 && pens[4] == 3);
+    memset(seen, 0, sizeof(seen));
+    for (i = 0; i < 16; i++) seen[pens[i]]++;
+    for (i = 0; i < 16; i++) assert(seen[i] == 1);      /* no colour lost, none shared */
+    /* the twelve others ascend in ANSI order */
+    {
+        static const int others[12] = { 1, 2, 3, 5, 6, 8, 9, 10, 11, 12, 13, 14 };
+        for (i = 0; i < 12; i++) assert(pens[others[i]] == 4 + i);
+    }
 }
 
 /* 16 colours: the ANSI colours stay exact on pens 0-15 and the UI takes the
@@ -152,6 +175,7 @@ static void test_the_ui_pens_are_the_nearest_ansi_colours_to_intuitions(void) {
 int main(void) {
     test_menu_text_is_legible_on_os2_and_os3();
     test_the_builtin_renderer_gets_its_own_ansi_pens_on_deep_screens();
+    test_the_builtin_renderer_puts_the_ui_colours_on_pens_0_to_3_on_16_colours();
     test_the_ui_pens_are_the_nearest_ansi_colours_to_intuitions();
     test_the_editor_sees_the_renderers_palette_in_ansi_order();
     test_channels_are_the_four_bits_the_prefs_keep();
