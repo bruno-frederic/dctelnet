@@ -173,8 +173,21 @@ static void probe_glyph(WORD x, UBYTE ch)
     term_glyph(x, ch);
 }
 #define term_glyph(x, c) probe_glyph((x), (c))
+#include "vtengine.h"
+/* The sentinel for VtOpen: what the global vtTerm is while vt_new() draws. */
+static int newCalls;
+static int newSawTerm;
+static vt_term *probe_new(int cols, int rows, int sb, const vt_callbacks *cb, void *user);
+#define vt_new(c, r, sb, cb, u) probe_new((c), (r), (sb), (cb), (u))
 #include "../src/vtbuiltin.c"
 #undef term_glyph
+#undef vt_new
+static vt_term *probe_new(int cols, int rows, int sb, const vt_callbacks *cb, void *user)
+{
+    newCalls++;
+    newSawTerm = vtTerm != NULL;    /* vt_new() draws through VtDraw() right here */
+    return vt_new(cols, rows, sb, cb, user);
+}
 
 /* A font whose glyphs all differ: row r of character c is c ^ (r * 37). */
 static UBYTE fontData[8][256];
@@ -363,6 +376,23 @@ static void test_a_16_pixel_font_gives_40_columns(void)
     term_set_font(&wide);   /* the other C64 charset: new glyphs from here, the screen stays */
     assert(planes[0][TOP * BPR] == 0x41 && term_cols == 40);
     assert(calls[0] == 0);
+}
+
+/* vt_new() draws its blank screen through VtDraw() before it returns: on a
+ * second VtOpen the global vtTerm must not still be the previous engine (freed
+ * in the original bug), so VtDraw finds no terminal and reads no row. */
+static void test_vtopen_twice_never_draws_through_the_previous_engine(void)
+{
+    setup();
+    assert(term_init_area(&screen, &winRp, 0, TOP, 0, TOP, W, H - TOP, &font) == 0);
+    assert(VtOpen() == 0);
+    assert(vtTerm != NULL);
+    newCalls = 0;
+    assert(VtOpen() == 0);
+    assert(newCalls == 1 && newSawTerm == 0);   /* the previous engine was closed first */
+    assert(vtTerm != NULL);
+    VtClose();
+    assert(vtTerm == NULL);
 }
 
 static void vt_write_str(const char *s)
@@ -947,6 +977,7 @@ int main(void)
     test_the_pen_map_colours_the_rastport_path_and_stops_direct_drawing();
     test_an_8_plane_screen_takes_the_rastport();
     test_a_16_pixel_font_gives_40_columns();
+    test_vtopen_twice_never_draws_through_the_previous_engine();
     test_a_menu_cannot_open_while_the_terminal_draws_into_the_bitmap();
     test_a_menu_open_over_the_terminal_is_drawn_around();
     test_a_menu_opened_while_an_answer_is_sent_is_drawn_around();
