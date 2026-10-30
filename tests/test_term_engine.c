@@ -21,7 +21,7 @@ struct Rectangle { WORD MinX, MinY, MaxX, MaxY; };
 struct Layer { struct Layer *back; struct Rectangle bounds; };
 struct Layer_Info { struct Layer *top_layer; };
 struct Screen { WORD Width, Height; struct RastPort RastPort; struct Layer_Info LayerInfo; };
-struct Window { WORD LeftEdge, TopEdge, Width, Height; BYTE BorderLeft, BorderTop, BorderRight, BorderBottom; struct Layer *WLayer; };
+struct Window { WORD LeftEdge, TopEdge, Width, Height; BYTE BorderLeft, BorderTop, BorderRight, BorderBottom; struct Layer *WLayer; ULONG IDCMPFlags; };
 #define JAM1 0
 #define JAM2 1
 #define COMPLEMENT 2
@@ -118,9 +118,14 @@ static LONG BltBitMap(struct BitMap *s, WORD sx, WORD sy, struct BitMap *d, WORD
 static struct Layer winLayer, menuLayer;
 static struct Screen screen;
 static int sentLocked, menuOnSend;
+static UBYTE sentBuf[256];
+static int sentLen, sentCalls;
 static void send_data_(const UBYTE *d, LONG n)
 {
-    (void)d; (void)n;
+    if (sentLen + n <= (int)sizeof(sentBuf))
+        memcpy(sentBuf + sentLen, d, (size_t)n);
+    sentLen += (int)n;
+    sentCalls++;
     sentLocked += layerLocks;
     if (menuOnSend)
         screen.LayerInfo.top_layer = &menuLayer;
@@ -134,6 +139,19 @@ static struct Library layers = { 40 };
 static struct Library *LayersBase = &layers;
 static struct Screen *scr = &screen;
 static struct Window window, *win = &window;
+/* MA3: the window title and IDCMP calls, recorded. */
+#define IDCMP_MOUSEMOVE 0x10UL
+#define IDCMP_RAWKEY 0x400UL
+static char MainWindowTitle[] = "DCTelnet own title";
+static char titleSet[256];
+static int titleCalls;
+static void SetWindowTitles(struct Window *w, UBYTE *t, UBYTE *s)
+{
+    (void)w; (void)s;
+    strcpy(titleSet, (const char *)t);
+    titleCalls++;
+}
+static void ModifyIDCMP(struct Window *w, ULONG flags) { w->IDCMPFlags = flags; }
 /* The built-in renderer reads the user's preferences. */
 struct PrefsStruct prefs;
 
@@ -827,6 +845,97 @@ static void test_ma2_8_256_colour_and_24_bit_give_the_same_pen(void)
     VtClose();
 }
 
+/* ---- MA3: mouse, title, bracketed paste through the real entry points ---- */
+static void ma3_reset_sentinels(void)
+{
+    sentLen = sentCalls = titleCalls = 0;
+    titleSet[0] = 0;
+}
+
+static void test_ma3_1_2_osc_title_reaches_the_window_as_latin1(void)
+{
+    xterm_begin();
+    ma3_reset_sentinels();
+    vt_put("\x1b]0;hello\x07");
+    assert(titleCalls == 1 && strcmp(titleSet, "hello") == 0);          /* MA3-1 */
+    vt_put("\x1b]2;two\x07");
+    assert(titleCalls == 2 && strcmp(titleSet, "two") == 0);
+    vt_put("\x1b]0;st\x1b\\");                                          /* ST terminator */
+    assert(titleCalls == 3 && strcmp(titleSet, "st") == 0);
+    vt_put("\x1b]0;caf\xC3\xA9\x07");                                    /* MA3-2: UTF-8 in, Latin-1 out */
+    assert(strcmp(titleSet, "caf\xE9") == 0);
+    VtClose();
+}
+
+static void test_ma3_3_title_is_restored_on_reset_and_session_end(void)
+{
+    xterm_begin();
+    ma3_reset_sentinels();
+    vt_put("\x1b]0;hello\x07");
+    vt_put("\x1b" "c");                                                  /* RIS */
+    assert(strcmp(titleSet, MainWindowTitle) == 0);
+    vt_put("\x1b]0;again\x07");
+    assert(strcmp(titleSet, "again") == 0);
+    VtTitleRestore();                                                     /* the session ended */
+    assert(strcmp(titleSet, MainWindowTitle) == 0);
+    ma3_reset_sentinels();
+    vt_put("after");                                                      /* the old title does not come back */
+    assert(titleCalls == 0);
+    VtClose();
+}
+
+static void test_ma3_4_5_mouse_press_release_bytes_and_selection_fallthrough(void)
+{
+    xterm_begin();
+    ma3_reset_sentinels();
+    assert(!VtMouseOwned(FALSE));                                         /* MA3-5: no mode, selects */
+    VtMouseButton(0, TRUE, 10, 5, 0);
+    assert(sentCalls == 0);
+    vt_put("\x1b[?1000h\x1b[?1006h");
+    assert(VtMouseOwned(FALSE) && !VtMouseOwned(TRUE));                   /* Shift keeps selecting */
+    VtMouseButton(0, TRUE, 10, 5, 0);                                     /* MA3-4 */
+    assert(sentLen == 10 && memcmp(sentBuf, "\x1b[<0;11;6M", 10) == 0);
+    sentLen = 0;
+    VtMouseButton(0, FALSE, 10, 5, 0);
+    assert(sentLen == 10 && memcmp(sentBuf, "\x1b[<0;11;6m", 10) == 0);
+    sentLen = 0;
+    VtMouseButton(2, TRUE, 10, 5, 0);
+    assert(memcmp(sentBuf, "\x1b[<2;11;6M", 10) == 0);
+    sentLen = 0;
+    VtMouseButton(64, TRUE, 10, 5, 0);
+    assert(sentLen == 11 && memcmp(sentBuf, "\x1b[<64;11;6M", 11) == 0);
+    VtClose();
+}
+
+static void test_ma3_6_motion_modes_and_the_mouse_move_flag(void)
+{
+    xterm_begin();
+    ma3_reset_sentinels();
+    window.IDCMPFlags = IDCMP_RAWKEY | IDCMP_MOUSEMOVE;
+    VtOpen();                                                             /* built-in: no selection to drag */
+    assert(!(window.IDCMPFlags & IDCMP_MOUSEMOVE));
+    vt_put("\x1b[?1000h\x1b[?1006h");
+    assert(!(window.IDCMPFlags & IDCMP_MOUSEMOVE));
+    vt_put("\x1b[?1002h");
+    assert(window.IDCMPFlags & IDCMP_MOUSEMOVE);
+    VtMouseMove(3, 3, 0);                                                 /* no button held: nothing */
+    assert(sentCalls == 0);
+    VtMouseButton(0, TRUE, 3, 3, 0);
+    sentLen = sentCalls = 0;
+    VtMouseMove(4, 3, 0);                                                 /* drag */
+    assert(sentLen == 10 && memcmp(sentBuf, "\x1b[<32;5;4M", 10) == 0);
+    VtMouseButton(0, FALSE, 4, 3, 0);
+    sentLen = sentCalls = 0;
+    VtMouseMove(5, 3, 0);
+    assert(sentCalls == 0);
+    vt_put("\x1b[?1002l\x1b[?1003h");
+    VtMouseMove(6, 3, 0);                                                 /* ?1003: all motion */
+    assert(sentLen == 10 && memcmp(sentBuf, "\x1b[<35;7;4M", 10) == 0);
+    vt_put("\x1b[?1003l");
+    assert(!(window.IDCMPFlags & IDCMP_MOUSEMOVE));
+    VtClose();
+}
+
 int main(void)
 {
     test_the_terminal_starts_below_the_title_bar_and_matches_the_window_rows();
@@ -854,6 +963,10 @@ int main(void)
     test_ma2_14_apply_personality_keeps_the_switch();
     test_ma2_6_glyph_map_and_fallback();
     test_ma2_8_256_colour_and_24_bit_give_the_same_pen();
+    test_ma3_1_2_osc_title_reaches_the_window_as_latin1();
+    test_ma3_3_title_is_restored_on_reset_and_session_end();
+    test_ma3_4_5_mouse_press_release_bytes_and_selection_fallthrough();
+    test_ma3_6_motion_modes_and_the_mouse_move_flag();
     printf("term_engine: all assertions passed\n");
     return 0;
 }
