@@ -43,7 +43,7 @@ existing reply path (VtReply, vtbuiltin.c:128-135, to send_data).
       on the window after the mode switch.
 - [x] MA3-7 [DONE a1c56a7: test_ma3_7_bracketed_paste_wraps_exactly] Bracketed paste: with "\e[?2004h", pasting "abc" sends "\e[200~abc\e[201~"
       (exact bytes). Without the mode, only "abc".
-- [x] MA3-8 [DONE a1c56a7: test_ma3_8_paste_cannot_inject_the_end_marker] Paste cannot inject the end marker: a clipboard text holding "\e[201~" has the
+- [x] MA3-8 [DONE a1c56a7, 8-bit CSI fix in the same test: test_ma3_8_paste_cannot_inject_the_end_marker strips ESC, 0x9B and UTF-8 C2 9B] Paste cannot inject the end marker: a clipboard text holding "\e[201~" has the
       ESC removed or the marker stripped; assert the output bytes.
 - [ ] MA3-9 Reachability: rig run, DCTelnet connected to a test server that enables
       ?1000/?1006/?2004, sets a title, and logs what it receives. Click and paste on the rig
