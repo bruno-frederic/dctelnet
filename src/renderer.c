@@ -23,3 +23,8 @@ ULONG Renderer_Select(ULONG state, UWORD index)
 {
     return (state & ~APP_RENDERER_ALL) | (1UL << (RENDERER_FIRST_BIT + (index % RENDERER_COUNT)));
 }
+
+ULONG Renderer_DefaultForCpu(BOOL has68020)
+{
+    return has68020 ? APP_RENDERER_BUILTIN : APP_RENDERER_IBMCON_DEVICE;
+}
