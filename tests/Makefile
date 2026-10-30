@@ -117,7 +117,7 @@ test_knownhosts: test_knownhosts.c ../src/knownhosts.c ../src/knownhosts.h
 VTCON := ../src/third_party/vtcon
 VTCONI := -I$(VTCON)/engine
 test_vtpersonality: test_vtpersonality.c ../src/vtpersonality.c ../src/vtpersonality.h
-	$(CC) $(CFLAGS) -Ishim $(VTCONI) -o $@ $(filter %.c,$^)
+	$(CC) $(CFLAGS) -Wno-unused-parameter -Ishim $(VTCONI) -o $@ $(filter %.c,$^)
 
 test_term_engine: test_term_engine.c ../src/third_party/retro32-term/term-engine.c ../src/vtbuiltin.c ../src/vtpersonality.c \
                   $(VTCON)/engine/vtengine.c $(VTCON)/render/glyphmap.c
