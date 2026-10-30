@@ -8,21 +8,22 @@
 # Needs vbcc (vc, vasmm68k_mot, vlink; VBCC below) and the NDK 3.2 headers
 # (NDK; Homebrew's NDK3.2R4 directory is empty, hence its own config: the
 # template aos68k.cfg.in gets the NDK path). CPU variants come from CPUS and
-# the per-CPU settings in the "cpu-<n>" block: add 68040 / 68060 there (the
-# 68060 also needs the bn_muladd.s without 64-bit mulu.l, -DBN_060=1).
+# the per-CPU settings below. Every build carries both multiply loops in
+# bn_muladd.s; bignum.c picks the 16-bit one at run time on the 68000 and
+# the 68060 (Bn_HasMul64), so no variant needs its own assembler source.
 VBCC ?= /opt/homebrew/opt/vbcc
 NDK  ?= /Users/spot/Code/UP-Term/vtcon/vendor/ndk-3.2r4-Include_H
 VAMOS ?= vamos
 export VBCC
 
-CPUS := 68000 68020
+CPUS := 68000 68020 68040 68060
 SRC  := ..
 # One Makefile variable per CPU: what vc and vasm get besides -cpu.
 DIV_68000 := build/68000/ssh_div.o
 ASFLAGS_68000 := -m68000
 ASFLAGS_68020 := -m68020
 ASFLAGS_68040 := -m68040
-ASFLAGS_68060 := -m68060 -DBN_060=1
+ASFLAGS_68060 := -m68060
 
 # -DSSH_LIBRARY: random.c locks its pool. -DBN_ASM: bignum.c uses bn_muladd.s.
 # The stack check and small data are off: the library runs on its caller's stack.
@@ -74,11 +75,15 @@ $(foreach c,$(CPUS),$(eval $(call CPU_RULES,$(c))))
 
 # Under vamos on a LIBS: assign of its own (a copy of the built 68000 library).
 TEST_CPU ?= 68000
+# vamos has no 68060 model; the 68040 one runs the 68060 build. It then
+# reports a 68040, so the 060 multiply pick (Bn_HasMul64) is tested on the
+# host (tests/test_crypto.c), not here.
+VAMOS_CPU := $(if $(filter 68060,$(TEST_CPU)),68040,$(TEST_CPU))
 test: build/$(TEST_CPU)/ssh.library build/aos68k.cfg
 	@mkdir -p build/test/LIBS
 	cp build/$(TEST_CPU)/ssh.library build/test/LIBS/ssh.library
 	vc $(CFLAGS) -cpu=$(TEST_CPU) -Iinclude -o build/test/ssh_lib_test test/ssh_lib_test.c
-	$(VAMOS) -C $(TEST_CPU) -V sshtest:$(CURDIR)/build/test -V sshrec:$(abspath $(CURDIR)/../../tests/ssh_sessions) -a LIBS:sshtest:LIBS \
+	$(VAMOS) -C $(VAMOS_CPU) -V sshtest:$(CURDIR)/build/test -V sshrec:$(abspath $(CURDIR)/../../tests/ssh_sessions) -a LIBS:sshtest:LIBS \
 		sshtest:ssh_lib_test sshrec:curve25519_password_rekey.bin
 
 clean:
