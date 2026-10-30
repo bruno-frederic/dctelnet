@@ -31,7 +31,7 @@ The repo is in a state where the later phases can land cleanly and nothing is lo
       dispatches on; tests/test_renderer.c proves console and ibmcon never route to the
       builtin engine. Open: the sentinel counts (VtWrite 0, CMD_WRITE 1+) through ConWrite
       itself, by rig run on each renderer.
-- [ ] MA0-2 Cycle test: the Renderer cycle (guis.c:1180-1184) still visits all four
+- [x] MA0-2 (2026-10-30, after MA1-MA4 merged at 3e8308c: test_renderer test_the_cycle_visits_all_four_in_bit_order passes in the container run) Cycle test: the Renderer cycle (guis.c:1180-1184) still visits all four
       renderers in bit order after the work in MA1-MA3.
       Test exists (test_renderer "cycle visits all four", plus RendererLabelsMatch in
       guis.c). Rerun after MA1-MA3, then tick.
