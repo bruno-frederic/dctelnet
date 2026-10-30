@@ -210,6 +210,17 @@ static void test_a_1x_file_gives_the_built_in_renderer_its_colours(void)
     assert(got.AnsiColors[7] == 0xFFF && got.AnsiColors[1] == 0xF00);   /* white, red: ANSI order */
 }
 
+/* Shift+Page Up scrolls back out of the box: a first run (no prefs file)
+ * has Scrollback History on, full screen, and the renderer it is given. */
+static void test_a_first_run_has_scrollback_history_on(void)
+{
+    ULONG s = Prefs_FirstRunState(APP_RENDERER_BUILTIN);
+
+    assert(s & APP_SCROLLBACK_ENABLED);
+    assert(s & APP_FULLSCREEN);
+    assert((s & (APP_RENDERER_BUILTIN | APP_RENDERER_XEM_LIB | APP_RENDERER_IBMCON_DEVICE)) == APP_RENDERER_BUILTIN);
+}
+
 int main(void)
 {
     test_a_v2_file_round_trips();
@@ -224,6 +235,7 @@ int main(void)
     test_a_short_old_file_keeps_the_essentials();
     test_the_built_in_renderer_fits_any_screen_of_80x25_cells();
     test_a_1x_file_gives_the_built_in_renderer_its_colours();
+    test_a_first_run_has_scrollback_history_on();
     printf("prefs_file: all assertions passed\n");
     return 0;
 }

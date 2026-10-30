@@ -100,7 +100,7 @@ static void ValidateAndInitPrefs(BOOL *userMustChooseAScreenMode)
     // prefs.State is initialized here for the first run and is replaced with the default state when
     // an invalid value is loaded from the Prefs file (see the #defines in prefs.h).
     if (prefs.State == 0)
-        prefs.State = APP_FULLSCREEN | Renderer_DefaultForCpu((SysBase->AttnFlags & AFF_68020) != 0);
+        prefs.State = Prefs_FirstRunState(Renderer_DefaultForCpu((SysBase->AttnFlags & AFF_68020) != 0));
 
     // Both palettes usable: a 1.x file has only the console's.
     Palette_Repair(&prefs);
