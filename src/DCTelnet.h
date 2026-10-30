@@ -63,17 +63,23 @@ enum MenuItemID
         MENU_TELNET_TERM_TYPE,
         MENU_RAW_CONNECTION,
         MENU_RLOGIN,
+        MENU_SSH,
 //      MENU_INCOMING_LF_TO_CRLF,
         MENU_PETSCII_MODE,
         MENU_CHARSET,
             MENU_CHARSET_CP437,     // CP437, LATIN1, UTF8 in this order:
             MENU_CHARSET_LATIN1,    //   minus MENU_CHARSET_CP437 is the
             MENU_CHARSET_UTF8,      //   charset.h value
+        MENU_TERMTYPE,
+            MENU_TERMTYPE_AUTO,     // AUTO, BBS, UNIX in this order: minus
+            MENU_TERMTYPE_BBS,      //   MENU_TERMTYPE_AUTO is the prefs.h
+            MENU_TERMTYPE_UNIX,     //   TERMTYPE_ value
         MENU_BELL,
             MENU_BELL_FLASH,        // FLASH, SOUND, OFF in this order (prefs.h)
             MENU_BELL_SOUND,
             MENU_BELL_OFF,
         MENU_ANSI_MUSIC,
+        MENU_ICE_COLOURS,
 
         MENU_LOCAL_ECHO,
         MENU_BACKSPACE_DEL_SWAP,
@@ -123,7 +129,7 @@ extern long tcpSocket, nBytesReceived;
 extern struct DrawInfo *drawInfo;
 extern struct Menu *mainMenuStrip;
 // The connection carries telnet codes (IAC ...): not a Raw Connection, not rlogin.
-#define TELNET_DATA() STATE_IS_NOT(APP_RAW_CONNECTION | APP_RLOGIN)
+#define TELNET_DATA() STATE_IS_NOT(APP_RAW_CONNECTION | APP_RLOGIN | APP_SSH)
 extern struct MsgPort *iconPort;
 extern struct NewWindow newWin;
 extern struct PrefsStruct globalPrefs;   // global settings during an entry session
