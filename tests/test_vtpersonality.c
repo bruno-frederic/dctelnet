@@ -176,8 +176,21 @@ static void test_ma2_14_fired_sniffer_keeps_utf8_until_the_user_changes_prefs(vo
     assert(Vt_PersonalityForConnection(&p, &s).charset == VT_CS_CP437);   /* new connection */
 }
 
+/* The glyph map's encoding: CP437 is a pass-through whatever the font is,
+ * Unicode sessions follow the font. */
+static void test_glyph_encoding_follows_the_font_except_for_cp437(void)
+{
+    assert(Vt_GlyphEncoding(VT_CS_CP437, VT_ENC_CP437) == VT_ENC_CP437);
+    assert(Vt_GlyphEncoding(VT_CS_CP437, VT_ENC_LATIN1) == VT_ENC_CP437);
+    assert(Vt_GlyphEncoding(VT_CS_UTF8, VT_ENC_CP437) == VT_ENC_CP437);
+    assert(Vt_GlyphEncoding(VT_CS_UTF8, VT_ENC_LATIN1) == VT_ENC_LATIN1);
+    assert(Vt_GlyphEncoding(VT_CS_LATIN1, VT_ENC_CP437) == VT_ENC_CP437);
+    assert(Vt_GlyphEncoding(VT_CS_LATIN1, VT_ENC_LATIN1) == VT_ENC_LATIN1);
+}
+
 int main(void)
 {
+    test_glyph_encoding_follows_the_font_except_for_cp437();
     test_terminal_type_picks_the_personality();
     test_engine_decodes_utf8_only_when_xterm_utf8_builtin();
     test_cp437_and_latin1_sites_are_pc_ansi_cp437();

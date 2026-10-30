@@ -25,11 +25,18 @@
 #include "vtpersonality.h"
 #include "vtpens.h"
 #include "vtinput.h"
+#include "glyphraster.h"
+#include "screenfont.h"
 
 /* The glyph for a code point the font cannot show: the font's '?', one cell. */
 #define VT_FALLBACK_GLYPH ((UBYTE)'?')
 
 static vt_term *vtTerm;
+
+/* The encoding of the terminal's font (VtProbeFont) and the one the glyph map
+ * is asked for (Vt_GlyphEncoding: CP437 sessions stay byte pass-through). */
+static enum vt_font_enc vtFontEnc;
+static enum vt_font_enc vtGlyphEnc;
 
 /* MA4: how many lines the view is scrolled back into the engine's scrollback;
  * 0 is the live grid. Grid row y shows engine row y - vtScrollOff. */
@@ -127,10 +134,19 @@ static void VtDraw(void *user, int x0, int y0, int x1, int y1)
             } else if (ch >= 0x20 && ch < 0x7F) {
                 code = (UBYTE)ch;
             } else {
-                /* The font is drawn as the BBS sent it: every byte the
-                 * engine took as a CP437 character maps back to itself. */
-                vt_glyph g = vt_map_glyph(ch, VT_ENC_CP437);
-                code = g.kind == VT_GLYPH_FONT ? g.code : VT_FALLBACK_GLYPH;
+                /* A CP437 session (PC ANSI) is a byte pass-through: the byte
+                 * the BBS sent is the font's character, the font decides
+                 * the look. A Unicode session maps the code point into the
+                 * font's own encoding (vtGlyphEnc, probed from the font);
+                 * what the font lacks (box, blocks, diagonals) is drawn. */
+                vt_glyph g = vt_map_glyph(ch, vtGlyphEnc);
+                if (g.kind != VT_GLYPH_FONT) {
+                    UWORD rows[8];
+                    GlyphRaster_Draw(g, 1 << term_xs, 8, rows);
+                    term_glyph_bits((WORD)x, rows);
+                    continue;
+                }
+                code = g.code;
             }
             term_glyph((WORD)x, code);
         }
@@ -248,6 +264,7 @@ static void VtApplyPersonality(void)
 {
     struct VtPersonality pers = Vt_PersonalityForConnection(&prefs, &vtSniff);
 
+    vtGlyphEnc = Vt_GlyphEncoding(pers.charset, vtFontEnc);
     if (!vtTerm)
         return;
     vt_set_personality(vtTerm, pers.personality);
@@ -358,6 +375,20 @@ static void VtMouseMove(int x, int y, int mods)
 
 static void VtClose(void);
 
+/* The encoding of the terminal's font, from its glyph 0xC4: a line in an IBM
+ * (CP437) font, a letter in an Amiga (Latin-1) one. After the font is
+ * extracted (term_init_area, term_set_font). */
+static void VtProbeFont(void)
+{
+    UWORD rows[8];
+    int r;
+
+    for (r = 0; r < 8; r++)
+        rows[r] = term_xs == 3 ? (UWORD)((UWORD)font8[(0xC4 << 3) + r] << 8) : font16[(0xC4 << 3) + r];
+    vtFontEnc = ScreenFont_GlyphIsHLine(rows, 8, 1 << term_xs) ? VT_ENC_CP437 : VT_ENC_LATIN1;
+    vtGlyphEnc = Vt_GlyphEncoding(Vt_PersonalityForConnection(&prefs, &vtSniff).charset, vtFontEnc);
+}
+
 /* A new terminal for the grid term_init_area() has just laid out (and
  * cleared). 0 when it is ready. */
 static int VtOpen(void)
@@ -365,6 +396,7 @@ static int VtOpen(void)
     static const vt_callbacks cb = { VtDraw, VtScroll, VtReply, NULL, VtTitle, NULL, NULL };
 
     vtScrollOff = 0;
+    VtProbeFont();
     VtClose();      /* vt_new() draws through VtDraw(): vtTerm must not be the freed one */
     vtTrueColour = FALSE;
     if (scr && scr->RastPort.BitMap) {

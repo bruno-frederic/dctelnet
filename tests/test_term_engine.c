@@ -696,6 +696,81 @@ static void test_ma1_9_the_sample_art_file_gives_the_known_grid(void)
     VtClose();
 }
 
+/* --- Font probe: UTF-8 box drawing and accents in the font's own encoding --- */
+
+/* A terminal whose font has glyph 0xC4 as the A-diaeresis of Latin-1
+ * (ibm = 0) or as the IBM horizontal line (ibm = 1), opened through VtOpen
+ * with the given terminal type and character set. */
+static void probe_begin(int ibm, UBYTE termType, UBYTE charset)
+{
+    static const UBYTE a_diaeresis[8] = { 0x66, 0x00, 0x3C, 0x66, 0x7E, 0x66, 0x66, 0x00 };
+    int r;
+
+    setup();
+    for (r = 0; r < 8; r++)
+        fontData[r][0xC4] = ibm ? (UBYTE)(r == 4 ? 0xFF : 0x00) : a_diaeresis[r];
+    assert(term_init_area(&screen, &winRp, 0, TOP, 0, TOP, W, H - TOP, &font) == 0);
+    memset(&prefs, 0, sizeof(prefs));
+    prefs.State = APP_RENDERER_BUILTIN;
+    prefs.TermType = termType;
+    prefs.Charset = charset;
+    assert(VtOpen() == 0);
+    probes = 0;
+    calls[0] = 0;
+}
+
+/* TRUE when row r of the first cell holds the byte b in the foreground pen 7. */
+static int cell_row_is(int r, UBYTE b)
+{
+    return planes[0][(TOP + r) * BPR] == b && planes[1][(TOP + r) * BPR] == b &&
+           planes[2][(TOP + r) * BPR] == b && planes[3][(TOP + r) * BPR] == 0;
+}
+
+/* The font decides what a decoded code point looks like. Through VtWrite:
+ * a Latin-1 font gets the box line drawn, not its A-diaeresis at 0xC4; the
+ * CP437 byte stream is still passed through untouched; an IBM font gets the
+ * accent at its CP437 code. The rasteriser, the encoding rule and the probe
+ * have their own tests; this one proves they are wired into the draw path. */
+static void test_font_probe_reaches_the_grid_through_vtwrite(void)
+{
+    static const UBYTE a_diaeresis[8] = { 0x66, 0x00, 0x3C, 0x66, 0x7E, 0x66, 0x66, 0x00 };
+    int r;
+
+    probe_begin(0, TERMTYPE_UNIX, CHARSET_UTF8);
+    vt_put("\xE2\x94\x80");                             /* U+2500 */
+    for (r = 0; r < 8; r++)
+        assert(cell_row_is(r, r == 4 ? 0xFF : 0x00));    /* the drawn line, not A-diaeresis */
+    VtClose();
+
+    probe_begin(0, TERMTYPE_BBS, CHARSET_CP437);
+    vt_put("\xC4");                                     /* the BBS byte stays the font's glyph */
+    for (r = 0; r < 8; r++)
+        assert(cell_row_is(r, a_diaeresis[r]));
+    VtClose();
+
+    probe_begin(1, TERMTYPE_UNIX, CHARSET_UTF8);
+    vt_put("\xC3\xA9");                                 /* U+00E9 e-acute: CP437 0x82 */
+    for (r = 0; r < 8; r++)
+        assert(cell_row_is(r, (UBYTE)(0x82 ^ (r * 37))));
+    VtClose();
+}
+
+/* The covered terminal has no bitmap to write to: the drawn line goes out as
+ * RectFill runs (the cell background, then one fg run on row 4). */
+static void test_a_drawn_cell_on_a_covered_terminal_goes_out_as_rectfills(void)
+{
+    static UBYTE before[sizeof(planes)];
+
+    probe_begin(0, TERMTYPE_UNIX, CHARSET_UTF8);
+    screen.LayerInfo.top_layer = &menuLayer;        /* a menu strip over the terminal */
+    memcpy(before, planes, sizeof(planes));
+    calls[0] = 0;
+    vt_put("\xE2\x94\x80");
+    assert(memcmp(before, planes, sizeof(planes)) == 0);
+    assert(strstr(calls, "RectFill(0,0,7,7 pen0)\nRectFill(0,4,7,4 pen7)"));
+    VtClose();
+}
+
 /* --- MA2: the xterm personality, UTF-8 and the 256-colour / 24-bit pens --- */
 
 /* A fresh Unix terminal: xterm, UTF-8 characters, the default sixteen pens. */
@@ -717,6 +792,12 @@ static void xterm_begin_on(UBYTE depth, ULONG flags)
     prefs.Charset = CHARSET_UTF8;
     memcpy(prefs.AnsiColors, ansi, sizeof(ansi));
     assert(VtOpen() == 0);
+    /* The MA2 tests below assert the IBM-font mapping (UTF-8 box and blocks
+     * reach term_glyph as CP437 codes); this test font's 0xC4 is not a line,
+     * so the probe would say Latin-1. Force the IBM font here; the probe
+     * itself is covered by the font-probe reachability test. */
+    vtFontEnc = VT_ENC_CP437;
+    VtApplyPersonality();
     probes = 0;
     calls[0] = 0;
 }
@@ -1298,6 +1379,8 @@ int main(void)
     test_ma1_8_cursor_save_restore_position_and_erase();
     test_ma1_init_strings_draw_nothing_and_leave_the_cursor();
     test_ma1_9_the_sample_art_file_gives_the_known_grid();
+    test_font_probe_reaches_the_grid_through_vtwrite();
+    test_a_drawn_cell_on_a_covered_terminal_goes_out_as_rectfills();
     test_ma2_5_11_utf8_reaches_the_grid_whole_even_split_across_writes();
     test_ma2_14_stream_switch_to_utf8_through_vtwrite();
     test_ma2_14_split_sequence_held_back_through_vtwrite();
