@@ -28,33 +28,42 @@ the gaps below are unproven or missing.
 
 ## Checklist
 
-- [ ] MA1-1 One function `Vt_PersonalityFor(prefs)` picks personality + charset. In MA1 it
+- [x] MA1-1 One function `Vt_PersonalityFor(prefs)` picks personality + charset. In MA1 it
       returns VT_PCANSI + VT_CS_CP437 for CP437 and Latin-1 sites. Test the function.
-- [ ] MA1-2 Line art: bytes C9 CD BB / BA / C8 CD BC written through VtWrite land in the grid
+      Evidence: src/vtpersonality.c, test_vtpersonality.c (cp437 + latin1 give PCANSI/CP437); VtOpen uses it
+- [x] MA1-2 Line art: bytes C9 CD BB / BA / C8 CD BC written through VtWrite land in the grid
       as the right cells and VtDraw calls term_glyph with codes 0xC9, 0xCD, 0xBB, 0xBA,
       0xC8, 0xBC (sentinel records the codes; assert the exact list).
-- [ ] MA1-3 Block and shade glyphs DB, B0, B1, B2, DC, DF map to themselves (VT_GLYPH_FONT).
+      Evidence: test_ma1_2_line_art_...: codes C9 CD BB BA C8 CD BC exact, cells in grid
+- [x] MA1-3 Block and shade glyphs DB, B0, B1, B2, DC, DF map to themselves (VT_GLYPH_FONT).
       Any code that maps to the '?' fallback at vtbuiltin.c:55 fails the test.
-- [ ] MA1-4 16 colours: "\e[0;31m" gives fg pen 1; "\e[1;31m" gives pen 9; "\e[1;33;44m"
+      Evidence: test_ma1_3_blocks_...: DB B0 B1 B2 DC DF reach term_glyph as themselves
+- [x] MA1-4 16 colours: "\e[0;31m" gives fg pen 1; "\e[1;31m" gives pen 9; "\e[1;33;44m"
       gives fg 14, bg 4. Assert term_pen_fg and term_pen_bg at term_glyph time.
-- [ ] MA1-5 iCE colours: with iCE on, "\e[5;44m" gives bg pen 12 and no blink flag; with
+      Evidence: test_ma1_4_sixteen_colours: fg 1, 9, and bg 4 with fg 11 (bright yellow is pen 11 in this ANSI-order pen set; the item's 14 is the CGA index)
+- [x] MA1-5 iCE colours: with iCE on, "\e[5;44m" gives bg pen 12 and no blink flag; with
       iCE off, bg pen 4 and blink set. Find how the engine switches iCE (grep vtengine.h
       for the mode; vt_resolve_colors takes it from the term). Add the switch to DCTelnet
       if the engine has one (prefs knob, see MA1-6).
-- [ ] MA1-6 Every new knob (iCE colours on/off) is a pref with a menu or requester label
+      Evidence: test_ma1_5_6_7: iCE on bg 12, off bg 4, grid keeps the blink attr (the engine always keeps it; VtDraw resolves)
+- [x] MA1-6 Every new knob (iCE colours on/off) is a pref with a menu or requester label
       in full words ("iCE Colours" is the established name; spell "Bright Backgrounds"
       in the label if unsure). It moves the output (MA1-5) or carries a written exemption.
-- [ ] MA1-7 Blink: attr BLINK cells are either drawn blinking by a timer through the
+      Evidence: prefs.Blink + Terminal > iCE Colours toggle + site Terminal group + summary; moves output (MA1-5), VtRedraw on toggle (test)
+- [x] MA1-7 Blink: attr BLINK cells are either drawn blinking by a timer through the
       existing cursor timer path, or drawn steady with a documented exemption. Owner decision
       (2026-10-30): steady plus iCE respected (no timer), exemption written.
-- [ ] MA1-8 Cursor save/restore (ESC[s ESC[u), cursor position (ESC[row;colH), erase
+      Evidence: steady plus iCE, no timer: exemption comment in VtDraw
+- [x] MA1-8 Cursor save/restore (ESC[s ESC[u), cursor position (ESC[row;colH), erase
       (ESC[2J, ESC[K): after the sample bytes, vt_cursor equals the expected x,y (assert
       numbers) and VtSyncCursor put cur_x, cur_y there.
-- [ ] MA1-9 Sample: take a real BBS ANSI art file (80 columns, over 25 rows, with blink and
+      Evidence: test_ma1_8_cursor_...: 5;10H -> 9,4; s/u restore 9,4; K keeps 12,4; 2J -> 0,0; cur_x/cur_y equal
+- [x] MA1-9 Sample: take a real BBS ANSI art file (80 columns, over 25 rows, with blink and
       line art). Put it in tests/ansi_art/ with its source named in a README line in the
       test. Host test feeds it in 1024-byte chunks (the ConWrite chunk size) and asserts
       the grid hash (CRC of all cells) equals a value fixed in the test, plus the count of
       VtDraw cells > 0 (sentinel).
+      Evidence: tests/ansi_art/up_rough_banner.ans, grid CRC32 D5F60475, probes 1793
 - [ ] MA1-10 Rig test through DCTelnet: connect to the local test server that sends the
       sample; read the screen back (wasabi text) and compare the 80x25 text to the grid
       expected by MA1-9; assert the DCTelnet debug sentinel (add a VtWrite call counter to
@@ -67,3 +76,32 @@ with the screen text diff empty. `make ci` and `make -C tests` pass. Owner check
 "Run DCTelnet on the rig, connect to the test server, art file X shows without broken
 line art or wrong colours." PASS: art matches the same file in a PC terminal. FAIL: any
 '?' or wrong-coloured block.
+
+## Implementation decisions (2026-10-30, vtcon-06 session, before first edit)
+
+Checked in code; do not re-litigate.
+
+- iCE switch: the engine has none. vt_resolve_colors (vtengine.c:3345) always turns
+  BLINK + bg < 8 into bg + 8 under VT_PCANSI. So iCE off lives in VtDraw: resolve from a
+  copy of the cell with VT_ATTR_BLINK cleared. No vtcon submodule change.
+- Pref: `UBYTE Blink` takes `Reserved[1]` in PrefsStruct (struct size unchanged, so no
+  file version bump). Values `BLINK_ICE` (0, default: SGR 5 makes the background bright,
+  iCE colours) and `BLINK_STEADY` (1: blink ignored, cell drawn as sent). 0 = default,
+  as the struct comment requires for old files. site_prefs.c F(Reserved) becomes F(Blink).
+  Menu: Terminal > "iCE Colours" toggle next to "ANSI Music" (CHECKED when Blink ==
+  BLINK_ICE), same pattern as MENU_ANSI_MUSIC (DCTelnet.c:4363, 5730). site_prefs summary
+  (site_prefs.c:419) adds ", No iCE Colours" when BLINK_STEADY.
+- MA1-7 exemption: blink is never animated (owner decision); with iCE on it is the bright
+  background, with iCE off it is steady. Written as a comment in VtDraw and in the guide.
+- MA1-1: `Vt_PersonalityFor(const struct PrefsStruct *)` lives in a new pure file
+  src/vtpersonality.c/.h (host-testable without DCTelnet.c), returns personality + charset.
+  VtOpen calls it with &prefs.
+- Latin-1 under PCANSI: bytes pass through to term_glyph unchanged (engine reads them as
+  CP437 and vt_map_glyph maps back to the same byte); the font decides the look. Test:
+  byte 0xE9 reaches term_glyph as 0xE9.
+- Host sentinel: in tests/test_term_engine.c, `#define term_glyph(x, c) probe_glyph(x, c)`
+  before including vtbuiltin.c (same trick as send_data); probe records x, cur_y, code,
+  term_pen_fg, term_pen_bg, then calls the real term_glyph. No product code for it.
+- MA1-9 sample: UP-Term/vtcon/art/up_rough_banner.ans (owner's group banner, 4014 B,
+  26 rows, 20 blink SGRs, 85 CP437 box cells, SAUCE). Copied to tests/ansi_art/.
+  Block/shade glyphs are covered by MA1-3, not by the sample.

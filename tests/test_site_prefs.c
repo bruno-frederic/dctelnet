@@ -103,6 +103,17 @@ static void test_each_group_moves_only_its_members(void) {
     assert(live.State == APP_SSH);
     SitePrefs_GroupSummary(SITE_GROUP_TERMINAL, &live, (char *)e.TelnetTermType, sizeof(e.TelnetTermType));
     assert(strstr((char *)e.TelnetTermType, ", SSH"));
+    assert(!strstr((char *)e.TelnetTermType, "iCE"));          /* MA1-6: iCE colours are the default */
+    e.Blink = BLINK_STEADY;                                     /* ... and a site can turn them off */
+    live = global; entry = entry_with(SITE_GROUP_TERMINAL, e);
+    SitePrefs_ApplyEntry(&live, &global, &entry);
+    assert(live.Blink == BLINK_STEADY);
+    {
+        char summary[200];
+        SitePrefs_GroupSummary(SITE_GROUP_TERMINAL, &live, summary, sizeof(summary));
+        assert(strstr(summary, ", No iCE Colours"));
+    }
+    e.Blink = BLINK_ICE;
     e.State = APP_RETURN_SENDING_CRLF | APP_FULLSCREEN | APP_RAW_CONNECTION;
 
     live = global; entry = entry_with(0, e);                    /* nothing overridden */

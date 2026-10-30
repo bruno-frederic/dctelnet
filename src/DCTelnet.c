@@ -170,6 +170,7 @@ static struct NewMenu mainMenuDesc[] =
     {       NM_SUB, "Sound",                         0 ,       CHECKIT,       ~2L & 7, (APTR)MENU_BELL_SOUND},
     {       NM_SUB, "Off",                           0 ,       CHECKIT,       ~4L & 7, (APTR)MENU_BELL_OFF},
     {    NM_ITEM, "ANSI Music",                      0 , HIGHCOMP|CHECKIT|MENUTOGGLE, 0, (APTR)MENU_ANSI_MUSIC},
+    {    NM_ITEM, "iCE Colours",                     0 , HIGHCOMP|CHECKIT|MENUTOGGLE, 0, (APTR)MENU_ICE_COLOURS},
     {    NM_ITEM, NM_BARLABEL,                       0 ,             0,               0, (APTR)MENU_BAR},
     {    NM_ITEM, "Local Echo",                     "6", HIGHCOMP|CHECKIT|MENUTOGGLE, 0, (APTR)MENU_LOCAL_ECHO},
     {    NM_ITEM, "Swap BackSpace & Del keys",      "/", HIGHCOMP|CHECKIT|MENUTOGGLE, 0, (APTR)MENU_BACKSPACE_DEL_SWAP},
@@ -4364,6 +4365,11 @@ static void GetWindowMsg(struct Window *wwin)
                         AnsiMusic_Init(&ansiMusic);
                         break;
 
+                    case MENU_ICE_COLOURS:
+                        prefs.Blink = (item->Flags & CHECKED) ? BLINK_ICE : BLINK_STEADY;
+                        VtRedraw();
+                        break;
+
                     case MENU_CHARSET_CP437:
                     case MENU_CHARSET_LATIN1:
                     case MENU_CHARSET_UTF8:
@@ -5728,6 +5734,7 @@ void CreateAppMenus(void)
     GetNewMenuItemFromID(MENU_BELL_SOUND)->nm_Flags = CHECKIT | (prefs.Bell == BELL_SOUND ? CHECKED : 0);
     GetNewMenuItemFromID(MENU_BELL_OFF)->nm_Flags   = CHECKIT | (prefs.Bell == BELL_OFF ? CHECKED : 0);
     GetNewMenuItemFromID(MENU_ANSI_MUSIC)->nm_Flags = HIGHCOMP | CHECKIT | MENUTOGGLE | (prefs.AnsiMusic ? CHECKED : 0);
+    GetNewMenuItemFromID(MENU_ICE_COLOURS)->nm_Flags = HIGHCOMP | CHECKIT | MENUTOGGLE | (prefs.Blink == BLINK_ICE ? CHECKED : 0);
 
     // A capture runs on over a display reopen: its item keeps the check mark.
     if (captureFile)

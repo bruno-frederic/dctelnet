@@ -75,6 +75,7 @@ enum MenuItemID
             MENU_BELL_SOUND,
             MENU_BELL_OFF,
         MENU_ANSI_MUSIC,
+        MENU_ICE_COLOURS,
 
         MENU_LOCAL_ECHO,
         MENU_BACKSPACE_DEL_SWAP,
