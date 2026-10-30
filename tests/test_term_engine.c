@@ -660,6 +660,55 @@ static void test_ma2_5_11_utf8_reaches_the_grid_whole_even_split_across_writes(v
     VtClose();
 }
 
+/* MA2-14 through VtWrite: Unix + IBM PC site; the first valid UTF-8 sequence
+ * switches the engine for the rest of the connection, prefs untouched. */
+static void unix_cp437_begin(void)
+{
+    xterm_begin();
+    prefs.Charset = CHARSET_CP437;
+    VtApplyPersonality();
+    VtSniffReset();
+}
+
+static void test_ma2_14_stream_switch_to_utf8_through_vtwrite(void)
+{
+    int n;
+    const vt_cell *row;
+
+    unix_cp437_begin();
+    vt_put("abc");
+    vt_put("\xE2\x96\x88");
+    row = vt_row(vtTerm, 0, &n);
+    assert(row[3].ch == 0x2588 && row[4].ch == ' ');       /* full block, one cell */
+    vt_put("\xE2\x96\x88");                               /* stays UTF-8 afterwards */
+    row = vt_row(vtTerm, 0, &n);
+    assert(row[4].ch == 0x2588);
+    assert(prefs.Charset == CHARSET_CP437);                /* never saved */
+    VtClose();
+
+    unix_cp437_begin();                                    /* art first: CP437 stays */
+    vt_put("\xC9\xCD\xBB");
+    vt_put("\xE2\x96\x88");
+    row = vt_row(vtTerm, 0, &n);
+    assert(row[0].ch == 0x2554 && row[3].ch != 0x2588);
+    VtClose();
+
+    unix_cp437_begin();                                    /* Latin-1 text: never */
+    vt_put("\xE9t\xE9");
+    vt_put("\xC3\xA9");
+    row = vt_row(vtTerm, 0, &n);
+    assert(row[3].ch != 0xE9 || row[4].ch != ' ');
+    VtClose();
+
+    unix_cp437_begin();                                    /* new connection re-arms */
+    vt_put("\xE9");
+    VtSniffReset();
+    vt_put("\xE2\x96\x88");
+    row = vt_row(vtTerm, 0, &n);
+    assert(row[1].ch == 0x2588);
+    VtClose();
+}
+
 /* MA2-6: what the IBM font has is drawn, the rest is one '?' per cell, a wide
  * character fills its second cell with a blank. */
 static void test_ma2_6_glyph_map_and_fallback(void)
@@ -721,6 +770,7 @@ int main(void)
     test_ma1_init_strings_draw_nothing_and_leave_the_cursor();
     test_ma1_9_the_sample_art_file_gives_the_known_grid();
     test_ma2_5_11_utf8_reaches_the_grid_whole_even_split_across_writes();
+    test_ma2_14_stream_switch_to_utf8_through_vtwrite();
     test_ma2_6_glyph_map_and_fallback();
     test_ma2_8_256_colour_and_24_bit_give_the_same_pen();
     printf("term_engine: all assertions passed\n");

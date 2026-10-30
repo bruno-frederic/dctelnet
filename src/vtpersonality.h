@@ -23,4 +23,23 @@ struct VtPersonality Vt_PersonalityFor(const struct PrefsStruct *p);
  * the host go to it as they are and DisplayBytes must not convert them. */
 BOOL Vt_EngineDecodesUtf8(const struct PrefsStruct *p);
 
+/* MA2-13: the Character Set the requester shows after Terminal Type changes.
+ * Unix with IBM PC (CP437) becomes UTF-8, every other pair stays as it is. */
+UBYTE Vt_CharsetAfterTermType(UBYTE termType, UBYTE charset);
+
+/* MA2-14: finds out from the bytes of one connection whether a Unix host
+ * speaks UTF-8 although the Character Set says otherwise. Reset on connect. */
+struct VtUtf8Sniffer {
+    UBYTE need;         /* continuation bytes still due for the sequence in progress */
+    UBYTE done;         /* TRUE: decided (switched or an invalid high byte was seen) */
+};
+void Vt_Utf8SnifferReset(struct VtUtf8Sniffer *s);
+
+/* TRUE while the sniffer applies: Terminal Type Unix, Character Set not UTF-8. */
+BOOL Vt_Utf8SnifferActive(const struct PrefsStruct *p);
+
+/* Feeds bytes; TRUE exactly once, when the first complete valid multi-byte
+ * sequence arrives with no invalid high byte before it. */
+BOOL Vt_Utf8SnifferFeed(struct VtUtf8Sniffer *s, const UBYTE *data, long len);
+
 #endif /* VTPERSONALITY_H */

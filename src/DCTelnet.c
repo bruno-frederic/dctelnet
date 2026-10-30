@@ -1281,6 +1281,7 @@ static void RunPendingConnect(void)
         Charset_Utf8Init(&utf8In);
         Charset_Utf8Init(&utf8Echo);
         Charset_Utf8Init(&utf8Sb);
+        VtSniffReset();                         // MA2-14: this connection has seen no UTF-8 yet
         AnsiMusic_Init(&ansiMusic);
         if (STATE_IS(APP_SSH))                  // SSH: the encrypted login first
         {
