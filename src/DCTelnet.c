@@ -2281,7 +2281,10 @@ static void Receive(void)
                         if (win->RPort->Font != wanted)
                         {
                             if (STATE_IS(APP_RENDERER_BUILTIN))
+                            {
                                 term_set_font(wanted);      // (sets the RastPort's too)
+                                VtProbeFont();
+                            }
                             else
                             {
                                 SetFont(win->RPort, wanted);

@@ -3,7 +3,7 @@
 CC := cc
 CFLAGS := -std=c99 -Wall -Wextra -Werror -I../src
 
-TESTS := test_petscii_modules test_petscii_dispatch test_prefs_file test_site_prefs test_palette test_screenfont test_progdir test_listsel test_textedit test_dsr test_keys test_clip test_ansiscan test_ticks test_rexx test_rlogin test_ansimusic test_booklist test_crypto test_ssh test_knownhosts test_term_engine test_renderer test_vtpersonality test_vtpens test_vtinput
+TESTS := test_petscii_modules test_petscii_dispatch test_prefs_file test_site_prefs test_palette test_screenfont test_glyphraster test_progdir test_listsel test_textedit test_dsr test_keys test_clip test_ansiscan test_ticks test_rexx test_rlogin test_ansimusic test_booklist test_crypto test_ssh test_knownhosts test_term_engine test_renderer test_vtpersonality test_vtpens test_vtinput
 
 .PHONY: all clean check-encoding check-fonts check-debug-stack check-currenttime-null
 all: $(TESTS) check-encoding check-fonts check-debug-stack check-currenttime-null
@@ -139,7 +139,7 @@ test_knownhosts: test_knownhosts.c ../src/knownhosts.c ../src/knownhosts.h
 VTCON := ../src/third_party/vtcon
 VTCONI := -I$(VTCON)/engine
 test_vtpersonality: test_vtpersonality.c ../src/vtpersonality.c ../src/vtpersonality.h
-	$(CC) $(CFLAGS) -Wno-unused-parameter -Ishim $(VTCONI) -o $@ $(filter %.c,$^)
+	$(CC) $(CFLAGS) -Wno-unused-parameter -Ishim $(VTCONI) -I$(VTCON)/render -o $@ $(filter %.c,$^)
 
 test_vtinput: test_vtinput.c ../src/vtinput.c ../src/vtinput.h $(VTCON)/engine/vtengine.c
 	$(CC) $(CFLAGS) -Wno-unused-function -Wno-unused-parameter -Ishim $(VTCONI) -o $@ test_vtinput.c ../src/vtinput.c $(VTCON)/engine/vtengine.c
@@ -147,7 +147,10 @@ test_vtinput: test_vtinput.c ../src/vtinput.c ../src/vtinput.h $(VTCON)/engine/v
 test_vtpens: test_vtpens.c ../src/vtpens.c ../src/vtpens.h $(VTCON)/engine/vtengine.c
 	$(CC) $(CFLAGS) -Wno-unused-function -Wno-unused-parameter -Ishim $(VTCONI) -o $@ test_vtpens.c ../src/vtpens.c $(VTCON)/engine/vtengine.c
 
-test_term_engine: test_term_engine.c ../src/third_party/retro32-term/term-engine.c ../src/vtbuiltin.c ../src/vtpersonality.c ../src/vtpens.c ../src/vtinput.c ../src/vtinput.h \
+test_glyphraster: test_glyphraster.c ../src/glyphraster.c ../src/glyphraster.h $(VTCON)/render/glyphmap.c
+	$(CC) $(CFLAGS) -Wno-unused-function -Wno-unused-parameter -Ishim -I$(VTCON)/engine -I$(VTCON)/render -o $@ test_glyphraster.c ../src/glyphraster.c $(VTCON)/render/glyphmap.c
+
+test_term_engine: test_term_engine.c ../src/third_party/retro32-term/term-engine.c ../src/vtbuiltin.c ../src/vtpersonality.c ../src/glyphraster.c ../src/glyphraster.h ../src/screenfont.c ../src/vtpens.c ../src/vtinput.c ../src/vtinput.h \
                   $(VTCON)/engine/vtengine.c $(VTCON)/render/glyphmap.c
 	$(CC) $(CFLAGS) -Wno-unused-function -Wno-unused-parameter -Ishim -I$(VTCON)/engine -I$(VTCON)/render \
-	      -o $@ test_term_engine.c ../src/vtpersonality.c ../src/vtpens.c ../src/vtinput.c $(VTCON)/engine/vtengine.c $(VTCON)/render/glyphmap.c
+	      -o $@ test_term_engine.c ../src/glyphraster.c ../src/screenfont.c ../src/vtpersonality.c ../src/vtpens.c ../src/vtinput.c $(VTCON)/engine/vtengine.c $(VTCON)/render/glyphmap.c

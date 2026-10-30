@@ -6,6 +6,7 @@
 
 #include "prefs.h"
 #include "vtengine.h"
+#include "glyphmap.h"
 
 struct VtPersonality {
     enum vt_personality personality;
@@ -18,6 +19,12 @@ struct VtPersonality {
  * site gets its bytes through unchanged, the font decides the look); xterm
  * reads the Character Set. */
 struct VtPersonality Vt_PersonalityFor(const struct PrefsStruct *p);
+
+/* Which encoding vt_map_glyph() maps a code point into. CP437 is a byte
+ * pass-through (the font decides the look), so it stays CP437 whatever the
+ * font is; real Unicode (UTF-8, Latin-1) is the font's own encoding, as
+ * ScreenFont_GlyphIsHLine() probed it. */
+enum vt_font_enc Vt_GlyphEncoding(enum vt_charset cs, enum vt_font_enc fontEnc);
 
 /* TRUE when the built-in renderer's engine reads UTF-8 itself: the bytes from
  * the host go to it as they are and DisplayBytes must not convert them. */

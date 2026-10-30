@@ -36,6 +36,11 @@ BOOL Vt_EngineDecodesUtf8(const struct PrefsStruct *p)
         && Vt_PersonalityFor(p).charset == VT_CS_UTF8;
 }
 
+enum vt_font_enc Vt_GlyphEncoding(enum vt_charset cs, enum vt_font_enc fontEnc)
+{
+    return cs == VT_CS_CP437 ? VT_ENC_CP437 : fontEnc;
+}
+
 UBYTE Vt_CharsetAfterTermType(UBYTE termType, UBYTE charset)
 {
     if (termType == TERMTYPE_UNIX && charset == CHARSET_CP437)
