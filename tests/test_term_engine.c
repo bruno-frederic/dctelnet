@@ -24,7 +24,7 @@ struct Layer_Info { struct Layer *top_layer; };
 struct ColorMap { int unused; };
 struct ViewPort { struct ColorMap *ColorMap; };
 struct Screen { WORD Width, Height; struct ViewPort ViewPort; struct RastPort RastPort; struct Layer_Info LayerInfo; };
-struct Window { WORD LeftEdge, TopEdge, Width, Height; BYTE BorderLeft, BorderTop, BorderRight, BorderBottom; struct Layer *WLayer; ULONG IDCMPFlags; };
+struct Window { WORD LeftEdge, TopEdge, Width, Height; BYTE BorderLeft, BorderTop, BorderRight, BorderBottom; struct Layer *WLayer; ULONG IDCMPFlags; ULONG Flags; };
 #define JAM1 0
 #define JAM2 1
 #define COMPLEMENT 2
@@ -168,14 +168,19 @@ static struct Window window, *win = &window;
 #define IDCMP_MOUSEMOVE 0x10UL
 #define IDCMP_RAWKEY 0x400UL
 static char MainWindowTitle[] = "DCTelnet own title";
+#define WFLG_BACKDROP 0x100UL
 static char titleSet[256];
+static const UBYTE *screenTitleSet;     /* (UBYTE *)-1 when the screen title stays */
 static int titleCalls;
+static int ledCalls;
 static void SetWindowTitles(struct Window *w, UBYTE *t, UBYTE *s)
 {
-    (void)w; (void)s;
+    (void)w;
     strcpy(titleSet, (const char *)t);
+    screenTitleSet = s;
     titleCalls++;
 }
+static void LEDs(void) { ledCalls++; }
 static void ModifyIDCMP(struct Window *w, ULONG flags) { w->IDCMPFlags = flags; }
 /* The built-in renderer reads the user's preferences. */
 struct PrefsStruct prefs;
@@ -1027,6 +1032,23 @@ static void test_ma3_3_title_is_restored_on_reset_and_session_end(void)
     VtClose();
 }
 
+/* LIVE A1200: on DCTelnet's own screen the window is a backdrop with no title
+ * bar, so an OSC title must reach the screen bar; on Workbench it must not. */
+static void test_ma3_2_title_shows_in_screen_bar_on_own_screen(void)
+{
+    xterm_begin();
+    ma3_reset_sentinels();
+    ledCalls = 0;
+    window.Flags = WFLG_BACKDROP;
+    vt_put("\x1b]0;own screen\x07");
+    assert(titleCalls == 1 && screenTitleSet != (const UBYTE *)(size_t)0xFFFFFFFFUL && strcmp((const char *)screenTitleSet, "own screen") == 0);
+    assert(ledCalls == 1);                                                /* the bar redraw erased the LEDs */
+    window.Flags = 0;
+    vt_put("\x1b]0;workbench\x07");
+    assert(screenTitleSet == (const UBYTE *)(size_t)0xFFFFFFFFUL && ledCalls == 1);
+    VtClose();
+}
+
 static void test_ma3_4_5_mouse_press_release_bytes_and_selection_fallthrough(void)
 {
     xterm_begin();
@@ -1289,6 +1311,7 @@ int main(void)
     test_ma2_9_a_failed_obtain_falls_back_to_the_16_pen_answer();
     test_ma3_1_2_osc_title_reaches_the_window_as_latin1();
     test_ma3_3_title_is_restored_on_reset_and_session_end();
+    test_ma3_2_title_shows_in_screen_bar_on_own_screen();
     test_ma3_4_5_mouse_press_release_bytes_and_selection_fallthrough();
     test_ma3_6_motion_modes_and_the_mouse_move_flag();
     test_ma4_2_long_art_fills_the_engine_scrollback_and_only_when_asked();

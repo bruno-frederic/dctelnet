@@ -46,6 +46,12 @@ ULONG Vt_IdcmpFor(ULONG base, ULONG moveFlag, const vt_term *t, BOOL keepMove);
  * what Latin-1 cannot show becomes '?'. Always terminated; max includes the NUL. */
 void Vt_TitleText(const char *utf8, const char *own, char *out, size_t max);
 
+/* The screen title to set along with a window title. A backdrop window (DCTelnet's
+ * own screen) has no title bar, so the title shows only in the screen bar: the
+ * screen title is the title then. A normal window keeps the screen title: NULL,
+ * the caller passes -1. backdropFlag is WFLG_BACKDROP. */
+const char *Vt_ScreenTitleFor(ULONG winFlags, ULONG backdropFlag, const char *title);
+
 /* MA3-7/8: pasted bytes in buf (len used, 12 bytes spare) wrapped in the
  * bracketed-paste markers when ?2004 is on; ESC is removed from the text then,
  * so it cannot hold the end marker. Returns the new length (len when off). */

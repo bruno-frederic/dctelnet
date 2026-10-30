@@ -67,6 +67,17 @@ static void test_ma3_title_text_latin1_and_fallback(void)
     assert(strcmp(out, "0123") == 0);
 }
 
+/* Own screen: the window is a backdrop with no title bar, so an OSC title that
+ * only reached the window title never showed (LIVE A1200, 2026-10-30). */
+static void test_ma3_title_reaches_screen_bar_on_own_screen(void)
+{
+    const ULONG backdrop = 0x100;
+
+    assert(Vt_ScreenTitleFor(backdrop | 0x1000, backdrop, "t") != NULL);
+    assert(strcmp(Vt_ScreenTitleFor(backdrop, backdrop, "t"), "t") == 0);
+    assert(Vt_ScreenTitleFor(0x1000, backdrop, "t") == NULL);       /* Workbench window keeps the screen title */
+}
+
 static void test_ma3_6_idcmp_move_only_for_motion_modes(void)
 {
     vt_term *t = term_with("\x1b[?1000h");
@@ -113,6 +124,7 @@ int main(void)
     test_ma3_7_bracketed_paste_wraps_exactly();
     test_ma3_8_paste_cannot_inject_the_end_marker();
     test_ma3_title_text_latin1_and_fallback();
+    test_ma3_title_reaches_screen_bar_on_own_screen();
     test_ma3_6_idcmp_move_only_for_motion_modes();
     test_ma3_wheel_reports_press_only_in_mouse_modes();
     printf("vtinput: all assertions passed\n");
