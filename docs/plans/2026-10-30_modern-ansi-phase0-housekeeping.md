@@ -22,10 +22,12 @@ The repo is in a state where the later phases can land cleanly and nothing is lo
 
 ## Checklist
 
-- [ ] MA0-1 Test: with APP_RENDERER_CONSOLE_DEVICE or IBMCON_DEVICE set, ConWrite never
+- [x] MA0-1 Test: with APP_RENDERER_CONSOLE_DEVICE or IBMCON_DEVICE set, ConWrite never
       calls VtWrite and still reaches CMD_WRITE. Sentinel on both. (Host test with shim,
       or rig run on each renderer.)
-      PARTIAL 38d5f49: Renderer_Route (src/renderer.c) is the one decision ConWrite
+      DONE 2026-10-30 rig 3, same connect with the art: console.device dbgVtWriteCount 0,
+      dbgConWriteCount 10; ibmcon.device dbgVtWriteCount 0, dbgConWriteCount 14.
+      Evidence: thoughts/spot/ma1-10-rig.md.      PARTIAL 38d5f49: Renderer_Route (src/renderer.c) is the one decision ConWrite
       dispatches on; tests/test_renderer.c proves console and ibmcon never route to the
       builtin engine. Open: the sentinel counts (VtWrite 0, CMD_WRITE 1+) through ConWrite
       itself, by rig run on each renderer.
