@@ -235,9 +235,9 @@ static void SendKexInit(struct Ssh *s)
 }
 
 /* The first name of the client's list that the server's list holds. */
-static const char *Choose(const char *client, const UBYTE *server, ULONG serverLen)
+static const char *Choose(struct Ssh *s, const char *client, const UBYTE *server, ULONG serverLen)
 {
-    static char pick[64];
+    char *pick = s->pick;
     const char *c = client;
     while (*c)
     {
@@ -249,7 +249,7 @@ static const char *Choose(const char *client, const UBYTE *server, ULONG serverL
         {
             ULONG j = i;
             while (j < serverLen && server[j] != ',') j++;
-            if (j - i == n && !memcmp(server + i, c, n) && n < sizeof(pick))
+            if (j - i == n && !memcmp(server + i, c, n) && n < sizeof(s->pick))
             {
                 memcpy(pick, c, n); pick[n] = 0;
                 return pick;
@@ -281,7 +281,7 @@ static void OnKexInit(struct Ssh *s, const UBYTE *payload, ULONG len)
     r.p = payload + 17; r.left = len > 17 ? len - 17 : 0; r.bad = len <= 17;
     kex = GetString(&r, &kexLen);
     hostKey = GetString(&r, &hostKeyLen);
-    pick = Choose(s->slowCpu ? KEX_CURVE "," KEX_CURVE_L : KEX_CURVE "," KEX_CURVE_L "," KEX_GROUP14, kex, kexLen);
+    pick = Choose(s, s->slowCpu ? KEX_CURVE "," KEX_CURVE_L : KEX_CURVE "," KEX_CURVE_L "," KEX_GROUP14, kex, kexLen);
     if (!pick)
     {
         Fail(s, s->slowCpu ? "SSH: the server offers no curve25519 key exchange (the only one fast enough on a 68000)"
@@ -290,11 +290,11 @@ static void OnKexInit(struct Ssh *s, const UBYTE *payload, ULONG len)
     }
     s->kexName = !strcmp(pick, KEX_GROUP14) ? KEX_GROUP14 : !strcmp(pick, KEX_CURVE) ? KEX_CURVE : KEX_CURVE_L;
     s->kex = !strcmp(pick, KEX_GROUP14);
-    if (!Choose(HOSTKEY, hostKey, hostKeyLen)) { Fail(s, "SSH: the server has no RSA host key (rsa-sha2-256)"); return; }
+    if (!Choose(s, HOSTKEY, hostKey, hostKeyLen)) { Fail(s, "SSH: the server has no RSA host key (rsa-sha2-256)"); return; }
     for (i = 0; i < 4; i++)
     {
         list = GetString(&r, &n);
-        if (!Choose(i < 2 ? CIPHER : MAC, list, n))
+        if (!Choose(s, i < 2 ? CIPHER : MAC, list, n))
         {
             Fail(s, i < 2 ? "SSH: the server does not offer aes128-ctr" : "SSH: the server does not offer hmac-sha2-256");
             return;
@@ -303,7 +303,7 @@ static void OnKexInit(struct Ssh *s, const UBYTE *payload, ULONG len)
     for (i = 0; i < 2; i++)
     {
         list = GetString(&r, &n);
-        if (!Choose("none", list, n)) { Fail(s, "SSH: the server insists on compression"); return; }
+        if (!Choose(s, "none", list, n)) { Fail(s, "SSH: the server insists on compression"); return; }
     }
     GetString(&r, &n); GetString(&r, &n);
     /* A guessed kex packet follows; it is ours to drop when the guess is wrong. */
@@ -317,7 +317,7 @@ static void OnKexInit(struct Ssh *s, const UBYTE *payload, ULONG len)
 
     if (s->note && !s->haveSession)
     {
-        static char text[80];
+        char *text = s->noteText;
         strcpy(text, "Key exchange: ");
         strcat(text, s->kexName);
         s->note(s, text);
@@ -333,11 +333,11 @@ static void OnKexInit(struct Ssh *s, const UBYTE *payload, ULONG len)
     {
         struct BnMod *mod = &s->work.dh.mod;
         UBYTE *two = s->work.dh.two;
-        Bn_SetMod(mod, group14, 256);
+        Bn_SetMod(mod, group14, 256, &s->work.dh.bn);
         memset(two, 0, 256); two[255] = 2;
         Random_Bytes(s->dhX, 32);
         s->dhX[0] &= 0x7F;
-        Bn_ModExp(mod, two, s->dhX, 32, s->dhE);
+        Bn_ModExp(mod, two, s->dhX, 32, s->dhE, &s->work.dh.bn);
         Put(s, s->mp, Mpint(s->dhE, 256, s->mp));
     }
     SendMsg(s);
@@ -385,14 +385,14 @@ static void OnKexReply(struct Ssh *s, const UBYTE *payload, ULONG len)
         struct BnMod *mod = &s->work.dh.mod;
         UBYTE *fb = s->work.dh.fb, *secret = s->work.dh.secret, *pm1 = s->work.dh.pm1;
         int i;
-        Bn_SetMod(mod, group14, 256);
+        Bn_SetMod(mod, group14, 256, &s->work.dh.bn);
         while (fLen && !*f) { f++; fLen--; }
         memcpy(pm1, group14, 256); pm1[255]--;        /* p - 1 (p ends in FF) */
         Bn_Fit(f, fLen, fb, 256);
         if (fLen > 256 || memcmp(fb, pm1, 256) >= 0) { Fail(s, "SSH: bad group14 key from the server"); return; }
         for (i = 0; i < 255 && !fb[i]; i++) ;
         if (i == 255 && fb[255] <= 1) { Fail(s, "SSH: bad group14 key from the server"); return; }
-        Bn_ModExp(mod, fb, s->dhX, 32, secret);
+        Bn_ModExp(mod, fb, s->dhX, 32, secret, &s->work.dh.bn);
         s->kLen = (UWORD)Mpint(secret, 256, s->K);
     }
 
@@ -431,7 +431,7 @@ static void OnKexReply(struct Ssh *s, const UBYTE *payload, ULONG len)
         { Fail(s, "SSH: the host key signature is not rsa-sha2-256"); return; }
     if (s->note && !s->haveSession)
     {
-        static char text[64];
+        char *text = s->noteText;
         ULONG bits = nLen * 8, top = n[0];
         while (bits && !(top & 0x80)) { bits--; top <<= 1; }
         strcpy(text, "Checking the host key: RSA ");
@@ -440,7 +440,7 @@ static void OnKexReply(struct Ssh *s, const UBYTE *payload, ULONG len)
         s->note(s, text);
     }
     Sha256(s->H, 32, fp);
-    if (!Rsa_VerifySha256(n, nLen, e, eLen, sig, sigLen, fp))
+    if (!Rsa_VerifySha256(n, nLen, e, eLen, sig, sigLen, fp, &s->work.dh.rsa, &s->work.dh.bn))
         { Fail(s, "SSH: the host key signature is wrong -- this is not the server it claims to be"); return; }
 
     Sha256(ks, ksLen, fp);
@@ -527,7 +527,7 @@ static void AddText(struct Ssh *s, const UBYTE *p, ULONG len, BOOL fixNewlines)
 
 static void TryNextAuth(struct Ssh *s, const UBYTE *methods, ULONG len)
 {
-    if (!s->authPassTried && Choose("password", methods, len))
+    if (!s->authPassTried && Choose(s, "password", methods, len))
     {
         s->authPassTried = TRUE;
         if (!s->pass[0] && !(s->ask && s->ask(s, "Password:", FALSE, s->pass, sizeof(s->pass))))
@@ -535,7 +535,7 @@ static void TryNextAuth(struct Ssh *s, const UBYTE *methods, ULONG len)
         SendUserAuth(s, "password");
         return;
     }
-    if (!s->authKiTried && Choose("keyboard-interactive", methods, len))
+    if (!s->authKiTried && Choose(s, "keyboard-interactive", methods, len))
     {
         s->authKiTried = TRUE;
         SendUserAuth(s, "keyboard-interactive");

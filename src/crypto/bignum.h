@@ -24,6 +24,16 @@ struct BnMod                  /* a modulus, ready for Montgomery arithmetic */
     bn_limb minv;             /* -m^-1 mod 2^32 */
 };
 
+/* The working space of Bn_SetMod and Bn_ModExp. The caller owns it (in the
+ * session, not on the stack and not in a static): ssh.library has one data
+ * segment for all the tasks that open it. One call at a time per scratch. */
+struct BnScratch
+{
+    bn_limb t[2 * BN_MAX_LIMBS + 2];        /* a product being reduced */
+    bn_limb x[BN_MAX_LIMBS], acc[BN_MAX_LIMBS], one[BN_MAX_LIMBS];
+    bn_limb table[16][BN_MAX_LIMBS];        /* x^0 .. x^15, Montgomery form */
+};
+
 /* r[0..n) += a[0..n) * w; returns the limb carried out (n >= 1). On the
  * Amiga a call through a pointer straight into the assembly for this CPU
  * (set on the first call): a C wrapper cost more than a limb product. */
@@ -42,14 +52,15 @@ void Bn_Square(bn_limb *t, const bn_limb *x, UWORD n);
 
 /* The modulus from its big-endian bytes (odd, at most BN_MAX_BITS). FALSE
  * for an even or too long one. */
-BOOL Bn_SetMod(struct BnMod *mod, const UBYTE *bytes, size_t len);
+BOOL Bn_SetMod(struct BnMod *mod, const UBYTE *bytes, size_t len, struct BnScratch *sc);
 
 /* The byte width of numbers modulo mod: n * 4. */
 #define Bn_Bytes(mod) ((size_t)(mod)->n * 4)
 
 /* out = base^exp mod m. base and out are big-endian, Bn_Bytes(mod) long
  * (base must be smaller than m); exp is big-endian of any length. */
-void Bn_ModExp(const struct BnMod *mod, const UBYTE *base, const UBYTE *exp, size_t expLen, UBYTE *out);
+void Bn_ModExp(const struct BnMod *mod, const UBYTE *base, const UBYTE *exp, size_t expLen, UBYTE *out,
+                struct BnScratch *sc);
 
 /* Big-endian bytes (any length) padded or cut to width bytes. */
 void Bn_Fit(const UBYTE *in, size_t len, UBYTE *out, size_t width);

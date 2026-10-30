@@ -2,6 +2,11 @@
 #include "random.h"
 #include "sha256.h"
 
+/* One pool for every user of the engine, by design: the entropy of all the
+ * sessions goes into it. Once this lives in ssh.library, several tasks reach
+ * it at once, and Random_Add / Random_Bytes need Forbid() or a semaphore
+ * around them. Not guarded yet: one task at a time today. The check-statics
+ * target lists these three as the only allowed statics. */
 static UBYTE pool[SHA256_LEN];
 static ULONG counter, added;
 

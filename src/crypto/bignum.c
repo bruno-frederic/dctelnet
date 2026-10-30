@@ -149,9 +149,8 @@ void Bn_Square(bn_limb *t, const bn_limb *x, UWORD n)
 }
 
 /* r = x*x*R^-1 mod m: the square, then Montgomery reduction row by row. */
-static void mont_sqr(const struct BnMod *mod, bn_limb *r, const bn_limb *x)
+static void mont_sqr(const struct BnMod *mod, bn_limb *r, const bn_limb *x, bn_limb *t)
 {
-    static bn_limb t[2 * BN_MAX_LIMBS + 2];
     const bn_limb *m = mod->m;
     UWORD n = mod->n, i, k;
 
@@ -170,9 +169,8 @@ static void mont_sqr(const struct BnMod *mod, bn_limb *r, const bn_limb *x)
 /* r = x*y*R^-1 mod m, operand scanning: row i adds x*y[i] into t+i, then
  * the multiple of m that clears t[i]; the result is t[n..2n]. r may be x
  * or y. */
-static void mont_mul(const struct BnMod *mod, bn_limb *r, const bn_limb *x, const bn_limb *y)
+static void mont_mul(const struct BnMod *mod, bn_limb *r, const bn_limb *x, const bn_limb *y, bn_limb *t)
 {
-    static bn_limb t[2 * BN_MAX_LIMBS + 2];
     const bn_limb *m = mod->m;
     UWORD n = mod->n, i, k;
 
@@ -189,7 +187,7 @@ static void mont_mul(const struct BnMod *mod, bn_limb *r, const bn_limb *x, cons
     memcpy(r, t + n, n * sizeof(bn_limb));
 }
 
-BOOL Bn_SetMod(struct BnMod *mod, const UBYTE *bytes, size_t len)
+BOOL Bn_SetMod(struct BnMod *mod, const UBYTE *bytes, size_t len, struct BnScratch *sc)
 {
     UWORD n, i, bits, e, k;
     bn_limb inv = 1, top;
@@ -224,24 +222,25 @@ BOOL Bn_SetMod(struct BnMod *mod, const UBYTE *bytes, size_t len)
             sub(mod->rr, mod->m, n);
     }
     for (i = 0; i < k; i++)
-        mont_sqr(mod, mod->rr, mod->rr);
+        mont_sqr(mod, mod->rr, mod->rr, sc->t);
     return TRUE;
 }
 
-void Bn_ModExp(const struct BnMod *mod, const UBYTE *base, const UBYTE *exp, size_t expLen, UBYTE *out)
+void Bn_ModExp(const struct BnMod *mod, const UBYTE *base, const UBYTE *exp, size_t expLen, UBYTE *out,
+                struct BnScratch *sc)
 {
-    static bn_limb x[BN_MAX_LIMBS], acc[BN_MAX_LIMBS], one[BN_MAX_LIMBS];
-    static bn_limb table[16][BN_MAX_LIMBS];            /* x^0 .. x^15, Montgomery form */
+    bn_limb *x = sc->x, *acc = sc->acc, *one = sc->one, *t = sc->t;
+    bn_limb (*table)[BN_MAX_LIMBS] = sc->table;
     UWORD n = mod->n;
     size_t i;
     int bit, k;
     BOOL started = FALSE;
 
     from_bytes(x, n, base, Bn_Bytes(mod));
-    mont_mul(mod, x, x, mod->rr);                       /* x * R mod m */
-    memset(one, 0, sizeof(one));
+    mont_mul(mod, x, x, mod->rr, t);                    /* x * R mod m */
+    memset(one, 0, sizeof(sc->one));
     one[0] = 1;
-    mont_mul(mod, acc, one, mod->rr);                   /* 1 * R mod m */
+    mont_mul(mod, acc, one, mod->rr, t);                /* 1 * R mod m */
     if (expLen <= 8)
     {
         /* A short exponent (RSA's 65537): bit by bit, no table to build. */
@@ -249,10 +248,10 @@ void Bn_ModExp(const struct BnMod *mod, const UBYTE *base, const UBYTE *exp, siz
             for (bit = 7; bit >= 0; bit--)
             {
                 if (started)
-                    mont_sqr(mod, acc, acc);
+                    mont_sqr(mod, acc, acc, t);
                 if ((exp[i] >> bit) & 1)
                 {
-                    mont_mul(mod, acc, acc, x);
+                    mont_mul(mod, acc, acc, x, t);
                     started = TRUE;
                 }
             }
@@ -264,22 +263,22 @@ void Bn_ModExp(const struct BnMod *mod, const UBYTE *base, const UBYTE *exp, siz
         memcpy(table[0], acc, n * sizeof(bn_limb));
         memcpy(table[1], x, n * sizeof(bn_limb));
         for (k = 2; k < 16; k++)
-            mont_mul(mod, table[k], table[k - 1], x);
+            mont_mul(mod, table[k], table[k - 1], x, t);
         for (i = 0; i < expLen; i++)
             for (bit = 4; bit >= 0; bit -= 4)
             {
                 int w = (exp[i] >> bit) & 15;
                 if (started)
                     for (k = 0; k < 4; k++)
-                        mont_sqr(mod, acc, acc);
+                        mont_sqr(mod, acc, acc, t);
                 if (w)
                 {
-                    mont_mul(mod, acc, acc, table[w]);
+                    mont_mul(mod, acc, acc, table[w], t);
                     started = TRUE;
                 }
             }
     }
-    mont_mul(mod, acc, acc, one);                       /* out of Montgomery form */
+    mont_mul(mod, acc, acc, one, t);                    /* out of Montgomery form */
     to_bytes(acc, n, out);
 }
 

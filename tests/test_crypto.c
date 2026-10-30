@@ -102,6 +102,9 @@ static void test_aes128_ctr(void)
 }
 
 /* Diffie-Hellman group14 as SSH does it: e = 2^x, K = f^x (Python pow). */
+static struct BnScratch bnScratch;
+static struct RsaWork rsaWork;
+
 static void test_group14_modexp(void)
 {
     static struct BnMod mod;
@@ -110,12 +113,12 @@ static void test_group14_modexp(void)
     hex(group14P, p, 256);
     hex(dhX, x, 64);
     hex(dhF, f, 256);
-    assert(Bn_SetMod(&mod, p, 256) && mod.n == 64);
+    assert(Bn_SetMod(&mod, p, 256, &bnScratch) && mod.n == 64);
     memset(two, 0, sizeof(two));
     two[255] = 2;
-    Bn_ModExp(&mod, two, x, 64, out);
+    Bn_ModExp(&mod, two, x, 64, out, &bnScratch);
     assert(same(out, dhE));
-    Bn_ModExp(&mod, f, x, 64, out);
+    Bn_ModExp(&mod, f, x, 64, out, &bnScratch);
     assert(same(out, dhK));
 }
 
@@ -188,9 +191,9 @@ static void test_modexp_sizes(void)
         hex(modexpCases[c].base, b, bLen);
         hex(modexpCases[c].exp, exp, 40);
         hex(modexpCases[c].want, want, wLen);
-        assert(Bn_SetMod(&mod, m, mLen));
+        assert(Bn_SetMod(&mod, m, mLen, &bnScratch));
         Bn_Fit(b, bLen, base, Bn_Bytes(&mod));
-        Bn_ModExp(&mod, base, exp, 40, out);
+        Bn_ModExp(&mod, base, exp, 40, out, &bnScratch);
         Bn_Fit(want, wLen, b, Bn_Bytes(&mod));
         assert(memcmp(out, b, Bn_Bytes(&mod)) == 0);
     }
@@ -205,9 +208,9 @@ static void test_rsa4096_signature(void)
     hex(rsaN4, n, 512);
     hex(rsaSig4, sig, 512);
     Sha256(rsaMsg, sizeof(rsaMsg) - 1, hash);
-    assert(Rsa_VerifySha256(n, 512, e, 3, sig, 512, hash));
+    assert(Rsa_VerifySha256(n, 512, e, 3, sig, 512, hash, &rsaWork, &bnScratch));
     sig[511] ^= 1;
-    assert(!Rsa_VerifySha256(n, 512, e, 3, sig, 512, hash));
+    assert(!Rsa_VerifySha256(n, 512, e, 3, sig, 512, hash, &rsaWork, &bnScratch));
 }
 
 /* An RSA-2048 signature made with openssl: it checks; one bit off does not. */
@@ -219,12 +222,12 @@ static void test_rsa_sha256_signature(void)
     hex(rsaN, n, 256);
     hex(rsaSig, sig, 256);
     Sha256(rsaMsg, strlen(rsaMsg), hash);
-    assert(Rsa_VerifySha256(n, 256, e, 3, sig, 256, hash));
+    assert(Rsa_VerifySha256(n, 256, e, 3, sig, 256, hash, &rsaWork, &bnScratch));
     hash[0] ^= 1;
-    assert(!Rsa_VerifySha256(n, 256, e, 3, sig, 256, hash));
+    assert(!Rsa_VerifySha256(n, 256, e, 3, sig, 256, hash, &rsaWork, &bnScratch));
     hash[0] ^= 1;
     sig[100] ^= 0x10;
-    assert(!Rsa_VerifySha256(n, 256, e, 3, sig, 256, hash));
+    assert(!Rsa_VerifySha256(n, 256, e, 3, sig, 256, hash, &rsaWork, &bnScratch));
 }
 
 /* RFC 7748 5.2 (one scalar mult) and 6.1 (Alice and Bob agree). */

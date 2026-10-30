@@ -7,19 +7,19 @@ static const UBYTE sha256Info[19] = { 0x30, 0x31, 0x30, 0x0d, 0x06, 0x09, 0x60, 
                                       0x65, 0x03, 0x04, 0x02, 0x01, 0x05, 0x00, 0x04, 0x20 };
 
 BOOL Rsa_VerifySha256(const UBYTE *n, size_t nLen, const UBYTE *e, size_t eLen,
-                      const UBYTE *sig, size_t sigLen, const UBYTE hash[32])
+                      const UBYTE *sig, size_t sigLen, const UBYTE hash[32], struct RsaWork *w, struct BnScratch *bn)
 {
-    static struct BnMod mod;
-    static UBYTE s[BN_MAX_BITS / 8 + 2], em[BN_MAX_BITS / 8 + 2];
+    struct BnMod *mod = &w->mod;
+    UBYTE *s = w->s, *em = w->em;
     size_t k, i;
 
-    if (!Bn_SetMod(&mod, n, nLen))
+    if (!Bn_SetMod(mod, n, nLen, bn))
         return FALSE;
-    k = Bn_Bytes(&mod);                             /* bytes of the limb width */
+    k = Bn_Bytes(mod);                             /* bytes of the limb width */
     if (sigLen > k)
         return FALSE;
     Bn_Fit(sig, sigLen, s, k);
-    Bn_ModExp(&mod, s, e, eLen, em);
+    Bn_ModExp(mod, s, e, eLen, em, bn);
     /* em (k bytes, maybe one leading zero byte more than n): 00 01 FF..FF 00 info hash */
     i = 0;
     while (i < k && em[i] == 0) i++;
