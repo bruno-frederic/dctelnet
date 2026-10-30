@@ -180,8 +180,10 @@ static void probe_glyph(WORD x, UBYTE ch)
 static UBYTE fontData[8][256];
 static ULONG fontLoc[256];
 static struct TextFont font = { 8, 8, 6, 0, 255, fontData, 256, fontLoc };
-/* The C64's size: 16x8 cells. Row r of character c is c << 8 | (c ^ r). */
-static UBYTE wideData[8][512];
+/* The C64's size: 16x8 cells. Row r of character c is c << 8 | (c ^ r).
+ * font_extract() reads 3 bytes at each glyph's byte offset, so the last glyph
+ * of the last row reads 2 bytes past the 512 of a row: one slack row. */
+static UBYTE wideData[9][512];
 static ULONG wideLoc[256];
 static struct TextFont wide = { 8, 16, 6, 0, 255, wideData, 512, wideLoc };
 static struct RastPort winRp;
