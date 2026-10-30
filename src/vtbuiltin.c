@@ -31,6 +31,19 @@
 
 static vt_term *vtTerm;
 
+/* MA4: how many lines the view is scrolled back into the engine's scrollback;
+ * 0 is the live grid. Grid row y shows engine row y - vtScrollOff. */
+static int vtScrollOff;
+
+/* Engine scrollback lines: optional and off by default (a 68000 has little
+ * memory); with the preference off the engine allocates none. */
+static int VtScrollbackCap(void)
+{
+    if (!(prefs.State & APP_SCROLLBACK_ENABLED))
+        return 0;
+    return prefs.nScrollbackLines > 32767UL ? 32767 : (int)prefs.nScrollbackLines;
+}
+
 /* Draw cells x0 <= x < x1 of rows y0 <= y < y1 from the grid. */
 static void VtDraw(void *user, int x0, int y0, int x1, int y1)
 {
@@ -40,7 +53,7 @@ static void VtDraw(void *user, int x0, int y0, int x1, int y1)
     if (!vtTerm)
         return;
     for (y = y0; y < y1; y++) {
-        const vt_cell *c = vt_row(vtTerm, y, &n);
+        const vt_cell *c = vt_row(vtTerm, y - vtScrollOff, &n);
         if (!c)
             continue;
         cur_y = (WORD)y;
@@ -76,6 +89,22 @@ static void VtDraw(void *user, int x0, int y0, int x1, int y1)
                 code = g.kind == VT_GLYPH_FONT ? g.code : VT_FALLBACK_GLYPH;
             }
             term_glyph((WORD)x, code);
+        }
+        /* a scrollback line from before a resize can be narrower than the grid */
+        if (x < x1) {
+            vt_cell blank;
+            vt_color bfg, bbg;
+            memset(&blank, 0, sizeof(blank));
+            blank.ch = ' ';
+            blank.width = 1;
+            blank.fg = VT_COLOR_DEFAULT;
+            blank.bg = VT_COLOR_DEFAULT;
+            vt_resolve_colors(vtTerm, &blank, &bfg, &bbg);
+            term_pen_fg = Vt_PenFor(bfg, prefs.AnsiColors);
+            term_pen_bg = Vt_PenFor(bbg, prefs.AnsiColors);
+            atr_under = 0;
+            for (; x < x1; x++)
+                term_glyph((WORD)x, (UBYTE)' ');
         }
     }
     atr_under = 0;
@@ -163,7 +192,7 @@ static void VtSyncCursor(void)
     cur_x = (WORD)x;
     cur_y = (WORD)y;
     term_sync_row_base();
-    cursor_visible = (vt_modes(vtTerm) & VT_MODE_CURSOR_VISIBLE) != 0;
+    cursor_visible = vtScrollOff == 0 && (vt_modes(vtTerm) & VT_MODE_CURSOR_VISIBLE) != 0;
 }
 
 /* MA2-14: per connection, whether the host turned out to speak UTF-8. */
@@ -286,8 +315,9 @@ static int VtOpen(void)
 {
     static const vt_callbacks cb = { VtDraw, VtScroll, VtReply, NULL, VtTitle, NULL, NULL };
 
+    vtScrollOff = 0;
     VtClose();      /* vt_new() draws through VtDraw(): vtTerm must not be the freed one */
-    vtTerm = vt_new(term_cols, term_rows, 0, &cb, NULL);
+    vtTerm = vt_new(term_cols, term_rows, VtScrollbackCap(), &cb, NULL);
     if (!vtTerm)
         return 1;
     VtApplyPersonality();
@@ -321,10 +351,58 @@ static void VtClose(void)
     }
 }
 
+/* Scroll the view delta lines back (> 0) or forward (< 0) through the engine's
+ * scrollback, clamped to what it holds; no scrollback on the alt screen (vim).
+ * Returns the offset now shown. */
+static int VtScrollView(int delta)
+{
+    int want = vtScrollOff + delta;
+    int max = (vtTerm && !(vt_modes(vtTerm) & VT_MODE_ALT_SCREEN)) ? vt_scrollback_lines(vtTerm) : 0;
+
+    if (want > max)
+        want = max;
+    if (want < 0)
+        want = 0;
+    if (!vtTerm || want == vtScrollOff)
+        return vtScrollOff;
+    vtScrollOff = want;
+    VtLayersLock();
+    cursor_hide();
+    VtDraw(NULL, 0, 0, term_cols, term_rows);
+    term_flush();
+    VtSyncCursor();
+    cursor_show();
+    VtLayersUnlock();
+    return vtScrollOff;
+}
+
+/* A key or wheel event for the scrollback: Shift+Page Up/Down scroll a page
+ * (plain Page Up still goes to the host: less and vim use it), the NewMouse
+ * wheel scrolls 3 lines unless a program owns the mouse. TRUE when taken. */
+static BOOL VtScrollKey(UWORD rawkey, BOOL shift)
+{
+    int page = vtTerm ? vt_rows(vtTerm) - 1 : 0;
+    int wheel = Vt_WheelButton(rawkey);
+
+    if (!vtTerm || VtScrollbackCap() == 0)
+        return FALSE;
+    if (rawkey == 0x48 && shift)
+        VtScrollView(page);
+    else if (rawkey == 0x49 && shift)
+        VtScrollView(-page);
+    else if (wheel >= 0 && !VtMouseOwned(shift))
+        VtScrollView(wheel == 64 ? 3 : -3);
+    else
+        return FALSE;
+    return TRUE;
+}
+
 /* Bytes from the BBS (or DCTelnet's own messages): parse, draw what
  * changed, put the cursor back. Drawing happens with the cursor hidden. */
 static void VtWrite(const UBYTE *data, long len)
 {
+    if (vtScrollOff)
+        VtScrollView(-vtScrollOff);     /* new output: back to the live grid */
     VtLayersLock();
     cursor_hide();
     /* Unix host, Character Set not UTF-8: the first valid UTF-8 sequence moves
@@ -365,6 +443,8 @@ static void VtFlushHeld(void)
 
     if (!vtSniff.nheld)
         return;
+    if (vtScrollOff)
+        VtScrollView(-vtScrollOff);
     n = Vt_Utf8SnifferTakeHeld(&vtSniff, pre);
     VtLayersLock();
     cursor_hide();
