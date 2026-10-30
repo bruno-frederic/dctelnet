@@ -130,7 +130,10 @@ ifeq ($(TOOLCHAIN),vbcc)
 	INCLUDES        := -I$(VBCC)/targets/m68k-amigaos/include  $(INCLUDES)  -Ithird_party/ReqTools/include
 	WARN            := -warn=-1 "-dontwarn=163,166,167,168,170,307,65" -warnings-as-errors	# TODO re-enable warning #65
 	CFLAGS          := +aos68k $(WARN) -cpu=$(CPU)
-		DEBUG_CFLAGS    := -g -D_DEBUG -stack-check
+#		No -stack-check: vbcc checks SP against the MAIN task's stack bottom only, and code run
+#		by a second process (the Connecting window, CreateNewProc) then "overflows" and calls
+#		exit() from that process: the machine resets (tests/Makefile check-debug-stack).
+		DEBUG_CFLAGS    := -g -D_DEBUG
 		RELEASE_CFLAGS  := -O3 -speed
 	ASRCS           :=
 else ifeq ($(TOOLCHAIN),gcc)

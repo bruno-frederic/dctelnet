@@ -21,8 +21,8 @@ ifneq ($(HOST_ID),$(shell cat .host-id 2>/dev/null))
 $(shell rm -f $(TESTS) ansimusic_dump; echo '$(HOST_ID)' > .host-id)
 endif
 
-.PHONY: all clean check-encoding check-fonts check-currenttime-null check-stack check-statics check-petscii-reopen
-all: $(TESTS) check-encoding check-fonts check-currenttime-null check-stack check-statics check-petscii-reopen
+.PHONY: all clean check-encoding check-fonts check-currenttime-null check-stack check-statics check-petscii-reopen check-debug-stack
+all: $(TESTS) check-encoding check-fonts check-currenttime-null check-stack check-statics check-petscii-reopen check-debug-stack
 	@for t in $(TESTS); do echo "--- $$t ---"; ./$$t || exit 1; done
 
 # Check the file are standard printable ASCII or ISO-8859
@@ -59,6 +59,20 @@ check-encoding:
 check-currenttime-null:
 	@cd ../src && if LC_ALL=C grep --text --line-number --extended-regexp 'CurrentTime[[:space:]]*\([^;]*NULL' *.c; then \
 		echo "ERROR: CurrentTime() called with a NULL argument; pass a dummy ULONG."; \
+		exit 1; \
+	fi
+
+# The debug Amiga build must not use vbcc's -stack-check. Its check compares
+# the stack pointer with ONE global limit, the main task's stack bottom, but
+# DCTelnet runs C code on other processes too (CreateNewProc: the Connecting
+# window task). When that process's stack lies below the main one, every
+# checked call "overflows": the check moves SP onto the main task's stack and
+# calls exit() from the wrong process, and the machine resets (debug build,
+# `DCTelnet <host> <port>`, rig 3, 2026-10-30).
+check-debug-stack:
+	@cd ../src && if LC_ALL=C grep --quiet --text 'CreateNewProc' *.c \
+		&& LC_ALL=C grep --text 'DEBUG_CFLAGS' Makefile | LC_ALL=C grep --quiet -- '[[:space:]]-stack-check'; then \
+		echo "ERROR: src/Makefile debug flags use vbcc -stack-check, which breaks code run by a second process (CreateNewProc)."; \
 		exit 1; \
 	fi
 
