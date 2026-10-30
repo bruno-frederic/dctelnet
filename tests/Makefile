@@ -76,6 +76,14 @@ check-debug-stack:
 		exit 1; \
 	fi
 
+# Kickstart 3.1 CurrentTime() writes both out-parameters, so NULL for either one is a write to
+# address 0 (MuForce LONG WRITE). Host tests cannot link intuition.library, hence a source check.
+check-currenttime-null:
+	@cd ../src && if LC_ALL=C grep --text --line-number --extended-regexp 'CurrentTime[[:space:]]*\([^;]*NULL' *.c; then \
+		echo "ERROR: CurrentTime() called with a NULL argument; pass a dummy ULONG."; \
+		exit 1; \
+	fi
+
 # Parse the shipped PETSCII fonts the way diskfont.library loads them. The
 # first build put the DiskFontHeader 4 bytes late and every OpenDiskFont()
 # failed silently.
