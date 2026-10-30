@@ -133,6 +133,8 @@ static void ValidateAndInitPrefs(BOOL *userMustChooseAScreenMode)
     if (prefs.nScrollbackLines < 10 || prefs.nScrollbackLines > 32000)
         prefs.nScrollbackLines = 300;
 
+    if (prefs.TermType > TERMTYPE_UNIX) prefs.TermType = TERMTYPE_AUTO;
+
     // Fixed-size strings: guarantee nul-termination before any further use, then fall back to
     // defaults when empty.
     prefs.FontName[sizeof(prefs.FontName) - 1] = '\0';

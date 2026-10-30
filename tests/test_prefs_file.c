@@ -38,6 +38,23 @@ static void test_an_older_v2_file_loads_with_the_new_fields_zero(void)
     assert(got.XferOptions[0] == 0 && got.XferOptions[51] == 0);
 }
 
+/* MA2-2: Terminal Type is saved, and a file from before it (the struct ended
+ * at Blink) loads as Automatic. */
+static void test_terminal_type_is_saved_and_an_older_file_loads_automatic(void)
+{
+    struct PrefsStruct p, got;
+    UWORD older = (UWORD)offsetof(struct PrefsStruct, TermType);
+
+    memset(&p, 0, sizeof(p));
+    p.TermType = TERMTYPE_UNIX;
+    assert(Prefs_Decode(file, v2_file(&p, sizeof(p)), &got) == PREFS_FILE_V2);
+    assert(got.TermType == TERMTYPE_UNIX);
+    memset(&p, 0x11, sizeof(p));
+    assert(Prefs_Decode(file, v2_file(&p, older), &got) == PREFS_FILE_V2);
+    assert(got.TermType == TERMTYPE_AUTO && got.Reserved[0] == 0);
+    assert(memcmp(&p, &got, older) == 0);
+}
+
 /* A file from a newer 2.x: the fields this build knows, the rest ignored. */
 static void test_a_newer_v2_file_loads_the_fields_it_knows(void)
 {
@@ -197,6 +214,7 @@ int main(void)
 {
     test_a_v2_file_round_trips();
     test_an_older_v2_file_loads_with_the_new_fields_zero();
+    test_terminal_type_is_saved_and_an_older_file_loads_automatic();
     test_a_newer_v2_file_loads_the_fields_it_knows();
     test_damaged_files_are_refused();
     test_an_old_prefs_file_keeps_all_its_settings();

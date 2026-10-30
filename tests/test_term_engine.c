@@ -9,6 +9,7 @@
 #include <string.h>
 #include <exec/types.h>
 #include "prefs.h"
+#include "charset.h"
 
 typedef char *STRPTR;
 struct Library { UWORD lib_Version; };
@@ -613,6 +614,92 @@ static void test_ma1_9_the_sample_art_file_gives_the_known_grid(void)
     VtClose();
 }
 
+/* --- MA2: the xterm personality, UTF-8 and the 256-colour / 24-bit pens --- */
+
+/* A fresh Unix terminal: xterm, UTF-8 characters, the default sixteen pens. */
+static void xterm_begin(void)
+{
+    static const UWORD ansi[16] = {
+        0x000, 0xA00, 0x0A0, 0xA50, 0x00A, 0xA0A, 0x0AA, 0xAAA,
+        0x555, 0xF55, 0x5F5, 0xFF5, 0x55F, 0xF5F, 0x5FF, 0xFFF
+    };
+
+    setup();
+    memset(&prefs, 0, sizeof(prefs));
+    prefs.State = APP_RENDERER_BUILTIN;
+    prefs.TermType = TERMTYPE_UNIX;
+    prefs.Charset = CHARSET_UTF8;
+    memcpy(prefs.AnsiColors, ansi, sizeof(ansi));
+    assert(VtOpen() == 0);
+    probes = 0;
+}
+
+/* MA2-5 / MA2-11: the engine reads the UTF-8 bytes itself, also when a
+ * sequence is split between two packets; the glyph writer gets the CP437
+ * code of the code point. */
+static void test_ma2_5_11_utf8_reaches_the_grid_whole_even_split_across_writes(void)
+{
+    int n;
+    const vt_cell *row;
+
+    xterm_begin();
+    assert(Vt_EngineDecodesUtf8(&prefs));
+    vt_put("\xE2\x96\x88");
+    row = vt_row(vtTerm, 0, &n);
+    assert(row[0].ch == 0x2588 && row[1].ch == ' ');
+    assert(probes == 1 && probe[0].code == 0xDB);
+    VtClose();
+
+    xterm_begin();
+    vt_put("\xE2");
+    assert(probes == 0);                        /* half a character draws nothing */
+    vt_put("\x96\x88");
+    row = vt_row(vtTerm, 0, &n);
+    assert(row[0].ch == 0x2588 && row[1].ch == ' ');
+    assert(probes == 1 && probe[0].code == 0xDB && probe[0].x == 0);
+    VtClose();
+}
+
+/* MA2-6: what the IBM font has is drawn, the rest is one '?' per cell, a wide
+ * character fills its second cell with a blank. */
+static void test_ma2_6_glyph_map_and_fallback(void)
+{
+    xterm_begin();
+    vt_put("\xE2\x94\x80");                    /* U+2500 */
+    assert(probes == 1 && probe[0].code == 0xC4);
+    probes = 0;
+    vt_put("\xC3\xA9");                         /* U+00E9 */
+    assert(probes == 1 && probe[0].code == 0x82);
+    probes = 0;
+    vt_put("\xE2\x98\x83");                    /* U+2603: no glyph in the font */
+    assert(probes == 1 && probe[0].code == '?');
+    probes = 0;
+    vt_put("\xE4\xB8\xAD");                    /* U+4E2D: two cells wide */
+    assert(probes == 2);
+    assert(probe[0].code == '?' && probe[0].x == 3);
+    assert(probe[1].code == ' ' && probe[1].x == 4);
+    VtClose();
+}
+
+/* MA2-8: 256-colour and 24-bit red reach the glyph writer as the same pen,
+ * the nearest of the sixteen. */
+static void test_ma2_8_256_colour_and_24_bit_give_the_same_pen(void)
+{
+    xterm_begin();
+    vt_put("\x1b[38;5;196mA");
+    assert(probes == 1 && probe[0].fg == 1);
+    probes = 0;
+    vt_put("\x1b[38;2;255;0;0mA");
+    assert(probes == 1 && probe[0].fg == 1);
+    probes = 0;
+    vt_put("\x1b[48;5;21mA");
+    assert(probes == 1 && probe[0].bg == 4);
+    probes = 0;
+    vt_put("\x1b[0mA");                          /* the defaults: pens 7 and 0 */
+    assert(probes == 1 && probe[0].fg == 7 && probe[0].bg == 0);
+    VtClose();
+}
+
 int main(void)
 {
     test_the_terminal_starts_below_the_title_bar_and_matches_the_window_rows();
@@ -633,6 +720,9 @@ int main(void)
     test_ma1_8_cursor_save_restore_position_and_erase();
     test_ma1_init_strings_draw_nothing_and_leave_the_cursor();
     test_ma1_9_the_sample_art_file_gives_the_known_grid();
+    test_ma2_5_11_utf8_reaches_the_grid_whole_even_split_across_writes();
+    test_ma2_6_glyph_map_and_fallback();
+    test_ma2_8_256_colour_and_24_bit_give_the_same_pen();
     printf("term_engine: all assertions passed\n");
     return 0;
 }
