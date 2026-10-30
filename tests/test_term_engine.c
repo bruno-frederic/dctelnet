@@ -9,6 +9,7 @@
 #include <string.h>
 #include <exec/types.h>
 #include "prefs.h"
+#include "charset.h"
 
 typedef char *STRPTR;
 struct Library { UWORD lib_Version; };
@@ -20,7 +21,7 @@ struct Rectangle { WORD MinX, MinY, MaxX, MaxY; };
 struct Layer { struct Layer *back; struct Rectangle bounds; };
 struct Layer_Info { struct Layer *top_layer; };
 struct Screen { WORD Width, Height; struct RastPort RastPort; struct Layer_Info LayerInfo; };
-struct Window { WORD LeftEdge, TopEdge, Width, Height; BYTE BorderLeft, BorderTop, BorderRight, BorderBottom; struct Layer *WLayer; };
+struct Window { WORD LeftEdge, TopEdge, Width, Height; BYTE BorderLeft, BorderTop, BorderRight, BorderBottom; struct Layer *WLayer; ULONG IDCMPFlags; };
 #define JAM1 0
 #define JAM2 1
 #define COMPLEMENT 2
@@ -117,9 +118,14 @@ static LONG BltBitMap(struct BitMap *s, WORD sx, WORD sy, struct BitMap *d, WORD
 static struct Layer winLayer, menuLayer;
 static struct Screen screen;
 static int sentLocked, menuOnSend;
+static UBYTE sentBuf[256];
+static int sentLen, sentCalls;
 static void send_data_(const UBYTE *d, LONG n)
 {
-    (void)d; (void)n;
+    if (sentLen + n <= (int)sizeof(sentBuf))
+        memcpy(sentBuf + sentLen, d, (size_t)n);
+    sentLen += (int)n;
+    sentCalls++;
     sentLocked += layerLocks;
     if (menuOnSend)
         screen.LayerInfo.top_layer = &menuLayer;
@@ -133,6 +139,19 @@ static struct Library layers = { 40 };
 static struct Library *LayersBase = &layers;
 static struct Screen *scr = &screen;
 static struct Window window, *win = &window;
+/* MA3: the window title and IDCMP calls, recorded. */
+#define IDCMP_MOUSEMOVE 0x10UL
+#define IDCMP_RAWKEY 0x400UL
+static char MainWindowTitle[] = "DCTelnet own title";
+static char titleSet[256];
+static int titleCalls;
+static void SetWindowTitles(struct Window *w, UBYTE *t, UBYTE *s)
+{
+    (void)w; (void)s;
+    strcpy(titleSet, (const char *)t);
+    titleCalls++;
+}
+static void ModifyIDCMP(struct Window *w, ULONG flags) { w->IDCMPFlags = flags; }
 /* The built-in renderer reads the user's preferences. */
 struct PrefsStruct prefs;
 
@@ -154,15 +173,30 @@ static void probe_glyph(WORD x, UBYTE ch)
     term_glyph(x, ch);
 }
 #define term_glyph(x, c) probe_glyph((x), (c))
+#include "vtengine.h"
+/* The sentinel for VtOpen: what the global vtTerm is while vt_new() draws. */
+static int newCalls;
+static int newSawTerm;
+static vt_term *probe_new(int cols, int rows, int sb, const vt_callbacks *cb, void *user);
+#define vt_new(c, r, sb, cb, u) probe_new((c), (r), (sb), (cb), (u))
 #include "../src/vtbuiltin.c"
 #undef term_glyph
+#undef vt_new
+static vt_term *probe_new(int cols, int rows, int sb, const vt_callbacks *cb, void *user)
+{
+    newCalls++;
+    newSawTerm = vtTerm != NULL;    /* vt_new() draws through VtDraw() right here */
+    return vt_new(cols, rows, sb, cb, user);
+}
 
 /* A font whose glyphs all differ: row r of character c is c ^ (r * 37). */
 static UBYTE fontData[8][256];
 static ULONG fontLoc[256];
 static struct TextFont font = { 8, 8, 6, 0, 255, fontData, 256, fontLoc };
-/* The C64's size: 16x8 cells. Row r of character c is c << 8 | (c ^ r). */
-static UBYTE wideData[8][512];
+/* The C64's size: 16x8 cells. Row r of character c is c << 8 | (c ^ r).
+ * font_extract() reads 3 bytes at each glyph's byte offset, so the last glyph
+ * of the last row reads 2 bytes past the 512 of a row: one slack row. */
+static UBYTE wideData[9][512];
 static ULONG wideLoc[256];
 static struct TextFont wide = { 8, 16, 6, 0, 255, wideData, 512, wideLoc };
 static struct RastPort winRp;
@@ -342,6 +376,23 @@ static void test_a_16_pixel_font_gives_40_columns(void)
     term_set_font(&wide);   /* the other C64 charset: new glyphs from here, the screen stays */
     assert(planes[0][TOP * BPR] == 0x41 && term_cols == 40);
     assert(calls[0] == 0);
+}
+
+/* vt_new() draws its blank screen through VtDraw() before it returns: on a
+ * second VtOpen the global vtTerm must not still be the previous engine (freed
+ * in the original bug), so VtDraw finds no terminal and reads no row. */
+static void test_vtopen_twice_never_draws_through_the_previous_engine(void)
+{
+    setup();
+    assert(term_init_area(&screen, &winRp, 0, TOP, 0, TOP, W, H - TOP, &font) == 0);
+    assert(VtOpen() == 0);
+    assert(vtTerm != NULL);
+    newCalls = 0;
+    assert(VtOpen() == 0);
+    assert(newCalls == 1 && newSawTerm == 0);   /* the previous engine was closed first */
+    assert(vtTerm != NULL);
+    VtClose();
+    assert(vtTerm == NULL);
 }
 
 static void vt_write_str(const char *s)
@@ -613,6 +664,310 @@ static void test_ma1_9_the_sample_art_file_gives_the_known_grid(void)
     VtClose();
 }
 
+/* --- MA2: the xterm personality, UTF-8 and the 256-colour / 24-bit pens --- */
+
+/* A fresh Unix terminal: xterm, UTF-8 characters, the default sixteen pens. */
+static void xterm_begin(void)
+{
+    static const UWORD ansi[16] = {
+        0x000, 0xA00, 0x0A0, 0xA50, 0x00A, 0xA0A, 0x0AA, 0xAAA,
+        0x555, 0xF55, 0x5F5, 0xFF5, 0x55F, 0xF5F, 0x5FF, 0xFFF
+    };
+
+    setup();
+    memset(&prefs, 0, sizeof(prefs));
+    prefs.State = APP_RENDERER_BUILTIN;
+    prefs.TermType = TERMTYPE_UNIX;
+    prefs.Charset = CHARSET_UTF8;
+    memcpy(prefs.AnsiColors, ansi, sizeof(ansi));
+    assert(VtOpen() == 0);
+    probes = 0;
+}
+
+/* MA2-5 / MA2-11: the engine reads the UTF-8 bytes itself, also when a
+ * sequence is split between two packets; the glyph writer gets the CP437
+ * code of the code point. */
+static void test_ma2_5_11_utf8_reaches_the_grid_whole_even_split_across_writes(void)
+{
+    int n;
+    const vt_cell *row;
+
+    xterm_begin();
+    assert(Vt_EngineDecodesUtf8(&prefs));
+    vt_put("\xE2\x96\x88");
+    row = vt_row(vtTerm, 0, &n);
+    assert(row[0].ch == 0x2588 && row[1].ch == ' ');
+    assert(probes == 1 && probe[0].code == 0xDB);
+    VtClose();
+
+    xterm_begin();
+    vt_put("\xE2");
+    assert(probes == 0);                        /* half a character draws nothing */
+    vt_put("\x96\x88");
+    row = vt_row(vtTerm, 0, &n);
+    assert(row[0].ch == 0x2588 && row[1].ch == ' ');
+    assert(probes == 1 && probe[0].code == 0xDB && probe[0].x == 0);
+    VtClose();
+}
+
+/* MA2-14 through VtWrite: Unix + IBM PC site; the first valid UTF-8 sequence
+ * switches the engine for the rest of the connection, prefs untouched. */
+static void unix_cp437_begin(void)
+{
+    VtSniffReset();
+    xterm_begin();
+    prefs.Charset = CHARSET_CP437;
+    VtApplyPersonality();
+}
+
+static void test_ma2_14_stream_switch_to_utf8_through_vtwrite(void)
+{
+    int n;
+    const vt_cell *row;
+
+    unix_cp437_begin();
+    vt_put("abc");
+    vt_put("\xE2\x96\x88");
+    row = vt_row(vtTerm, 0, &n);
+    assert(row[3].ch == 0x2588 && row[4].ch == ' ');       /* full block, one cell */
+    vt_put("\xE2\x96\x88");                               /* stays UTF-8 afterwards */
+    row = vt_row(vtTerm, 0, &n);
+    assert(row[4].ch == 0x2588);
+    assert(prefs.Charset == CHARSET_CP437);                /* never saved */
+    VtClose();
+
+    unix_cp437_begin();                                    /* art first: CP437 stays */
+    vt_put("\xC9\xCD\xBB");
+    vt_put("\xE2\x96\x88");
+    row = vt_row(vtTerm, 0, &n);
+    assert(row[0].ch == 0x2554 && row[3].ch != 0x2588);
+    VtClose();
+
+    unix_cp437_begin();                                    /* Latin-1 text: never */
+    vt_put("\xE9t\xE9");
+    vt_put("\xC3\xA9");
+    row = vt_row(vtTerm, 0, &n);
+    assert(row[3].ch != 0xE9 || row[4].ch != ' ');
+    VtClose();
+
+    unix_cp437_begin();                                    /* new connection re-arms */
+    vt_put("a\xE9\xE9");                                   /* E9 E9: invalid, decided */
+    VtSniffReset();
+    vt_put("\xE2\x96\x88");
+    row = vt_row(vtTerm, 0, &n);
+    assert(row[3].ch == 0x2588);
+    VtClose();
+}
+
+/* MA2-14: a valid sequence split across two writes is not drawn as CP437 first;
+ * an invalid one still shows both bytes. */
+static void test_ma2_14_split_sequence_held_back_through_vtwrite(void)
+{
+    int n;
+    const vt_cell *row;
+
+    unix_cp437_begin();
+    vt_put("abc\xE2");
+    row = vt_row(vtTerm, 0, &n);
+    assert(row[3].ch == ' ');                              /* lead byte not drawn yet */
+    vt_put("\x96\x88");
+    row = vt_row(vtTerm, 0, &n);
+    assert(row[3].ch == 0x2588 && row[4].ch == ' ');
+    VtClose();
+
+    unix_cp437_begin();
+    vt_put("abc\xE2");
+    vt_put("A");                                           /* invalid: both bytes CP437 */
+    row = vt_row(vtTerm, 0, &n);
+    assert(row[3].ch == 0x0393 && row[4].ch == 'A' && row[5].ch == ' ');
+    VtClose();
+
+    unix_cp437_begin();                                    /* reset drops the held byte */
+    vt_put("\xE2");
+    VtSniffReset();
+    vt_put("\x96\x88");
+    row = vt_row(vtTerm, 0, &n);
+    assert(row[0].ch != 0x2588);
+    VtClose();
+}
+
+/* MA2-14: a held prefix lives only within one receive burst. The loop found no
+ * more data (VtFlushHeld): a lone Latin-1/CP437 byte is drawn at once, and the
+ * sniffer stays undecided; a split full block with no flush in between is whole. */
+static void test_ma2_14_flush_draws_held_byte_split_block_still_whole(void)
+{
+    int n;
+    const vt_cell *row;
+
+    unix_cp437_begin();
+    vt_put("a\xE9");
+    VtFlushHeld();
+    row = vt_row(vtTerm, 0, &n);
+    assert(row[1].ch == 0x0398 && row[2].ch == ' ');       /* CP437 theta, column 1 */
+    vt_put("\xE2\x96\x88");                               /* undecided: a valid one still switches */
+    row = vt_row(vtTerm, 0, &n);
+    assert(row[2].ch == 0x2588);
+    VtClose();
+
+    unix_cp437_begin();
+    vt_put("a\xE2");
+    vt_put("\x96\x88");
+    row = vt_row(vtTerm, 0, &n);
+    assert(row[1].ch == 0x2588 && row[2].ch == ' ');
+    VtClose();
+}
+
+/* MA2-14: a menu change or settings apply must not undo the switch. */
+static void test_ma2_14_apply_personality_keeps_the_switch(void)
+{
+    int n;
+    const vt_cell *row;
+
+    unix_cp437_begin();
+    vt_put("\xC3\xA9");                                   /* fires */
+    VtApplyPersonality();
+    vt_put("\xE2\x96\x88");
+    row = vt_row(vtTerm, 0, &n);
+    assert(row[0].ch == 0x2588 && row[1].ch == ' ');     /* the apply reset the screen */
+    prefs.Charset = CHARSET_LATIN1;                        /* the user's change wins */
+    VtApplyPersonality();
+    vt_put("\xE9");
+    row = vt_row(vtTerm, 0, &n);
+    assert(row[0].ch == 0xE9);
+    VtClose();
+}
+
+/* MA2-6: what the IBM font has is drawn, the rest is one '?' per cell, a wide
+ * character fills its second cell with a blank. */
+static void test_ma2_6_glyph_map_and_fallback(void)
+{
+    xterm_begin();
+    vt_put("\xE2\x94\x80");                    /* U+2500 */
+    assert(probes == 1 && probe[0].code == 0xC4);
+    probes = 0;
+    vt_put("\xC3\xA9");                         /* U+00E9 */
+    assert(probes == 1 && probe[0].code == 0x82);
+    probes = 0;
+    vt_put("\xE2\x98\x83");                    /* U+2603: no glyph in the font */
+    assert(probes == 1 && probe[0].code == '?');
+    probes = 0;
+    vt_put("\xE4\xB8\xAD");                    /* U+4E2D: two cells wide */
+    assert(probes == 2);
+    assert(probe[0].code == '?' && probe[0].x == 3);
+    assert(probe[1].code == ' ' && probe[1].x == 4);
+    VtClose();
+}
+
+/* MA2-8: 256-colour and 24-bit red reach the glyph writer as the same pen,
+ * the nearest of the sixteen. */
+static void test_ma2_8_256_colour_and_24_bit_give_the_same_pen(void)
+{
+    xterm_begin();
+    vt_put("\x1b[38;5;196mA");
+    assert(probes == 1 && probe[0].fg == 1);
+    probes = 0;
+    vt_put("\x1b[38;2;255;0;0mA");
+    assert(probes == 1 && probe[0].fg == 1);
+    probes = 0;
+    vt_put("\x1b[48;5;21mA");
+    assert(probes == 1 && probe[0].bg == 4);
+    probes = 0;
+    vt_put("\x1b[0mA");                          /* the defaults: pens 7 and 0 */
+    assert(probes == 1 && probe[0].fg == 7 && probe[0].bg == 0);
+    VtClose();
+}
+
+/* ---- MA3: mouse, title, bracketed paste through the real entry points ---- */
+static void ma3_reset_sentinels(void)
+{
+    sentLen = sentCalls = titleCalls = 0;
+    titleSet[0] = 0;
+}
+
+static void test_ma3_1_2_osc_title_reaches_the_window_as_latin1(void)
+{
+    xterm_begin();
+    ma3_reset_sentinels();
+    vt_put("\x1b]0;hello\x07");
+    assert(titleCalls == 1 && strcmp(titleSet, "hello") == 0);          /* MA3-1 */
+    vt_put("\x1b]2;two\x07");
+    assert(titleCalls == 2 && strcmp(titleSet, "two") == 0);
+    vt_put("\x1b]0;st\x1b\\");                                          /* ST terminator */
+    assert(titleCalls == 3 && strcmp(titleSet, "st") == 0);
+    vt_put("\x1b]0;caf\xC3\xA9\x07");                                    /* MA3-2: UTF-8 in, Latin-1 out */
+    assert(strcmp(titleSet, "caf\xE9") == 0);
+    VtClose();
+}
+
+static void test_ma3_3_title_is_restored_on_reset_and_session_end(void)
+{
+    xterm_begin();
+    ma3_reset_sentinels();
+    vt_put("\x1b]0;hello\x07");
+    vt_put("\x1b" "c");                                                  /* RIS */
+    assert(strcmp(titleSet, MainWindowTitle) == 0);
+    vt_put("\x1b]0;again\x07");
+    assert(strcmp(titleSet, "again") == 0);
+    VtTitleRestore();                                                     /* the session ended */
+    assert(strcmp(titleSet, MainWindowTitle) == 0);
+    ma3_reset_sentinels();
+    vt_put("after");                                                      /* the old title does not come back */
+    assert(titleCalls == 0);
+    VtClose();
+}
+
+static void test_ma3_4_5_mouse_press_release_bytes_and_selection_fallthrough(void)
+{
+    xterm_begin();
+    ma3_reset_sentinels();
+    assert(!VtMouseOwned(FALSE));                                         /* MA3-5: no mode, selects */
+    VtMouseButton(0, TRUE, 10, 5, 0);
+    assert(sentCalls == 0);
+    vt_put("\x1b[?1000h\x1b[?1006h");
+    assert(VtMouseOwned(FALSE) && !VtMouseOwned(TRUE));                   /* Shift keeps selecting */
+    VtMouseButton(0, TRUE, 10, 5, 0);                                     /* MA3-4 */
+    assert(sentLen == 10 && memcmp(sentBuf, "\x1b[<0;11;6M", 10) == 0);
+    sentLen = 0;
+    VtMouseButton(0, FALSE, 10, 5, 0);
+    assert(sentLen == 10 && memcmp(sentBuf, "\x1b[<0;11;6m", 10) == 0);
+    sentLen = 0;
+    VtMouseButton(2, TRUE, 10, 5, 0);
+    assert(memcmp(sentBuf, "\x1b[<2;11;6M", 10) == 0);
+    sentLen = 0;
+    VtMouseButton(64, TRUE, 10, 5, 0);
+    assert(sentLen == 11 && memcmp(sentBuf, "\x1b[<64;11;6M", 11) == 0);
+    VtClose();
+}
+
+static void test_ma3_6_motion_modes_and_the_mouse_move_flag(void)
+{
+    xterm_begin();
+    ma3_reset_sentinels();
+    window.IDCMPFlags = IDCMP_RAWKEY | IDCMP_MOUSEMOVE;
+    VtOpen();                                                             /* built-in: no selection to drag */
+    assert(!(window.IDCMPFlags & IDCMP_MOUSEMOVE));
+    vt_put("\x1b[?1000h\x1b[?1006h");
+    assert(!(window.IDCMPFlags & IDCMP_MOUSEMOVE));
+    vt_put("\x1b[?1002h");
+    assert(window.IDCMPFlags & IDCMP_MOUSEMOVE);
+    VtMouseMove(3, 3, 0);                                                 /* no button held: nothing */
+    assert(sentCalls == 0);
+    VtMouseButton(0, TRUE, 3, 3, 0);
+    sentLen = sentCalls = 0;
+    VtMouseMove(4, 3, 0);                                                 /* drag */
+    assert(sentLen == 10 && memcmp(sentBuf, "\x1b[<32;5;4M", 10) == 0);
+    VtMouseButton(0, FALSE, 4, 3, 0);
+    sentLen = sentCalls = 0;
+    VtMouseMove(5, 3, 0);
+    assert(sentCalls == 0);
+    vt_put("\x1b[?1002l\x1b[?1003h");
+    VtMouseMove(6, 3, 0);                                                 /* ?1003: all motion */
+    assert(sentLen == 10 && memcmp(sentBuf, "\x1b[<35;7;4M", 10) == 0);
+    vt_put("\x1b[?1003l");
+    assert(!(window.IDCMPFlags & IDCMP_MOUSEMOVE));
+    VtClose();
+}
+
 int main(void)
 {
     test_the_terminal_starts_below_the_title_bar_and_matches_the_window_rows();
@@ -622,6 +977,7 @@ int main(void)
     test_the_pen_map_colours_the_rastport_path_and_stops_direct_drawing();
     test_an_8_plane_screen_takes_the_rastport();
     test_a_16_pixel_font_gives_40_columns();
+    test_vtopen_twice_never_draws_through_the_previous_engine();
     test_a_menu_cannot_open_while_the_terminal_draws_into_the_bitmap();
     test_a_menu_open_over_the_terminal_is_drawn_around();
     test_a_menu_opened_while_an_answer_is_sent_is_drawn_around();
@@ -633,6 +989,17 @@ int main(void)
     test_ma1_8_cursor_save_restore_position_and_erase();
     test_ma1_init_strings_draw_nothing_and_leave_the_cursor();
     test_ma1_9_the_sample_art_file_gives_the_known_grid();
+    test_ma2_5_11_utf8_reaches_the_grid_whole_even_split_across_writes();
+    test_ma2_14_stream_switch_to_utf8_through_vtwrite();
+    test_ma2_14_split_sequence_held_back_through_vtwrite();
+    test_ma2_14_flush_draws_held_byte_split_block_still_whole();
+    test_ma2_14_apply_personality_keeps_the_switch();
+    test_ma2_6_glyph_map_and_fallback();
+    test_ma2_8_256_colour_and_24_bit_give_the_same_pen();
+    test_ma3_1_2_osc_title_reaches_the_window_as_latin1();
+    test_ma3_3_title_is_restored_on_reset_and_session_end();
+    test_ma3_4_5_mouse_press_release_bytes_and_selection_fallthrough();
+    test_ma3_6_motion_modes_and_the_mouse_move_flag();
     printf("term_engine: all assertions passed\n");
     return 0;
 }

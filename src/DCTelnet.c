@@ -165,6 +165,10 @@ static struct NewMenu mainMenuDesc[] =
     {       NM_SUB, "IBM PC (CP437)",                0 ,       CHECKIT,       ~1L & 7, (APTR)MENU_CHARSET_CP437},
     {       NM_SUB, "Amiga (ISO-8859-1)",            0 ,       CHECKIT,       ~2L & 7, (APTR)MENU_CHARSET_LATIN1},
     {       NM_SUB, "UTF-8",                         0 ,       CHECKIT,       ~4L & 7, (APTR)MENU_CHARSET_UTF8},
+    {    NM_ITEM, "Terminal Type",                   0 ,             0,               0, (APTR)MENU_TERMTYPE},
+    {       NM_SUB, "Automatic",                     0 ,       CHECKIT,       ~1L & 7, (APTR)MENU_TERMTYPE_AUTO},
+    {       NM_SUB, "BBS",                           0 ,       CHECKIT,       ~2L & 7, (APTR)MENU_TERMTYPE_BBS},
+    {       NM_SUB, "Unix",                          0 ,       CHECKIT,       ~4L & 7, (APTR)MENU_TERMTYPE_UNIX},
     {    NM_ITEM, "Bell",                            0 ,             0,               0, (APTR)MENU_BELL},
     {       NM_SUB, "Flash",                         0 ,       CHECKIT,       ~1L & 7, (APTR)MENU_BELL_FLASH},
     {       NM_SUB, "Sound",                         0 ,       CHECKIT,       ~2L & 7, (APTR)MENU_BELL_SOUND},
@@ -221,10 +225,12 @@ static ULONG RexxSig(void);
 static void RexxMessages(void);
 static void CancelConnectionJobs(void);
 static UBYTE *DisplayBytes(struct Utf8Decoder *d, UBYTE *data, long *len);
+static UBYTE *ScrollbackBytes(UBYTE *data, long *len);
 static UBYTE *SoundFilter(UBYTE *text, long *len);
 static struct AnsiMusic ansiMusic;      // Terminal > ANSI Music: a tune split between reads
 static struct Utf8Decoder utf8In;       // Character Set UTF-8: a character split between reads
 static struct Utf8Decoder utf8Echo;     // the same for the local echo of what is sent
+static struct Utf8Decoder utf8Sb;       // the same for the scrollback, when the engine decodes the UTF-8 itself
 static BOOL rloginAckPending;         // rlogin: the server's NUL answer is still to come
 static void ScheduleKeepAlive(void);
 static void CaptureWrite(const UBYTE *data, long len);
@@ -814,6 +820,7 @@ static void DisConnect(char remote, char quiet)
         CloseSocket(tcpSocket);
 
         isConnected = FALSE;
+        VtTitleRestore();               // MA3-3: the program's window title ends with the session
         ResetTelnetContext();
         ResetZmodemContext();
         nBytesReceived = 0;
@@ -1046,6 +1053,7 @@ BOOL BeginEntrySession(ULONG settingsId, const struct SiteSettings *entry)
         sessionGroups = entry->groups;
         ReloadXemOptions();
         RequestDisplayReopen(&before);
+        VtApplyPersonality();            // the Terminal Type of the site or the settings
     }
     SyncPetsciiDisplay();
     handBaseline = prefs;
@@ -1129,6 +1137,7 @@ void EndEntrySession(void)
         if (endedGroups & SITE_GROUP_TERMINAL)
             ReloadXemOptions();
         RequestDisplayReopen(&before);
+        VtApplyPersonality();            // the Terminal Type of the site or the settings
     }
     SyncPetsciiDisplay();
     handBaseline = prefs;
@@ -1272,6 +1281,8 @@ static void RunPendingConnect(void)
     {
         Charset_Utf8Init(&utf8In);
         Charset_Utf8Init(&utf8Echo);
+        Charset_Utf8Init(&utf8Sb);
+        VtSniffReset();                         // MA2-14: this connection has seen no UTF-8 yet
         AnsiMusic_Init(&ansiMusic);
         if (STATE_IS(APP_SSH))                  // SSH: the encrypted login first
         {
@@ -2172,7 +2183,12 @@ static void Receive(void)
 
             BbsWrite((char *)text, shown);
             if (STATE_IS(APP_SCROLLBACK_ENABLED))
-                AddBuf(text, shown);
+            {
+                long kept = shown;
+                UBYTE *sb = ScrollbackBytes(text, &kept);
+
+                AddBuf(sb, kept);
+            }
         }
 
         for (i = 0; i < len; i++)
@@ -2295,7 +2311,12 @@ static void Receive(void)
 
                 BbsWrite((char *)text, shown);
                 if (STATE_IS(APP_SCROLLBACK_ENABLED))
-                    AddBuf(text, shown);
+                {
+                    long kept = shown;
+                    UBYTE *sb = ScrollbackBytes(text, &kept);
+
+                    AddBuf(sb, kept);
+                }
             }
         }
 
@@ -2908,7 +2929,7 @@ int main(int argc, char *argv[])
                 sigmask |= TimerSig() | RexxSig();
 
                 // SSH bytes already decrypted: the socket will not wake us for them
-                timeout.tv_sec = SshConn_Buffered() ? 0 : 30; timeout.tv_usec = 0;
+                timeout.tv_sec = (SshConn_Buffered() || (STATE_IS(APP_RENDERER_BUILTIN) && VtHeldPending())) ? 0 : 30; timeout.tv_usec = 0;  // held UTF-8 prefix (MA2-14): poll, do not sleep 30 s
                 i = WaitSelect(tcpSocket + 1, &rd, 0, 0, &timeout, &sigmask);
 
                 #ifdef _DEBUG_WAITSELECT
@@ -2952,6 +2973,8 @@ int main(int argc, char *argv[])
                     if (STATE_ARE_ALL(APP_TITLE_BAR_ENABLED | APP_LEDS_ENABLED))
                         EraseRect(&scr->RastPort, scr->Width-72, 2, scr->Width-60, BAR_TEXT_HEIGHT-1);
                 }
+                else if (STATE_IS(APP_RENDERER_BUILTIN))
+                    VtFlushHeld();      // MA2-14: socket and SSH drained: draw a held UTF-8 prefix now
 
             } else {  // not connected
                 ULONG sig;
@@ -3105,9 +3128,23 @@ static UBYTE *DisplayBytes(struct Utf8Decoder *d, UBYTE *data, long *len)
 {
     static UBYTE decoded[DISPLAY_BYTES_MAX + 1];    // + 1: Charset_Utf8ToCp437
 
-    if (prefs.Charset != CHARSET_UTF8 || PETSCII_SESSION() || *len > DISPLAY_BYTES_MAX)
+    if (prefs.Charset != CHARSET_UTF8 || PETSCII_SESSION() || *len > DISPLAY_BYTES_MAX
+     || Vt_EngineDecodesUtf8(&prefs))       // the engine reads the UTF-8 itself
         return data;
     *len = (long)Charset_Utf8ToCp437(d, data, (size_t)*len, decoded);
+    return decoded;
+}
+
+// The scrollback keeps the IBM set: when the engine took the UTF-8 itself
+// (Terminal Type Unix, or Automatic with Character Set UTF-8) the scrollback
+// gets its own conversion of the same bytes.
+static UBYTE *ScrollbackBytes(UBYTE *data, long *len)
+{
+    static UBYTE decoded[DISPLAY_BYTES_MAX + 1];
+
+    if (!Vt_EngineDecodesUtf8(&prefs) || PETSCII_SESSION() || *len > DISPLAY_BYTES_MAX)
+        return data;
+    *len = (long)Charset_Utf8ToCp437(&utf8Sb, data, (size_t)*len, decoded);
     return decoded;
 }
 
@@ -3860,12 +3897,31 @@ static void CopyScreen(void)
 static void OutKey(unsigned char key);
 static void SendTypedChar(UBYTE c);
 
+// MA3-4: the mouse button of an IDCMP_MOUSEBUTTONS code as the terminal numbers it
+// (0 left, 1 middle); -1 for the right button, which belongs to the menus.
+static int MouseButtonOf(UWORD code)
+{
+    switch (code & ~IECODE_UP_PREFIX)
+    {
+    case IECODE_LBUTTON: return 0;
+    case IECODE_MBUTTON: return 1;
+    default:             return -1;
+    }
+}
+
+static int QualifierToVtMods(UWORD qual)
+{
+    return ((qual & (IEQUALIFIER_LSHIFT | IEQUALIFIER_RSHIFT)) ? VT_MOD_SHIFT : 0)
+         | ((qual & (IEQUALIFIER_LALT | IEQUALIFIER_RALT)) ? VT_MOD_ALT : 0)
+         | ((qual & IEQUALIFIER_CONTROL) ? VT_MOD_CTRL : 0);
+}
+
 // Edit > Paste: the clipboard's text, typed.
 static void PasteClipboard(void)
 {
     UBYTE *iff = AllocVec(CLIP_READ_MAX, MEMF_ANY);
     char *text = AllocVec(CLIP_READ_MAX, MEMF_ANY);
-    char *out = AllocVec(2 * CLIP_READ_MAX, MEMF_ANY);
+    char *out = AllocVec(2 * CLIP_READ_MAX + 16, MEMF_ANY);   // + the bracketed-paste markers
     ULONG len;
     size_t n, i;
 
@@ -3891,9 +3947,11 @@ static void PasteClipboard(void)
                                        isConnected && TELNET_DATA(), out);
             if (isConnected)
             {
-                TCPSend(out, (long)m);
                 if (STATE_IS(APP_LOCAL_ECHO))
                     EchoWrite((UBYTE *)out, (long)m);
+                if (vtTerm && STATE_IS(APP_RENDERER_BUILTIN))
+                    m = Vt_PasteBracket(vtTerm, out, m, prefs.Charset == CHARSET_UTF8);    // MA3-7/8: ?2004
+                TCPSend(out, (long)m);
             }
             else
                 EchoWrite((UBYTE *)out, (long)m);
@@ -3952,7 +4010,17 @@ static void GetWindowMsg(struct Window *wwin)
         case IDCMP_MOUSEBUTTONS:
             if (wwin == win)
             {
-                if (code == SELECTDOWN)
+                int mbutton = MouseButtonOf(code);
+
+                // MA3-4/5: a program that asked for the mouse gets it (Shift keeps selecting)
+                if (mbutton >= 0 && VtMouseOwned((qual & (IEQUALIFIER_LSHIFT | IEQUALIFIER_RSHIFT)) != 0))
+                {
+                    UWORD row, col;
+
+                    SelectionCell(mouseX, mouseY, &row, &col);
+                    VtMouseButton(mbutton, (code & IECODE_UP_PREFIX) == 0, col - 1, row - 1, QualifierToVtMods(qual));
+                }
+                else if (code == SELECTDOWN)
                     SelectionDown(mouseX, mouseY);
                 else if (code == SELECTUP)
                     SelectionUp();
@@ -3961,7 +4029,17 @@ static void GetWindowMsg(struct Window *wwin)
 
         case IDCMP_MOUSEMOVE:
             if (wwin == win)
-                SelectionMove(mouseX, mouseY);
+            {
+                if (VtMouseOwned(FALSE))
+                {
+                    UWORD row, col;
+
+                    SelectionCell(mouseX, mouseY, &row, &col);
+                    VtMouseMove(col - 1, row - 1, QualifierToVtMods(qual));
+                }
+                else
+                    SelectionMove(mouseX, mouseY);
+            }
             break;
 
         case IDCMP_GADGETUP:
@@ -4376,6 +4454,18 @@ static void GetWindowMsg(struct Window *wwin)
                         prefs.Charset = (UBYTE)((ULONG)GTMENUITEM_USERDATA(item) - MENU_CHARSET_CP437);
                         Charset_Utf8Init(&utf8In);
                         Charset_Utf8Init(&utf8Echo);
+                        Charset_Utf8Init(&utf8Sb);
+                        VtApplyPersonality();
+                        break;
+
+                    case MENU_TERMTYPE_AUTO:
+                    case MENU_TERMTYPE_BBS:
+                    case MENU_TERMTYPE_UNIX:
+                        prefs.TermType = (UBYTE)((ULONG)GTMENUITEM_USERDATA(item) - MENU_TERMTYPE_AUTO);
+                        Charset_Utf8Init(&utf8In);
+                        Charset_Utf8Init(&utf8Echo);
+                        Charset_Utf8Init(&utf8Sb);
+                        VtApplyPersonality();
                         break;
 
                     case MENU_COPY:
@@ -4560,6 +4650,7 @@ static void GetWindowMsg(struct Window *wwin)
                                           prefs.FontName, sizeof(prefs.FontName),
                                           &prefs.FontSize))
                             RequestDisplayReopen(&before);
+                            VtApplyPersonality();            // the Terminal Type of the site or the settings
                         break;
                     }
 
@@ -5730,6 +5821,9 @@ void CreateAppMenus(void)
     GetNewMenuItemFromID(MENU_CHARSET_CP437)->nm_Flags  = CHECKIT | (prefs.Charset == CHARSET_CP437 ? CHECKED : 0);
     GetNewMenuItemFromID(MENU_CHARSET_LATIN1)->nm_Flags = CHECKIT | (prefs.Charset == CHARSET_LATIN1 ? CHECKED : 0);
     GetNewMenuItemFromID(MENU_CHARSET_UTF8)->nm_Flags   = CHECKIT | (prefs.Charset == CHARSET_UTF8 ? CHECKED : 0);
+    GetNewMenuItemFromID(MENU_TERMTYPE_AUTO)->nm_Flags = CHECKIT | (prefs.TermType == TERMTYPE_AUTO ? CHECKED : 0);
+    GetNewMenuItemFromID(MENU_TERMTYPE_BBS)->nm_Flags  = CHECKIT | (prefs.TermType == TERMTYPE_BBS ? CHECKED : 0);
+    GetNewMenuItemFromID(MENU_TERMTYPE_UNIX)->nm_Flags = CHECKIT | (prefs.TermType == TERMTYPE_UNIX ? CHECKED : 0);
     GetNewMenuItemFromID(MENU_BELL_FLASH)->nm_Flags = CHECKIT | (prefs.Bell == BELL_FLASH ? CHECKED : 0);
     GetNewMenuItemFromID(MENU_BELL_SOUND)->nm_Flags = CHECKIT | (prefs.Bell == BELL_SOUND ? CHECKED : 0);
     GetNewMenuItemFromID(MENU_BELL_OFF)->nm_Flags   = CHECKIT | (prefs.Bell == BELL_OFF ? CHECKED : 0);
