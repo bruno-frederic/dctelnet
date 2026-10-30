@@ -132,3 +132,12 @@ Items MA2-1 to 8 and 11. MA2-9, 10, 12 (rig / RTG) stay open for a later session
 - Tests: tests/test_vtpersonality.c (MA2-4, MA2-5 predicate), test_vtpens.c (MA2-7),
   test_term_engine.c (MA2-5 path, 6, 8, 11 through VtOpen/VtWrite/VtDraw), test_prefs_file.c
   (MA2-1), test_site_prefs.c (MA2-2). MA2-3 host part: label strings only (rig open).
+
+### Owner decisions (2026-10-30, vtcon-06)
+
+- Unix follows the site's Character Set (the agent's version stays; the plan's "Unix = UTF-8 always" is dropped).
+- Smart character set swap, both parts:
+  - MA2-13 Swap when chosen: setting Terminal Type to Unix while Character Set is CP437 changes Character Set to UTF-8 in the same requester (global settings and Site Settings). The user can change it back. No swap for any other combination.
+  - MA2-14 Stream detection: while connected with Terminal Type Unix and Character Set not UTF-8, the first complete valid UTF-8 multi-byte sequence, with no invalid high byte before it in this connection, switches decoding to UTF-8 for the rest of the connection. Not saved to prefs. A connection that has already seen an invalid sequence never switches.
+- [ ] MA2-13 Test: requester logic (pure function) maps (Unix, CP437) to UTF-8, leaves every other pair unchanged.
+- [ ] MA2-14 Test: "\xE2\x96\x88" after plain ASCII switches to UTF-8 (cell = full block); CP437 art bytes "\xC9\xCD\xBB" before it keep CP437; Latin-1 "\xE9t\xE9" never switches.
