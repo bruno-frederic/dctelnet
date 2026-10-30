@@ -34,7 +34,7 @@ Where does scrollback live for the built-in renderer?
 - [x] MA4-3 (test_ma4_3_shift_page_up_draws_the_previous_page_and_page_down_returns, test_ma4_3_a_scrollback_line_narrower_than_the_grid_is_blank_filled; the key is Shift+Page Up/Down and the wheel, plain Page Up still goes to the host) Scrolling back: Page Up draws the previous page; the rows on screen equal the
       art rows asserted by text; returning to the live view redraws the grid.
 - [x] MA4-4 (test_ma4_4_the_alt_screen_leaves_the_scrollback_alone) Alt screen: with "\e[?1049h" the scrollback count does not change.
-- [ ] MA4-5 Reachability: rig run, DCTelnet connected to the server sending the long art;
+- [x] MA4-5 (rig 3, 2026-10-30: Shift+Page Up on 200-line art; dump after the key: scrollback draws 1, scroll offset 29, scrollback lines 171, rows shown L142..L172 = the previous page) Reachability: rig run, DCTelnet connected to the server sending the long art;
       scroll back with the real key; screen text read back equals the asserted rows;
       sentinel: scrollback draw count > 0.
 
@@ -51,4 +51,4 @@ built-in renderer does not reuse it.
 
 ## Done
 
-4 of 5. MA4-5 (rig) open.
+5 of 5. MA4-5 verified on rig 3 (thoughts/spot/ma-rig-items.md).

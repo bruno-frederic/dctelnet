@@ -42,7 +42,7 @@ pens the screen really has.
       DONE: test_site_prefs.c test_each_group_moves_only_its_members (TermType Unix applies, summary ", Unix", global restored)
 - [x] MA2-3 Requester and menu labels in full words ("Terminal Type", "Automatic", "BBS", "Unix").
       Rig check: the requester shows and changes the value.
-      DONE: host part: labels in menu table and Site Settings (DCTelnet.c, guis.c; compile-unverified on host). Rig check of menu and layout open
+      DONE: host part: labels in menu table and Site Settings (DCTelnet.c, guis.c; compile-unverified on host). Rig check of the layout: PASS on rig 3 2026-10-30 (80x30 grid 640x240 px in a 642x240 inner area, nothing clipped); menu not rig-checked
 - [x] MA2-4 VtOpen uses VT_XTERM + VT_CS_UTF8 for Unix. Host test: vt_personality() ==
       VT_XTERM after VtOpen with Unix prefs, VT_PCANSI with BBS prefs. Automatic: UTF-8
       Character Set gives VT_XTERM, CP437 and Latin-1 give VT_PCANSI (three asserts); an
@@ -114,7 +114,7 @@ Items MA2-1 to 8 and 11. MA2-9, 10, 12 (rig / RTG) stay open for a later session
   `VtApplyPersonality()` (new, vtbuiltin.c, shared with VtOpen); the Character Set handler
   calls it too (the engine needs vt_set_charset on the same event). Site Settings window: a
   "Terminal Type" cycle gadget in the Terminal group row of Renderer and Characters (those two
-  are narrowed to fit). Rig check of the layout is open.
+  are narrowed to fit). Rig check of the terminal grid layout: PASS (rig 3, 2026-10-30).
 - Glyph map: for every personality the built-in renderer's font is the IBM CP437 set (MA1
   assumption, unchanged), so VtDraw keeps VT_ENC_CP437. Any code point whose glyph is not
   VT_GLYPH_FONT draws the fallback `VT_FALLBACK_GLYPH` = '?' (0x3F), exactly one cell.
