@@ -492,6 +492,8 @@ static void test_ma1_4_sixteen_colours(void)
     VtClose();
 }
 
+static void expect_cursor(int x, int y);
+
 static void test_ma1_5_6_7_ice_colours_decide_what_blink_draws_as(void)
 {
     const vt_cell *row;
@@ -521,6 +523,9 @@ static void test_ma1_5_6_7_ice_colours_decide_what_blink_draws_as(void)
     probes = 0;
     VtRedraw();
     assert(probe[0].bg == 4);
+    /* The redraw leaves the cursor where the engine has it, not on the
+     * last row it drew. */
+    expect_cursor(1, 0);
     VtClose();
 }
 
