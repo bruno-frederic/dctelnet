@@ -3,10 +3,17 @@
 CC := cc
 CFLAGS := -std=c99 -Wall -Wextra -Werror -I../src
 
-TESTS := test_petscii_modules test_petscii_dispatch test_prefs_file test_site_prefs test_palette test_screenfont test_progdir test_listsel test_textedit test_dsr test_keys test_clip test_ansiscan test_ticks test_rexx test_rlogin test_ansimusic test_booklist
+# The SSH engine runs on the caller's stack, 4096 bytes by default on
+# Workbench (issue #58). No frame of ssh.c or crypto/ may hold the big
+# temporaries again: they live in struct Ssh. gcc only (clang has no
+# -Wstack-usage, so the check is skipped there). -O0 gives the largest frames.
+STACK_MAX := 400
+STACKCHK := $(shell $(CC) -Werror -Wstack-usage=$(STACK_MAX) -c -x c /dev/null -o /dev/null 2>/dev/null && echo -Wstack-usage=$(STACK_MAX))
 
-.PHONY: all clean check-encoding check-fonts
-all: $(TESTS) check-encoding check-fonts
+TESTS := test_petscii_modules test_petscii_dispatch test_prefs_file test_site_prefs test_palette test_screenfont test_progdir test_listsel test_textedit test_dsr test_keys test_clip test_ansiscan test_ticks test_rexx test_rlogin test_ansimusic test_booklist test_crypto test_ssh test_knownhosts
+
+.PHONY: all clean check-encoding check-fonts check-stack check-statics
+all: $(TESTS) check-encoding check-fonts check-stack check-statics
 	@for t in $(TESTS); do echo "--- $$t ---"; ./$$t || exit 1; done
 
 # Check the file are standard printable ASCII or ISO-8859
@@ -38,6 +45,28 @@ check-encoding:
 # failed silently.
 check-fonts:
 	python3 ../tools/check_amiga_font.py ../build/package/DCTelnet/Fonts/Petscii.font ../build/package/DCTelnet/Fonts/PetsciiLower.font ../build/package/DCTelnet/Fonts/TopazPro.font
+
+check-stack:
+	@if [ -n "$(STACKCHK)" ]; then for f in ../src/ssh.c ../src/crypto/*.c; do \
+		$(CC) $(CFLAGS) $(STACKCHK) -D_DEFAULT_SOURCE -Ishim -c $$f -o /dev/null || exit 1; done; \
+	else echo "check-stack: $(CC) has no -Wstack-usage, skipped"; fi
+
+# Several tasks will open ssh.library at once and share its one data segment,
+# so no function may keep mutable state in a static: it lives in struct Ssh
+# (see Big temporaries there). Fail on any writable data or bss symbol of the
+# engine's objects (nm types b B d D, which also catches gcc's name.N function
+# statics) except the entropy pool, shared by design; it needs Forbid() or a
+# semaphore once it is in the library (see random.c).
+STATICS_OK := pool counter added
+check-statics:
+	@d=$$(mktemp -d); bad=""; for f in ../src/ssh.c ../src/crypto/*.c; do \
+		o=$$d/$$(basename $$f .c).o; \
+		$(CC) $(CFLAGS) -O0 -fno-common -D_DEFAULT_SOURCE -Ishim -c $$f -o $$o || exit 1; \
+		for sym in $$(nm -P $$o | awk '$$2 ~ /^[bBdD]$$/ { sub(/^_/, "", $$1); if ($$1 !~ /^l?tmp[0-9]*$$/) print $$1 }'); do \
+			case " $(STATICS_OK) " in *" $$sym "*) [ "$$(basename $$f)" = random.c ] && continue;; esac; \
+			bad="$$bad $$(basename $$f):$$sym"; done; done; rm -rf $$d; \
+		if [ -n "$$bad" ]; then echo "check-statics: writable static data in the engine:$$bad"; exit 1; fi; \
+		echo "check-statics: ok"
 
 MODULE_SRC := ../src/petscii_screencode.c ../src/petscii_fallback.c ../src/petscii_keymap.c
 MODULE_HDR := ../src/petscii_screencode.h ../src/petscii_fallback.h ../src/petscii_keymap.h
@@ -99,3 +128,13 @@ test_booklist: test_booklist.c ../src/booklist.c ../src/booklist.h
 
 clean:
 	rm -f $(TESTS)
+
+CRYPTO_SRC := ../src/crypto/sha256.c ../src/crypto/aes.c ../src/crypto/bignum.c ../src/crypto/rsa.c ../src/crypto/x25519.c ../src/crypto/random.c
+test_crypto: test_crypto.c crypto_vectors.h bignum_vectors.h $(CRYPTO_SRC) $(wildcard ../src/crypto/*.h)
+	$(CC) $(CFLAGS) -Ishim -o $@ $(filter %.c,$^)
+
+test_ssh: test_ssh.c ../src/ssh.c ../src/ssh.h $(CRYPTO_SRC) $(wildcard ../src/crypto/*.h) $(wildcard ssh_sessions/*.bin)
+	$(CC) $(CFLAGS) -D_DEFAULT_SOURCE -Ishim -o $@ $(filter %.c,$^)
+
+test_knownhosts: test_knownhosts.c ../src/knownhosts.c ../src/knownhosts.h
+	$(CC) $(CFLAGS) -Ishim -o $@ $(filter %.c,$^)

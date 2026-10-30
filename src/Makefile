@@ -71,7 +71,8 @@ INCLUDES := \
 	-I$(NET_INC) \
 	-Ithird_party/retro32-term \
 	-Ithird_party/Xem/INCLUDE \
-	-Ithird_party/Xpr/include
+	-Ithird_party/Xpr/include \
+	-Isshlib/include
 
 ifeq ($(MAKECMDGOALS),build)
   ifeq ($(strip $(NDK32_INC)),)
@@ -129,6 +130,7 @@ ifeq ($(TOOLCHAIN),vbcc)
 	CFLAGS          := +aos68k $(WARN) -cpu=$(CPU)
 		DEBUG_CFLAGS    := -g -D_DEBUG -stack-check
 		RELEASE_CFLAGS  := -O3 -speed
+	ASRCS           :=
 else ifeq ($(TOOLCHAIN),gcc)
 	BUILDER_IMAGE := amigadev/crosstools:m68k-amigaos-gcc10
 
@@ -147,6 +149,7 @@ else ifeq ($(TOOLCHAIN),gcc)
 	CFLAGS          := -mcrt=nix20 $(WARN) -m$(CPU)
 		DEBUG_CFLAGS    := -g -D_DEBUG -fstack-check
 		RELEASE_CFLAGS  := -O3
+	ASRCS           :=
 else
 	$(error Invalid TOOLCHAIN value '$(TOOLCHAIN)'; choose 'vbcc' or 'gcc')
 endif
@@ -159,8 +162,8 @@ CFLAGS += -D"COMPILER_STRING=$(COMPILER_STRING)" -DBUILD_HASH=$(BUILD_HASH) -D"A
 TARGET     := DCTelnet
 SRCS       := DCTelnet.c connect.c guis.c Xfer.c Xem_wrapper.c requesters.c utils.c prefs.c prefs_file.c \
               petscii_screencode.c petscii_fallback.c petscii_keymap.c petscii_dispatch.c site_prefs.c palette.c \
-              screenfont.c progdir.c shipped.c listsel.c textedit.c dsr.c keys.c clip.c charset.c ansiscan.c ticks.c waitfor.c rexxcmd.c rlogin.c ansimusic.c sound.c booklist.c
-DEPS       := abook.h connect.h DCTelnet.h DCTelnet-debug.h DCTelnet-protocol.h third_party/retro32-term/term-engine.c edit.h fkey.h guis.h Xfer.h Xem_wrapper.h requesters.h utils.h prefs.h prefs_file.h site_prefs.h palette.h screenfont.h progdir.h shipped.h listsel.h textedit.h dsr.h keys.h clip.h charset.h ansiscan.h ticks.h waitfor.h rexxcmd.h rlogin.h ansimusic.h sound.h booklist.h
+              screenfont.c progdir.c shipped.c listsel.c textedit.c dsr.c keys.c clip.c charset.c ansiscan.c ticks.c waitfor.c rexxcmd.c rlogin.c ansimusic.c sound.c booklist.c sshconn.c knownhosts.c
+DEPS       := abook.h connect.h DCTelnet.h DCTelnet-debug.h DCTelnet-protocol.h third_party/retro32-term/term-engine.c edit.h fkey.h guis.h Xfer.h Xem_wrapper.h requesters.h utils.h prefs.h prefs_file.h site_prefs.h palette.h screenfont.h progdir.h shipped.h listsel.h textedit.h dsr.h keys.h clip.h charset.h ansiscan.h ticks.h waitfor.h rexxcmd.h rlogin.h ansimusic.h sound.h booklist.h sshconn.h knownhosts.h sshlib/include/libraries/ssh.h
 INSTALLDIR := ../build/installed/DCTelnet
 
 # OBJ subdir depends on TOOLCHAIN and DEBUG flag (use DEBUG=yes to enable)
@@ -175,7 +178,7 @@ endif
 
 # final OBJDIR depends on TOOLCHAIN, CPU and OBJ_SUFFIX
 OBJDIR     := ../build/$(TOOLCHAIN)-$(CPU)-$(OBJ_SUFFIX)
-OBJS       := $(SRCS:%.c=$(OBJDIR)/%.o)
+OBJS       := $(SRCS:%.c=$(OBJDIR)/%.o) $(ASRCS:%.s=$(OBJDIR)/%.o)
 TARGET_EXE := $(OBJDIR)/$(TARGET).$(CPU)
 MAKEFILE_UPTODATE=$(OBJDIR)/Makefile.uptodate
 
@@ -265,10 +268,14 @@ $(OBJDIR)/%.o: %.c $(DEPS) | $(OBJDIR)
 	$(CC) $(CFLAGS) -o $@  -c $<
 
 
+$(OBJDIR)/%.o: %.s | $(OBJDIR)
+	@echo "------------- $@ --------------------"
+	$(CC) $(CFLAGS) -o $@  -c $<
+
+
 $(OBJDIR):
 	@echo "------------- mkdir $@ --------------------"
 	$(MKDIR) $@
-
 
 $(INSTALLDIR):
 	@echo "------------- mkdir $@ --------------------"

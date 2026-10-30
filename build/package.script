@@ -31,6 +31,10 @@ COPY  FROM build/vbcc-68000-release/DCTelnet.68000  TO RAM:DCTelnet/DCTelnet
 COPY  FROM build/vbcc-68020-release/DCTelnet.68020  TO RAM:DCTelnet/DCTelnet.020
 MAKEDIR RAM:DCTelnet/Devs
 COPY  FROM ibmcon/ibmcon.device                     TO RAM:DCTelnet/Devs/ibmcon.device
+COPY  FROM src/sshlib/build/68000/ssh.library      TO RAM:DCTelnet/Libs/ssh.library.000
+COPY  FROM src/sshlib/build/68020/ssh.library      TO RAM:DCTelnet/Libs/ssh.library.020
+COPY  FROM src/sshlib/build/68040/ssh.library      TO RAM:DCTelnet/Libs/ssh.library.040
+COPY  FROM src/sshlib/build/68060/ssh.library      TO RAM:DCTelnet/Libs/ssh.library.060
 COPY  FROM LICENSE                                  TO RAM:DCTelnet/Docs
 COPY  FROM docs/DCTelnet.#?                         TO RAM:DCTelnet/Docs
 COPY  FROM docs/FILE_ID.DIZ                         TO RAM:

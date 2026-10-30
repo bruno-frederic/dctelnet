@@ -9,6 +9,7 @@ typedef int16_t  WORD;
 typedef uint8_t  UBYTE;
 typedef int16_t  BOOL;
 typedef unsigned char TEXT;
+typedef void *APTR;
 #define TRUE  1
 #define FALSE 0
 #endif
