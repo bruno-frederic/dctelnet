@@ -7,6 +7,7 @@
 #include <assert.h>
 #include <stdio.h>
 #include <string.h>
+#include <stdarg.h>
 #include <exec/types.h>
 #include "prefs.h"
 #include "charset.h"
@@ -20,11 +21,14 @@ struct RastPort { struct BitMap *BitMap; UBYTE Mask, FgPen, BgPen, DrawMode; WOR
 struct Rectangle { WORD MinX, MinY, MaxX, MaxY; };
 struct Layer { struct Layer *back; struct Rectangle bounds; };
 struct Layer_Info { struct Layer *top_layer; };
-struct Screen { WORD Width, Height; struct RastPort RastPort; struct Layer_Info LayerInfo; };
+struct ColorMap { int unused; };
+struct ViewPort { struct ColorMap *ColorMap; };
+struct Screen { WORD Width, Height; struct ViewPort ViewPort; struct RastPort RastPort; struct Layer_Info LayerInfo; };
 struct Window { WORD LeftEdge, TopEdge, Width, Height; BYTE BorderLeft, BorderTop, BorderRight, BorderBottom; struct Layer *WLayer; ULONG IDCMPFlags; };
 #define JAM1 0
 #define JAM2 1
 #define COMPLEMENT 2
+#define BMA_DEPTH 4
 #define BMA_FLAGS 12
 #define BMF_STANDARD 8
 
@@ -60,7 +64,28 @@ static void UnlockLayerInfo(struct Layer_Info *li)
     unlockedBusy += blitBusy;
     memcpy(atUnlock, planes, sizeof(atUnlock));
 }
-static ULONG GetBitMapAttr(struct BitMap *b, ULONG attr) { (void)b; return attr == BMA_FLAGS ? bitmapFlags : 0; }
+static ULONG GetBitMapAttr(struct BitMap *b, ULONG attr)
+{
+    return attr == BMA_FLAGS ? bitmapFlags : attr == BMA_DEPTH ? b->Depth : 0;
+}
+/* MA2-9: pens from the colour map, recorded. obtainFail makes the next
+ * ones fail (-1); the pen handed out is 50 + the count so far, mod 200. */
+#define TAG_END 0
+#define OBP_Precision 1
+#define PRECISION_EXACT 0
+#define OBP_FailIfBad 2
+static int obtainCalls, releaseCalls, obtainFail;
+static ULONG obtainR, obtainG, obtainB;
+static LONG obtainTags[4];
+static LONG ObtainBestPen(struct ColorMap *cm, ULONG r, ULONG g, ULONG b, ...)
+{
+    (void)cm;
+    obtainR = r; obtainG = g; obtainB = b;
+    obtainTags[0] = OBP_Precision; obtainTags[1] = PRECISION_EXACT; obtainTags[2] = OBP_FailIfBad; obtainTags[3] = 1;
+    obtainCalls++;
+    return obtainFail ? -1 : 50 + (obtainCalls - 1) % 200;
+}
+static void ReleasePen(struct ColorMap *cm, ULONG pen) { (void)cm; (void)pen; releaseCalls++; }
 static void SetFont(struct RastPort *rp, struct TextFont *tf) { rp->Font = tf; }
 static void SetAPen(struct RastPort *rp, ULONG pen) { rp->FgPen = (UBYTE)pen; }
 static void SetBPen(struct RastPort *rp, ULONG pen) { rp->BgPen = (UBYTE)pen; }
@@ -669,7 +694,7 @@ static void test_ma1_9_the_sample_art_file_gives_the_known_grid(void)
 /* --- MA2: the xterm personality, UTF-8 and the 256-colour / 24-bit pens --- */
 
 /* A fresh Unix terminal: xterm, UTF-8 characters, the default sixteen pens. */
-static void xterm_begin(void)
+static void xterm_begin_on(UBYTE depth, ULONG flags)
 {
     static const UWORD ansi[16] = {
         0x000, 0xA00, 0x0A0, 0xA50, 0x00A, 0xA0A, 0x0AA, 0xAAA,
@@ -677,6 +702,10 @@ static void xterm_begin(void)
     };
 
     setup();
+    bm.Depth = depth;
+    bitmapFlags = flags;
+    assert(term_init_area(&screen, &winRp, 0, TOP, 0, TOP, W, H - TOP, &font) == 0);
+    obtainCalls = releaseCalls = obtainFail = 0;
     memset(&prefs, 0, sizeof(prefs));
     prefs.State = APP_RENDERER_BUILTIN;
     prefs.TermType = TERMTYPE_UNIX;
@@ -684,6 +713,12 @@ static void xterm_begin(void)
     memcpy(prefs.AnsiColors, ansi, sizeof(ansi));
     assert(VtOpen() == 0);
     probes = 0;
+    calls[0] = 0;
+}
+
+static void xterm_begin(void)
+{
+    xterm_begin_on(4, BMF_STANDARD);
 }
 
 /* MA2-5 / MA2-11: the engine reads the UTF-8 bytes itself, also when a
@@ -877,6 +912,80 @@ static void test_ma2_8_256_colour_and_24_bit_give_the_same_pen(void)
     vt_put("\x1b[0mA");                          /* the defaults: pens 7 and 0 */
     assert(probes == 1 && probe[0].fg == 7 && probe[0].bg == 0);
     VtClose();
+}
+
+/* ---- MA2-9: 24-bit colour on a true-colour (RTG) screen ---- */
+static void tc_end(void)
+{
+    VtClose();
+    bm.Depth = 4;
+    bitmapFlags = BMF_STANDARD;
+}
+
+static void test_ma2_9_rtg_rgb_gets_an_obtained_pen_once_and_releases_it(void)
+{
+    xterm_begin_on(24, 0);
+    vt_put("\x1b[38;2;18;52;86mX");
+    assert(obtainCalls == 1);
+    assert(obtainR == 0x12121212UL && obtainG == 0x34343434UL && obtainB == 0x56565656UL);
+    assert(obtainTags[1] == PRECISION_EXACT && obtainTags[3] == 1);
+    assert(probes == 1 && probe[0].fg == 16 && term_pen_map[16] == 50);
+    assert(strstr(calls, "fg50 bg0"));                  /* SetAPen got the stub's pen */
+    vt_put("\x1b[38;2;18;52;86mY");
+    assert(obtainCalls == 1);                           /* cached */
+    vt_put("\x1b[38;5;196mZ");                          /* a second colour: a second pen */
+    assert(obtainCalls == 2 && probe[2].fg == 17);
+    tc_end();
+    assert(releaseCalls == 2);                          /* every obtained pen */
+    assert(vtTcN == 0);
+}
+
+static void test_ma2_9_planar_4_bit_never_asks_for_a_pen(void)
+{
+    xterm_begin();
+    vt_put("\x1b[38;2;255;0;0mA\x1b[38;5;21mB\x1b[31mC");
+    assert(obtainCalls == 0);
+    assert(probe[0].fg == Vt_PenFor(VT_COLOR_RGB | 0xFF0000UL, prefs.AnsiColors));
+    assert(probe[1].fg == Vt_PenFor(21, prefs.AnsiColors));
+    assert(probe[2].fg == 1);
+    VtClose();
+    assert(releaseCalls == 0);
+    /* the contrast: the same bytes on a true-colour screen do ask */
+    xterm_begin_on(24, 0);
+    vt_put("\x1b[38;2;255;0;0mA");
+    assert(obtainCalls == 1 && probe[0].fg == 16);
+    tc_end();
+}
+
+static void test_ma2_9_the_241st_colour_falls_back_to_the_16_pen_answer(void)
+{
+    char seq[40];
+    int i;
+
+    xterm_begin_on(24, 0);
+    for (i = 0; i < 240; i++) {
+        snprintf(seq, sizeof(seq), "\x1b[38;2;%d;%d;1mX", i, i / 2);
+        vt_put(seq);
+        calls[0] = 0;                                   /* the log is a fixed buffer */
+    }
+    assert(obtainCalls == 240);
+    probes = 0;
+    vt_put("\x1b[38;2;255;0;0mX");
+    assert(obtainCalls == 240);                         /* the cache is full: no 241st pen */
+    assert(probes == 1 && probe[0].fg == Vt_PenFor(VT_COLOR_RGB | 0xFF0000UL, prefs.AnsiColors));
+    tc_end();
+    assert(releaseCalls == 240);
+}
+
+static void test_ma2_9_a_failed_obtain_falls_back_to_the_16_pen_answer(void)
+{
+    xterm_begin_on(24, 0);
+    obtainFail = 1;
+    vt_put("\x1b[38;2;255;0;0mX");
+    assert(obtainCalls == 1 && probes == 1);
+    assert(probe[0].fg == Vt_PenFor(VT_COLOR_RGB | 0xFF0000UL, prefs.AnsiColors));
+    tc_end();
+    assert(releaseCalls == 0);
 }
 
 /* ---- MA3: mouse, title, bracketed paste through the real entry points ---- */
@@ -1174,6 +1283,10 @@ int main(void)
     test_ma2_14_apply_personality_keeps_the_switch();
     test_ma2_6_glyph_map_and_fallback();
     test_ma2_8_256_colour_and_24_bit_give_the_same_pen();
+    test_ma2_9_rtg_rgb_gets_an_obtained_pen_once_and_releases_it();
+    test_ma2_9_planar_4_bit_never_asks_for_a_pen();
+    test_ma2_9_the_241st_colour_falls_back_to_the_16_pen_answer();
+    test_ma2_9_a_failed_obtain_falls_back_to_the_16_pen_answer();
     test_ma3_1_2_osc_title_reaches_the_window_as_latin1();
     test_ma3_3_title_is_restored_on_reset_and_session_end();
     test_ma3_4_5_mouse_press_release_bytes_and_selection_fallthrough();

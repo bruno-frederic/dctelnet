@@ -44,6 +44,50 @@ static int VtScrollbackCap(void)
     return prefs.nScrollbackLines > 32767UL ? 32767 : (int)prefs.nScrollbackLines;
 }
 
+/* MA2-9: on a screen whose bitmap is deeper than 8 bits (RTG true or high
+ * colour) a 256-colour or RGB cell gets a pen of its own colour from
+ * ObtainBestPen(), cached per RGB in slots 16-255 of the engine's pen map.
+ * Every other screen, the default colours and c < 16 keep Vt_PenFor() and
+ * never call it (the 68000 path). */
+#define VT_TC_MAX 240
+static struct { ULONG rgb; LONG pen; } vtTc[VT_TC_MAX];
+static int vtTcN, vtTcLast;
+static BOOL vtTrueColour;
+
+/* The pen to draw colour c with. */
+static UBYTE VtPenFor(vt_color c)
+{
+    ULONG rgb;
+    LONG pen;
+    int i;
+
+    if (!vtTrueColour || c < 16 || c == VT_COLOR_DEFAULT || c == VT_COLOR_DEFAULT_BG)
+        return Vt_PenFor(c, prefs.AnsiColors);
+    rgb = c < 256 ? Vt_Xterm256Rgb((int)c) : (ULONG)VT_RGB_OF(c);
+    if (vtTcN && vtTc[vtTcLast].rgb == rgb)
+        return (UBYTE)(16 + vtTcLast);
+    for (i = 0; i < vtTcN; i++) {
+        if (vtTc[i].rgb == rgb) {
+            vtTcLast = i;
+            return (UBYTE)(16 + i);
+        }
+    }
+    if (vtTcN >= VT_TC_MAX)
+        return Vt_PenFor(c, prefs.AnsiColors);
+    pen = ObtainBestPen(scr->ViewPort.ColorMap,
+                        ((rgb >> 16) & 0xFF) * 0x01010101UL,
+                        ((rgb >> 8) & 0xFF) * 0x01010101UL,
+                        (rgb & 0xFF) * 0x01010101UL,
+                        OBP_Precision, PRECISION_EXACT, OBP_FailIfBad, TRUE, TAG_END);
+    if (pen < 0)
+        return Vt_PenFor(c, prefs.AnsiColors);
+    vtTc[vtTcN].rgb = rgb;
+    vtTc[vtTcN].pen = pen;
+    term_set_pen((UBYTE)(16 + vtTcN), (UBYTE)pen);
+    vtTcLast = vtTcN;
+    return (UBYTE)(16 + vtTcN++);
+}
+
 /* Draw cells x0 <= x < x1 of rows y0 <= y < y1 from the grid. */
 static void VtDraw(void *user, int x0, int y0, int x1, int y1)
 {
@@ -71,8 +115,8 @@ static void VtDraw(void *user, int x0, int y0, int x1, int y1)
             if (prefs.Blink == BLINK_STEADY)
                 cell.attr &= (vt_attr)~VT_ATTR_BLINK;
             vt_resolve_colors(vtTerm, &cell, &fg, &bg);
-            term_pen_fg = Vt_PenFor(fg, prefs.AnsiColors);
-            term_pen_bg = Vt_PenFor(bg, prefs.AnsiColors);
+            term_pen_fg = VtPenFor(fg);
+            term_pen_bg = VtPenFor(bg);
             atr_under = (c[x].attr & VT_ATTR_UNDERLINE) != 0;
             if (c[x].width == 0) {
                 /* the second cell of a wide character: the font's cells are
@@ -100,8 +144,8 @@ static void VtDraw(void *user, int x0, int y0, int x1, int y1)
             blank.fg = VT_COLOR_DEFAULT;
             blank.bg = VT_COLOR_DEFAULT;
             vt_resolve_colors(vtTerm, &blank, &bfg, &bbg);
-            term_pen_fg = Vt_PenFor(bfg, prefs.AnsiColors);
-            term_pen_bg = Vt_PenFor(bbg, prefs.AnsiColors);
+            term_pen_fg = VtPenFor(bfg);
+            term_pen_bg = VtPenFor(bbg);
             atr_under = 0;
             for (; x < x1; x++)
                 term_glyph((WORD)x, (UBYTE)' ');
@@ -317,6 +361,13 @@ static int VtOpen(void)
 
     vtScrollOff = 0;
     VtClose();      /* vt_new() draws through VtDraw(): vtTerm must not be the freed one */
+    vtTrueColour = FALSE;
+    if (scr && scr->RastPort.BitMap) {
+        struct BitMap *bm = scr->RastPort.BitMap;
+        ULONG depth = ((struct Library *)GfxBase)->lib_Version >= 39 ? GetBitMapAttr(bm, BMA_DEPTH) : bm->Depth;
+
+        vtTrueColour = depth > 8;
+    }
     vtTerm = vt_new(term_cols, term_rows, VtScrollbackCap(), &cb, NULL);
     if (!vtTerm)
         return 1;
@@ -345,6 +396,9 @@ static void VtRedraw(void)
 
 static void VtClose(void)
 {
+    while (vtTcN > 0)
+        ReleasePen(scr->ViewPort.ColorMap, (ULONG)vtTc[--vtTcN].pen);
+    vtTcLast = 0;
     if (vtTerm) {
         vt_free(vtTerm);
         vtTerm = NULL;
