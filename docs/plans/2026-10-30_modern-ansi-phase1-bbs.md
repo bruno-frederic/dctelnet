@@ -64,11 +64,14 @@ the gaps below are unproven or missing.
       the grid hash (CRC of all cells) equals a value fixed in the test, plus the count of
       VtDraw cells > 0 (sentinel).
       Evidence: tests/ansi_art/up_rough_banner.ans, grid CRC32 D5F60475, probes 1793
-- [ ] MA1-10 Rig test through DCTelnet: connect to the local test server that sends the
+- [x] MA1-10 Rig test through DCTelnet: connect to the local test server that sends the
       sample; read the screen back (wasabi text) and compare the 80x25 text to the grid
       expected by MA1-9; assert the DCTelnet debug sentinel (add a VtWrite call counter to
       DCTelnet-debug.h) is above 0 and the console.device write count is 0.
-
+      DONE 2026-10-30 rig 3 (68000 debug build, built-in renderer, 80x30 window): grid 80x30,
+      CRC D5F60475 == test_ma1_9, dbgVtWriteCount 9 > 0, dbgConWriteCount 0. The server sends
+      ESC[2J ESC[H first (the client prints its own connect lines into the same grid).
+      Evidence: thoughts/spot/ma1-10-rig.md. (Compared by CRC and text rows, 80x30 not 80x25.)
 ## Done
 
 All ten items DONE with evidence: host test output with the sentinel counts, rig run log
