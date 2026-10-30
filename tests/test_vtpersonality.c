@@ -75,11 +75,73 @@ static void test_engine_decodes_utf8_only_when_xterm_utf8_builtin(void)
     assert(!Vt_EngineDecodesUtf8(&p));
 }
 
+/* MA2-13: Unix with IBM PC becomes UTF-8; every other pair is unchanged. */
+static void test_ma2_13_unix_with_cp437_swaps_to_utf8_only(void)
+{
+    UBYTE t, c;
+
+    for (t = TERMTYPE_AUTO; t <= TERMTYPE_UNIX; t++)
+        for (c = CHARSET_CP437; c <= CHARSET_UTF8; c++) {
+            UBYTE want = (t == TERMTYPE_UNIX && c == CHARSET_CP437) ? CHARSET_UTF8 : c;
+            assert(Vt_CharsetAfterTermType(t, c) == want);
+        }
+}
+
+static BOOL sniff(struct VtUtf8Sniffer *s, const char *b)
+{
+    return Vt_Utf8SnifferFeed(s, (const UBYTE *)b, (long)strlen(b));
+}
+
+/* MA2-14: the detector alone. */
+static void test_ma2_14_first_valid_utf8_sequence_fires_once_invalid_bytes_never(void)
+{
+    struct VtUtf8Sniffer s;
+    struct PrefsStruct p;
+
+    Vt_Utf8SnifferReset(&s);
+    assert(!sniff(&s, "plain ascii"));
+    assert(sniff(&s, "\xE2\x96\x88"));
+    assert(!sniff(&s, "\xE2\x96\x88"));              /* decided: fires once */
+
+    Vt_Utf8SnifferReset(&s);                           /* split across reads */
+    assert(!sniff(&s, "\xE2\x96"));
+    assert(sniff(&s, "\x88"));
+
+    Vt_Utf8SnifferReset(&s);                           /* CP437 art first: never */
+    assert(!sniff(&s, "\xC9\xCD\xBB"));
+    assert(!sniff(&s, "\xE2\x96\x88"));
+
+    Vt_Utf8SnifferReset(&s);                           /* Latin-1 text: never */
+    assert(!sniff(&s, "\xE9t\xE9"));
+    assert(!sniff(&s, "\xE2\x96\x88"));
+
+    Vt_Utf8SnifferReset(&s);                           /* lone high byte, then valid */
+    assert(!sniff(&s, "\xB0"));
+    assert(!sniff(&s, "\xC3\xA9"));
+
+    Vt_Utf8SnifferReset(&s);                           /* reset on connect re-arms it */
+    assert(sniff(&s, "\xC3\xA9"));
+
+    memset(&p, 0, sizeof(p));
+    p.TermType = TERMTYPE_UNIX; p.Charset = CHARSET_CP437;
+    assert(Vt_Utf8SnifferActive(&p));
+    p.Charset = CHARSET_LATIN1;
+    assert(Vt_Utf8SnifferActive(&p));
+    p.Charset = CHARSET_UTF8;
+    assert(!Vt_Utf8SnifferActive(&p));
+    p.Charset = CHARSET_CP437; p.TermType = TERMTYPE_AUTO;
+    assert(!Vt_Utf8SnifferActive(&p));
+    p.TermType = TERMTYPE_BBS;
+    assert(!Vt_Utf8SnifferActive(&p));
+}
+
 int main(void)
 {
     test_terminal_type_picks_the_personality();
     test_engine_decodes_utf8_only_when_xterm_utf8_builtin();
     test_cp437_and_latin1_sites_are_pc_ansi_cp437();
+    test_ma2_13_unix_with_cp437_swaps_to_utf8_only();
+    test_ma2_14_first_valid_utf8_sequence_fires_once_invalid_bytes_never();
     printf("vtpersonality: all assertions passed\n");
     return 0;
 }

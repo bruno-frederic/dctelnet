@@ -177,6 +177,14 @@ static void VtApplyPersonality(void)
     vt_set_charset(vtTerm, pers.charset);
 }
 
+/* MA2-14: per connection, whether the host turned out to speak UTF-8. */
+static struct VtUtf8Sniffer vtSniff;
+
+static void VtSniffReset(void)
+{
+    Vt_Utf8SnifferReset(&vtSniff);
+}
+
 /* A new terminal for the grid term_init_area() has just laid out (and
  * cleared). 0 when it is ready. */
 static int VtOpen(void)
@@ -222,6 +230,10 @@ static void VtWrite(const UBYTE *data, long len)
 {
     VtLayersLock();
     cursor_hide();
+    /* Unix host, Character Set not UTF-8: the first valid UTF-8 sequence moves
+     * the engine to UTF-8 for the rest of the connection; prefs stay as they are. */
+    if (Vt_Utf8SnifferActive(&prefs) && Vt_Utf8SnifferFeed(&vtSniff, data, len))
+        vt_set_charset(vtTerm, VT_CS_UTF8);
     vt_write(vtTerm, data, len);
     term_flush();
     VtSyncCursor();

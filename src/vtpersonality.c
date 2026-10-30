@@ -34,3 +34,47 @@ BOOL Vt_EngineDecodesUtf8(const struct PrefsStruct *p)
     return (p->State & APP_RENDERER_BUILTIN) != 0
         && Vt_PersonalityFor(p).charset == VT_CS_UTF8;
 }
+
+UBYTE Vt_CharsetAfterTermType(UBYTE termType, UBYTE charset)
+{
+    if (termType == TERMTYPE_UNIX && charset == CHARSET_CP437)
+        return CHARSET_UTF8;
+    return charset;
+}
+
+void Vt_Utf8SnifferReset(struct VtUtf8Sniffer *s)
+{
+    s->need = 0;
+    s->done = FALSE;
+}
+
+BOOL Vt_Utf8SnifferActive(const struct PrefsStruct *p)
+{
+    return p->TermType == TERMTYPE_UNIX && p->Charset != CHARSET_UTF8;
+}
+
+BOOL Vt_Utf8SnifferFeed(struct VtUtf8Sniffer *s, const UBYTE *data, long len)
+{
+    long i;
+
+    for (i = 0; i < len && !s->done; i++) {
+        UBYTE c = data[i];
+
+        if (s->need) {
+            if ((c & 0xC0) != 0x80) {           /* sequence cut short: not UTF-8 */
+                s->done = TRUE;
+                return FALSE;
+            }
+            if (--s->need == 0) {
+                s->done = TRUE;
+                return TRUE;
+            }
+        } else if (c >= 0xC2 && c <= 0xF4) {
+            s->need = c < 0xE0 ? 1 : c < 0xF0 ? 2 : 3;
+        } else if (c >= 0x80) {                 /* stray continuation, C0, C1, F5..FF */
+            s->done = TRUE;
+            return FALSE;
+        }
+    }
+    return FALSE;
+}

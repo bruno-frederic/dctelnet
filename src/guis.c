@@ -26,6 +26,7 @@
 #include "prefs.h"
 #include "site_prefs.h"
 #include "charset.h"               // CHARSET_*
+#include "vtpersonality.h"          // Vt_CharsetAfterTermType()
 #include "prefs_file.h"             // Prefs_Palette()
 #include "Xem_wrapper.h"                 // SaveXemOptions()
 #include "listsel.h"
@@ -1538,6 +1539,7 @@ static BOOL EditEntrySettings(const char *entryName, struct SiteSettings *entry,
                 case SG_TERM_TERMTYPE:
                     OverrideGroup(&work, SITE_GROUP_TERMINAL);
                     work.prefs.TermType = (UBYTE)code;
+                    work.prefs.Charset = Vt_CharsetAfterTermType(work.prefs.TermType, work.prefs.Charset);   // MA2-13
                     break;
                 case SG_TERM_ECHO:
                     SetFlagFromGadget(&work, SITE_GROUP_TERMINAL, SG_TERM_ECHO, APP_LOCAL_ECHO, FALSE);
