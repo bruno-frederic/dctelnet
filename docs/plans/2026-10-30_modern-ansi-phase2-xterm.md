@@ -65,7 +65,7 @@ pens the screen really has.
 - [x] MA2-8 VtDraw uses the mapper instead of `& 15`. Host test: "\e[38;5;196m" and
       "\e[38;2;255;0;0m" give the same term_pen_fg on a 16-pen screen; assert the number.
       DONE: test_term_engine.c test_ma2_8_256_colour_and_24_bit_give_the_same_pen
-- [ ] MA2-9 24-bit on a true-colour (RTG) screen: RGB drawn directly or through
+- [ ] MA2-9 [host code DONE f2b18b4 + retro32-term 0a02a3a, 4 host tests; rig RTG pixel read open] 24-bit on a true-colour (RTG) screen: RGB drawn directly or through
       allocated pens; rig test on an RTG screen: a cell written "\e[38;2;18;52;86m" reads
       back the right RGB from the bitmap pixel (assert 0x12 0x34 0x56).
       Design (2026-10-30, owner: implement in #56): only on a screen whose bitmap is
