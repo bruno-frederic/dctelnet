@@ -3950,7 +3950,7 @@ static void PasteClipboard(void)
                 if (STATE_IS(APP_LOCAL_ECHO))
                     EchoWrite((UBYTE *)out, (long)m);
                 if (vtTerm && STATE_IS(APP_RENDERER_BUILTIN))
-                    m = Vt_PasteBracket(vtTerm, out, m);    // MA3-7/8: ?2004
+                    m = Vt_PasteBracket(vtTerm, out, m, prefs.Charset == CHARSET_UTF8);    // MA3-7/8: ?2004
                 TCPSend(out, (long)m);
             }
             else

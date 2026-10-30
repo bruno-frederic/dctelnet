@@ -45,6 +45,6 @@ void Vt_TitleText(const char *utf8, const char *own, char *out, size_t max);
 /* MA3-7/8: pasted bytes in buf (len used, 12 bytes spare) wrapped in the
  * bracketed-paste markers when ?2004 is on; ESC is removed from the text then,
  * so it cannot hold the end marker. Returns the new length (len when off). */
-size_t Vt_PasteBracket(const vt_term *t, char *buf, size_t len);
+size_t Vt_PasteBracket(const vt_term *t, char *buf, size_t len, int utf8);
 
 #endif

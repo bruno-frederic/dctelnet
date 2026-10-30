@@ -88,7 +88,7 @@ void Vt_TitleText(const char *utf8, const char *own, char *out, size_t max)
     }
 }
 
-size_t Vt_PasteBracket(const vt_term *t, char *buf, size_t len)
+size_t Vt_PasteBracket(const vt_term *t, char *buf, size_t len, int utf8)
 {
     UBYTE pre[8], post[8];
     int np = vt_encode_paste(t, 0, pre);
@@ -97,9 +97,19 @@ size_t Vt_PasteBracket(const vt_term *t, char *buf, size_t len)
 
     if (np == 0)
         return len;
-    for (i = 0; i < len; i++)
-        if (buf[i] != 0x1B)
-            buf[n++] = buf[i];
+    for (i = 0; i < len; i++) {
+        unsigned char c = (unsigned char)buf[i];
+
+        if (c == 0x1B)
+            continue;                   /* ESC [ 2 0 1 ~ would end the paste */
+        if (!utf8 && c == 0x9B)
+            continue;                   /* 8-bit CSI, same effect on a C1 host */
+        if (utf8 && c == 0xC2 && i + 1 < len && (unsigned char)buf[i + 1] == 0x9B) {
+            i++;                        /* U+009B, the UTF-8 form of 8-bit CSI */
+            continue;
+        }
+        buf[n++] = buf[i];
+    }
     memmove(buf + np, buf, n);
     memcpy(buf, pre, (size_t)np);
     memcpy(buf + np + n, post, (size_t)nq);
