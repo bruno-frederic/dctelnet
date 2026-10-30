@@ -130,20 +130,20 @@ static void test_the_builtin_renderer_gets_its_own_ansi_pens_on_deep_screens(voi
 /* 16 colours, built-in renderer: the same 16 colours in Intuition's 4-colour
  * order, so that window interiors (pen 0) are grey and not ANSI black. */
 static void test_the_builtin_renderer_puts_the_ui_colours_on_pens_0_to_3_on_16_colours(void) {
-    static const UBYTE want[16] = { 1, 4, 5, 6, 3, 7, 8, 0, 9, 10, 11, 12, 13, 14, 15, 2 };
+    static const UBYTE want[16] = { 1, 4, 5, 6, 7, 8, 9, 0, 10, 11, 12, 13, 3, 14, 15, 2 };
     UBYTE pens[16], seen[16];
     int i;
 
     memset(pens, 0xEE, sizeof(pens));
     assert(Palette_OwnPens(APP_RENDERER_BUILTIN, 4, pens));
     for (i = 0; i < 16; i++) assert(pens[i] == want[i]);
-    assert(pens[7] == 0 && pens[0] == 1 && pens[15] == 2 && pens[4] == 3);
+    assert(pens[7] == 0 && pens[0] == 1 && pens[15] == 2 && pens[12] == 3);
     memset(seen, 0, sizeof(seen));
     for (i = 0; i < 16; i++) seen[pens[i]]++;
     for (i = 0; i < 16; i++) assert(seen[i] == 1);      /* no colour lost, none shared */
     /* the twelve others ascend in ANSI order */
     {
-        static const int others[12] = { 1, 2, 3, 5, 6, 8, 9, 10, 11, 12, 13, 14 };
+        static const int others[12] = { 1, 2, 3, 4, 5, 6, 8, 9, 10, 11, 13, 14 };
         for (i = 0; i < 12; i++) assert(pens[others[i]] == 4 + i);
     }
 }
