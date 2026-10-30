@@ -5,8 +5,8 @@ CFLAGS := -std=c99 -Wall -Wextra -Werror -I../src
 
 TESTS := test_petscii_modules test_petscii_dispatch test_prefs_file test_site_prefs test_palette test_screenfont test_progdir test_listsel test_textedit test_dsr test_keys test_clip test_ansiscan test_ticks test_rexx test_rlogin test_ansimusic test_booklist test_crypto test_ssh test_knownhosts test_term_engine test_renderer test_vtpersonality test_vtpens test_vtinput
 
-.PHONY: all clean check-encoding check-fonts check-debug-stack
-all: $(TESTS) check-encoding check-fonts check-debug-stack
+.PHONY: all clean check-encoding check-fonts check-debug-stack check-currenttime-null
+all: $(TESTS) check-encoding check-fonts check-debug-stack check-currenttime-null
 	@for t in $(TESTS); do echo "--- $$t ---"; ./$$t || exit 1; done
 
 # Check the file are standard printable ASCII or ISO-8859
@@ -44,6 +44,14 @@ check-debug-stack:
 	@cd ../src && if LC_ALL=C grep --quiet --text 'CreateNewProc' *.c \
 		&& LC_ALL=C grep --text 'DEBUG_CFLAGS' Makefile | LC_ALL=C grep --quiet -- '[[:space:]]-stack-check'; then \
 		echo "ERROR: src/Makefile debug flags use vbcc -stack-check, which breaks code run by a second process (CreateNewProc)."; \
+		exit 1; \
+	fi
+
+# Kickstart 3.1 CurrentTime() writes both out-parameters, so NULL for either one is a write to
+# address 0 (MuForce LONG WRITE). Host tests cannot link intuition.library, hence a source check.
+check-currenttime-null:
+	@cd ../src && if LC_ALL=C grep --text --line-number --extended-regexp 'CurrentTime[[:space:]]*\([^;]*NULL' *.c; then \
+		echo "ERROR: CurrentTime() called with a NULL argument; pass a dummy ULONG."; \
 		exit 1; \
 	fi
 
