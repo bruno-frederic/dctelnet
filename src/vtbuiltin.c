@@ -23,6 +23,10 @@
 #include "vtengine.h"
 #include "glyphmap.h"
 #include "vtpersonality.h"
+#include "vtpens.h"
+
+/* The glyph for a code point the font cannot show: the font's '?', one cell. */
+#define VT_FALLBACK_GLYPH ((UBYTE)'?')
 
 static vt_term *vtTerm;
 
@@ -53,16 +57,22 @@ static void VtDraw(void *user, int x0, int y0, int x1, int y1)
             if (prefs.Blink == BLINK_STEADY)
                 cell.attr &= (vt_attr)~VT_ATTR_BLINK;
             vt_resolve_colors(vtTerm, &cell, &fg, &bg);
-            term_pen_fg = (UBYTE)(fg & 15);
-            term_pen_bg = (UBYTE)(bg & 15);
+            term_pen_fg = Vt_PenFor(fg, prefs.AnsiColors);
+            term_pen_bg = Vt_PenFor(bg, prefs.AnsiColors);
             atr_under = (c[x].attr & VT_ATTR_UNDERLINE) != 0;
-            if (ch >= 0x20 && ch < 0x7F) {
+            if (c[x].width == 0) {
+                /* the second cell of a wide character: the font's cells are
+                 * one wide, the first cell drew the fallback glyph */
+                code = (UBYTE)' ';
+            } else if (c[x].width > 1) {
+                code = VT_FALLBACK_GLYPH;
+            } else if (ch >= 0x20 && ch < 0x7F) {
                 code = (UBYTE)ch;
             } else {
                 /* The font is drawn as the BBS sent it: every byte the
                  * engine took as a CP437 character maps back to itself. */
                 vt_glyph g = vt_map_glyph(ch, VT_ENC_CP437);
-                code = g.kind == VT_GLYPH_FONT ? g.code : (UBYTE)'?';
+                code = g.kind == VT_GLYPH_FONT ? g.code : VT_FALLBACK_GLYPH;
             }
             term_glyph((WORD)x, code);
         }
@@ -155,21 +165,38 @@ static void VtSyncCursor(void)
     cursor_visible = (vt_modes(vtTerm) & VT_MODE_CURSOR_VISIBLE) != 0;
 }
 
+/* MA2-14: per connection, whether the host turned out to speak UTF-8. */
+static struct VtUtf8Sniffer vtSniff;
+
+/* The personality and character set the preferences ask for (Terminal >
+ * Terminal Type, Character Set): at open, and when either menu changes. */
+static void VtApplyPersonality(void)
+{
+    struct VtPersonality pers = Vt_PersonalityForConnection(&prefs, &vtSniff);
+
+    if (!vtTerm)
+        return;
+    vt_set_personality(vtTerm, pers.personality);
+    vt_set_charset(vtTerm, pers.charset);
+}
+
+static void VtSniffReset(void)
+{
+    Vt_Utf8SnifferReset(&vtSniff);
+}
+
 /* A new terminal for the grid term_init_area() has just laid out (and
  * cleared). 0 when it is ready. */
 static int VtOpen(void)
 {
     static const vt_callbacks cb = { VtDraw, VtScroll, VtReply, NULL, NULL, NULL, NULL };
-    struct VtPersonality pers;
 
     if (vtTerm)
         vt_free(vtTerm);
     vtTerm = vt_new(term_cols, term_rows, 0, &cb, NULL);
     if (!vtTerm)
         return 1;
-    pers = Vt_PersonalityFor(&prefs);
-    vt_set_personality(vtTerm, pers.personality);
-    vt_set_charset(vtTerm, pers.charset);
+    VtApplyPersonality();
     VtSyncCursor();
     return 0;
 }
@@ -203,7 +230,46 @@ static void VtWrite(const UBYTE *data, long len)
 {
     VtLayersLock();
     cursor_hide();
-    vt_write(vtTerm, data, len);
+    /* Unix host, Character Set not UTF-8: the first valid UTF-8 sequence moves
+     * the engine to UTF-8 for the rest of the connection; prefs stay as they are.
+     * A trailing incomplete prefix is held back until the next write decides it. */
+    if (Vt_Utf8SnifferActive(&prefs) || vtSniff.nheld) {
+        UBYTE pre[3];
+        long npre, ndata;
+
+        if (Vt_Utf8SnifferFeed(&vtSniff, &prefs, data, len, pre, &npre, &ndata))
+            vt_set_charset(vtTerm, VT_CS_UTF8);
+        if (npre)
+            vt_write(vtTerm, pre, npre);
+        vt_write(vtTerm, data, ndata);
+    } else
+        vt_write(vtTerm, data, len);
+    term_flush();
+    VtSyncCursor();
+    cursor_show();
+    VtLayersUnlock();
+}
+
+/* A prefix VtWrite held back is waiting to be drawn: the receive loop polls
+ * instead of sleeping, so VtFlushHeld() runs as soon as the socket is idle. */
+static BOOL VtHeldPending(void)
+{
+    return vtSniff.nheld != 0;
+}
+
+/* The receive loop found no more pending data: a prefix VtWrite held back
+ * waits for nothing, so it is drawn as the current character set. */
+static void VtFlushHeld(void)
+{
+    UBYTE pre[3];
+    long n;
+
+    if (!vtSniff.nheld)
+        return;
+    n = Vt_Utf8SnifferTakeHeld(&vtSniff, pre);
+    VtLayersLock();
+    cursor_hide();
+    vt_write(vtTerm, pre, n);
     term_flush();
     VtSyncCursor();
     cursor_show();
