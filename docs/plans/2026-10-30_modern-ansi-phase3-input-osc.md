@@ -28,22 +28,22 @@ existing reply path (VtReply, vtbuiltin.c:128-135, to send_data).
 
 ## Checklist
 
-- [ ] MA3-1 OSC title: "\e]0;hello\a" through VtWrite calls VtTitle once with "hello"
+- [x] MA3-1 [DONE a1c56a7: test_ma3_1_2_osc_title_reaches_the_window_as_latin1] OSC title: "\e]0;hello\a" through VtWrite calls VtTitle once with "hello"
       (sentinel count 1, string asserted). Also OSC 2 and the ST terminator.
-- [ ] MA3-2 Title reaches the window: the setter is called with "hello"; rig check reads the
+- [ ] MA3-2 [host DONE a1c56a7: test_ma3_1_2_osc_title_reaches_the_window_as_latin1 (host half; rig half open)] Title reaches the window: the setter is called with "hello"; rig check reads the
       window title text back. UTF-8 title "caf\xC3\xA9" is shown as Latin-1 0xE9.
-- [ ] MA3-3 Title is restored to DCTelnet's own text when the session ends or resets.
-- [ ] MA3-4 Mouse press: with "\e[?1000h\e[?1006h" sent, a left click at cell (10,5) sends
+- [x] MA3-3 [DONE a1c56a7: test_ma3_3_title_is_restored_on_reset_and_session_end] Title is restored to DCTelnet's own text when the session ends or resets.
+- [x] MA3-4 [DONE a1c56a7: test_ma3_4_5_mouse_press_release_bytes_and_selection_fallthrough] Mouse press: with "\e[?1000h\e[?1006h" sent, a left click at cell (10,5) sends
       the bytes of "\e[<0;11;6M" (SGR, 1-based). Assert the exact bytes at send_data.
       Release gives "\e[<0;11;6m". Wheel and right button codes asserted (64/65, 2).
-- [ ] MA3-5 With no mouse mode on, a click still starts a selection (existing behaviour
+- [x] MA3-5 [DONE a1c56a7: test_ma3_4_5_mouse_press_release_bytes_and_selection_fallthrough] With no mouse mode on, a click still starts a selection (existing behaviour
       unchanged; sentinel: send_data not called).
-- [ ] MA3-6 Motion modes: ?1002 reports drag only while a button is held, ?1003 reports all
+- [x] MA3-6 [DONE a1c56a7: test_ma3_6_motion_modes_and_the_mouse_move_flag, test_ma3_6_idcmp_move_only_for_motion_modes] Motion modes: ?1002 reports drag only while a button is held, ?1003 reports all
       motion. IDCMP_MOUSEMOVE enabled only while the mode is on; asserted by the flag set
       on the window after the mode switch.
-- [ ] MA3-7 Bracketed paste: with "\e[?2004h", pasting "abc" sends "\e[200~abc\e[201~"
+- [x] MA3-7 [DONE a1c56a7: test_ma3_7_bracketed_paste_wraps_exactly] Bracketed paste: with "\e[?2004h", pasting "abc" sends "\e[200~abc\e[201~"
       (exact bytes). Without the mode, only "abc".
-- [ ] MA3-8 Paste cannot inject the end marker: a clipboard text holding "\e[201~" has the
+- [x] MA3-8 [DONE a1c56a7: test_ma3_8_paste_cannot_inject_the_end_marker] Paste cannot inject the end marker: a clipboard text holding "\e[201~" has the
       ESC removed or the marker stripped; assert the output bytes.
 - [ ] MA3-9 Reachability: rig run, DCTelnet connected to a test server that enables
       ?1000/?1006/?2004, sets a title, and logs what it receives. Click and paste on the rig
