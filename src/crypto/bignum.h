@@ -34,6 +34,14 @@ struct BnScratch
     bn_limb table[16][BN_MAX_LIMBS];        /* x^0 .. x^15, Montgomery form */
 };
 
+/* TRUE when the CPU has the 64-bit mulu.l in hardware: 68020 to 68040.
+ * The 68060 traps on it (060 support library, over 100 cycles per limb),
+ * so it gets the 16-bit mulu.w loops like the 68000. attnFlags is
+ * ExecBase->AttnFlags. */
+#define BN_AFF_68020 (1U << 1)                  /* AFF_68020, exec/execbase.h */
+#define BN_AFF_68060 (1U << 7)                  /* AFF_68060 */
+BOOL Bn_HasMul64(UWORD attnFlags);
+
 /* r[0..n) += a[0..n) * w; returns the limb carried out (n >= 1). On the
  * Amiga a call through a pointer straight into the assembly for this CPU
  * (set on the first call): a C wrapper cost more than a limb product. */

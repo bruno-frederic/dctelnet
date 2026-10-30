@@ -156,6 +156,18 @@ static void test_muladd(void)
     assert(memcmp(r, mulAddWant, sizeof(r)) == 0);
 }
 
+/* The asm loop pick: 64-bit mulu.l only where the CPU has it in hardware.
+ * AttnFlags as exec sets them: each CPU flag implies the ones below it. */
+static void test_mul64_pick(void)
+{
+    assert(!Bn_HasMul64(0x0000));               /* 68000 */
+    assert(!Bn_HasMul64(0x0001));               /* 68010 */
+    assert(Bn_HasMul64(0x0003));                /* 68020 */
+    assert(Bn_HasMul64(0x0007));                /* 68030 */
+    assert(Bn_HasMul64(0x000F | 0x0040));       /* 68040 + FPU40 */
+    assert(!Bn_HasMul64(0x008F | 0x0040));      /* 68060: traps on 64-bit mulu.l */
+}
+
 /* The squaring (half the products, doubled, plus the diagonal) equals
  * the plain product, also with every bit set, where each carry is largest. */
 static void test_square_matches_multiply(void)
@@ -269,6 +281,7 @@ int main(void)
     test_x25519();
     test_x25519_iterated();
     test_muladd();
+    test_mul64_pick();
     test_square_matches_multiply();
     test_modexp_sizes();
     test_group14_modexp();

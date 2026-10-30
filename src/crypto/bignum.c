@@ -1,8 +1,13 @@
 /* src/crypto/bignum.c -- modular exponentiation for SSH (Montgomery). */
 #include "bignum.h"
 
+BOOL Bn_HasMul64(UWORD attnFlags)
+{
+    return (attnFlags & BN_AFF_68020) && !(attnFlags & BN_AFF_68060);
+}
+
 #ifdef BN_ASM
-/* bn_muladd.s: each loop with mulu.w (68000) and with mulu.l (68020+). */
+/* bn_muladd.s: each loop with mulu.w (68000, 68060) and with mulu.l (68020-68040). */
 bn_limb Bn_MulAdd000(__reg("a0") bn_limb *r, __reg("a1") const bn_limb *a,
                      __reg("d0") UWORD n, __reg("d1") bn_limb w);
 bn_limb Bn_MulAdd020(__reg("a0") bn_limb *r, __reg("a1") const bn_limb *a,
@@ -17,7 +22,7 @@ static BOOL Is020(void)
 #ifdef BN_FORCE_000                             /* tests: the 68000 loops on any CPU */
     return FALSE;
 #else
-    return (SysBase->AttnFlags & AFF_68020) != 0;
+    return Bn_HasMul64(SysBase->AttnFlags);
 #endif
 }
 
