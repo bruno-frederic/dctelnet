@@ -1,6 +1,7 @@
-/* src/sshconn.h -- DCTelnet's SSH connection: the protocol engine (ssh.c)
+/* src/sshconn.h -- DCTelnet's SSH connection: the protocol engine (ssh.library)
  * on the TCP socket, with the Amiga side of it -- host key requester and
- * PROGDIR:KnownHosts, login requesters, random seeding.
+ * PROGDIR:KnownHosts, login requesters, random seeding. The library is opened
+ * by SshConn_Start() and closed by SshConn_End().
  *
  * Every socket read and write of a session goes through here once
  * SshConn_Start() ran: SshConn_Read() returns terminal bytes as recv()
@@ -20,7 +21,8 @@ BOOL SshConn_Active(void);
 BOOL SshConn_ClosedByServer(void);
 
 /* After the TCP connect: starts the SSH login. FALSE (with a message
- * printed) if it cannot. user "" is asked for when the login starts. */
+ * printed) if it cannot -- no ssh.library says "SSH needs LIBS:ssh.library"
+ * and tries nothing. user "" is asked for when the login starts. */
 BOOL SshConn_Start(const char *host, UWORD port, const char *user, const char *pass,
                    const char *term, UWORD cols, UWORD rows);
 

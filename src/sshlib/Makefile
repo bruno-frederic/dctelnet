@@ -35,7 +35,7 @@ ENGINE_CFLAGS := -maxoptpasses=100
 
 ENGINE_C := $(SRC)/ssh.c $(wildcard $(SRC)/crypto/*.c)
 
-.PHONY: all clean test $(CPUS)
+.PHONY: all clean test test-conn $(CPUS)
 all: $(CPUS)
 
 build/aos68k.cfg: aos68k.cfg.in
@@ -85,6 +85,22 @@ test: build/$(TEST_CPU)/ssh.library build/aos68k.cfg
 	vc $(CFLAGS) -cpu=$(TEST_CPU) -Iinclude -o build/test/ssh_lib_test test/ssh_lib_test.c
 	$(VAMOS) -C $(VAMOS_CPU) -V sshtest:$(CURDIR)/build/test -V sshrec:$(abspath $(CURDIR)/../../tests/ssh_sessions) -a LIBS:sshtest:LIBS \
 		sshtest:ssh_lib_test sshrec:curve25519_password_rekey.bin
+
+# The application's side: ../sshconn.c itself (DCTelnet.h and all) with the
+# requesters, console and sockets replaced (test/sshconn_test.c), run once
+# with ssh.library in LIBS: and once with an empty LIBS: (a directory of its
+# own: vamos finds the library in a sibling LIBS directory otherwise).
+APP_INC := -I$(SRC) -I$(SRC)/third_party/retro32-term -I$(SRC)/third_party/Xem/INCLUDE \
+           -I$(SRC)/third_party/Xpr/include -I$(SRC)/third_party/netinclude \
+           -I$(SRC)/third_party/ReqTools/include
+test-conn: build/$(TEST_CPU)/ssh.library build/aos68k.cfg
+	@mkdir -p build/test/LIBS build/test-nolib/LIBS
+	cp build/$(TEST_CPU)/ssh.library build/test/LIBS/ssh.library
+	vc +build/aos68k.cfg $(WARN) -O3 -cpu=$(TEST_CPU) -DBUILD_HASH=test -DCOMPILER_STRING=test $(APP_INC) -Iinclude \
+		-o build/test/sshconn_test test/sshconn_test.c $(SRC)/sshconn.c $(SRC)/knownhosts.c
+	$(VAMOS) -C $(VAMOS_CPU) -V sshtest:$(CURDIR)/build/test -a LIBS:sshtest:LIBS sshtest:sshconn_test present
+	cp build/test/sshconn_test build/test-nolib/sshconn_test
+	$(VAMOS) -C $(VAMOS_CPU) -V sshtest:$(CURDIR)/build/test-nolib -a LIBS:sshtest:LIBS sshtest:sshconn_test missing
 
 clean:
 	rm -rf build

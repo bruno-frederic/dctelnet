@@ -16,9 +16,9 @@
 #include "prefs.h"
 #include "requesters.h"
 #include "utils.h"
-#include "ssh.h"
+#include <libraries/ssh.h>
+#include <proto/ssh.h>
 #include "knownhosts.h"
-#include "crypto/random.h"
 #include "sshconn.h"
 
 #define KNOWN_HOSTS_FILE "PROGDIR:KnownHosts"
@@ -26,7 +26,8 @@
 
 extern struct ExecBase *SysBase;
 
-static struct Ssh *ssh;                 // NULL: no SSH session
+struct Library *SshBase;                // ssh.library, open while a session lives
+static struct SshSession *ssh;          // NULL: no SSH session
 static char sshHost[128];
 static UWORD sshPort;
 static UBYTE raw[4096];                 // socket bytes for the engine
@@ -46,7 +47,7 @@ static void StirTime(void)
     now.beam = VBeamPos();
     now.idle = SysBase->IdleCount;
     now.disp = SysBase->DispCount;
-    Random_Add(&now, sizeof(now));
+    Ssh_AddEntropy((const UBYTE *)&now, sizeof(now));
 }
 
 /* The engine's bytes to the socket. */
@@ -61,7 +62,8 @@ static BOOL SendOut(void)
     return TRUE;
 }
 
-static void Note(struct Ssh *s, const char *text)
+// The library calls these with register arguments (libraries/ssh.h).
+static void __SAVE_DS__ __ASM__ Note(__REG__(a0, struct SshSession *s), __REG__(a1, const char *text))
 {
     LocalFmt("\x1b[0;36mSSH: %s...\x1b[0m\r\n", (char *)text);
 }
@@ -85,7 +87,8 @@ static void RememberHostKey(const char *text, LONG len, BOOL whole, const char *
 }
 
 /* The server's host key: known and the same, or trusted by the user. */
-static BOOL CheckHostKey(struct Ssh *s, const UBYTE *blob, size_t len, const UBYTE fp[32])
+static BOOL __SAVE_DS__ __ASM__ CheckHostKey(__REG__(a0, struct SshSession *s), __REG__(a1, const UBYTE *blob),
+                                             __REG__(d0, ULONG len), __REG__(a2, const UBYTE *fp))
 {
     // PROGDIR:KnownHosts, whole (none: no text). One that is there but was
     // not read (too large, no memory) checks as new and is not rewritten.
@@ -123,7 +126,8 @@ static BOOL CheckHostKey(struct Ssh *s, const UBYTE *blob, size_t len, const UBY
 }
 
 /* A login question from the server: the password, or a keyboard-interactive prompt. */
-static BOOL Ask(struct Ssh *s, const char *prompt, BOOL echo, char *out, size_t max)
+static BOOL __SAVE_DS__ __ASM__ Ask(__REG__(a0, struct SshSession *s), __REG__(a1, const char *prompt),
+                                    __REG__(d0, BOOL echo), __REG__(a2, char *out), __REG__(d1, ULONG max))
 {
     static char title[160];
 
@@ -140,24 +144,41 @@ BOOL SshConn_Active(void)
 
 BOOL SshConn_ClosedByServer(void)
 {
-    return !ssh || ssh->state != SSH_CLOSED || ssh->serverClosed;
+    return !ssh || ssh->state != SSH_STATE_CLOSED || ssh->serverClosed;
 }
 
 BOOL SshConn_Start(const char *host, UWORD port, const char *user, const char *pass,
                    const char *term, UWORD cols, UWORD rows)
 {
-    ssh = (struct Ssh *)AllocVec(sizeof(struct Ssh), MEMF_ANY | MEMF_CLEAR);
-    if (!ssh)
+    static const struct SshCallbacks callbacks = { CheckHostKey, Ask, Note };
+    struct SshNewSession ns;
+
+    SshBase = OpenLibrary((STRPTR)SSH_NAME, 1);
+    if (!SshBase)
     {
-        LocalFmt("SSH: not enough memory (%ld bytes).\r\n", (LONG)sizeof(struct Ssh));
+        InfoReq(Parent(), "SSH needs LIBS:ssh.library");
         return FALSE;
     }
     strlcpy(sshHost, host, sizeof(sshHost));
     sshPort = port;
     StirTime();
-    Random_Add(host, strlen(host));
-    Ssh_Init(ssh, user ? user : "", pass, term, cols, rows, !(SysBase->AttnFlags & AFF_68020), CheckHostKey, Ask);
-    ssh->note = Note;
+    Ssh_AddEntropy((const UBYTE *)host, (ULONG)strlen(host));
+    memset(&ns, 0, sizeof(ns));
+    ns.version = SSH_NEWSESSION_VERSION;
+    ns.user = user ? user : "";
+    ns.pass = pass;
+    ns.term = term;
+    ns.cols = cols;
+    ns.rows = rows;
+    ns.slowCpu = !(SysBase->AttnFlags & AFF_68020);
+    ns.callbacks = &callbacks;
+    ssh = Ssh_Create(&ns);
+    if (!ssh)
+    {
+        LocalFmt("SSH: not enough memory.\r\n");
+        SshConn_End(TRUE);
+        return FALSE;
+    }
     if (!SendOut())
     {
         SshConn_End(TRUE);
@@ -174,7 +195,7 @@ static LONG Fill(void)
     if (n <= 0)
         return n;
     StirTime();
-    while (at < n && ssh->state != SSH_CLOSED)
+    while (at < n && ssh->state != SSH_STATE_CLOSED)
     {
         at += (LONG)Ssh_Receive(ssh, raw + at, (ULONG)(n - at));
         if (!SendOut())
@@ -189,7 +210,7 @@ LONG SshConn_Read(UBYTE *buf, LONG size)
 
     if (!ssh->textLen)
     {
-        if (ssh->state == SSH_CLOSED)
+        if (ssh->state == SSH_STATE_CLOSED)
             return 0;
         n = Fill();
         if (n <= 0)
@@ -200,7 +221,7 @@ LONG SshConn_Read(UBYTE *buf, LONG size)
         return -1;
     if (n)
         return n;
-    if (ssh->state == SSH_CLOSED)
+    if (ssh->state == SSH_STATE_CLOSED)
     {
         if (ssh->error[0])
             LocalFmt("\r\n\x1b[0;31m%s\x1b[0m\r\n", ssh->error);
@@ -216,7 +237,7 @@ BOOL SshConn_Buffered(void)
 
 LONG SshConn_Peek(void)
 {
-    if (!ssh->textLen && ssh->state != SSH_CLOSED && Fill() < 0)
+    if (!ssh->textLen && ssh->state != SSH_STATE_CLOSED && Fill() < 0)
         return -1;
     return (LONG)ssh->textLen;
 }
@@ -246,14 +267,19 @@ void SshConn_KeepAlive(void)
 
 void SshConn_End(BOOL quiet)
 {
-    if (!ssh)
-        return;
-    if (!quiet)
+    if (ssh)
     {
-        Ssh_Disconnect(ssh);
-        SendOut();
+        if (!quiet)
+        {
+            Ssh_Disconnect(ssh);
+            SendOut();
+        }
+        Ssh_Delete(ssh);                            // keys and the password go with it
+        ssh = NULL;
     }
-    memset(ssh, 0, sizeof(struct Ssh));             // keys and the password go with it
-    FreeVec(ssh);
-    ssh = NULL;
+    if (SshBase)
+    {
+        CloseLibrary(SshBase);
+        SshBase = NULL;
+    }
 }
