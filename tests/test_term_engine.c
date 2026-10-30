@@ -177,6 +177,7 @@ static void probe_glyph(WORD x, UBYTE ch)
 /* The sentinel for VtOpen: what the global vtTerm is while vt_new() draws. */
 static int newCalls;
 static int newSawTerm;
+static int newSb;                   /* the scrollback line count VtOpen handed vt_new */
 static vt_term *probe_new(int cols, int rows, int sb, const vt_callbacks *cb, void *user);
 #define vt_new(c, r, sb, cb, u) probe_new((c), (r), (sb), (cb), (u))
 #include "../src/vtbuiltin.c"
@@ -185,6 +186,7 @@ static vt_term *probe_new(int cols, int rows, int sb, const vt_callbacks *cb, vo
 static vt_term *probe_new(int cols, int rows, int sb, const vt_callbacks *cb, void *user)
 {
     newCalls++;
+    newSb = sb;
     newSawTerm = vtTerm != NULL;    /* vt_new() draws through VtDraw() right here */
     return vt_new(cols, rows, sb, cb, user);
 }
@@ -968,6 +970,182 @@ static void test_ma3_6_motion_modes_and_the_mouse_move_flag(void)
     VtClose();
 }
 
+/* --- MA4: engine scrollback for the built-in renderer --- */
+
+#define SB_ART_ROWS 200
+
+static void sb_begin(ULONG state, ULONG lines)
+{
+    setup();
+    memset(&prefs, 0, sizeof(prefs));
+    prefs.State = state;
+    prefs.nScrollbackLines = lines;
+    assert(VtOpen() == 0);
+    probes = 0;
+}
+
+/* 200 numbered rows ("L001" ... "L200") through VtWrite, no trailing newline. */
+static void sb_art(int rows)
+{
+    char line[16];
+    int i;
+
+    for (i = 1; i <= rows; i++) {
+        snprintf(line, sizeof(line), "%sL%03d", i > 1 ? "\r\n" : "", i);
+        vt_put(line);
+    }
+}
+
+/* The text of grid row y as last drawn: the probe's glyphs of that row. */
+static void sb_screen_row(int y, char out[5])
+{
+    int i;
+
+    memset(out, ' ', 4);
+    out[4] = 0;
+    for (i = 0; i < probes && i < PROBE_MAX; i++)
+        if (probe[i].y == y && probe[i].x < 4)
+            out[probe[i].x] = (char)probe[i].code;
+}
+
+static void sb_expect_rows(int first)
+{
+    char want[8], got[5];
+    int y;
+
+    for (y = 0; y < term_rows; y++) {
+        snprintf(want, sizeof(want), "L%03d", first + y);
+        sb_screen_row(y, got);
+        assert(strcmp(want, got) == 0);
+    }
+}
+
+static void test_ma4_2_long_art_fills_the_engine_scrollback_and_only_when_asked(void)
+{
+    int n;
+    const vt_cell *r;
+
+    sb_begin(APP_SCROLLBACK_ENABLED, 500);
+    assert(newSb == 500 && term_rows == 30);
+    sb_art(SB_ART_ROWS);
+    assert(vt_scrollback_lines(vtTerm) == SB_ART_ROWS - term_rows);    /* 170 */
+    r = vt_row(vtTerm, -(SB_ART_ROWS - term_rows), &n);                  /* the oldest line */
+    assert(r && r[0].ch == 'L' && r[1].ch == '0' && r[2].ch == '0' && r[3].ch == '1');
+    r = vt_row(vtTerm, 0, &n);                                           /* grid top: row 171 */
+    assert(r && r[1].ch == '1' && r[2].ch == '7' && r[3].ch == '1');
+    VtClose();
+
+    /* off by default: no scrollback memory is asked for, none is kept */
+    sb_begin(0, 500);
+    assert(newSb == 0);
+    sb_art(SB_ART_ROWS);
+    assert(vt_scrollback_lines(vtTerm) == 0);
+    VtClose();
+    sb_begin(APP_SCROLLBACK_ENABLED, 0);                                  /* on, zero lines */
+    assert(newSb == 0);
+    VtClose();
+
+    /* the preference is read at every VtOpen: the full reopen DCTelnet does on a toggle */
+    sb_begin(APP_SCROLLBACK_ENABLED, 40);
+    assert(newSb == 40);
+    prefs.State = 0;
+    assert(VtOpen() == 0 && newSb == 0);
+    prefs.State = APP_SCROLLBACK_ENABLED;
+    prefs.nScrollbackLines = 100000UL;
+    assert(VtOpen() == 0 && newSb == 32767);                              /* clamped to the engine's int */
+    VtClose();
+}
+
+static void test_ma4_3_shift_page_up_draws_the_previous_page_and_page_down_returns(void)
+{
+    char got[5];
+    int i;
+
+    sb_begin(APP_SCROLLBACK_ENABLED, 500);
+    sb_art(SB_ART_ROWS);                       /* grid shows L171..L200 */
+    probes = 0;
+    assert(VtScrollKey(0x48, FALSE) == FALSE); /* plain Page Up belongs to the host */
+    assert(probes == 0 && vtScrollOff == 0);
+
+    assert(VtScrollKey(0x48, TRUE) == TRUE);   /* sentinel: the scrollback draw ran */
+    assert(vtScrollOff == term_rows - 1 && probes == term_rows * term_cols);
+    sb_expect_rows(171 - (term_rows - 1));     /* L142 .. L171 */
+    assert(cursor_visible == 0);               /* no cursor in the history */
+
+    for (i = 0; i < 20; i++)                   /* far past the top: clamped */
+        VtScrollKey(0x48, TRUE);
+    assert(vtScrollOff == SB_ART_ROWS - term_rows);
+    probes = 0;
+    VtScrollView(0);
+    VtScrollKey(0x48, TRUE);                   /* already at the top: nothing redrawn */
+    assert(probes == 0);
+    probes = 0;
+    VtScrollView(-vtScrollOff);                /* a full redraw of the top view first */
+    VtScrollView(SB_ART_ROWS);
+    sb_expect_rows(1);                         /* the art's first row is the top row */
+
+    probes = 0;
+    while (vtScrollOff)
+        VtScrollKey(0x49, TRUE);
+    probes = 0;
+    VtScrollView(0);
+    VtRedraw();                                /* the live grid, as the engine holds it */
+    sb_expect_rows(171);
+    assert(vtScrollOff == 0);
+
+    /* output while scrolled back snaps to the live view first */
+    VtScrollKey(0x48, TRUE);
+    assert(vtScrollOff != 0);
+    probes = 0;
+    vt_put("\r\nL201");
+    assert(vtScrollOff == 0);
+    sb_screen_row(term_rows - 1, got);
+    assert(strcmp(got, "L201") == 0);
+
+    /* the wheel: 3 lines per click, not while a program owns the mouse */
+    assert(VtScrollKey(0x7A, FALSE) == TRUE && vtScrollOff == 3);
+    assert(VtScrollKey(0x7B, FALSE) == TRUE && vtScrollOff == 0);
+    vt_put("\033[?1000h");
+    assert(VtScrollKey(0x7A, FALSE) == FALSE && vtScrollOff == 0);
+    VtClose();
+
+    /* scrollback off: the keys are not taken, they go to the host */
+    sb_begin(0, 500);
+    sb_art(SB_ART_ROWS);
+    assert(VtScrollKey(0x48, TRUE) == FALSE && vtScrollOff == 0);
+    VtClose();
+}
+
+static void test_ma4_3_a_scrollback_line_narrower_than_the_grid_is_blank_filled(void)
+{
+    sb_begin(APP_SCROLLBACK_ENABLED, 500);
+    sb_art(60);
+    vt_resize(vtTerm, term_cols - 10, term_rows);
+    probes = 0;
+    VtDraw(NULL, 0, 0, term_cols, term_rows);
+    assert(probes == term_rows * term_cols);
+    assert(probe[term_cols - 1].code == ' ' && probe[term_cols - 1].x == term_cols - 1);
+    VtClose();
+}
+
+static void test_ma4_4_the_alt_screen_leaves_the_scrollback_alone(void)
+{
+    int before;
+
+    sb_begin(APP_SCROLLBACK_ENABLED, 500);
+    sb_art(100);
+    before = vt_scrollback_lines(vtTerm);
+    assert(before == 100 - term_rows);
+    vt_put("\033[?1049h");
+    sb_art(SB_ART_ROWS);                       /* a full-screen program scrolling */
+    assert(vt_scrollback_lines(vtTerm) == before);
+    probes = 0;
+    assert(VtScrollKey(0x48, TRUE) == TRUE && vtScrollOff == 0 && probes == 0);  /* nothing to show */
+    vt_put("\033[?1049l");
+    assert(vt_scrollback_lines(vtTerm) == before);
+    VtClose();
+}
+
 int main(void)
 {
     test_the_terminal_starts_below_the_title_bar_and_matches_the_window_rows();
@@ -1000,6 +1178,10 @@ int main(void)
     test_ma3_3_title_is_restored_on_reset_and_session_end();
     test_ma3_4_5_mouse_press_release_bytes_and_selection_fallthrough();
     test_ma3_6_motion_modes_and_the_mouse_move_flag();
+    test_ma4_2_long_art_fills_the_engine_scrollback_and_only_when_asked();
+    test_ma4_3_shift_page_up_draws_the_previous_page_and_page_down_returns();
+    test_ma4_3_a_scrollback_line_narrower_than_the_grid_is_blank_filled();
+    test_ma4_4_the_alt_screen_leaves_the_scrollback_alone();
     printf("term_engine: all assertions passed\n");
     return 0;
 }

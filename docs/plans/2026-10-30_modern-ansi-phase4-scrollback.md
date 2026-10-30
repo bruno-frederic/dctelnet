@@ -29,15 +29,26 @@ Where does scrollback live for the built-in renderer?
 
 - [x] MA4-1 Owner answers the question above; the answer is written here (2026-10-30:
       option 1, engine scrollback).
-- [ ] MA4-2 Test with art longer than a screen: 200 rows through VtWrite; vt_scrollback_lines
+- [x] MA4-2 (test_ma4_2_long_art_fills_the_engine_scrollback_and_only_when_asked: 170 lines, oldest = L001; pref off: vt_new gets 0) Test with art longer than a screen: 200 rows through VtWrite; vt_scrollback_lines
       equals 200 - term_rows (number asserted) and the top row text is row 1 of the art.
-- [ ] MA4-3 Scrolling back: Page Up draws the previous page; the rows on screen equal the
+- [x] MA4-3 (test_ma4_3_shift_page_up_draws_the_previous_page_and_page_down_returns, test_ma4_3_a_scrollback_line_narrower_than_the_grid_is_blank_filled; the key is Shift+Page Up/Down and the wheel, plain Page Up still goes to the host) Scrolling back: Page Up draws the previous page; the rows on screen equal the
       art rows asserted by text; returning to the live view redraws the grid.
-- [ ] MA4-4 Alt screen: with "\e[?1049h" the scrollback count does not change.
+- [x] MA4-4 (test_ma4_4_the_alt_screen_leaves_the_scrollback_alone) Alt screen: with "\e[?1049h" the scrollback count does not change.
 - [ ] MA4-5 Reachability: rig run, DCTelnet connected to the server sending the long art;
       scroll back with the real key; screen text read back equals the asserted rows;
       sentinel: scrollback draw count > 0.
 
+## Memory and switch (owner constraint: 68000)
+
+Scrollback is optional and off by default: vt_new gets prefs.nScrollbackLines when
+APP_SCROLLBACK_ENABLED is set, else 0 (nothing allocated). Cost per line: 16 bytes per
+cell x columns = 1280 bytes at 80 columns, plus about 12 bytes of header and ring slot.
+The pref is read at every VtOpen; a toggle (menu Scrollback History, ScrollBack Lines..)
+sets shouldRestart, the existing full-reopen path (CloseDisplay/OpenDisplay), so the
+grid is cleared on a toggle as it is for the other built-in terminal settings.
+The old console.device scrollback window has its own key path (scrollbackWin only); the
+built-in renderer does not reuse it.
+
 ## Done
 
-5 of 5. MA4-2 to MA4-5 stay OPEN, not exempted, until MA4-1 is answered.
+4 of 5. MA4-5 (rig) open.
