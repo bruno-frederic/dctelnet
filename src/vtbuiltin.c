@@ -250,6 +250,13 @@ static void VtWrite(const UBYTE *data, long len)
     VtLayersUnlock();
 }
 
+/* A prefix VtWrite held back is waiting to be drawn: the receive loop polls
+ * instead of sleeping, so VtFlushHeld() runs as soon as the socket is idle. */
+static BOOL VtHeldPending(void)
+{
+    return vtSniff.nheld != 0;
+}
+
 /* The receive loop found no more pending data: a prefix VtWrite held back
  * waits for nothing, so it is drawn as the current character set. */
 static void VtFlushHeld(void)
