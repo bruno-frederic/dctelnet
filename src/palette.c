@@ -74,6 +74,53 @@ BOOL Palette_AnsiPens(UWORD depth, UBYTE pens[16])
     return TRUE;
 }
 
+BOOL Palette_OwnPens(ULONG state, UWORD depth, UBYTE pens[16])
+{
+    if (!(state & (APP_RENDERER_IBMCON_DEVICE | APP_RENDERER_BUILTIN)))
+        return FALSE;
+    return Palette_AnsiPens(depth, pens);
+}
+
+// Intuition's default colours (the 4-colour Workbench palette) and which of
+// them each DrawInfo pen takes, in DrawInfo order: DETAIL, BLOCK, TEXT, SHINE,
+// SHADOW, FILL, FILLTEXT, BACKGROUND, HIGHLIGHTTEXT, BARDETAIL, BARBLOCK,
+// BARTRIM.
+#define UI_GREY  0x0AAA
+#define UI_BLACK 0x0000
+#define UI_WHITE 0x0FFF
+// Saturated blue: of the ANSI blues it picks the dark one, which white text
+// stays legible on (Intuition's grey-blue would pick the bright blue).
+#define UI_BLUE  0x000F
+static const UWORD uiColours[12] = {
+    UI_GREY,  UI_BLACK, UI_BLACK, UI_WHITE, UI_BLACK, UI_BLUE,
+    UI_WHITE, UI_GREY,  UI_WHITE, UI_BLACK, UI_WHITE, UI_BLACK
+};
+
+static ULONG rgb4Distance(UWORD a, UWORD b)
+{
+    LONG dr = (LONG)((a >> 8) & 0xF) - (LONG)((b >> 8) & 0xF);
+    LONG dg = (LONG)((a >> 4) & 0xF) - (LONG)((b >> 4) & 0xF);
+    LONG db = (LONG)(a & 0xF) - (LONG)(b & 0xF);
+
+    return (ULONG)(dr * dr + dg * dg + db * db);
+}
+
+void Palette_UiPens(const UWORD penColours[16], UWORD out[PALETTE_UI_PENS])
+{
+    int i, pen;
+
+    for (i = 0; i < 12; i++)
+    {
+        int best = 0;
+
+        for (pen = 1; pen < 16; pen++)
+            if (rgb4Distance(penColours[pen], uiColours[i]) < rgb4Distance(penColours[best], uiColours[i]))
+                best = pen;
+        out[i] = (UWORD)best;
+    }
+    out[12] = 0xFFFF;
+}
+
 static const char *const ansiNames[16] =
 {
     "Black", "Red", "Green", "Brown", "Blue", "Magenta", "Cyan", "White",
