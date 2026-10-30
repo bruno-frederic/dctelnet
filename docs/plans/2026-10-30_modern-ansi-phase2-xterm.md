@@ -68,12 +68,12 @@ pens the screen really has.
 - [ ] MA2-9 24-bit on a true-colour (RTG) screen: RGB drawn directly or through
       allocated pens; rig test on an RTG screen: a cell written "\e[38;2;18;52;86m" reads
       back the right RGB from the bitmap pixel (assert 0x12 0x34 0x56).
-- [ ] MA2-10 24-bit on a palette screen (AGA, 16 and 256 pens): rig test, pen chosen is the
+- [ ] MA2-10 [16 pens DONE rig 3 2026-10-30: 0xFF0000 -> pen 9 = host Vt_PenFor on the rig palette, 0x123456 -> 8 both, no crash; 256 pens open] 24-bit on a palette screen (AGA, 16 and 256 pens): rig test, pen chosen is the
       mapper's answer (number from MA2-7), no crash, cell shows the colour.
 - [x] MA2-11 UTF-8 split across reads: bytes E2 | 96 88 sent in two VtWrite calls give
       one cell 0x2588 (the engine keeps state).
       DONE: test_term_engine.c test_ma2_5_11_utf8_reaches_the_grid_whole_even_split_across_writes
-- [ ] MA2-12 Reachability: rig test through DCTelnet connected to tools/ssh_test_server.py
+- [x] MA2-12 (rig 3, 2026-10-30, Charset UTF-8: rows read back as box drawing + "café üñ" codepoints 250C 2500 2510 2502 2514 2518 E9 FC F1; VtWrite count 8, console writes 0, UTF-8->CP437 count 0; 256-colour 196 -> pen 9, 24-bit 0x123456 -> pen 8) Reachability: rig test through DCTelnet connected to tools/ssh_test_server.py
       (or a telnet echo server) sending a UTF-8 file with box drawing, accents, a 256 and a
       24-bit colour line. Screen text read back equals the expected rows; sentinel: VtWrite
       call count > 0, DisplayBytes UTF-8->CP437 count == 0 on this path.

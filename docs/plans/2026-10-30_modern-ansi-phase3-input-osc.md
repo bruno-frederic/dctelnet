@@ -30,7 +30,7 @@ existing reply path (VtReply, vtbuiltin.c:128-135, to send_data).
 
 - [x] MA3-1 [DONE a1c56a7: test_ma3_1_2_osc_title_reaches_the_window_as_latin1] OSC title: "\e]0;hello\a" through VtWrite calls VtTitle once with "hello"
       (sentinel count 1, string asserted). Also OSC 2 and the ST terminator.
-- [ ] MA3-2 [host DONE a1c56a7: test_ma3_1_2_osc_title_reaches_the_window_as_latin1 (host half; rig half open)] Title reaches the window: the setter is called with "hello"; rig check reads the
+- [x] MA3-2 [host DONE a1c56a7: test_ma3_1_2_osc_title_reaches_the_window_as_latin1; rig 3 2026-10-30: OSC 0 "caf\xC3\xA9" read back from the window title as 63 61 66 E9] Title reaches the window: the setter is called with "hello"; rig check reads the
       window title text back. UTF-8 title "caf\xC3\xA9" is shown as Latin-1 0xE9.
 - [x] MA3-3 [DONE a1c56a7: test_ma3_3_title_is_restored_on_reset_and_session_end] Title is restored to DCTelnet's own text when the session ends or resets.
 - [x] MA3-4 [DONE a1c56a7: test_ma3_4_5_mouse_press_release_bytes_and_selection_fallthrough] Mouse press: with "\e[?1000h\e[?1006h" sent, a left click at cell (10,5) sends
