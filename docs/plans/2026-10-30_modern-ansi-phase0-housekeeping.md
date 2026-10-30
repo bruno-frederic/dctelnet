@@ -35,14 +35,16 @@ The repo is in a state where the later phases can land cleanly and nothing is lo
       renderers in bit order after the work in MA1-MA3.
       Test exists (test_renderer "cycle visits all four", plus RendererLabelsMatch in
       guis.c). Rerun after MA1-MA3, then tick.
-- [ ] MA0-3 Pin: the vtcon submodule commit used by the finished work is committed in
+- [x] MA0-3 Pin: the vtcon submodule commit used by the finished work is committed in
       the superproject; `git submodule status` shows it with no `+` or `-`.
-- [ ] MA0-4 Pin retro32-term (branch heads/feat/layer-aware, not a release): record its
+      DONE 2026-10-30: vtcon 3247ba91, no `+`/`-`. Push pending owner OK: 3247ba91 is on
+      no UP-Term remote branch yet (planned branch dctelnet/vtcon-pin).
+- [x] MA0-4 Pin retro32-term (branch heads/feat/layer-aware, not a release): record its
       commit in the same commit as MA0-3.
-      Now: vtcon 232065f, retro32-term 2aec2dbf, both clean; 2aec2dbf is on GitHub
-      spotUP/retro32-term feat/layer-aware. .gitmodules still says
-      branch = feat/dctelnet-integration, and the submodule origin points at the missing
-      /Users/spot/Code/dctelnet-v2/src/third_party/retro32-term. Fix both with the pin.
+      DONE 2026-10-30: retro32-term 0a02a3a (MA2-9 pen map, one commit ahead of
+      origin/feat/layer-aware 2aec2db; owner chose to fast-forward feat/layer-aware at the
+      #56 push). .gitmodules branch = feat/layer-aware; submodule origin is
+      git@github.com:spotUP/retro32-term.git.
 - [x] MA0-5 LICENSE restored to the original upstream text (owner decision, todos.md:89).
       Ask the owner for the source text if the first commit before 33147c6 does not hold it.
       DONE: LICENSE at HEAD is byte-identical to 33147c6 ("Add License", Bruno FREDERIC);

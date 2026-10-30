@@ -1,7 +1,7 @@
 [submodule "src/third_party/retro32-term"]
 	path = src/third_party/retro32-term
 	url = ../retro32-term.git
-	branch = feat/dctelnet-integration
+	branch = feat/layer-aware
 [submodule "src/third_party/vtcon"]
 	path = src/third_party/vtcon
 	url = https://github.com/spotUP/UP-Term.git
