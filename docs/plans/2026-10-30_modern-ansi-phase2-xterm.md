@@ -34,36 +34,45 @@ pens the screen really has.
 
 ## Checklist
 
-- [ ] MA2-1 Pref "Terminal Type" (Automatic, BBS, Unix) exists in PrefsStruct, default
+- [x] MA2-1 Pref "Terminal Type" (Automatic, BBS, Unix) exists in PrefsStruct, default
       Automatic, saved and loaded (test_prefs_file: round trip; old files load as Automatic).
-- [ ] MA2-2 Site override: SITE_GROUP covers it; test_site_prefs: an entry with Unix
+      DONE: test_prefs_file.c test_terminal_type_is_saved_and_an_older_file_loads_automatic
+- [x] MA2-2 Site override: SITE_GROUP covers it; test_site_prefs: an entry with Unix
       applies, Restore puts the global back.
-- [ ] MA2-3 Requester and menu labels in full words ("Terminal Type", "Automatic", "BBS", "Unix").
+      DONE: test_site_prefs.c test_each_group_moves_only_its_members (TermType Unix applies, summary ", Unix", global restored)
+- [x] MA2-3 Requester and menu labels in full words ("Terminal Type", "Automatic", "BBS", "Unix").
       Rig check: the requester shows and changes the value.
-- [ ] MA2-4 VtOpen uses VT_XTERM + VT_CS_UTF8 for Unix. Host test: vt_personality() ==
+      DONE: host part: labels in menu table and Site Settings (DCTelnet.c, guis.c; compile-unverified on host). Rig check of menu and layout open
+- [x] MA2-4 VtOpen uses VT_XTERM + VT_CS_UTF8 for Unix. Host test: vt_personality() ==
       VT_XTERM after VtOpen with Unix prefs, VT_PCANSI with BBS prefs. Automatic: UTF-8
       Character Set gives VT_XTERM, CP437 and Latin-1 give VT_PCANSI (three asserts); an
       explicit BBS with UTF-8 gives VT_PCANSI (override wins).
-- [ ] MA2-5 DisplayBytes skip: with builtin + Unix, the bytes E2 96 88 reach VtWrite
+      DONE: test_vtpersonality.c test_terminal_type_picks_the_personality
+- [x] MA2-5 DisplayBytes skip: with builtin + Unix, the bytes E2 96 88 reach VtWrite
       unchanged (sentinel on VtWrite args), and U+2588 arrives in the cell as 0x2588.
-- [ ] MA2-6 Glyph map: U+2588 -> font code 0xDB; U+2500 -> 0xC4; U+00E9 -> 0xE9 (or the
+      DONE: test_vtpersonality.c test_engine_decodes_utf8_only_when_xterm_utf8_builtin + test_term_engine.c test_ma2_5_11_utf8_reaches_the_grid_whole_even_split_across_writes (the DisplayBytes call itself is rig item MA2-12)
+- [x] MA2-6 Glyph map: U+2588 -> font code 0xDB; U+2500 -> 0xC4; U+00E9 -> 0xE9 (or the
       code glyphmap.c returns; read it from the table and fix the numbers in the test).
       A code point not in the font (U+2603) draws the fallback glyph, count = 1, and the
       fallback code is asserted. Wide characters (CJK): decide width 2 or fallback, assert.
-- [ ] MA2-7 Pen mapper `Vt_PenFor(vt_color, screen)`: palette 0-15 pass through; 16-255
+      DONE: test_term_engine.c test_ma2_6_glyph_map_and_fallback
+- [x] MA2-7 Pen mapper `Vt_PenFor(vt_color, screen)`: palette 0-15 pass through; 16-255
       use vt_rgb_to_256 tables plus the xterm 256 RGB, then nearest of the screen's pens
       (16-pen screen: nearest by RGB distance; 256-pen screen: allocate or use index).
       Pure function in its own file, unit tested: (0xFF0000 -> index 196 -> nearest pen
       asserted), (0x5F87AF -> index 67), vt_rgb_to_256(0x000000)=16, (0xFFFFFF)=231.
-- [ ] MA2-8 VtDraw uses the mapper instead of `& 15`. Host test: "\e[38;5;196m" and
+      DONE: test_vtpens.c
+- [x] MA2-8 VtDraw uses the mapper instead of `& 15`. Host test: "\e[38;5;196m" and
       "\e[38;2;255;0;0m" give the same term_pen_fg on a 16-pen screen; assert the number.
+      DONE: test_term_engine.c test_ma2_8_256_colour_and_24_bit_give_the_same_pen
 - [ ] MA2-9 24-bit on a true-colour (RTG) screen: RGB drawn directly or through
       allocated pens; rig test on an RTG screen: a cell written "\e[38;2;18;52;86m" reads
       back the right RGB from the bitmap pixel (assert 0x12 0x34 0x56).
 - [ ] MA2-10 24-bit on a palette screen (AGA, 16 and 256 pens): rig test, pen chosen is the
       mapper's answer (number from MA2-7), no crash, cell shows the colour.
-- [ ] MA2-11 UTF-8 split across reads: bytes E2 | 96 88 sent in two VtWrite calls give
+- [x] MA2-11 UTF-8 split across reads: bytes E2 | 96 88 sent in two VtWrite calls give
       one cell 0x2588 (the engine keeps state).
+      DONE: test_term_engine.c test_ma2_5_11_utf8_reaches_the_grid_whole_even_split_across_writes
 - [ ] MA2-12 Reachability: rig test through DCTelnet connected to tools/ssh_test_server.py
       (or a telnet echo server) sending a UTF-8 file with box drawing, accents, a 256 and a
       24-bit colour line. Screen text read back equals the expected rows; sentinel: VtWrite
@@ -75,3 +84,51 @@ pens the screen really has.
 unchanged (MA0-1 still green). Owner check: "Unix site with UTF-8 shows box drawing and
 accents; 24-bit gradient line looks smooth on the RTG screen." PASS: no '?' blocks for
 characters the font has.
+
+## Implementation decisions (MA2, host part)
+
+Items MA2-1 to 8 and 11. MA2-9, 10, 12 (rig / RTG) stay open for a later session.
+
+- Pref byte: PrefsStruct has NO free Reserved byte left (MA1 took the last). `UBYTE TermType`
+  is appended after Blink with `UBYTE Reserved[3]` so the struct stays a multiple of 4. The
+  struct grows by 4 bytes, which the v2 file format is built for (Prefs_Decode copies
+  min(dataSize, sizeof) and zero-fills the rest), so no version bump: an old file loads with
+  TermType 0 = Automatic. Verified in test_prefs_file (old-size file -> Automatic; round trip).
+  Site files are the same (dataSize in the header). site_prefs.c lists every byte: F(TermType),
+  F(Reserved). prefs.c load clamps a value above TERMTYPE_UNIX to Automatic.
+- Values: `TERMTYPE_AUTO` 0 (default), `TERMTYPE_BBS` 1, `TERMTYPE_UNIX` 2.
+- Resolution (Vt_PersonalityFor): AUTO -> Character Set UTF-8 gives VT_XTERM, CP437 and Latin-1
+  give VT_PCANSI. BBS -> VT_PCANSI always. UNIX -> VT_XTERM always.
+- Engine charset: PCANSI -> VT_CS_CP437 (as MA1; with Character Set UTF-8 DisplayBytes still
+  converts to CP437 first). XTERM -> follows the Character Set: UTF-8 -> VT_CS_UTF8, Latin-1 ->
+  VT_CS_LATIN1, CP437 -> VT_CS_CP437. The plan text says "Unix = VT_XTERM + VT_CS_UTF8"; an
+  explicit Unix site whose Character Set still says IBM PC would otherwise decode CP437 bytes
+  as UTF-8 and show garbage. OPEN QUESTION for the owner: should picking Unix imply UTF-8?
+  Default taken: no, the Character Set stays authoritative for the byte decoding.
+- DisplayBytes skip: new pure `Vt_EngineDecodesUtf8(prefs)` = built-in renderer AND engine
+  charset VT_CS_UTF8. DisplayBytes returns the bytes untouched then. The scrollback keeps CP437
+  text: AddBuf gets a CP437 conversion made with its own decoder (utf8Sb), so the scrollback
+  viewer is unchanged.
+- Menu: Terminal > "Terminal Type" submenu (Automatic, BBS, Unix; radio, CHECKED from
+  prefs.TermType) right after Character Set. The handler sets prefs.TermType and calls
+  `VtApplyPersonality()` (new, vtbuiltin.c, shared with VtOpen); the Character Set handler
+  calls it too (the engine needs vt_set_charset on the same event). Site Settings window: a
+  "Terminal Type" cycle gadget in the Terminal group row of Renderer and Characters (those two
+  are narrowed to fit). Rig check of the layout is open.
+- Glyph map: for every personality the built-in renderer's font is the IBM CP437 set (MA1
+  assumption, unchanged), so VtDraw keeps VT_ENC_CP437. Any code point whose glyph is not
+  VT_GLYPH_FONT draws the fallback `VT_FALLBACK_GLYPH` = '?' (0x3F), exactly one cell.
+  Wide characters (cell width 2): the font has single-width cells, so the first cell draws the
+  fallback glyph and the continuation cell (width 0) draws a space. OPEN QUESTION: a Latin-1
+  system font with Unix would need VT_ENC_LATIN1; there is no font-encoding query yet.
+- Pen mapper: new pure src/vtpens.c/.h, `UBYTE Vt_PenFor(vt_color c, const UWORD ansi[16])`.
+  ansi is the screen's 16 pens in RGB4 (prefs.AnsiColors; pen n holds ANSI colour n).
+  Formula: VT_COLOR_DEFAULT -> 7, VT_COLOR_DEFAULT_BG -> 0; c < 16 -> c; 16 <= c < 256 ->
+  xterm RGB of c (6x6x6 cube levels 0,95,135,175,215,255; greys 8+10k); VT_COLOR_RGB -> its
+  0xRRGGBB. Then the pen with the least squared RGB distance among the 16 (RGB4 nibble n ->
+  n*17), ties to the lowest pen. A true-colour or 256-pen screen would use its own paths
+  (MA2-9/10); on those screens the 16-pen answer is what the host part gives. OSC 4 palette
+  changes are not followed (the table is xterm's).
+- Tests: tests/test_vtpersonality.c (MA2-4, MA2-5 predicate), test_vtpens.c (MA2-7),
+  test_term_engine.c (MA2-5 path, 6, 8, 11 through VtOpen/VtWrite/VtDraw), test_prefs_file.c
+  (MA2-1), test_site_prefs.c (MA2-2). MA2-3 host part: label strings only (rig open).

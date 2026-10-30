@@ -23,6 +23,10 @@
 #include "vtengine.h"
 #include "glyphmap.h"
 #include "vtpersonality.h"
+#include "vtpens.h"
+
+/* The glyph for a code point the font cannot show: the font's '?', one cell. */
+#define VT_FALLBACK_GLYPH ((UBYTE)'?')
 
 static vt_term *vtTerm;
 
@@ -53,16 +57,22 @@ static void VtDraw(void *user, int x0, int y0, int x1, int y1)
             if (prefs.Blink == BLINK_STEADY)
                 cell.attr &= (vt_attr)~VT_ATTR_BLINK;
             vt_resolve_colors(vtTerm, &cell, &fg, &bg);
-            term_pen_fg = (UBYTE)(fg & 15);
-            term_pen_bg = (UBYTE)(bg & 15);
+            term_pen_fg = Vt_PenFor(fg, prefs.AnsiColors);
+            term_pen_bg = Vt_PenFor(bg, prefs.AnsiColors);
             atr_under = (c[x].attr & VT_ATTR_UNDERLINE) != 0;
-            if (ch >= 0x20 && ch < 0x7F) {
+            if (c[x].width == 0) {
+                /* the second cell of a wide character: the font's cells are
+                 * one wide, the first cell drew the fallback glyph */
+                code = (UBYTE)' ';
+            } else if (c[x].width > 1) {
+                code = VT_FALLBACK_GLYPH;
+            } else if (ch >= 0x20 && ch < 0x7F) {
                 code = (UBYTE)ch;
             } else {
                 /* The font is drawn as the BBS sent it: every byte the
                  * engine took as a CP437 character maps back to itself. */
                 vt_glyph g = vt_map_glyph(ch, VT_ENC_CP437);
-                code = g.kind == VT_GLYPH_FONT ? g.code : (UBYTE)'?';
+                code = g.kind == VT_GLYPH_FONT ? g.code : VT_FALLBACK_GLYPH;
             }
             term_glyph((WORD)x, code);
         }
@@ -155,21 +165,30 @@ static void VtSyncCursor(void)
     cursor_visible = (vt_modes(vtTerm) & VT_MODE_CURSOR_VISIBLE) != 0;
 }
 
+/* The personality and character set the preferences ask for (Terminal >
+ * Terminal Type, Character Set): at open, and when either menu changes. */
+static void VtApplyPersonality(void)
+{
+    struct VtPersonality pers = Vt_PersonalityFor(&prefs);
+
+    if (!vtTerm)
+        return;
+    vt_set_personality(vtTerm, pers.personality);
+    vt_set_charset(vtTerm, pers.charset);
+}
+
 /* A new terminal for the grid term_init_area() has just laid out (and
  * cleared). 0 when it is ready. */
 static int VtOpen(void)
 {
     static const vt_callbacks cb = { VtDraw, VtScroll, VtReply, NULL, NULL, NULL, NULL };
-    struct VtPersonality pers;
 
     if (vtTerm)
         vt_free(vtTerm);
     vtTerm = vt_new(term_cols, term_rows, 0, &cb, NULL);
     if (!vtTerm)
         return 1;
-    pers = Vt_PersonalityFor(&prefs);
-    vt_set_personality(vtTerm, pers.personality);
-    vt_set_charset(vtTerm, pers.charset);
+    VtApplyPersonality();
     VtSyncCursor();
     return 0;
 }

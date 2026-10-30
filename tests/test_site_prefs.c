@@ -114,6 +114,21 @@ static void test_each_group_moves_only_its_members(void) {
         assert(strstr(summary, ", No iCE Colours"));
     }
     e.Blink = BLINK_ICE;
+    /* MA2-4: a site can ask for its own terminal type; the global one stays */
+    global.TermType = TERMTYPE_AUTO;
+    e.TermType = TERMTYPE_UNIX;
+    live = global; entry = entry_with(SITE_GROUP_TERMINAL, e);
+    SitePrefs_ApplyEntry(&live, &global, &entry);
+    assert(live.TermType == TERMTYPE_UNIX && global.TermType == TERMTYPE_AUTO);
+    {
+        char summary[200];
+        SitePrefs_GroupSummary(SITE_GROUP_TERMINAL, &live, summary, sizeof(summary));
+        assert(strstr(summary, ", Unix"));
+    }
+    live = global; entry = entry_with(0, e);                    /* group not overridden */
+    SitePrefs_ApplyEntry(&live, &global, &entry);
+    assert(live.TermType == TERMTYPE_AUTO);
+    e.TermType = TERMTYPE_AUTO;
     e.State = APP_RETURN_SENDING_CRLF | APP_FULLSCREEN | APP_RAW_CONNECTION;
 
     live = global; entry = entry_with(0, e);                    /* nothing overridden */
