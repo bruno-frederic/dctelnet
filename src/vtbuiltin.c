@@ -184,6 +184,7 @@ static void VtRedraw(void)
     cursor_hide();
     VtDraw(NULL, 0, 0, term_cols, term_rows);
     term_flush();
+    VtSyncCursor();
     cursor_show();
     VtLayersUnlock();
 }
