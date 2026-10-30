@@ -4155,7 +4155,14 @@ static void GetWindowMsg(struct Window *wwin)
                     break;
                 }
             }
-            if (wwin == win && Vt_WheelButton(code) >= 0
+            if (wwin == win && Renderer_Route(prefs.State) == ROUTE_BUILTIN
+                && !(code & IECODE_UP_PREFIX)
+                && (Vt_WheelButton(code) >= 0 || (qual & (IEQUALIFIER_LSHIFT | IEQUALIFIER_RSHIFT)))
+                && VtScrollKey(code, (qual & (IEQUALIFIER_LSHIFT | IEQUALIFIER_RSHIFT)) != 0))
+            {
+                // MA4: Shift+Page Up/Down and the wheel scroll the engine's scrollback; the key is not sent.
+            }
+            else if (wwin == win && Vt_WheelButton(code) >= 0
                 && VtMouseOwned((qual & (IEQUALIFIER_LSHIFT | IEQUALIFIER_RSHIFT)) != 0))
             {
                 // NewMouse wheel to a program that asked for the mouse: press only, no release.
@@ -4404,6 +4411,8 @@ static void GetWindowMsg(struct Window *wwin)
 
                     case MENU_SCROLLBACK:
                         UpdatePrefsFromMenu(item, APP_SCROLLBACK_ENABLED);
+                        // the built-in terminal sizes its scrollback at vt_new(): full reopen
+                        if (Renderer_Route(prefs.State) == ROUTE_BUILTIN) shouldRestart = TRUE;
                         break;
 
                     case MENU_PACKET_WINDOW:
@@ -4727,6 +4736,7 @@ static void GetWindowMsg(struct Window *wwin)
                     case MENU_SCROLLBACK_LINES:
                         InitializeReqToolsLib(reqtoolsTags);
                         rtGetLongA(&prefs.nScrollbackLines, "ScrollBack Lines..", NULL, (struct TagItem *)&reqtoolsTags);
+                        if (Renderer_Route(prefs.State) == ROUTE_BUILTIN && STATE_IS(APP_SCROLLBACK_ENABLED)) shouldRestart = TRUE;
                         break;
 
                     case MENU_SNAPSHOT_WINDOWS:
