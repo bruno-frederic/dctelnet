@@ -22,6 +22,7 @@
  */
 #include "vtengine.h"
 #include "glyphmap.h"
+#include "vtpersonality.h"
 
 static vt_term *vtTerm;
 
@@ -42,8 +43,16 @@ static void VtDraw(void *user, int x0, int y0, int x1, int y1)
         for (x = x0; x < x1 && x < n; x++) {
             vt_color fg, bg;
             vt_u32 ch = c[x].ch;
+            vt_cell cell = c[x];
             UBYTE code;
-            vt_resolve_colors(vtTerm, &c[x], &fg, &bg);
+            /* Blink is never animated (no timer; the owner's decision, MA1-7
+             * exemption). With iCE colours on (BLINK_ICE) the engine turns
+             * blink on a dark background into the bright background; with
+             * them off (BLINK_STEADY) the flag is cleared here, so the cell is
+             * drawn as it was sent. */
+            if (prefs.Blink == BLINK_STEADY)
+                cell.attr &= (vt_attr)~VT_ATTR_BLINK;
+            vt_resolve_colors(vtTerm, &cell, &fg, &bg);
             term_pen_fg = (UBYTE)(fg & 15);
             term_pen_bg = (UBYTE)(bg & 15);
             atr_under = (c[x].attr & VT_ATTR_UNDERLINE) != 0;
@@ -151,16 +160,32 @@ static void VtSyncCursor(void)
 static int VtOpen(void)
 {
     static const vt_callbacks cb = { VtDraw, VtScroll, VtReply, NULL, NULL, NULL, NULL };
+    struct VtPersonality pers;
 
     if (vtTerm)
         vt_free(vtTerm);
     vtTerm = vt_new(term_cols, term_rows, 0, &cb, NULL);
     if (!vtTerm)
         return 1;
-    vt_set_personality(vtTerm, VT_PCANSI);
-    vt_set_charset(vtTerm, VT_CS_CP437);
+    pers = Vt_PersonalityFor(&prefs);
+    vt_set_personality(vtTerm, pers.personality);
+    vt_set_charset(vtTerm, pers.charset);
     VtSyncCursor();
     return 0;
+}
+
+/* Every cell again from the grid, after a preference that changes how the
+ * cells look (Terminal > iCE Colours). */
+static void VtRedraw(void)
+{
+    if (!vtTerm)
+        return;
+    VtLayersLock();
+    cursor_hide();
+    VtDraw(NULL, 0, 0, term_cols, term_rows);
+    term_flush();
+    cursor_show();
+    VtLayersUnlock();
 }
 
 static void VtClose(void)

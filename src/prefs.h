@@ -118,7 +118,7 @@ struct PrefsStruct
     // Keeps the struct a multiple of 4 bytes with no padding a compiler adds
     // on its own (every byte is a field: site_prefs.c carries them all). A
     // new UBYTE field takes one of these.
-    UBYTE Reserved[1];
+    UBYTE Blink;                // SGR 5 (blink): BLINK_ICE (0), BLINK_STEADY
 };
 
 /*
@@ -168,6 +168,10 @@ struct PrefsStruct
 
 #define APP_TITLE_BAR_ENABLED        (1UL << 25)  //  2x in main loop for each Receive() (and 1x in LEDs(), LEDs() is not used in hot-path)
 #define APP_LEDS_ENABLED             (1UL << 26)  //  2x in main loop for each Receive)) (and 1x in LEDs(), LEDs() is not used in hot-path)
+
+// prefs.Blink
+#define BLINK_ICE    0   // blink makes the background bright (iCE colours), the cell does not blink
+#define BLINK_STEADY 1   // blink is ignored: the cell is drawn as sent
 
 // prefs.Bell
 #define BELL_FLASH 0     // the screen flashes (DisplayBeep)

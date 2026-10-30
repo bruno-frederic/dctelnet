@@ -169,10 +169,14 @@ test_knownhosts: test_knownhosts.c ../src/knownhosts.c ../src/knownhosts.h
 
 # The engine is written for the Amiga: its static helpers are not all used here.
 VTCON := ../src/third_party/vtcon
-test_term_engine: test_term_engine.c ../src/third_party/retro32-term/term-engine.c ../src/vtbuiltin.c \
+VTCONI := -I$(VTCON)/engine
+test_vtpersonality: test_vtpersonality.c ../src/vtpersonality.c ../src/vtpersonality.h
+	$(CC) $(CFLAGS) -Ishim $(VTCONI) -o $@ $(filter %.c,$^)
+
+test_term_engine: test_term_engine.c ../src/third_party/retro32-term/term-engine.c ../src/vtbuiltin.c ../src/vtpersonality.c \
                   $(VTCON)/engine/vtengine.c $(VTCON)/render/glyphmap.c
 	$(CC) $(CFLAGS) -Wno-unused-function -Wno-unused-parameter -Ishim -I$(VTCON)/engine -I$(VTCON)/render \
-	      -o $@ test_term_engine.c $(VTCON)/engine/vtengine.c $(VTCON)/render/glyphmap.c
+	      -o $@ test_term_engine.c ../src/vtpersonality.c $(VTCON)/engine/vtengine.c $(VTCON)/render/glyphmap.c
 
 # A PETSCII mode change (an Address Book entry starts or ends) must take the
 # full reopen on every renderer: OpenDisplay() drops the old mode's kept text
