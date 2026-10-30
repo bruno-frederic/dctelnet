@@ -947,6 +947,8 @@ void Ssh_Init(struct Ssh *s, const char *user, const char *pass, const char *ter
               UWORD cols, UWORD rows, BOOL slowCpu, SshHostKeyFn hostKey, SshAskFn ask)
 {
     memset(s, 0, sizeof(*s));
+    s->version = SSH_SESSION_VERSION;
+    s->headSize = sizeof(struct SshSession);
     strncpy(s->user, user, sizeof(s->user) - 1);
     strncpy(s->pass, pass ? pass : "", sizeof(s->pass) - 1);
     strncpy(s->term, term, sizeof(s->term) - 1);

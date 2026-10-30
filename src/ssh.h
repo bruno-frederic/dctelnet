@@ -14,6 +14,7 @@
 
 #include <exec/types.h>
 #include <string.h>
+#include "sshlib/include/libraries/ssh.h"
 #include "crypto/aes.h"
 #include "crypto/sha256.h"
 #include "crypto/bignum.h"
@@ -51,18 +52,19 @@ typedef BOOL (*SshAskFn)(struct Ssh *s, const char *prompt, BOOL echo, char *out
  * takes seconds on a 68020 and a minute on a 68000. */
 typedef void (*SshNoteFn)(struct Ssh *s, const char *text);
 
+/* The public head (libraries/ssh.h) must hold the states the engine uses. */
+typedef char SshStateCheck[(SSH_VERSION == SSH_STATE_VERSION && SSH_OPEN == SSH_STATE_OPEN
+                            && SSH_CLOSED == SSH_STATE_CLOSED) ? 1 : -1];
+
 struct Ssh
 {
-    int   state;
-    char  error[160];               /* why it closed ("" = the server closed normally) */
-    BOOL  serverClosed;             /* the server ended it (else DCTelnet did, and said so) */
+    SSH_SESSION_HEAD                /* ssh.library's callers read it without a call */
     char  user[64], pass[64], term[32];
     UWORD cols, rows;
     BOOL  slowCpu;                  /* no group14 */
     SshHostKeyFn hostKey;
     SshAskFn ask;
     SshNoteFn note;
-    void *user_data;
     const char *kexName;            /* the key exchange agreed on */
     UWORD kexCount;                 /* key exchanges completed (more than 1: the server rekeyed) */
 
@@ -93,7 +95,6 @@ struct Ssh
     UBYTE tx[SSH_BUF];              /* bytes for the socket */
     ULONG txLen;
     UBYTE text[SSH_BUF];            /* text for the terminal (never more than the local window) */
-    ULONG textLen;
     UBYTE pend[4096];               /* keys typed while they cannot be sent yet */
     UWORD pendLen;
 
