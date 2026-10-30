@@ -86,6 +86,7 @@ extern struct Library *CyberGfxBase;
 #include "requesters.h"
 #include "utils.h"
 #include "prefs.h"
+#include "renderer.h"
 #include "prefs_file.h"
 #include "palette.h"
 
@@ -417,17 +418,19 @@ static struct AnsiSwap17 consoleSwap;
 
 static void ConWrite(char *data, long len)
 {
+    enum RendererRoute route = Renderer_Route(prefs.State);
+
     SelectionHide();                // the text may land on it
-    if(STATE_IS_NOT(APP_ICONIFIED))
+    if (route != ROUTE_NONE)
     {
-        if (STATE_IS(APP_RENDERER_BUILTIN))
+        if (route == ROUTE_BUILTIN)
         {
             // vtcon parses, retro32-term draws (vtbuiltin.c); drawing only ever happens with
             // the cursor hidden, so glyphs never land on an inverted cell.
             VtWrite((const UBYTE *)data, len);
             return; // direct return because maximal optimization is needed for this frequently called function
         }
-        else if (STATE_IS(APP_RENDERER_CONSOLE_DEVICE | APP_RENDERER_IBMCON_DEVICE))
+        else if (route == ROUTE_CONSOLE || route == ROUTE_IBMCON)
         {
             #ifdef _DEBUG
                 if (!writeConsoleReq) RecoveryAlert(
@@ -439,7 +442,7 @@ static void ConWrite(char *data, long len)
 
             // console.device: SGR colours swap 1 and 7 (Ansi_Swap17): it draws plain
             // text in pen 1, white in ibmcon's order, and SGR 31 (red) in pen 1 too.
-            if (STATE_IS(APP_RENDERER_CONSOLE_DEVICE))
+            if (route == ROUTE_CONSOLE)
             {
                 static UBYTE swapped[1024 + ANSI_SWAP17_HELD];
 

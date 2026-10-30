@@ -32,6 +32,7 @@
 #include "textedit.h"
 #include "ansiscan.h"
 #include "booklist.h"
+#include "renderer.h"
 #include <intuition/sghooks.h>
 
 struct BookStruct
@@ -1178,18 +1179,7 @@ static STRPTR charsetLabels[] = { (STRPTR)"IBM PC", (STRPTR)"Amiga", (STRPTR)"UT
 // The Renderer cycle: APP_RENDERER_BUILTIN .. APP_RENDERER_IBMCON_DEVICE, in bit order.
 static STRPTR rendererLabels[] = { (STRPTR)"Built-in", (STRPTR)"console.device", (STRPTR)"XEM Library",
                                    (STRPTR)"ibmcon.device", NULL };
-#define RENDERER_FIRST_BIT 9    // APP_RENDERER_BUILTIN (prefs.h)
-typedef char RendererBitsInOrder[(APP_RENDERER_BUILTIN == 1UL << RENDERER_FIRST_BIT
-                                  && APP_RENDERER_IBMCON_DEVICE == 1UL << (RENDERER_FIRST_BIT + 3)) ? 1 : -1];
-
-// The Renderer cycle position for a State (its renderer bit).
-static UWORD RendererIndex(ULONG state)
-{
-    UWORD i;
-    for (i = 0; i < 4; i++)
-        if (state & (1UL << (RENDERER_FIRST_BIT + i))) return i;
-    return 0;
-}
+typedef char RendererLabelsMatch[sizeof rendererLabels / sizeof rendererLabels[0] == RENDERER_COUNT + 1 ? 1 : -1];
 
 static const ULONG groupOfOverride[4]  = { SITE_GROUP_SCREEN, SITE_GROUP_TERMINAL, SITE_GROUP_KEYBOARD, SITE_GROUP_TRANSFER };
 static const UWORD overrideGadget[4]   = { SG_SCREEN_OVR, SG_TERM_OVR, SG_KEY_OVR, SG_XFER_OVR };
@@ -1238,7 +1228,7 @@ static void RefreshSettingsWindow(const struct SiteSettings *work)
     SetChecked(SG_KEY_CRLF,     (shown.State & APP_RETURN_SENDING_CRLF) != 0);
     SetChecked(SG_KEY_VT,       (shown.State & APP_VT_KEYS) != 0);
     GT_SetGadgetAttrs(settingsGadgets[SG_TERM_RENDERER], settingsWnd, NULL,
-                      GTCY_Active, (ULONG)RendererIndex(shown.State), TAG_DONE);
+                      GTCY_Active, (ULONG)Renderer_Index(shown.State), TAG_DONE);
 }
 
 // A field of a group is about to change: the group becomes overridden, with
@@ -1524,8 +1514,7 @@ static BOOL EditEntrySettings(const char *entryName, struct SiteSettings *entry,
                     break;
                 case SG_TERM_RENDERER:
                     OverrideGroup(&work, SITE_GROUP_TERMINAL);
-                    work.prefs.State = (work.prefs.State & ~APP_RENDERER_ALL)
-                                     | (1UL << (RENDERER_FIRST_BIT + (code & 3)));
+                    work.prefs.State = Renderer_Select(work.prefs.State, (UWORD)code);
                     break;
                 case SG_TERM_RAW:
                     SetFlagFromGadget(&work, SITE_GROUP_TERMINAL, SG_TERM_RAW, APP_RAW_CONNECTION, FALSE);
