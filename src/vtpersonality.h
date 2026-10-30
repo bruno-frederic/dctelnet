@@ -30,8 +30,11 @@ UBYTE Vt_CharsetAfterTermType(UBYTE termType, UBYTE charset);
 /* MA2-14: finds out from the bytes of one connection whether a Unix host
  * speaks UTF-8 although the Character Set says otherwise. Reset on connect. */
 struct VtUtf8Sniffer {
-    UBYTE need;         /* continuation bytes still due for the sequence in progress */
+    UBYTE held[3];      /* trailing, so far valid, incomplete UTF-8 prefix not yet drawn */
+    UBYTE nheld;
     UBYTE done;         /* TRUE: decided (switched or an invalid high byte was seen) */
+    UBYTE fired;        /* TRUE: the stream turned out to be UTF-8 */
+    UBYTE firedCharset; /* prefs.Charset when it fired: a later change by the user wins */
 };
 void Vt_Utf8SnifferReset(struct VtUtf8Sniffer *s);
 
@@ -39,7 +42,20 @@ void Vt_Utf8SnifferReset(struct VtUtf8Sniffer *s);
 BOOL Vt_Utf8SnifferActive(const struct PrefsStruct *p);
 
 /* Feeds bytes; TRUE exactly once, when the first complete valid multi-byte
- * sequence arrives with no invalid high byte before it. */
-BOOL Vt_Utf8SnifferFeed(struct VtUtf8Sniffer *s, const UBYTE *data, long len);
+ * sequence arrives with no invalid high byte before it. While undecided, a
+ * trailing incomplete prefix (at most 3 bytes) is held back: *npre bytes of
+ * pre[] (the prefix held from the last call) are to be drawn first, then the
+ * first *ndata bytes of data; the rest of data is now held inside s and comes
+ * back as pre[] of the next call. Held bytes that turn out invalid are given
+ * back in pre[] like any other byte. */
+BOOL Vt_Utf8SnifferFeed(struct VtUtf8Sniffer *s, const struct PrefsStruct *p,
+                        const UBYTE *data, long len,
+                        UBYTE pre[3], long *npre, long *ndata);
+
+/* Vt_PersonalityFor(), but a Unix connection whose stream the sniffer found to
+ * be UTF-8 keeps UTF-8 while Terminal Type and Character Set are as they were
+ * when it fired. */
+struct VtPersonality Vt_PersonalityForConnection(const struct PrefsStruct *p,
+                                                 const struct VtUtf8Sniffer *s);
 
 #endif /* VTPERSONALITY_H */

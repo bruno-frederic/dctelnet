@@ -664,10 +664,10 @@ static void test_ma2_5_11_utf8_reaches_the_grid_whole_even_split_across_writes(v
  * switches the engine for the rest of the connection, prefs untouched. */
 static void unix_cp437_begin(void)
 {
+    VtSniffReset();
     xterm_begin();
     prefs.Charset = CHARSET_CP437;
     VtApplyPersonality();
-    VtSniffReset();
 }
 
 static void test_ma2_14_stream_switch_to_utf8_through_vtwrite(void)
@@ -701,11 +701,63 @@ static void test_ma2_14_stream_switch_to_utf8_through_vtwrite(void)
     VtClose();
 
     unix_cp437_begin();                                    /* new connection re-arms */
-    vt_put("\xE9");
+    vt_put("a\xE9\xE9");                                   /* E9 E9: invalid, decided */
     VtSniffReset();
     vt_put("\xE2\x96\x88");
     row = vt_row(vtTerm, 0, &n);
-    assert(row[1].ch == 0x2588);
+    assert(row[3].ch == 0x2588);
+    VtClose();
+}
+
+/* MA2-14: a valid sequence split across two writes is not drawn as CP437 first;
+ * an invalid one still shows both bytes. */
+static void test_ma2_14_split_sequence_held_back_through_vtwrite(void)
+{
+    int n;
+    const vt_cell *row;
+
+    unix_cp437_begin();
+    vt_put("abc\xE2");
+    row = vt_row(vtTerm, 0, &n);
+    assert(row[3].ch == ' ');                              /* lead byte not drawn yet */
+    vt_put("\x96\x88");
+    row = vt_row(vtTerm, 0, &n);
+    assert(row[3].ch == 0x2588 && row[4].ch == ' ');
+    VtClose();
+
+    unix_cp437_begin();
+    vt_put("abc\xE2");
+    vt_put("A");                                           /* invalid: both bytes CP437 */
+    row = vt_row(vtTerm, 0, &n);
+    assert(row[3].ch == 0x0393 && row[4].ch == 'A' && row[5].ch == ' ');
+    VtClose();
+
+    unix_cp437_begin();                                    /* reset drops the held byte */
+    vt_put("\xE2");
+    VtSniffReset();
+    vt_put("\x96\x88");
+    row = vt_row(vtTerm, 0, &n);
+    assert(row[0].ch != 0x2588);
+    VtClose();
+}
+
+/* MA2-14: a menu change or settings apply must not undo the switch. */
+static void test_ma2_14_apply_personality_keeps_the_switch(void)
+{
+    int n;
+    const vt_cell *row;
+
+    unix_cp437_begin();
+    vt_put("\xC3\xA9");                                   /* fires */
+    VtApplyPersonality();
+    vt_put("\xE2\x96\x88");
+    row = vt_row(vtTerm, 0, &n);
+    assert(row[0].ch == 0x2588 && row[1].ch == ' ');     /* the apply reset the screen */
+    prefs.Charset = CHARSET_LATIN1;                        /* the user's change wins */
+    VtApplyPersonality();
+    vt_put("\xE9");
+    row = vt_row(vtTerm, 0, &n);
+    assert(row[0].ch == 0xE9);
     VtClose();
 }
 
@@ -771,6 +823,8 @@ int main(void)
     test_ma1_9_the_sample_art_file_gives_the_known_grid();
     test_ma2_5_11_utf8_reaches_the_grid_whole_even_split_across_writes();
     test_ma2_14_stream_switch_to_utf8_through_vtwrite();
+    test_ma2_14_split_sequence_held_back_through_vtwrite();
+    test_ma2_14_apply_personality_keeps_the_switch();
     test_ma2_6_glyph_map_and_fallback();
     test_ma2_8_256_colour_and_24_bit_give_the_same_pen();
     printf("term_engine: all assertions passed\n");

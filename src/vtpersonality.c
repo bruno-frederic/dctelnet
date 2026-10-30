@@ -1,6 +1,7 @@
 /* src/vtpersonality.c -- see vtpersonality.h. */
 #include "vtpersonality.h"
 #include "charset.h"
+#include <string.h>
 
 struct VtPersonality Vt_PersonalityFor(const struct PrefsStruct *p)
 {
@@ -44,8 +45,7 @@ UBYTE Vt_CharsetAfterTermType(UBYTE termType, UBYTE charset)
 
 void Vt_Utf8SnifferReset(struct VtUtf8Sniffer *s)
 {
-    s->need = 0;
-    s->done = FALSE;
+    memset(s, 0, sizeof(*s));
 }
 
 BOOL Vt_Utf8SnifferActive(const struct PrefsStruct *p)
@@ -53,28 +53,71 @@ BOOL Vt_Utf8SnifferActive(const struct PrefsStruct *p)
     return p->TermType == TERMTYPE_UNIX && p->Charset != CHARSET_UTF8;
 }
 
-BOOL Vt_Utf8SnifferFeed(struct VtUtf8Sniffer *s, const UBYTE *data, long len)
+/* Byte i of the held prefix followed by the new data. */
+#define SNIFF_AT(s, data, i) ((i) < (s)->nheld ? (s)->held[i] : (data)[(i) - (s)->nheld])
+
+BOOL Vt_Utf8SnifferFeed(struct VtUtf8Sniffer *s, const struct PrefsStruct *p,
+                        const UBYTE *data, long len,
+                        UBYTE pre[3], long *npre, long *ndata)
 {
-    long i;
+    long total = s->nheld + len;
+    long i = 0, hold = 0;
+    BOOL fired = FALSE;
+    UBYTE oldHeld = s->nheld;
 
-    for (i = 0; i < len && !s->done; i++) {
-        UBYTE c = data[i];
+    memcpy(pre, s->held, 3);
 
-        if (s->need) {
-            if ((c & 0xC0) != 0x80) {           /* sequence cut short: not UTF-8 */
-                s->done = TRUE;
-                return FALSE;
+    while (i < total && !s->done) {
+        UBYTE c = SNIFF_AT(s, data, i);
+
+        if (c >= 0xC2 && c <= 0xF4) {
+            long need = c < 0xE0 ? 1 : c < 0xF0 ? 2 : 3;
+            long k, have = total - i - 1;
+
+            for (k = 1; k <= need && k <= have; k++)
+                if ((SNIFF_AT(s, data, i + k) & 0xC0) != 0x80) {   /* cut short: not UTF-8 */
+                    s->done = TRUE;
+                    break;
+                }
+            if (s->done)
+                break;
+            if (have < need) {                  /* so far valid, more to come */
+                hold = total - i;
+                break;
             }
-            if (--s->need == 0) {
-                s->done = TRUE;
-                return TRUE;
-            }
-        } else if (c >= 0xC2 && c <= 0xF4) {
-            s->need = c < 0xE0 ? 1 : c < 0xF0 ? 2 : 3;
+            s->done = fired = TRUE;
+            s->fired = TRUE;
+            s->firedCharset = p->Charset;
         } else if (c >= 0x80) {                 /* stray continuation, C0, C1, F5..FF */
             s->done = TRUE;
-            return FALSE;
+        } else {
+            i++;
         }
     }
-    return FALSE;
+
+    if (hold) {                                 /* the held prefix is part of the tail */
+        UBYTE tail[3];
+        long k;
+        for (k = 0; k < hold; k++)
+            tail[k] = SNIFF_AT(s, data, total - hold + k);
+        memcpy(s->held, tail, (size_t)hold);
+        s->nheld = (UBYTE)hold;
+        *npre = 0;
+        *ndata = len - (hold - oldHeld);
+    } else {
+        s->nheld = 0;
+        *npre = oldHeld;
+        *ndata = len;
+    }
+    return fired;
+}
+
+struct VtPersonality Vt_PersonalityForConnection(const struct PrefsStruct *p,
+                                                 const struct VtUtf8Sniffer *s)
+{
+    struct VtPersonality r = Vt_PersonalityFor(p);
+
+    if (s->fired && p->TermType == TERMTYPE_UNIX && p->Charset == s->firedCharset)
+        r.charset = VT_CS_UTF8;
+    return r;
 }
