@@ -1705,9 +1705,12 @@ static void LoadAnsiPalette(struct PrefsStruct *target)
     {
         UWORD i;
 
+        UWORD colours[16];
+
+        Palette_Get(target, colours);           // the renderer's palette, ANSI order
         for (i = 0; i < 16; i++)
         {
-            ULONG c = Palette_AnsiColour(target->DeviceColors, i);
+            ULONG c = Palette_RGB32(colours[i]);
             SetRGB32(&scr->ViewPort, ansiColourPens[i], ((c >> 16) & 0xFF) * 0x01010101UL,
                      ((c >> 8) & 0xFF) * 0x01010101UL, (c & 0xFF) * 0x01010101UL);
         }
@@ -3932,7 +3935,8 @@ static void PasteClipboard(void)
  * @brief How the own screen lays out its pens for a renderer (OpenAppScreen):
  *        ANSI colours on pens 0-15 in ANSI order (built-in, XEM), in ibmcon's
  *        order (console.device, ibmcon), or on pens of their own with
- *        Intuition's UI pens (ibmcon with 32+ colours). Intuition applies it
+ *        Intuition's UI pens (ibmcon and the built-in renderer with 32+
+ *        colours). Intuition applies it
  *        only when the screen opens: a renderer of another layout needs a new
  *        screen -- console.device after ibmcon on 256 colours drew on the
  *        UI's grey pen 0.
@@ -3943,7 +3947,7 @@ static int ScreenPenLayout(ULONG renderer)
 
     if (renderer & (APP_RENDERER_BUILTIN | APP_RENDERER_XEM_LIB))
         return 0;
-    if ((renderer & APP_RENDERER_IBMCON_DEVICE) && Palette_AnsiPens(prefs.DisplayDepth, pens))
+    if (Palette_OwnPens(renderer, prefs.DisplayDepth, pens))
         return 2;
     return 1;
 }
@@ -5398,29 +5402,26 @@ struct Screen* OpenAppScreen(void)
         int i;
 
         UBYTE deepPens[16];
-        BOOL  deep = STATE_IS(APP_RENDERER_IBMCON_DEVICE)
-                  && Palette_AnsiPens(prefs.DisplayDepth, deepPens);
+        BOOL  deep = Palette_OwnPens(prefs.State, prefs.DisplayDepth, deepPens);
+        UWORD ansiColours[16];
+        static UWORD uiPens[PALETTE_UI_PENS];
 
-        if (STATE_IS(APP_RENDERER_BUILTIN | APP_RENDERER_XEM_LIB))
-        {
-            colorsRGB4 = prefs.AnsiColors;
-            pens       = ansiPens;
-        }
-        else
-        {
-            colorsRGB4 = prefs.DeviceColors;
-            pens       = devicePens;
-        }
-
-        pens = (prefs.DisplayDepth < 3) ? defaultPens : pens;
-        // ibmcon with 32+ colours: the UI keeps Intuition's own pens and
+        // The terminal's colours on pens 0-15 (the built-in and XEM renderers
+        // in ANSI order, the console devices in ibmcon's order) and a UI pen
+        // table of the pens nearest to Intuition's own colours among them.
+        colorsRGB4 = STATE_IS(APP_RENDERER_BUILTIN | APP_RENDERER_XEM_LIB) ? prefs.AnsiColors
+                                                                           : prefs.DeviceColors;
+        Palette_UiPens(colorsRGB4, uiPens);
+        pens = (prefs.DisplayDepth < 3) ? defaultPens : uiPens;
+        // ibmcon and the built-in renderer with 32+ colours: the UI keeps Intuition's own pens and
         // colours, the ANSI colours get pens of their own (in ANSI order).
         if (deep)
             pens = intuitionPens;
 
         // Convert RGB4 colors array to ColorSpec array needed for SA_Colors during screen open:
+        Palette_Get(&prefs, ansiColours);       // ANSI order, whichever palette the renderer keeps
         for (i = 0; i < 16; i++) {
-            UWORD c = deep ? colorsRGB4[Palette_IbmconToAnsi(i)] : colorsRGB4[i];
+            UWORD c = deep ? ansiColours[i] : colorsRGB4[i];
 
             colors[i].ColorIndex = deep ? deepPens[i] : i;
             colors[i].Red   = (c >> 8) & 0xF;
@@ -5454,9 +5455,10 @@ struct Screen* OpenAppScreen(void)
             STATE_SET(APP_CUSTOM_SCREEN_OPENED);
     }
 
-    // Own screen with 32+ colours and ibmcon: the ANSI colours on pens of their own.
-    ansiOwnPens = scr && STATE_IS(APP_FULLSCREEN) && STATE_IS(APP_RENDERER_IBMCON_DEVICE)
-               && Palette_AnsiPens(AppScreenDepth(scr), ansiColourPens);
+    // Own screen with 32+ colours, ibmcon or the built-in renderer: the ANSI
+    // colours on pens of their own.
+    ansiOwnPens = scr && STATE_IS(APP_FULLSCREEN)
+               && Palette_OwnPens(prefs.State, AppScreenDepth(scr), ansiColourPens);
 
     // Border blank (V39, ECS/AGA): the overscan border shows colour 0, which
     // on 32+ colours is the UI's grey pen 0 -- keep it black like the terminal.
