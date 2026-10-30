@@ -37,6 +37,9 @@ struct VtUtf8Sniffer {
     UBYTE firedCharset; /* prefs.Charset when it fired: a later change by the user wins */
 };
 void Vt_Utf8SnifferReset(struct VtUtf8Sniffer *s);
+/* End of a receive burst: hands back the held incomplete prefix (to draw as the
+ * current charset) and clears it. The sniffer stays undecided. Returns the count. */
+long Vt_Utf8SnifferTakeHeld(struct VtUtf8Sniffer *s, UBYTE pre[3]);
 
 /* TRUE while the sniffer applies: Terminal Type Unix, Character Set not UTF-8. */
 BOOL Vt_Utf8SnifferActive(const struct PrefsStruct *p);

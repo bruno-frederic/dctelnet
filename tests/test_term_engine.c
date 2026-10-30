@@ -741,6 +741,32 @@ static void test_ma2_14_split_sequence_held_back_through_vtwrite(void)
     VtClose();
 }
 
+/* MA2-14: a held prefix lives only within one receive burst. The loop found no
+ * more data (VtFlushHeld): a lone Latin-1/CP437 byte is drawn at once, and the
+ * sniffer stays undecided; a split full block with no flush in between is whole. */
+static void test_ma2_14_flush_draws_held_byte_split_block_still_whole(void)
+{
+    int n;
+    const vt_cell *row;
+
+    unix_cp437_begin();
+    vt_put("a\xE9");
+    VtFlushHeld();
+    row = vt_row(vtTerm, 0, &n);
+    assert(row[1].ch == 0x0398 && row[2].ch == ' ');       /* CP437 theta, column 1 */
+    vt_put("\xE2\x96\x88");                               /* undecided: a valid one still switches */
+    row = vt_row(vtTerm, 0, &n);
+    assert(row[2].ch == 0x2588);
+    VtClose();
+
+    unix_cp437_begin();
+    vt_put("a\xE2");
+    vt_put("\x96\x88");
+    row = vt_row(vtTerm, 0, &n);
+    assert(row[1].ch == 0x2588 && row[2].ch == ' ');
+    VtClose();
+}
+
 /* MA2-14: a menu change or settings apply must not undo the switch. */
 static void test_ma2_14_apply_personality_keeps_the_switch(void)
 {
@@ -824,6 +850,7 @@ int main(void)
     test_ma2_5_11_utf8_reaches_the_grid_whole_even_split_across_writes();
     test_ma2_14_stream_switch_to_utf8_through_vtwrite();
     test_ma2_14_split_sequence_held_back_through_vtwrite();
+    test_ma2_14_flush_draws_held_byte_split_block_still_whole();
     test_ma2_14_apply_personality_keeps_the_switch();
     test_ma2_6_glyph_map_and_fallback();
     test_ma2_8_256_colour_and_24_bit_give_the_same_pen();

@@ -249,3 +249,22 @@ static void VtWrite(const UBYTE *data, long len)
     cursor_show();
     VtLayersUnlock();
 }
+
+/* The receive loop found no more pending data: a prefix VtWrite held back
+ * waits for nothing, so it is drawn as the current character set. */
+static void VtFlushHeld(void)
+{
+    UBYTE pre[3];
+    long n;
+
+    if (!vtSniff.nheld)
+        return;
+    n = Vt_Utf8SnifferTakeHeld(&vtSniff, pre);
+    VtLayersLock();
+    cursor_hide();
+    vt_write(vtTerm, pre, n);
+    term_flush();
+    VtSyncCursor();
+    cursor_show();
+    VtLayersUnlock();
+}

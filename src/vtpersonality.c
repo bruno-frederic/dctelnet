@@ -112,6 +112,15 @@ BOOL Vt_Utf8SnifferFeed(struct VtUtf8Sniffer *s, const struct PrefsStruct *p,
     return fired;
 }
 
+long Vt_Utf8SnifferTakeHeld(struct VtUtf8Sniffer *s, UBYTE pre[3])
+{
+    long n = s->nheld;
+
+    memcpy(pre, s->held, 3);
+    s->nheld = 0;                               /* incomplete is neither valid nor invalid: stays undecided */
+    return n;
+}
+
 struct VtPersonality Vt_PersonalityForConnection(const struct PrefsStruct *p,
                                                  const struct VtUtf8Sniffer *s)
 {
