@@ -48,7 +48,7 @@ existing reply path (VtReply, vtbuiltin.c:128-135, to send_data).
       (exact bytes). Without the mode, only "abc".
 - [x] MA3-8 [DONE a1c56a7, 8-bit CSI fix in the same test: test_ma3_8_paste_cannot_inject_the_end_marker strips ESC, 0x9B and UTF-8 C2 9B] Paste cannot inject the end marker: a clipboard text holding "\e[201~" has the
       ESC removed or the marker stripped; assert the output bytes.
-- [ ] MA3-9 Reachability: rig run, DCTelnet connected to a test server that enables
+- [x] MA3-9 [rig 3 2026-10-30: click at screen 88,80 (inner y 55, cell 11,7) sent "\e[<0;11;7M" and "\e[<0;11;7m"; Right Amiga+V with "abc" on the clipboard sent "\e[200~abc\e[201~"; sentinels mouse events 4, reports out 4, reply bytes 40] Reachability: rig run, DCTelnet connected to a test server that enables
       ?1000/?1006/?2004, sets a title, and logs what it receives. Click and paste on the rig
       (wasabi mouse and key); the server log equals the expected byte strings above.
 
