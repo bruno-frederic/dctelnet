@@ -82,10 +82,11 @@ BOOL Palette_OwnPens(ULONG state, UWORD depth, UBYTE pens[16])
     {
         // 16 colours: no pens to spare, so the same 16 colours change places.
         // Pens 0-3 are Intuition's 4-colour order (background, shadow and
-        // text, shine, fill): light grey, black, bright white, blue. The other
+        // text, shine, fill): light grey, black, bright white and bright blue, the
+        // ANSI colour nearest to the 0x68B title-bar blue of Workbench. The other
         // twelve follow in ANSI order. Only the built-in renderer draws
         // through a pen table; XEM, console.device and ibmcon use pens 0-15.
-        static const UBYTE pen[16] = { 1, 4, 5, 6, 3, 7, 8, 0, 9, 10, 11, 12, 13, 14, 15, 2 };
+        static const UBYTE pen[16] = { 1, 4, 5, 6, 7, 8, 9, 0, 10, 11, 12, 13, 3, 14, 15, 2 };
         int i;
 
         for (i = 0; i < 16; i++)
