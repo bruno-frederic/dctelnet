@@ -35,8 +35,8 @@ static vt_term *vtTerm;
  * 0 is the live grid. Grid row y shows engine row y - vtScrollOff. */
 static int vtScrollOff;
 
-/* Engine scrollback lines: optional and off by default (a 68000 has little
- * memory); with the preference off the engine allocates none. */
+/* Engine scrollback lines: on in a first run's prefs (Prefs_FirstRunState());
+ * with the preference off the engine allocates none. */
 static int VtScrollbackCap(void)
 {
     if (!(prefs.State & APP_SCROLLBACK_ENABLED))
