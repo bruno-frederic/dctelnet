@@ -24,6 +24,7 @@
 #include "glyphmap.h"
 #include "vtpersonality.h"
 #include "vtpens.h"
+#include "vtinput.h"
 
 /* The glyph for a code point the font cannot show: the font's '?', one cell. */
 #define VT_FALLBACK_GLYPH ((UBYTE)'?')
@@ -185,18 +186,114 @@ static void VtSniffReset(void)
     Vt_Utf8SnifferReset(&vtSniff);
 }
 
+/* MA3-2/3: the window title a program set (OSC 0/2), as Latin-1; none (or the
+ * session over) gives DCTelnet's own text back. */
+static char vtTitleShown[256];  /* what the title bar holds (Latin-1) */
+static char vtTitleSeen[256];   /* the engine's title as last looked at (UTF-8) */
+
+static void VtSetTitle(const char *utf8)
+{
+    char text[sizeof(vtTitleShown)];
+    ULONG keepScreenTitle;
+
+    Vt_TitleText(utf8, MainWindowTitle, text, sizeof(text));
+    if (!win || strcmp(text, vtTitleShown) == 0)
+        return;
+    strcpy(vtTitleShown, text);
+    keepScreenTitle = 0xFFFFFFFFUL;         /* -1: the screen title stays */
+    SetWindowTitles(win, (UBYTE *)vtTitleShown, (UBYTE *)(size_t)keepScreenTitle);
+}
+
+static void VtTitle(void *user, const char *utf8)
+{
+    strncpy(vtTitleSeen, utf8, sizeof(vtTitleSeen) - 1);
+    VtSetTitle(utf8);
+}
+
+/* After a write: a reset (ESC c) clears the engine's title without a callback. */
+static void VtTitleSync(void)
+{
+    const char *t = vt_title(vtTerm);
+
+    if (strcmp(t, vtTitleSeen) == 0)
+        return;
+    strncpy(vtTitleSeen, t, sizeof(vtTitleSeen) - 1);
+    VtSetTitle(t);
+}
+
+/* MA3-3: back to DCTelnet's own title (session over); the engine's old title
+ * is not applied again by the next write. */
+static void VtTitleRestore(void)
+{
+    if (vtTerm)
+        strncpy(vtTitleSeen, vt_title(vtTerm), sizeof(vtTitleSeen) - 1);
+    VtSetTitle("");
+}
+
+/* MA3-4..6: the mouse as the program on the far side asked for it. */
+static struct VtMouse vtMouse;
+
+/* IDCMP_MOUSEMOVE only while ?1002 or ?1003 is on (the built-in renderer has
+ * no selection to drag). */
+static void VtSyncMouseIdcmp(void)
+{
+    ULONG want;
+
+    if (!win || !vtTerm)
+        return;
+    want = Vt_IdcmpFor(win->IDCMPFlags, IDCMP_MOUSEMOVE, vtTerm, FALSE);
+    if (want != win->IDCMPFlags)
+        ModifyIDCMP(win, want);
+}
+
+/* TRUE when the program owns the mouse (a mouse mode is on, Shift not held):
+ * the event is for it and selecting must not start. */
+static BOOL VtMouseOwned(BOOL shift)
+{
+    return vtTerm && Vt_MouseOwned(vtTerm, shift);
+}
+
+/* A button or wheel event at cell x, y (from 0): the report goes out. */
+static void VtMouseButton(int button, BOOL down, int x, int y, int mods)
+{
+    UBYTE out[32];
+    int n;
+
+    if (!vtTerm)
+        return;
+    n = Vt_MouseButton(&vtMouse, vtTerm, button, down, x, y, mods, out);
+    if (n > 0)
+        VtReply(NULL, out, n);
+}
+
+static void VtMouseMove(int x, int y, int mods)
+{
+    UBYTE out[32];
+    int n;
+
+    if (!vtTerm)
+        return;
+    n = Vt_MouseMove(&vtMouse, vtTerm, x, y, mods, out);
+    if (n > 0)
+        VtReply(NULL, out, n);
+}
+
+static void VtClose(void);
+
 /* A new terminal for the grid term_init_area() has just laid out (and
  * cleared). 0 when it is ready. */
 static int VtOpen(void)
 {
-    static const vt_callbacks cb = { VtDraw, VtScroll, VtReply, NULL, NULL, NULL, NULL };
+    static const vt_callbacks cb = { VtDraw, VtScroll, VtReply, NULL, VtTitle, NULL, NULL };
 
-    if (vtTerm)
-        vt_free(vtTerm);
+    VtClose();      /* vt_new() draws through VtDraw(): vtTerm must not be the freed one */
     vtTerm = vt_new(term_cols, term_rows, 0, &cb, NULL);
     if (!vtTerm)
         return 1;
     VtApplyPersonality();
+    Vt_MouseReset(&vtMouse);
+    vtTitleSeen[0] = vtTitleShown[0] = 0;
+    VtSyncMouseIdcmp();
     VtSyncCursor();
     return 0;
 }
@@ -248,6 +345,8 @@ static void VtWrite(const UBYTE *data, long len)
     VtSyncCursor();
     cursor_show();
     VtLayersUnlock();
+    VtTitleSync();
+    VtSyncMouseIdcmp();             /* ?1002 / ?1003 may have changed */
 }
 
 /* A prefix VtWrite held back is waiting to be drawn: the receive loop polls

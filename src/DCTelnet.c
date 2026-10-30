@@ -820,6 +820,7 @@ static void DisConnect(char remote, char quiet)
         CloseSocket(tcpSocket);
 
         isConnected = FALSE;
+        VtTitleRestore();               // MA3-3: the program's window title ends with the session
         ResetTelnetContext();
         ResetZmodemContext();
         nBytesReceived = 0;
@@ -3896,12 +3897,31 @@ static void CopyScreen(void)
 static void OutKey(unsigned char key);
 static void SendTypedChar(UBYTE c);
 
+// MA3-4: the mouse button of an IDCMP_MOUSEBUTTONS code as the terminal numbers it
+// (0 left, 1 middle); -1 for the right button, which belongs to the menus.
+static int MouseButtonOf(UWORD code)
+{
+    switch (code & ~IECODE_UP_PREFIX)
+    {
+    case IECODE_LBUTTON: return 0;
+    case IECODE_MBUTTON: return 1;
+    default:             return -1;
+    }
+}
+
+static int QualifierToVtMods(UWORD qual)
+{
+    return ((qual & (IEQUALIFIER_LSHIFT | IEQUALIFIER_RSHIFT)) ? VT_MOD_SHIFT : 0)
+         | ((qual & (IEQUALIFIER_LALT | IEQUALIFIER_RALT)) ? VT_MOD_ALT : 0)
+         | ((qual & IEQUALIFIER_CONTROL) ? VT_MOD_CTRL : 0);
+}
+
 // Edit > Paste: the clipboard's text, typed.
 static void PasteClipboard(void)
 {
     UBYTE *iff = AllocVec(CLIP_READ_MAX, MEMF_ANY);
     char *text = AllocVec(CLIP_READ_MAX, MEMF_ANY);
-    char *out = AllocVec(2 * CLIP_READ_MAX, MEMF_ANY);
+    char *out = AllocVec(2 * CLIP_READ_MAX + 16, MEMF_ANY);   // + the bracketed-paste markers
     ULONG len;
     size_t n, i;
 
@@ -3927,9 +3947,11 @@ static void PasteClipboard(void)
                                        isConnected && TELNET_DATA(), out);
             if (isConnected)
             {
-                TCPSend(out, (long)m);
                 if (STATE_IS(APP_LOCAL_ECHO))
                     EchoWrite((UBYTE *)out, (long)m);
+                if (vtTerm && STATE_IS(APP_RENDERER_BUILTIN))
+                    m = Vt_PasteBracket(vtTerm, out, m);    // MA3-7/8: ?2004
+                TCPSend(out, (long)m);
             }
             else
                 EchoWrite((UBYTE *)out, (long)m);
@@ -3988,7 +4010,17 @@ static void GetWindowMsg(struct Window *wwin)
         case IDCMP_MOUSEBUTTONS:
             if (wwin == win)
             {
-                if (code == SELECTDOWN)
+                int mbutton = MouseButtonOf(code);
+
+                // MA3-4/5: a program that asked for the mouse gets it (Shift keeps selecting)
+                if (mbutton >= 0 && VtMouseOwned((qual & (IEQUALIFIER_LSHIFT | IEQUALIFIER_RSHIFT)) != 0))
+                {
+                    UWORD row, col;
+
+                    SelectionCell(mouseX, mouseY, &row, &col);
+                    VtMouseButton(mbutton, (code & IECODE_UP_PREFIX) == 0, col - 1, row - 1, QualifierToVtMods(qual));
+                }
+                else if (code == SELECTDOWN)
                     SelectionDown(mouseX, mouseY);
                 else if (code == SELECTUP)
                     SelectionUp();
@@ -3997,7 +4029,17 @@ static void GetWindowMsg(struct Window *wwin)
 
         case IDCMP_MOUSEMOVE:
             if (wwin == win)
-                SelectionMove(mouseX, mouseY);
+            {
+                if (VtMouseOwned(FALSE))
+                {
+                    UWORD row, col;
+
+                    SelectionCell(mouseX, mouseY, &row, &col);
+                    VtMouseMove(col - 1, row - 1, QualifierToVtMods(qual));
+                }
+                else
+                    SelectionMove(mouseX, mouseY);
+            }
             break;
 
         case IDCMP_GADGETUP:
