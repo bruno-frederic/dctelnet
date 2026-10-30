@@ -2972,6 +2972,8 @@ int main(int argc, char *argv[])
                     if (STATE_ARE_ALL(APP_TITLE_BAR_ENABLED | APP_LEDS_ENABLED))
                         EraseRect(&scr->RastPort, scr->Width-72, 2, scr->Width-60, BAR_TEXT_HEIGHT-1);
                 }
+                else if (STATE_IS(APP_RENDERER_BUILTIN))
+                    VtFlushHeld();      // MA2-14: socket and SSH drained: draw a held UTF-8 prefix now
 
             } else {  // not connected
                 ULONG sig;
