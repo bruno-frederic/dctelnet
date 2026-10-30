@@ -29,6 +29,10 @@ BOOL Vt_MouseOwned(const vt_term *t, BOOL shift);
 int Vt_MouseButton(struct VtMouse *m, const vt_term *t, int button, BOOL down,
                    int x, int y, int mods, UBYTE *out);
 
+/* NewMouse wheel: IDCMP_RAWKEY code 0x7A (up) or 0x7B (down) gives the xterm
+ * wheel button 64 or 65, anything else -1. The wheel has a press only. */
+int Vt_WheelButton(UWORD rawkey);
+
 /* The pointer moved to cell x, y. ?1002 reports only while a button is held,
  * ?1003 always; both once per cell. */
 int Vt_MouseMove(struct VtMouse *m, const vt_term *t, int x, int y, int mods, UBYTE *out);

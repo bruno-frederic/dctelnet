@@ -31,6 +31,13 @@ int Vt_MouseButton(struct VtMouse *m, const vt_term *t, int button, BOOL down,
     return vt_encode_mouse(t, button, button >= 64 ? 0 : (down ? 0 : 1), x, y, mods, out);
 }
 
+int Vt_WheelButton(UWORD rawkey)
+{
+    if (rawkey == 0x7A) return 64;
+    if (rawkey == 0x7B) return 65;
+    return -1;
+}
+
 int Vt_MouseMove(struct VtMouse *m, const vt_term *t, int x, int y, int mods, UBYTE *out)
 {
     vt_u32 modes = vt_modes(t);
