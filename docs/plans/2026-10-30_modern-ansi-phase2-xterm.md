@@ -68,6 +68,15 @@ pens the screen really has.
 - [ ] MA2-9 24-bit on a true-colour (RTG) screen: RGB drawn directly or through
       allocated pens; rig test on an RTG screen: a cell written "\e[38;2;18;52;86m" reads
       back the right RGB from the bitmap pixel (assert 0x12 0x34 0x56).
+      Design (2026-10-30, owner: implement in #56): only on a screen whose bitmap is
+      deeper than 8 bits (RTG true/hi colour). An RGB or 256-colour cell gets a pen from
+      ObtainBestPen (PRECISION_EXACT, OBP_FailIfBad) on the screen's ColorMap, cached per
+      RGB in vtbuiltin.c (slots 16-255 of the engine's pen map, at most 240 colours) and
+      released in VtClose. Full cache or a failed ObtainBestPen: the 16-pen answer
+      (Vt_PenFor). retro32-term: term_pen_map grows to 256 entries, a term_set_pen(slot,
+      pen) setter, the RastPort path indexes it by the full byte (no & 0xF). The planar
+      direct path and every screen of 8 bits or less are unchanged (no ObtainBestPen call:
+      sentinel in the host test), so the 68000 path keeps its speed.
 - [ ] MA2-10 [16 pens DONE rig 3 2026-10-30: 0xFF0000 -> pen 9 = host Vt_PenFor on the rig palette, 0x123456 -> 8 both, no crash; 256 pens open] 24-bit on a palette screen (AGA, 16 and 256 pens): rig test, pen chosen is the
       mapper's answer (number from MA2-7), no crash, cell shows the colour.
 - [x] MA2-11 UTF-8 split across reads: bytes E2 | 96 88 sent in two VtWrite calls give
