@@ -70,3 +70,10 @@ WORD ScreenFont_LabelLeft(WORD iconLeft, UWORD iconWidth, UWORD labelWidth)
 {
     return (WORD)(iconLeft + ((WORD)iconWidth - (WORD)labelWidth) / 2);
 }
+
+const char *ScreenFont_ToolIconDir(BOOL modern, BOOL tallPixels)
+{
+    if (!modern)
+        return "PROGDIR:SCIcons/";
+    return tallPixels ? "PROGDIR:ToolBar/Wide/" : "PROGDIR:ToolBar/Square/";
+}

@@ -2443,7 +2443,7 @@ static struct ToolPalette *ToolPaletteFor(const char *value, const ULONG *rgb, i
         TerminalToolPens(rgb, n, tp->pen, tp->owned);
     for (k = 0; k < n; k++)
     {
-        if (STATE_IS(APP_FULLSCREEN))               // SCIcons: TerminalToolPens()
+        if (STATE_IS(APP_FULLSCREEN))               // own screen, either set: TerminalToolPens()
             continue;
         else if (k == 0)                            // the icon's background
             tp->pen[k] = (UBYTE)drawInfo->dri_Pens[BACKGROUNDPEN];
@@ -2528,6 +2528,24 @@ void CloseToolBarWindow(void)
     }
 }
 
+// Closing frees the icons and releases the pens their palettes owned
+// (FreeToolIcons), so the new set starts with an empty palette cache.
+void ReopenToolBarWindow(void)
+{
+    if (toolBarWin)
+    {
+        CloseToolBarWindow();
+        OpenToolBarWindow(TRUE);
+        if (toolBarWin)
+        {
+            struct MenuItem *item = GetMenuItemFromID(MENU_TOOL_BAR);
+
+            if (item != NULL)
+                item->Flags |= CHECKED;     // CloseToolBarWindow() cleared it
+        }
+    }
+}
+
 void OpenToolBarWindow(char setmenus)
 {
     if(!toolBarWin)
@@ -2542,16 +2560,12 @@ void OpenToolBarWindow(char setmenus)
 
         do
         {
-            // On the own screen SCIcons, drawn for the terminal colours 0-7
-            // and shown on the pens of those colours whatever the palette
-            // (LegacyPen(): the identity on the console renderers, so no
-            // redraw); on the Workbench the Lucide set, in the shape of its
-            // pixels, on the closest pens.
-            if (STATE_IS(APP_FULLSCREEN))
-                strlcpy(buf, "PROGDIR:SCIcons/", sizeof(buf));
-            else
-                strlcpy(buf, ScreenFont_TallPixels(modeResX, modeResY) ? "PROGDIR:ToolBar/Wide/"
-                                                                       : "PROGDIR:ToolBar/Square/", sizeof(buf));
+            // The icon set is the user's choice (Display > Modern Icons):
+            // SCIcons (DCTelnet 1.6, the default) or the Lucide set in the
+            // shape of the screen's pixels. The pens follow the screen, not
+            // the set: see ToolPaletteFor().
+            strlcpy(buf, ScreenFont_ToolIconDir(STATE_IS(APP_MODERN_ICONS),
+                                                ScreenFont_TallPixels(modeResX, modeResY)), sizeof(buf));
             strlcat(buf, icons[i], sizeof(buf));
             dob[i] = GetDiskObjectNew(buf);
             if(dob[i])

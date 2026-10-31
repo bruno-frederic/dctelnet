@@ -115,7 +115,7 @@ test_site_prefs: test_site_prefs.c ../src/site_prefs.c ../src/site_prefs.h ../sr
 test_palette: test_palette.c ../src/palette.c ../src/palette.h ../src/prefs.h ../src/prefs_file.c ../src/prefs_file.h
 	$(CC) $(CFLAGS) -Ishim -o $@ $(filter %.c,$^)
 
-test_screenfont: test_screenfont.c ../src/screenfont.c ../src/screenfont.h
+test_screenfont: test_screenfont.c ../src/screenfont.c ../src/screenfont.h ../src/prefs.h
 	$(CC) $(CFLAGS) -Ishim -o $@ $(filter %.c,$^)
 
 test_progdir: test_progdir.c ../src/progdir.c ../src/progdir.h

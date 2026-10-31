@@ -53,6 +53,12 @@ UWORD ScreenFont_ToolSlotWidth(UWORD imageWidth, UWORD labelWidth);
  * when the label is the wider of the two. */
 WORD ScreenFont_LabelLeft(WORD iconLeft, UWORD iconWidth, UWORD labelWidth);
 
+/* The drawer (with its trailing slash) of the tool bar icons. modern: the
+ * Lucide set, in the shape of its pixels (wide for tall pixels, else square);
+ * otherwise DCTelnet 1.6's SCIcons, whatever the pixels. One choice for the
+ * own screen and the Workbench (Display > Modern Icons). */
+const char *ScreenFont_ToolIconDir(BOOL modern, BOOL tallPixels);
+
 #define TOPAZ_PRO_NAME "TopazPro.font"
 #define TOPAZ_PRO_SIZE 16
 

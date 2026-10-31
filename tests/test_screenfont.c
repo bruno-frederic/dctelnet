@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <string.h>
 #include "screenfont.h"
+#include "prefs.h"
 
 /* Topaz was drawn for the Amiga's tall non-square pixels (PAL hires is 22x44
  * ticks per pixel); on square-pixel modes -- every RTG mode -- it looks
@@ -102,9 +103,26 @@ static void test_label_is_centred_under_its_icon(void) {
     assert(ScreenFont_LabelLeft(100, 48, 48) == 100);
 }
 
+/* One switch (Display > Modern Icons, State bit APP_MODERN_ICONS) picks the icon
+ * set for the own screen and the Workbench alike. */
+static void test_icon_drawer_follows_the_switch_and_the_pixels(void) {
+    ULONG zero = 0, modern = APP_MODERN_ICONS;
+
+    assert(strcmp(ScreenFont_ToolIconDir(FALSE, FALSE), "PROGDIR:SCIcons/") == 0);
+    assert(strcmp(ScreenFont_ToolIconDir(FALSE, TRUE),  "PROGDIR:SCIcons/") == 0);
+    assert(strcmp(ScreenFont_ToolIconDir(TRUE,  FALSE), "PROGDIR:ToolBar/Square/") == 0);
+    assert(strcmp(ScreenFont_ToolIconDir(TRUE,  TRUE),  "PROGDIR:ToolBar/Wide/") == 0);
+    /* fresh and every existing saved prefs file have the bit clear: the original set */
+    assert(strcmp(ScreenFont_ToolIconDir((zero & APP_MODERN_ICONS) != 0, TRUE), "PROGDIR:SCIcons/") == 0);
+    assert(strcmp(ScreenFont_ToolIconDir((modern & APP_MODERN_ICONS) != 0, TRUE), "PROGDIR:ToolBar/Wide/") == 0);
+    /* the choice is saved in the prefs file */
+    assert(APP_MODERN_ICONS & STATE_PERSISTENT_MASK);
+}
+
 int main(void) {
     test_tool_slot_is_as_wide_as_its_label();
     test_label_is_centred_under_its_icon();
+    test_icon_drawer_follows_the_switch_and_the_pixels();
     test_hires_without_interlace_has_tall_pixels();
     test_window_stops_at_80_columns();
     test_window_may_be_132_columns_wide();

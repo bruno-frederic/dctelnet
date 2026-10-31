@@ -200,6 +200,7 @@ static struct NewMenu mainMenuDesc[] =
     {    NM_ITEM, "Full-screen",                    "W", HIGHCOMP|CHECKIT|MENUTOGGLE, 0, (APTR)MENU_FULLSCREEN},
     {    NM_ITEM, "Title Bar",                      "R", HIGHCOMP|CHECKIT|MENUTOGGLE, 0, (APTR)MENU_TITLE_BAR},
     {    NM_ITEM, "Tool Bar",                       "4", HIGHCOMP|CHECKIT|MENUTOGGLE, 0, (APTR)MENU_TOOL_BAR},
+    {    NM_ITEM, "Modern Icons",                    0 , HIGHCOMP|CHECKIT|MENUTOGGLE, 0, (APTR)MENU_MODERN_ICONS},
     {    NM_ITEM, "132 Columns",                     0 , HIGHCOMP|CHECKIT|MENUTOGGLE, 0, (APTR)MENU_132_COLUMNS},
     {    NM_ITEM, "LEDs",                           "I", HIGHCOMP|CHECKIT|MENUTOGGLE, 0, (APTR)MENU_LEDS},
     {    NM_ITEM, "Snapshot Windows",               "$",             0,               0, (APTR)MENU_SNAPSHOT_WINDOWS},
@@ -4350,6 +4351,14 @@ static void GetWindowMsg(struct Window *wwin)
                         }
                         break;
 
+                    case MENU_MODERN_ICONS:
+                        UpdatePrefsFromMenu(item, APP_MODERN_ICONS);
+                        if (STATE_IS(APP_FULLSCREEN))
+                            shouldRestart = STATE_IS(APP_TOOL_BAR_ENABLED);
+                        else
+                            ReopenToolBarWindow();
+                        break;
+
                     case MENU_RETURN_SENDING_CRLF:
                         UpdatePrefsFromMenu(item, APP_RETURN_SENDING_CRLF);
                         break;
@@ -5739,6 +5748,7 @@ void CreateAppMenus(void)
     SetNewMenuCheckFromPref(MENU_SCROLLBACK,              APP_SCROLLBACK_ENABLED);
     SetNewMenuCheckFromPref(MENU_PACKET_WINDOW,           APP_PACKET_WINDOW_ENABLED);
     SetNewMenuCheckFromPref(MENU_TOOL_BAR,                APP_TOOL_BAR_ENABLED);
+    SetNewMenuCheckFromPref(MENU_MODERN_ICONS,            APP_MODERN_ICONS);
     SetNewMenuCheckFromPref(MENU_RETURN_SENDING_CRLF,     APP_RETURN_SENDING_CRLF);
     SetNewMenuCheckFromPref(MENU_VT_KEYS,                 APP_VT_KEYS);
     SetNewMenuCheckFromPref(MENU_LOCAL_ECHO,              APP_LOCAL_ECHO);

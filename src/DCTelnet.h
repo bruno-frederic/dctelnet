@@ -101,6 +101,7 @@ enum MenuItemID
         MENU_TITLE_BAR,
         MENU_PACKET_WINDOW,
         MENU_TOOL_BAR,
+        MENU_MODERN_ICONS,
         MENU_132_COLUMNS,
 
         MENU_SCREEN_MODE,
