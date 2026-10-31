@@ -55,3 +55,8 @@ UWORD ScreenFont_MaxWindowWidth(UWORD columns, UWORD cellX, UWORD borders)
 {
     return (UWORD)(columns * cellX + borders);
 }
+
+BOOL ScreenFont_TallPixels(UWORD resolutionX, UWORD resolutionY)
+{
+    return resolutionX != 0 && resolutionY > resolutionX;
+}
