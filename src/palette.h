@@ -25,6 +25,17 @@ BOOL Palette_AnsiPens(UWORD depth, UBYTE pens[16]);
  * other twelve in ANSI order. pens[ansi] is the ANSI colour's pen. */
 BOOL Palette_OwnPens(ULONG state, UWORD depth, UBYTE pens[16]);
 
+/* The colour each ANSI colour shows in on the screen (0x00RRGGBB, ANSI
+ * order): palette[ansi] (RGB4) on pen pens[ansi] (Palette_OwnPens). On 16
+ * colours the built-in renderer shares pens 0 to PALETTE_UI_SHARED-1 with the
+ * UI; with ui (not NULL) those pens take the Workbench's own UI colours,
+ * ui[pen] (0x00RRGGBB: background, shadow, shine, fill), so the dialogs look
+ * like the Workbench's -- and ANSI white, black, bright white and bright blue
+ * show in them. Pens of 32+ colours are never shared: ui changes nothing. */
+#define PALETTE_UI_SHARED 4
+void Palette_ScreenColours(const UWORD palette[16], const UBYTE pens[16], const ULONG ui[PALETTE_UI_SHARED],
+                           ULONG out[16]);
+
 /* The UI pen table (SA_Pens, terminated by 0xFFFF; 13 entries) of a screen
  * whose pens 0-15 hold the terminal's colours, penColours[pen] in RGB4:
  * every DrawInfo pen is the pen nearest to Intuition's default colour for it

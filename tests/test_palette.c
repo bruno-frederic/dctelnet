@@ -172,10 +172,41 @@ static void test_the_ui_pens_are_the_nearest_ansi_colours_to_intuitions(void) {
     assert(dev[pens[5]] == 0x000F);   /* the device palette has a pure blue */
 }
 
+/* 16 colours, built-in renderer, owner's report "dialogs not like Workbench":
+ * the dialogs drew in the ANSI colours nearest to Intuition's (grey #AAA,
+ * bright blue #55F). Pens 0-3 now take the Workbench's own UI colours, the
+ * other twelve stay the ANSI palette. */
+static void test_the_dialogs_take_the_workbench_colours_on_16_colours(void) {
+    static const ULONG wb[PALETTE_UI_SHARED] = { 0xBCBCBC, 0x0B0C16, 0xFFFFFF, 0x5577AA };
+    UBYTE pens[16];
+    ULONG out[16];
+    int i;
+
+    assert(Palette_OwnPens(APP_RENDERER_BUILTIN, 4, pens));
+    Palette_ScreenColours(defaultAnsiColors, pens, wb, out);
+    assert(out[7]  == 0xBCBCBC);        /* pen 0: background, was ANSI white #AAA */
+    assert(out[0]  == 0x0B0C16);        /* pen 1: shadow */
+    assert(out[15] == 0xFFFFFF);        /* pen 2: shine */
+    assert(out[12] == 0x5577AA);        /* pen 3: fill, was bright blue #55F */
+    for (i = 0; i < 16; i++)
+        if (pens[i] >= PALETTE_UI_SHARED)
+            assert(out[i] == Palette_RGB32(defaultAnsiColors[i]));
+
+    /* without the Workbench's colours: the ANSI palette as it is */
+    Palette_ScreenColours(defaultAnsiColors, pens, NULL, out);
+    for (i = 0; i < 16; i++) assert(out[i] == Palette_RGB32(defaultAnsiColors[i]));
+
+    /* 32+ colours: the ANSI colours have pens of their own, none is the UI's */
+    assert(Palette_OwnPens(APP_RENDERER_BUILTIN, 5, pens));
+    Palette_ScreenColours(defaultAnsiColors, pens, wb, out);
+    for (i = 0; i < 16; i++) assert(out[i] == Palette_RGB32(defaultAnsiColors[i]));
+}
+
 int main(void) {
     test_menu_text_is_legible_on_os2_and_os3();
     test_the_builtin_renderer_gets_its_own_ansi_pens_on_deep_screens();
     test_the_builtin_renderer_puts_the_ui_colours_on_pens_0_to_3_on_16_colours();
+    test_the_dialogs_take_the_workbench_colours_on_16_colours();
     test_the_ui_pens_are_the_nearest_ansi_colours_to_intuitions();
     test_the_editor_sees_the_renderers_palette_in_ansi_order();
     test_channels_are_the_four_bits_the_prefs_keep();

@@ -1695,35 +1695,71 @@ static UWORD LegacyPen(UWORD ibmconIndex)
     return ibmconIndex;
 }
 
-// Load target's palette onto the screen: the ANSI pens (in ANSI order, 8 bits
-// a gun) on 32+ colours and with the built-in renderer on 16, pens 0-15 otherwise.
+// The Workbench's UI colours (background, shadow, shine, fill; 0x00RRGGBB):
+// on 16 colours the built-in renderer's ANSI colours share these pens with
+// the UI, and the owner wants the dialogs to look like the Workbench's.
+static ULONG wbUiColours[PALETTE_UI_SHARED];
+static BOOL  wbUiKnown;
+
+static void ReadWorkbenchUiColours(void)
+{
+    static const UWORD driPen[PALETTE_UI_SHARED] = { BACKGROUNDPEN, SHADOWPEN, SHINEPEN, FILLPEN };
+    struct Screen *wb = LockPubScreen((STRPTR)"Workbench");
+    struct DrawInfo *dri = wb ? GetScreenDrawInfo(wb) : NULL;
+    int i;
+
+    wbUiKnown = FALSE;
+    if (dri && dri->dri_NumPens > FILLPEN)
+    {
+        for (i = 0; i < PALETTE_UI_SHARED; i++)
+        {
+            UWORD pen = dri->dri_Pens[driPen[i]];
+
+            if (GfxBase->LibNode.lib_Version >= 39)
+            {
+                ULONG rgb[3];
+
+                GetRGB32(wb->ViewPort.ColorMap, pen, 1, rgb);
+                wbUiColours[i] = (rgb[0] >> 24) << 16 | (rgb[1] >> 24) << 8 | (rgb[2] >> 24);
+            }
+            else
+                wbUiColours[i] = Palette_RGB32((UWORD)GetRGB4(wb->ViewPort.ColorMap, pen));
+        }
+        wbUiKnown = TRUE;
+    }
+    if (dri) FreeScreenDrawInfo(wb, dri);
+    if (wb) UnlockPubScreen(NULL, wb);
+}
+
+// Load target's palette onto screen s's ANSI pens (Palette_ScreenColours):
+// 8 bits a gun from V39, 4 before.
+static void ShowAnsiColours(struct Screen *s, struct PrefsStruct *target)
+{
+    UWORD i, colours[16];
+    ULONG shown[16];
+
+    Palette_Get(target, colours);               // the renderer's palette, ANSI order
+    Palette_ScreenColours(colours, ansiColourPens, wbUiKnown ? wbUiColours : NULL, shown);
+    for (i = 0; i < 16; i++)
+    {
+        ULONG c = shown[i];
+
+        if (GfxBase->LibNode.lib_Version >= 39)
+            SetRGB32(&s->ViewPort, ansiColourPens[i], ((c >> 16) & 0xFF) * 0x01010101UL,
+                     ((c >> 8) & 0xFF) * 0x01010101UL, (c & 0xFF) * 0x01010101UL);
+        else
+            SetRGB4(&s->ViewPort, ansiColourPens[i], (c >> 20) & 0xF, (c >> 12) & 0xF, (c >> 4) & 0xF);
+    }
+}
+
+// Load target's palette onto the screen: the ANSI pens (in ANSI order) on 32+
+// colours and with the built-in renderer on 16, pens 0-15 otherwise.
 static void LoadAnsiPalette(struct PrefsStruct *target)
 {
     if (STATE_IS_NOT(APP_FULLSCREEN))
         return;                 // the Workbench's pens are shared: never recolour them
-    if (ansiOwnPens && GfxBase->LibNode.lib_Version >= 39)
-    {
-        UWORD i;
-
-        UWORD colours[16];
-
-        Palette_Get(target, colours);           // the renderer's palette, ANSI order
-        for (i = 0; i < 16; i++)
-        {
-            ULONG c = Palette_RGB32(colours[i]);
-            SetRGB32(&scr->ViewPort, ansiColourPens[i], ((c >> 16) & 0xFF) * 0x01010101UL,
-                     ((c >> 8) & 0xFF) * 0x01010101UL, (c & 0xFF) * 0x01010101UL);
-        }
-    }
-    else if (ansiOwnPens)
-    {
-        UWORD i, colours[16];       // 16 colours, the built-in renderer: the same pen table
-
-        Palette_Get(target, colours);
-        for (i = 0; i < 16; i++)
-            SetRGB4(&scr->ViewPort, ansiColourPens[i], colours[i] >> 8 & 0xF, colours[i] >> 4 & 0xF,
-                    colours[i] & 0xF);
-    }
+    if (ansiOwnPens)
+        ShowAnsiColours(scr, target);
     else
         LoadRGB4(&scr->ViewPort, Prefs_Palette(target), 16);
 }
@@ -1787,6 +1823,8 @@ static void ShowEditedColour(int ansi, UWORD rgb4)
 {
     if (!editLive)
         return;
+    if (ansiOwnPens && wbUiKnown && editPens[ansi] < PALETTE_UI_SHARED)
+        return;                 // a UI pen: keeps the Workbench's colour (ShowAnsiColours)
     SetRGB4(&scr->ViewPort, editPens[ansi], (rgb4 >> 8) & 0xF, (rgb4 >> 4) & 0xF, rgb4 & 0xF);
 }
 
@@ -5413,6 +5451,8 @@ struct Screen* OpenAppScreen(void)
 
         UBYTE deepPens[16];
         BOOL  deep = Palette_OwnPens(prefs.State, prefs.DisplayDepth, deepPens);
+
+        ReadWorkbenchUiColours();
         UWORD ansiColours[16];
         static UWORD uiPens[PALETTE_UI_PENS];
 
@@ -5469,6 +5509,8 @@ struct Screen* OpenAppScreen(void)
     // colours on pens of their own.
     ansiOwnPens = scr && STATE_IS(APP_FULLSCREEN)
                && Palette_OwnPens(prefs.State, AppScreenDepth(scr), ansiColourPens);
+    if (ansiOwnPens)
+        ShowAnsiColours(scr, &prefs);   // exact colours: SA_Colors has 4 bits a gun
 
     // Border blank (V39, ECS/AGA): the overscan border shows colour 0, which
     // on 32+ colours is the UI's grey pen 0 -- keep it black like the terminal.

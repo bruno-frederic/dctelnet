@@ -96,6 +96,15 @@ BOOL Palette_OwnPens(ULONG state, UWORD depth, UBYTE pens[16])
     return Palette_AnsiPens(depth, pens);
 }
 
+void Palette_ScreenColours(const UWORD palette[16], const UBYTE pens[16], const ULONG ui[PALETTE_UI_SHARED],
+                           ULONG out[16])
+{
+    int i;
+
+    for (i = 0; i < 16; i++)
+        out[i] = (ui && pens[i] < PALETTE_UI_SHARED) ? ui[pens[i]] : Palette_RGB32(palette[i]);
+}
+
 // Intuition's default colours (the 4-colour Workbench palette) and which of
 // them each DrawInfo pen takes, in DrawInfo order: DETAIL, BLOCK, TEXT, SHINE,
 // SHADOW, FILL, FILLTEXT, BACKGROUND, HIGHLIGHTTEXT, BARDETAIL, BARBLOCK,
