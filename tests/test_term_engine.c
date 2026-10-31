@@ -192,6 +192,10 @@ static struct { WORD x, y; UBYTE code, fg, bg; } probe[PROBE_MAX];
 static int probes;
 static void probe_glyph(WORD x, UBYTE ch)
 {
+    if (term_cursor_busy) {         /* the cursor block or its removal: not the text */
+        term_glyph(x, ch);
+        return;
+    }
     if (probes < PROBE_MAX) {
         probe[probes].x = x;
         probe[probes].y = cur_y;
@@ -248,6 +252,7 @@ static void setup(void)
             wideData[r][2 * c + 1] = (UBYTE)(c ^ r);
         }
     }
+    term_cell_source = NULL;        /* the standalone cursor until a test opens VtOpen() */
     bm.BytesPerRow = BPR; bm.Rows = H; bm.Depth = 4;
     for (p = 0; p < 4; p++) bm.Planes[p] = planes[p];
     memset(planes, 0x55, sizeof(planes));           /* "the title bar and other windows" */
@@ -450,7 +455,7 @@ static void test_a_menu_cannot_open_while_the_terminal_draws_into_the_bitmap(voi
     assert(unlockedBusy == 0);                  /* and done before they were given back */
     assert(memcmp(atUnlock, planes, sizeof(planes)) == 0);    /* nothing drawn after */
     assert(planes[0][(TOP + 29 * 8) * BPR + 1] == 0);         /* (the new bottom row, */
-    assert(planes[0][(TOP + 29 * 8) * BPR] == 0xFF);          /*  the cursor in it)   */
+    assert(planes[0][(TOP + 29 * 8) * BPR] == (UBYTE)~' ');   /*  the cursor in it, drawn as ' ')   */
     assert(planes[0][(TOP + 28 * 8) * BPR] == 'l');
     assert(layerLocks == 0);
     vt_write_str("\x1b[?25l\n");     /* a scroll and no cursor: the write ends on a blit */
@@ -1358,9 +1363,59 @@ static void test_ma4_4_the_alt_screen_leaves_the_scrollback_alone(void)
     VtClose();
 }
 
+/* The cursor is a solid block in ANSI bright white with the character in the
+ * cell's background pen; on a white background the block is black. Only pens
+ * 0-15 (the ANSI set) at any depth, so a 32 colour screen needs no extra pens
+ * and the cursor on black is white, not the complement (magenta at 16). */
+static void test_cursor_on_a_black_cell_is_white_at_16_and_32_colours_without_extra_pens(void)
+{
+    UBYTE block, text;
+    int bg, p, r;
+
+    for (bg = 0; bg < 16; bg++) {               /* every ANSI background */
+        term_cursor_pens((UBYTE)bg, &block, &text);
+        assert(block < 16 && text == bg);       /* ANSI pens only: nothing reserved */
+        assert(block != bg);                    /* always visible */
+    }
+    term_cursor_pens(0, &block, &text);
+    assert(block == 15 && text == 0);           /* black cell: bright white block */
+    term_cursor_pens(7, &block, &text);
+    assert(block == 0 && text == 7);            /* white background: black block */
+    term_cursor_pens(15, &block, &text);
+    assert(block == 0 && text == 15);           /* bright white background: black block */
+
+    /* through the product's entry points, drawn straight into the planes */
+    setup();
+    assert(VtOpen() == 0);
+    vt_write_str("A\x1b[1D");                  /* the cursor on the A, black cell */
+    assert(cursor_drawn == 1);
+    for (r = 0; r < 8; r++) {
+        UBYTE glyph = (UBYTE)('A' ^ (r * 37));
+        for (p = 0; p < 4; p++)                 /* glyph pixels pen 0, the rest pen 15 */
+            assert(planes[p][(TOP + r) * BPR] == (UBYTE)~glyph);
+    }
+    assert(calls[0] == 0);                      /* no Complement, no RastPort call */
+    cursor_hide();                              /* redrawn from the grid: white A on black */
+    for (r = 0; r < 8; r++) {
+        UBYTE glyph = (UBYTE)('A' ^ (r * 37));
+        for (p = 0; p < 3; p++)
+            assert(planes[p][(TOP + r) * BPR] == glyph);
+        assert(planes[3][(TOP + r) * BPR] == 0);
+    }
+    cursor_show();
+    vt_write_str("\x1b[47;30mB\x1b[1D");     /* white background: the block is black */
+    for (r = 0; r < 8; r++) {
+        UBYTE glyph = (UBYTE)('B' ^ (r * 37));
+        for (p = 0; p < 4; p++)                 /* the B in pen 7 on pen 0: planes 0-2 the glyph */
+            assert(planes[p][(TOP + r) * BPR] == (p < 3 ? glyph : 0));
+    }
+    VtClose();
+}
+
 int main(void)
 {
     test_the_terminal_starts_below_the_title_bar_and_matches_the_window_rows();
+    test_cursor_on_a_black_cell_is_white_at_16_and_32_colours_without_extra_pens();
     test_a_covered_terminal_draws_only_through_the_rastport();
     test_uncovered_again_it_draws_directly();
     test_an_rtg_bitmap_always_takes_the_rastport();

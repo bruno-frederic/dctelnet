@@ -124,6 +124,12 @@ static void VtDraw(void *user, int x0, int y0, int x1, int y1)
             vt_resolve_colors(vtTerm, &cell, &fg, &bg);
             term_pen_fg = VtPenFor(fg);
             term_pen_bg = VtPenFor(bg);
+            if (term_cursor_paint) {    /* the cursor block: this cell, other pens */
+                UBYTE block, text;
+                term_cursor_pens(term_pen_bg, &block, &text);
+                term_pen_bg = block;
+                term_pen_fg = text;
+            }
             atr_under = (c[x].attr & VT_ATTR_UNDERLINE) != 0;
             if (c[x].width == 0) {
                 /* the second cell of a wide character: the font's cells are
@@ -167,6 +173,13 @@ static void VtDraw(void *user, int x0, int y0, int x1, int y1)
                 term_glyph((WORD)x, (UBYTE)' ');
         }
     }
+    atr_under = 0;
+}
+
+/* The engine's cell source for the cursor: the one cell, from the grid. */
+static void VtCursorCell(WORD x, WORD y)
+{
+    VtDraw(NULL, x, y, x + 1, y + 1);
     atr_under = 0;
 }
 
@@ -396,6 +409,7 @@ static int VtOpen(void)
     static const vt_callbacks cb = { VtDraw, VtScroll, VtReply, NULL, VtTitle, NULL, NULL };
 
     vtScrollOff = 0;
+    term_cell_source = VtCursorCell;
     VtProbeFont();
     VtClose();      /* vt_new() draws through VtDraw(): vtTerm must not be the freed one */
     vtTrueColour = FALSE;
