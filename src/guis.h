@@ -65,7 +65,8 @@ BOOL FindInScrollBack(ULONG *top);
 BOOL EditConnectionOptions(struct PrefsStruct *p);
 void ImportBookList(const char *path);
 void OpenToolBarWindow(char setmenus);
-void ToolBarHover(WORD x, WORD y);
+BOOL ToolBarWantsHover(void);
+void ToolBarHover(void);
 void ToolBarHoverEnd(BOOL redraw);
 void CloseToolBarWindow(void);
 void ReopenToolBarWindow(void);   /* an open bar closes and opens again with the current prefs */

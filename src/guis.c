@@ -2710,18 +2710,30 @@ void OpenToolBarWindow(char setmenus)
     }
 }
 
-// Draws the button the pointer is over in its selected image (bright), the one
-// it left in its normal image. (x, y) is window-relative; off every button, or
-// -1 buttons, restores. A button without a selected image is not highlighted.
-void ToolBarHover(WORD x, WORD y)
+// TRUE while the bar is open with the Modern icons, which brighten under the
+// pointer.
+BOOL ToolBarWantsHover(void)
 {
+    return (BOOL)(toolBarWin && STATE_IS(APP_MODERN_ICONS));
+}
+
+// Draws the button the pointer is over in its selected image (bright), the one
+// it left in its normal image. The pointer is read from the screen, so a move
+// reported by any window -- the terminal keeps the focus -- updates the bar;
+// off every button restores. A button without a selected image is not
+// highlighted.
+void ToolBarHover(void)
+{
+    WORD x, y;
     struct ScreenFontToolRect rect[BUTTON_COUNT];
     struct Gadget *gads[BUTTON_COUNT], *gad, *now = NULL;
     UWORD n = 0;
     WORD hit;
 
-    if (!toolBarWin)
+    if (!ToolBarWantsHover())
         return;
+    x = (WORD)(toolBarWin->WScreen->MouseX - toolBarWin->LeftEdge);
+    y = (WORD)(toolBarWin->WScreen->MouseY - toolBarWin->TopEdge);
     for (gad = toolBarWin->FirstGadget; gad && n < BUTTON_COUNT; gad = gad->NextGadget)
     {
         rect[n].left = gad->LeftEdge;

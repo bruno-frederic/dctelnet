@@ -3827,6 +3827,15 @@ static void CopyRange(const struct ClipRange *r)
     if (iff) FreeVec(iff);
 }
 
+// The terminal window reports pointer moves while a selection is dragged, and
+// always while the Modern tool bar is open: the terminal keeps the focus, so
+// the bar's own window never sees the pointer cross its buttons.
+static void TerminalMouseReport(void)
+{
+    if (win)
+        ReportMouse((BOOL)(selDragging || ToolBarWantsHover()), win);
+}
+
 static void SelectionDown(WORD mx, WORD my)
 {
     if (!SelectionAvailable())
@@ -3863,7 +3872,7 @@ static void SelectionUp(void)
     if (!selDragging)
         return;
     selDragging = FALSE;
-    ReportMouse(FALSE, win);                    // the selection waits for Amiga-C
+    TerminalMouseReport();                      // the selection waits for Amiga-C
 }
 
 static void CopyScreen(void)
@@ -3983,8 +3992,7 @@ static void GetWindowMsg(struct Window *wwin)
         case IDCMP_MOUSEMOVE:
             if (wwin == win)
                 SelectionMove(mouseX, mouseY);
-            else if (wwin == toolBarWin)
-                ToolBarHover(mouseX, mouseY);
+            ToolBarHover();
             break;
 
         case IDCMP_INACTIVEWINDOW:
@@ -4356,6 +4364,7 @@ static void GetWindowMsg(struct Window *wwin)
                                 OpenToolBarWindow(TRUE);
                             else
                                 CloseToolBarWindow();
+                            TerminalMouseReport();
                         }
                         break;
 
@@ -4364,7 +4373,10 @@ static void GetWindowMsg(struct Window *wwin)
                         if (STATE_IS(APP_FULLSCREEN))
                             shouldRestart = STATE_IS(APP_TOOL_BAR_ENABLED);
                         else
+                        {
                             ReopenToolBarWindow();
+                            TerminalMouseReport();
+                        }
                         break;
 
                     case MENU_RETURN_SENDING_CRLF:
@@ -5672,6 +5684,7 @@ void OpenAppWindow(void)
         win = OpenWindowTags(&newWin, WA_BackFill, (ULONG)&terminalBackFill, TAG_END);
     }
 
+    TerminalMouseReport();
     SetFont(win->RPort, petsciiFont ? petsciiFont : ansiFont);
 }
 
