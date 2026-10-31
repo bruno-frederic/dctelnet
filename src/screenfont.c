@@ -55,3 +55,18 @@ UWORD ScreenFont_MaxWindowWidth(UWORD columns, UWORD cellX, UWORD borders)
 {
     return (UWORD)(columns * cellX + borders);
 }
+
+BOOL ScreenFont_GlyphIsHLine(const UWORD *rows, int nrows, int width)
+{
+    UWORD full = (UWORD)(width >= 16 ? 0xFFFFU : (0xFFFFU << (16 - width)) & 0xFFFFU);
+    int r, nfull = 0;
+
+    for (r = 0; r < nrows; r++)
+    {
+        if (rows[r] == full)
+            nfull++;
+        else if (rows[r] != 0)
+            return FALSE;
+    }
+    return nfull > 0 && nfull <= nrows / 2;
+}

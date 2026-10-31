@@ -1,0 +1,4 @@
+up_rough_banner.ans -- the UP Rough banner, a real BBS ANSI art file (80
+columns, 26 rows, blink and CP437 box drawing, SAUCE record at the end).
+Source: UP-Term, vtcon/art/up_rough_banner.ans (the owner's group banner).
+Used by tests/test_term_engine.c (MA1-9).

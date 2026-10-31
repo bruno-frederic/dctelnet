@@ -118,7 +118,11 @@ struct PrefsStruct
     // Keeps the struct a multiple of 4 bytes with no padding a compiler adds
     // on its own (every byte is a field: site_prefs.c carries them all). A
     // new UBYTE field takes one of these.
-    UBYTE Reserved[1];
+    UBYTE Blink;                // SGR 5 (blink): BLINK_ICE (0), BLINK_STEADY
+
+    // Added after the first 2.x files: a shorter file loads with these 0.
+    UBYTE TermType;             // TERMTYPE_AUTO (0), _BBS, _UNIX (vtpersonality.h)
+    UBYTE Reserved[3];          // keeps the struct a multiple of 4; a new UBYTE field takes one
 };
 
 /*
@@ -150,6 +154,7 @@ struct PrefsStruct
 
 #define APP_RLOGIN                   (1UL << 13)  // Rlogin (RFC 1282): a raw byte stream after the login
                                                   // message, no telnet codes
+#define APP_SSH                      (1UL << 14)  // SSH (encrypted login, sshconn.c): no telnet codes
 #define APP_PETSCII_MODE             (1UL << 15)
 #define APP_WINDOW_SNAPSHOT          (1UL << 16)  // MainWin* hold a Snapshot Windows size;
                                                   // clear: the Workbench window opens 80x25
@@ -167,6 +172,15 @@ struct PrefsStruct
 
 #define APP_TITLE_BAR_ENABLED        (1UL << 25)  //  2x in main loop for each Receive() (and 1x in LEDs(), LEDs() is not used in hot-path)
 #define APP_LEDS_ENABLED             (1UL << 26)  //  2x in main loop for each Receive)) (and 1x in LEDs(), LEDs() is not used in hot-path)
+
+// prefs.TermType: which terminal the built-in renderer emulates
+#define TERMTYPE_AUTO 0  // from the Character Set: UTF-8 is Unix, anything else a BBS
+#define TERMTYPE_BBS  1  // PC ANSI (BBS art), whatever the Character Set
+#define TERMTYPE_UNIX 2  // xterm, whatever the Character Set
+
+// prefs.Blink
+#define BLINK_ICE    0   // blink makes the background bright (iCE colours), the cell does not blink
+#define BLINK_STEADY 1   // blink is ignored: the cell is drawn as sent
 
 // prefs.Bell
 #define BELL_FLASH 0     // the screen flashes (DisplayBeep)

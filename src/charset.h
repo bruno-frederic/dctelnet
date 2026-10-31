@@ -21,7 +21,7 @@ UBYTE Charset_PetsciiToLatin1(UBYTE c, BOOL lowerCase);
 /* The Character Set setting: what the BBS sends (prefs.Charset). */
 #define CHARSET_CP437   0       /* IBM PC: shown as it comes (the default) */
 #define CHARSET_LATIN1  1       /* Amiga BBSes: ISO-8859-1, copied as it is */
-#define CHARSET_UTF8    2       /* modern BBSes, Unix: shown in the IBM set */
+#define CHARSET_UTF8    2       /* modern BBSes, Unix: converted to the IBM set, except in the built-in renderer (the font's own encoding, box and blocks drawn) */
 
 /* UTF-8 from the BBS as CP437 for the IBM font: box drawing exact, what
  * CP437 lacks '?'. The decoder keeps a character split between two
