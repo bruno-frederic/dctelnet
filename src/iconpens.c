@@ -77,6 +77,15 @@ int IconPens_Nearest(ULONG rgb, const ULONG *palette, int n)
     return best;
 }
 
+void IconPens_TerminalMap(const ULONG *rgb, int n, const ULONG termRgb[16],
+                          const UBYTE termPen[16], UBYTE *map)
+{
+    int k;
+
+    for (k = 0; k < n; k++)
+        map[k] = termPen[IconPens_Nearest(rgb[k], termRgb, 16)];
+}
+
 static LONG channel(ULONG c, int shift)
 {
     return (LONG)((c >> shift) & 0xFF);

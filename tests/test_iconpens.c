@@ -237,25 +237,69 @@ static void test_an_identity_map_needs_no_remap(void)
     assert(IconPens_RemapCount == before + 1);       /* the counter does move */
 }
 
-/* SCIcons carry the default terminal colours of pens 0-7 (defaultDeviceColors in
- * src/palette.c, ibmcon pen order). The string must match that table, so a
- * palette change that leaves the icons behind fails here. On the default
- * terminal screen every icon pen is then its own nearest: the map is identity. */
-static void test_scicons_palette_is_the_default_terminal_pens(void)
+/* The tool type the SCIcons carry (tools/toolbar_icons.py SC_PALETTE_TOOLTYPE). */
+static const char scicons[] = "000000,DDDDDD,00DD00,DDDD00,000000,DD00DD,00DDDD,DD0000";
+
+/* The colour terminal pen i shows on the default palette, as 0xRRGGBB. */
+static void default_terminal_colours(ULONG termRgb[16])
 {
-    static const char sc[] = "000000,DDDDDD,00DD00,DDDD00,0000DD,DD00DD,00DDDD,DD0000";
-    ULONG rgb[ICONPENS_MAX], screen[16];
-    UBYTE map[8];
     int i;
 
-    for (i = 0; i < 16; i++)                         /* device pen i, as 0xRRGGBB */
-        screen[i] = Palette_AnsiColour(defaultDeviceColors, Palette_IbmconToAnsi(i));
-    assert(IconPens_Parse(sc, rgb) == 8);
+    for (i = 0; i < 16; i++)
+        termRgb[i] = Palette_AnsiColour(defaultDeviceColors, Palette_IbmconToAnsi(i));
+}
+
+/* SCIcons were drawn on the default terminal colours of pens 0-7
+ * (defaultDeviceColors in src/palette.c, ibmcon pen order) and name them, but
+ * pen 4: black, not the palette's blue. The table must stay in step, so a
+ * palette change that leaves the icons behind fails here. */
+static void test_scicons_palette_is_the_default_terminal_pens_with_black_for_blue(void)
+{
+    ULONG rgb[ICONPENS_MAX], term[16];
+    int i;
+
+    default_terminal_colours(term);
+    assert(IconPens_Parse(scicons, rgb) == 8);
     for (i = 0; i < 8; i++)
-        assert(rgb[i] == screen[i]);
-    for (i = 0; i < 8; i++)
-        map[i] = (UBYTE)IconPens_Nearest(rgb[i], screen, 16);
-    assert(IconPens_IsIdentity(map, 8, 3, IconPens_Depth(7)));
+        assert(rgb[i] == (i == 4 ? 0x000000 : term[i]));
+    assert(term[4] == 0x0000DD);
+}
+
+/* The SCIcons' pen 4 drew blue on DCTelnet's own screens whatever their tool
+ * type said: pen k was terminal colour k. Their declared colours now decide, on
+ * every depth: pen 4 takes the terminal's black, the other pens their own
+ * terminal colour. */
+static void check_scicons_on(const UBYTE termPen[16])
+{
+    ULONG rgb[ICONPENS_MAX], term[16];
+    UBYTE map[8];
+    int k;
+
+    default_terminal_colours(term);
+    assert(IconPens_Parse(scicons, rgb) == 8);
+    IconPens_TerminalMap(rgb, 8, term, termPen, map);
+    assert(map[4] == termPen[0]);                    /* black, not blue */
+    for (k = 0; k < 8; k++)
+        if (k != 4)
+            assert(map[k] == termPen[k]);
+}
+
+static void test_scicons_pen_4_draws_black_on_16_and_256_colour_screens(void)
+{
+    UBYTE termPen[16], ansiPens[16];
+    int i;
+
+    for (i = 0; i < 16; i++)                         /* 16 colours, console renderer */
+        termPen[i] = Palette_TerminalPen(i, NULL, FALSE);
+    check_scicons_on(termPen);
+    for (i = 0; i < 16; i++)                         /* 16 colours, built-in renderer */
+        termPen[i] = Palette_TerminalPen(i, NULL, TRUE);
+    check_scicons_on(termPen);
+    assert(Palette_AnsiPens(8, ansiPens));           /* 256 colours: the ANSI pens */
+    for (i = 0; i < 16; i++)
+        termPen[i] = Palette_TerminalPen(i, ansiPens, FALSE);
+    check_scicons_on(termPen);
+    assert(termPen[0] != 0);                         /* a black of its own, not pen 0 */
 }
 
 static void test_plane_size_rounds_rows_to_words(void)
@@ -277,7 +321,8 @@ int main(void)
     test_pens_beyond_the_palette_take_the_background();
     test_word_parallel_remap_equals_per_pixel();
     test_an_identity_map_needs_no_remap();
-    test_scicons_palette_is_the_default_terminal_pens();
+    test_scicons_palette_is_the_default_terminal_pens_with_black_for_blue();
+    test_scicons_pen_4_draws_black_on_16_and_256_colour_screens();
     test_plane_size_rounds_rows_to_words();
     printf("iconpens: all assertions passed\n");
     return 0;

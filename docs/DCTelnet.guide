@@ -456,11 +456,12 @@ NOTE: See...@{b}@{u} Preferences menu, XEM LIBRARY @{ub}@{uu}
 Connect, Disconnect, Address, Info, Upload, Download & Quit.
 
   DCTelnet's own screen shows the icons of the SCIcons drawer, drawn with
-the terminal's colours. On the Workbench the icons are in the ToolBar
-drawer: ToolBar/Square for screens with square pixels, ToolBar/Wide for
-modes whose pixels are twice as tall (such as 640x256). They carry their
-own colours (the tool type DCTELNET_PALETTE), so they look right on
-every screen.
+the terminal colours closest to theirs (black where DCTelnet 1.6 drew
+blue). On the Workbench the icons are in the ToolBar drawer:
+ToolBar/Square for screens with square pixels, ToolBar/Wide for modes
+whose pixels are twice as tall (such as 640x256). Every icon carries its
+own colours (the tool type DCTELNET_PALETTE), so it looks right on every
+screen.
 
   To use icons of your own, replace the files with Project icons of the
 same names; the first tool type is the label under the icon. Icons
