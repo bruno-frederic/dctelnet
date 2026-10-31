@@ -71,6 +71,17 @@ WORD ScreenFont_LabelLeft(WORD iconLeft, UWORD iconWidth, UWORD labelWidth)
     return (WORD)(iconLeft + ((WORD)iconWidth - (WORD)labelWidth) / 2);
 }
 
+WORD ScreenFont_ToolAt(const struct ScreenFontToolRect *rects, UWORD count, WORD x, WORD y)
+{
+    UWORD i;
+
+    for (i = 0; i < count; i++)
+        if (x >= rects[i].left && x < rects[i].left + (WORD)rects[i].width &&
+            y >= rects[i].top  && y < rects[i].top  + (WORD)rects[i].height)
+            return (WORD)i;
+    return -1;
+}
+
 const char *ScreenFont_ToolIconDir(BOOL modern, BOOL tallPixels)
 {
     if (!modern)

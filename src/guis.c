@@ -2315,6 +2315,11 @@ void CheckDimensions(struct NewWindow *newwin)
 // one a user drew, is shown as it is.
 static struct Image *toolImage[BUTTON_COUNT][2];
 
+// The pen the tool bar is filled with when the icons are the Modern set (black,
+// so they sit straight on the terminal's), and the button the pointer is over.
+static UBYTE toolBackPen;
+static struct Gadget *toolHover;
+
 // The icons of a set share one palette, so the pens are found once per tool bar
 // opening, not once per icon (an ObtainBestPen is a pass over the colour map):
 // one entry per distinct DCTELNET_PALETTE value.
@@ -2387,6 +2392,8 @@ static void TerminalToolPens(const ULONG *rgb, int n, UBYTE *pen, BOOL *owned)
                        | ((rgb4 & 15) * 17);
         }
     }
+    if (STATE_IS(APP_MODERN_ICONS))                 // on the terminal's own black
+        bgPen = termPen[IconPens_Nearest(0, termRgb, 16)];
     IconPens_TerminalMap(rgb, n, termRgb, termPen, bgPen, pen);
     if (GfxBase->LibNode.lib_Version < 39 || prefs.DisplayDepth < 5)
         return;                                     // no spare pens to share
@@ -2445,8 +2452,8 @@ static struct ToolPalette *ToolPaletteFor(const char *value, const ULONG *rgb, i
     {
         if (STATE_IS(APP_FULLSCREEN))               // own screen, either set: TerminalToolPens()
             continue;
-        else if (k == 0)                            // the icon's background
-            tp->pen[k] = (UBYTE)drawInfo->dri_Pens[BACKGROUNDPEN];
+        else if (k == 0)                            // the icon's background: the bar's, black for Modern
+            tp->pen[k] = (UBYTE)drawInfo->dri_Pens[STATE_IS(APP_MODERN_ICONS) ? SHADOWPEN : BACKGROUNDPEN];
         else if (GfxBase->LibNode.lib_Version >= 39)
             tp->pen[k] = ToolPen(rgb[k], &tp->owned[k]);
         else
@@ -2455,6 +2462,8 @@ static struct ToolPalette *ToolPaletteFor(const char *value, const ULONG *rgb, i
     for (k = 0, maxPen = 0; k < n; k++)
         if (tp->pen[k] > maxPen) maxPen = tp->pen[k];
     tp->depth = IconPens_Depth(maxPen);
+    if (STATE_IS(APP_MODERN_ICONS))
+        toolBackPen = tp->pen[0];
     return tp;
 }
 
@@ -2520,6 +2529,7 @@ void CloseToolBarWindow(void)
         ClearMenuStrip(toolBarWin);
         CloseWindow(toolBarWin);
         toolBarWin = NULL;
+        toolHover = NULL;
         FreeToolIcons();
 
         item = GetMenuItemFromID(MENU_TOOL_BAR);
@@ -2555,7 +2565,11 @@ void OpenToolBarWindow(char setmenus)
         UWORD nextleft = scr->WBorLeft + 1, maxheight = 0, i = 0;
         WORD wintop, spacing = 5;
         UWORD slot;
+        BOOL modern = STATE_IS(APP_MODERN_ICONS);
 
+        // Modern icons carry no labels and no bar: they sit on black.
+        toolHover = NULL;
+        toolBackPen = (UBYTE)(STATE_IS(APP_FULLSCREEN) ? LegacyPen(0) : drawInfo->dri_Pens[SHADOWPEN]);
         wintop = STATE_IS(APP_FULLSCREEN) ? 0 : winTop;
 
         do
@@ -2575,8 +2589,9 @@ void OpenToolBarWindow(char setmenus)
                 gad = &dob[i]->do_Gadget;
                 gad->NextGadget = 0;
                 slot = ScreenFont_ToolSlotWidth(gad->Width,
-                                                TextLength(&scr->RastPort, (STRPTR)dob[i]->do_ToolTypes[0],
-                                                           strlen((char *)dob[i]->do_ToolTypes[0])));
+                                                modern ? 0
+                                                       : TextLength(&scr->RastPort, (STRPTR)dob[i]->do_ToolTypes[0],
+                                                                    strlen((char *)dob[i]->do_ToolTypes[0])));
                 gad->LeftEdge = nextleft + (slot - gad->Width) / 2;   // icon centred over its label
                 gad->TopEdge = wintop + 1;
                 if(gad->SelectRender == 0)
@@ -2609,9 +2624,14 @@ void OpenToolBarWindow(char setmenus)
             newWin.TopEdge  = prefs.ToolBarWinTopEdge;
 
             newWin.Width = nextleft - spacing + scr->WBorRight + 1;
-            newWin.Height = maxheight + wintop + scr->WBorBottom + 3 + scr->RastPort.Font->tf_YSize;
+            newWin.Height = maxheight + wintop + scr->WBorBottom + 3 + (modern ? 0 : scr->RastPort.Font->tf_YSize);
             newWin.Flags = WFLG_NOCAREREFRESH|WFLG_NEWLOOKMENUS|WFLG_CLOSEGADGET|WFLG_DRAGBAR|WFLG_DEPTHGADGET;
             newWin.IDCMPFlags = IDCMP_CLOSEWINDOW | IDCMP_MENUPICK | IDCMP_GADGETUP;
+            if (modern)                             // the hover highlight follows the pointer
+            {
+                newWin.Flags |= WFLG_REPORTMOUSE;
+                newWin.IDCMPFlags |= IDCMP_MOUSEMOVE | IDCMP_INACTIVEWINDOW;
+            }
             newWin.Title = "Tool Bar";
         } else {
 
@@ -2633,9 +2653,14 @@ void OpenToolBarWindow(char setmenus)
                 newWin.TopEdge = 0;
 
             newWin.Width = scr->Width;
-            newWin.Height = maxheight + scr->RastPort.Font->tf_YSize + 4;
+            newWin.Height = maxheight + (modern ? 2 : scr->RastPort.Font->tf_YSize + 4);
             newWin.Flags = WFLG_NOCAREREFRESH|WFLG_NEWLOOKMENUS|WFLG_BACKDROP|WFLG_BORDERLESS;
             newWin.IDCMPFlags = IDCMP_MENUPICK | IDCMP_GADGETUP | IDCMP_RAWKEY;
+            if (modern)
+            {
+                newWin.Flags |= WFLG_REPORTMOUSE;
+                newWin.IDCMPFlags |= IDCMP_MOUSEMOVE | IDCMP_INACTIVEWINDOW;
+            }
             newWin.Title = 0;
         }
         newWin.FirstGadget = firstgad;
@@ -2650,8 +2675,18 @@ void OpenToolBarWindow(char setmenus)
             if(setmenus) ResetMenuStrip(toolBarWin, mainMenuStrip);
             SetFont(toolBarWin->RPort, scr->RastPort.Font);
             SetAPen(toolBarWin->RPort, drawInfo->dri_Pens[TEXTPEN]);
+            if (modern)
+            {
+                // The window opened with its own background pen: black here,
+                // then the icons (drawn by OpenWindow) again on top of it.
+                SetAPen(toolBarWin->RPort, toolBackPen);
+                RectFill(toolBarWin->RPort, toolBarWin->BorderLeft, toolBarWin->BorderTop,
+                         toolBarWin->Width - toolBarWin->BorderRight - 1,
+                         toolBarWin->Height - toolBarWin->BorderBottom - 1);
+                RefreshGList(firstgad, toolBarWin, NULL, -1);
+            }
             gad = firstgad;
-            while(gad)
+            while(gad && !modern)
             {
                 register UWORD len = strlen((char *)gad->UserData);
 
@@ -2662,7 +2697,7 @@ void OpenToolBarWindow(char setmenus)
 
                 gad = gad->NextGadget;
             }
-            if (STATE_IS(APP_FULLSCREEN))
+            if (STATE_IS(APP_FULLSCREEN) && !modern)
             {
                 SetAPen(toolBarWin->RPort, drawInfo->dri_Pens[SHINEPEN]);
                 Move(toolBarWin->RPort, 0, toolBarWin->Height-2);
@@ -2673,4 +2708,47 @@ void OpenToolBarWindow(char setmenus)
             }
         }
     }
+}
+
+// Draws the button the pointer is over in its selected image (bright), the one
+// it left in its normal image. (x, y) is window-relative; off every button, or
+// -1 buttons, restores. A button without a selected image is not highlighted.
+void ToolBarHover(WORD x, WORD y)
+{
+    struct ScreenFontToolRect rect[BUTTON_COUNT];
+    struct Gadget *gads[BUTTON_COUNT], *gad, *now = NULL;
+    UWORD n = 0;
+    WORD hit;
+
+    if (!toolBarWin)
+        return;
+    for (gad = toolBarWin->FirstGadget; gad && n < BUTTON_COUNT; gad = gad->NextGadget)
+    {
+        rect[n].left = gad->LeftEdge;
+        rect[n].top = gad->TopEdge;
+        rect[n].width = gad->Width;
+        rect[n].height = gad->Height;
+        gads[n++] = gad;
+    }
+    hit = ScreenFont_ToolAt(rect, n, x, y);
+    if (hit >= 0 && gads[hit]->SelectRender)
+        now = gads[hit];
+    if (now == toolHover)
+        return;
+    if (toolHover)
+        DrawImage(toolBarWin->RPort, (struct Image *)toolHover->GadgetRender, toolHover->LeftEdge, toolHover->TopEdge);
+    if (now)
+        DrawImage(toolBarWin->RPort, (struct Image *)now->SelectRender, now->LeftEdge, now->TopEdge);
+    toolHover = now;
+}
+
+// The pointer left the bar, or a click redrew the button: forget the hover
+// (the next move highlights again).
+void ToolBarHoverEnd(BOOL redraw)
+{
+    struct Gadget *was = toolHover;
+
+    toolHover = NULL;
+    if (redraw && was && toolBarWin)
+        DrawImage(toolBarWin->RPort, (struct Image *)was->GadgetRender, was->LeftEdge, was->TopEdge);
 }

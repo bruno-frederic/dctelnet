@@ -119,9 +119,26 @@ static void test_icon_drawer_follows_the_switch_and_the_pixels(void) {
     assert(APP_MODERN_ICONS & STATE_PERSISTENT_MASK);
 }
 
+/* Two 24x24 buttons, 5 px apart, 1 px below the window top. */
+static void test_pointer_finds_the_tool_under_it(void) {
+    static const struct ScreenFontToolRect r[2] = { { 10, 1, 24, 24 }, { 39, 1, 24, 24 } };
+
+    assert(ScreenFont_ToolAt(r, 2, 20, 10) == 0);     /* inside */
+    assert(ScreenFont_ToolAt(r, 2, 50, 10) == 1);
+    assert(ScreenFont_ToolAt(r, 2, 10, 1) == 0);      /* left and top edges belong to it */
+    assert(ScreenFont_ToolAt(r, 2, 33, 24) == 0);     /* last pixel */
+    assert(ScreenFont_ToolAt(r, 2, 34, 10) == -1);    /* right edge is outside */
+    assert(ScreenFont_ToolAt(r, 2, 20, 25) == -1);    /* bottom edge is outside */
+    assert(ScreenFont_ToolAt(r, 2, 36, 10) == -1);    /* the gap between */
+    assert(ScreenFont_ToolAt(r, 2, 9, 10) == -1);     /* left of the bar's first */
+    assert(ScreenFont_ToolAt(r, 2, 20, 0) == -1);     /* above */
+    assert(ScreenFont_ToolAt(r, 0, 20, 10) == -1);    /* no tools */
+}
+
 int main(void) {
     test_tool_slot_is_as_wide_as_its_label();
     test_label_is_centred_under_its_icon();
+    test_pointer_finds_the_tool_under_it();
     test_icon_drawer_follows_the_switch_and_the_pixels();
     test_hires_without_interlace_has_tall_pixels();
     test_window_stops_at_80_columns();

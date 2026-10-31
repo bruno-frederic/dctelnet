@@ -3983,6 +3983,13 @@ static void GetWindowMsg(struct Window *wwin)
         case IDCMP_MOUSEMOVE:
             if (wwin == win)
                 SelectionMove(mouseX, mouseY);
+            else if (wwin == toolBarWin)
+                ToolBarHover(mouseX, mouseY);
+            break;
+
+        case IDCMP_INACTIVEWINDOW:
+            if (wwin == toolBarWin)
+                ToolBarHoverEnd(TRUE);
             break;
 
         case IDCMP_GADGETUP:
@@ -4011,6 +4018,7 @@ static void GetWindowMsg(struct Window *wwin)
 
             if(wwin == toolBarWin)
             {
+                ToolBarHoverEnd(FALSE);     // the click redrew the button
                 switch(gad->GadgetID)
                 {
                     case BUTTON_CONNECT:

@@ -53,6 +53,18 @@ UWORD ScreenFont_ToolSlotWidth(UWORD imageWidth, UWORD labelWidth);
  * when the label is the wider of the two. */
 WORD ScreenFont_LabelLeft(WORD iconLeft, UWORD iconWidth, UWORD labelWidth);
 
+/* A tool bar button's rectangle in window coordinates. */
+struct ScreenFontToolRect
+{
+    WORD  left, top;
+    UWORD width, height;
+};
+
+/* Index of the first of count rects holding the point (x, y), or -1 when it
+ * is over none (the gaps between buttons, the bar around them). Edges are
+ * inclusive on the left and top, exclusive on the right and bottom. */
+WORD ScreenFont_ToolAt(const struct ScreenFontToolRect *rects, UWORD count, WORD x, WORD y);
+
 /* The drawer (with its trailing slash) of the tool bar icons. modern: the
  * Lucide set, in the shape of its pixels (wide for tall pixels, else square);
  * otherwise DCTelnet 1.6's SCIcons, whatever the pixels. One choice for the
