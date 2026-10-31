@@ -78,12 +78,43 @@ int IconPens_Nearest(ULONG rgb, const ULONG *palette, int n)
 }
 
 void IconPens_TerminalMap(const ULONG *rgb, int n, const ULONG termRgb[16],
-                          const UBYTE termPen[16], UBYTE *map)
+                          const UBYTE termPen[16], UBYTE bgPen, UBYTE *map)
+{
+    int k, i;
+
+    for (k = 0; k < n; k++)
+    {
+        ULONG best = 0xFFFFFFFFUL;
+
+        if (k == 0)
+        {
+            map[0] = bgPen;
+            continue;
+        }
+        map[k] = bgPen;
+        for (i = 0; i < 16; i++)
+        {
+            ULONG d;
+
+            if (termPen[i] == bgPen)
+                continue;
+            d = IconPens_Distance(rgb[k], termRgb[i]);
+            if (d < best)
+            {
+                best = d;
+                map[k] = termPen[i];
+            }
+        }
+    }
+}
+
+void IconPens_ExactMap(int n, const UBYTE *exact, const BOOL *have, UBYTE bgPen, UBYTE *map)
 {
     int k;
 
-    for (k = 0; k < n; k++)
-        map[k] = termPen[IconPens_Nearest(rgb[k], termRgb, 16)];
+    for (k = 1; k < n; k++)
+        if (have[k] && exact[k] != bgPen)
+            map[k] = exact[k];
 }
 
 static LONG channel(ULONG c, int shift)

@@ -2346,13 +2346,17 @@ static UBYTE ToolPen(ULONG rgb, BOOL *owned)
 
 // The pens for an icon on the own screen: each declared colour on the closest
 // terminal colour, read from the screen as it is now (the user's palette, the
-// ANSI pens on 32+ colours). The icon's pen 0 is terminal black there too, not
-// the window's background pen, so every terminal pen is a candidate.
-static void TerminalToolPens(const ULONG *rgb, int n, UBYTE *pen)
+// ANSI pens on 32+ colours). The icon's pen 0 is the window's background pen
+// (what fills the tool bar), and no other colour takes that pen. With spare
+// pens (V39, 32+ colours) each colour gets a pen of exactly its own, released
+// with the tool bar; without one it keeps its terminal pen.
+static void TerminalToolPens(const ULONG *rgb, int n, UBYTE *pen, BOOL *owned)
 {
     ULONG termRgb[16], c[3];
-    UBYTE termPen[16];
+    UBYTE termPen[16], exact[ICONPENS_MAX], bgPen = (UBYTE)drawInfo->dri_Pens[BACKGROUNDPEN];
+    BOOL have[ICONPENS_MAX];
     UWORD i;
+    int k;
 
     for (i = 0; i < 16; i++)
     {
@@ -2370,7 +2374,15 @@ static void TerminalToolPens(const ULONG *rgb, int n, UBYTE *pen)
                        | ((rgb4 & 15) * 17);
         }
     }
-    IconPens_TerminalMap(rgb, n, termRgb, termPen, pen);
+    IconPens_TerminalMap(rgb, n, termRgb, termPen, bgPen, pen);
+    if (GfxBase->LibNode.lib_Version < 39 || prefs.DisplayDepth < 5)
+        return;                                     // no spare pens to share
+    for (k = 1; k < n; k++)
+    {
+        exact[k] = ObtainNearestPen(scr->ViewPort.ColorMap, rgb[k], PRECISION_EXACT, &owned[k]);
+        have[k] = owned[k];                         // not owned: no free pen, keep the terminal's
+    }
+    IconPens_ExactMap(n, exact, have, bgPen, pen);
 }
 
 static struct Image *RemapToolImage(const struct Image *img, const UBYTE *map, int n, UWORD depth)
@@ -2412,11 +2424,12 @@ static struct ToolPalette *ToolPaletteFor(const char *value, const ULONG *rgb, i
     tp = &toolPalette[toolPalettes++];
     strlcpy(tp->value, value, sizeof(tp->value));
     tp->n = n;
+    for (k = 0; k < n; k++)
+        tp->owned[k] = FALSE;
     if (STATE_IS(APP_FULLSCREEN))
-        TerminalToolPens(rgb, n, tp->pen);
+        TerminalToolPens(rgb, n, tp->pen, tp->owned);
     for (k = 0; k < n; k++)
     {
-        tp->owned[k] = FALSE;
         if (STATE_IS(APP_FULLSCREEN))               // SCIcons: TerminalToolPens()
             continue;
         else if (k == 0)                            // the icon's background

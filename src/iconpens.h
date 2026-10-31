@@ -25,13 +25,20 @@ int IconPens_Nearest(ULONG rgb, const ULONG *palette, int n);
 /* How far apart two 0x00RRGGBB colours look (IconPens_Nearest's measure). */
 ULONG IconPens_Distance(ULONG a, ULONG b);
 
-/* The pens for an icon on DCTelnet's own screen: each colour rgb[0..n) of the
- * tool type to the closest of the 16 terminal colours, termRgb[i] being the colour
- * terminal pen termPen[i] shows (the screen's colour map, not the defaults: the
- * terminal palette is the user's), into map[0..n). Without it pen k was terminal
- * colour k whatever the tool type said, so the declared colours did not decide. */
+/* The pens for an icon on DCTelnet's own screen: pen 0 is bgPen, the pen that
+ * fills the tool bar window (BACKGROUNDPEN), and each other colour rgb[k] of
+ * the tool type the closest of the 16 terminal colours (termRgb[i] being the
+ * colour terminal pen termPen[i] shows: the screen's colour map, the user's
+ * palette) EXCEPT the one on bgPen, into map[0..n). Without this pen 0 drew
+ * terminal black in a black box on the grey bar, and on 16 colours the light
+ * grey detail took the grey of the bar and vanished. */
 void IconPens_TerminalMap(const ULONG *rgb, int n, const ULONG termRgb[16],
-                          const UBYTE termPen[16], UBYTE *map);
+                          const UBYTE termPen[16], UBYTE bgPen, UBYTE *map);
+
+/* Screens with spare pens (32+ colours): colour k that got a pen of exactly
+ * its own (have[k], pen exact[k]) draws on it instead of its terminal pen in
+ * map[1..n). Never bgPen: a colour must not vanish into the bar. */
+void IconPens_ExactMap(int n, const UBYTE *exact, const BOOL *have, UBYTE bgPen, UBYTE *map);
 
 /* rgb carried from the palette from[0..n) to to[0..n): a colour of from
  * becomes the colour of to at the same index, and a blend of two of them (an
