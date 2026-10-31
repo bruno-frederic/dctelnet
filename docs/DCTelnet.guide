@@ -455,9 +455,10 @@ NOTE: See...@{b}@{u} Preferences menu, XEM LIBRARY @{ub}@{uu}
   Puts icons at the top of the window so you have easier access to
 Connect, Disconnect, Address, Info, Upload, Download & Quit.
 
-  DCTelnet's own screen shows the icons of the SCIcons drawer, drawn with
-the terminal colours closest to theirs (black where DCTelnet 1.6 drew
-blue). On the Workbench the icons are in the ToolBar drawer:
+  DCTelnet's own screen shows the icons of the SCIcons drawer, drawn on
+the tool bar's own background. Their colours are exact on screens with 32
+or more colours; on 16 colours they take the closest terminal colours
+(black where DCTelnet 1.6 drew blue), never the colour of the background. On the Workbench the icons are in the ToolBar drawer:
 ToolBar/Square for screens with square pixels, ToolBar/Wide for modes
 whose pixels are twice as tall (such as 640x256). Every icon carries its
 own colours (the tool type DCTELNET_PALETTE), so it looks right on every

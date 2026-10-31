@@ -268,7 +268,7 @@ static void test_scicons_palette_is_the_default_terminal_pens_with_black_for_blu
 /* The SCIcons' pen 4 drew blue on DCTelnet's own screens whatever their tool
  * type said: pen k was terminal colour k. Their declared colours now decide, on
  * every depth: pen 4 takes the terminal's black, the other pens their own
- * terminal colour. */
+ * terminal colour. Pen 0 is the bar's background pen, here terminal pen 7's. */
 static void check_scicons_on(const UBYTE termPen[16])
 {
     ULONG rgb[ICONPENS_MAX], term[16];
@@ -277,9 +277,9 @@ static void check_scicons_on(const UBYTE termPen[16])
 
     default_terminal_colours(term);
     assert(IconPens_Parse(scicons, rgb) == 8);
-    IconPens_TerminalMap(rgb, 8, term, termPen, map);
+    IconPens_TerminalMap(rgb, 8, term, termPen, termPen[15], map);
     assert(map[4] == termPen[0]);                    /* black, not blue */
-    for (k = 0; k < 8; k++)
+    for (k = 1; k < 8; k++)
         if (k != 4)
             assert(map[k] == termPen[k]);
 }
@@ -309,6 +309,86 @@ static void test_plane_size_rounds_rows_to_words(void)
     assert(IconPens_PlaneSize(17, 2) == 8);
 }
 
+/* The bar's background on the default palette: white (terminal pen 15), as a
+ * pen no terminal colour of the icon should share. */
+static void sixteen_pens(UBYTE termPen[16])
+{
+    int i;
+
+    for (i = 0; i < 16; i++)
+        termPen[i] = Palette_TerminalPen(i, NULL, FALSE);
+}
+
+/* Measured on an A1200: pen 0 drew terminal black (000000) while the bar is
+ * BCBCBC, so every icon sat in a black box and pen 4 (black) merged into it. */
+static void test_own_screen_icon_background_matches_toolbar_background(void)
+{
+    ULONG rgb[ICONPENS_MAX], term[16];
+    UBYTE termPen[16], map[8];
+    int bg;
+
+    default_terminal_colours(term);
+    sixteen_pens(termPen);
+    assert(IconPens_Parse(scicons, rgb) == 8);
+    for (bg = 0; bg < 16; bg++)
+    {
+        IconPens_TerminalMap(rgb, 8, term, termPen, termPen[bg], map);
+        assert(map[0] == termPen[bg]);               /* pen 0 is the bar's pen, not black */
+    }
+    IconPens_TerminalMap(rgb, 8, term, termPen, 200, map);   /* a pen of its own */
+    assert(map[0] == 200);
+}
+
+/* On 16 colours the bar's pen is a terminal pen; pen 1 (DDDDDD) took the
+ * terminal grey showing the bar's colour and the light detail vanished. */
+static void test_pen_1_never_maps_to_the_background_pen_on_16_colour_screens(void)
+{
+    ULONG rgb[ICONPENS_MAX], term[16];
+    UBYTE termPen[16], map[8];
+    int bg, k;
+
+    default_terminal_colours(term);
+    sixteen_pens(termPen);
+    assert(IconPens_Parse(scicons, rgb) == 8);
+    IconPens_TerminalMap(rgb, 8, term, termPen, termPen[7], map);   /* grey AAAAAA bar */
+    assert(map[1] != termPen[7]);                    /* DDDDDD would be 7 unexcluded */
+    for (bg = 0; bg < 16; bg++)
+    {
+        IconPens_TerminalMap(rgb, 8, term, termPen, termPen[bg], map);
+        for (k = 1; k < 8; k++)
+            assert(map[k] != termPen[bg]);
+    }
+}
+
+/* 32+ colours: colours that got a pen of exactly their own draw on it
+ * (DD00DD, not the terminal's AA00AA); the ones that got none keep the
+ * terminal pen; a pen that is the bar's is refused. */
+static void test_32_and_256_colour_icons_use_their_exact_pens(void)
+{
+    ULONG rgb[ICONPENS_MAX], term[16];
+    UBYTE termPen[16], map[8], exact[8] = { 0, 40, 41, 42, 43, 44, 45, 46 };
+    BOOL have[8] = { 0, 1, 1, 1, 1, 1, 1, 1 };
+    UBYTE want[8];
+    int k;
+
+    default_terminal_colours(term);
+    sixteen_pens(termPen);
+    assert(IconPens_Parse(scicons, rgb) == 8);
+    IconPens_TerminalMap(rgb, 8, term, termPen, 0, want);
+    IconPens_TerminalMap(rgb, 8, term, termPen, 0, map);
+    have[3] = 0;                                     /* no free pen for colour 3 */
+    exact[6] = 0;                                    /* colour 6 got the bar's pen */
+    IconPens_ExactMap(8, exact, have, 0, map);
+    assert(map[0] == 0);
+    for (k = 1; k < 8; k++)
+    {
+        if (k == 3 || k == 6)
+            assert(map[k] == want[k]);               /* the terminal mapping stays */
+        else
+            assert(map[k] == 40 + k - 1);
+    }
+}
+
 int main(void)
 {
     test_parses_the_shipped_palette();
@@ -324,6 +404,9 @@ int main(void)
     test_scicons_palette_is_the_default_terminal_pens_with_black_for_blue();
     test_scicons_pen_4_draws_black_on_16_and_256_colour_screens();
     test_plane_size_rounds_rows_to_words();
+    test_own_screen_icon_background_matches_toolbar_background();
+    test_pen_1_never_maps_to_the_background_pen_on_16_colour_screens();
+    test_32_and_256_colour_icons_use_their_exact_pens();
     printf("iconpens: all assertions passed\n");
     return 0;
 }
