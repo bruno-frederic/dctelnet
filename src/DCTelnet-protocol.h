@@ -391,35 +391,45 @@ static void TelnetSendTType(void)
  *   + optional escaping of all 4 bytes
  *   + 2-byte trailer
  */
-static void TelnetSendWindowSize(void)
+// The terminal's size in characters, as the BBS is told it (NAWS, SSH pty).
+static void TerminalSize(UWORD *columns, UWORD *lines)
 {
-    UBYTE buf[16];
-    UBYTE vals[4];
-    LONG Columns = 80, Lines = 25;
-    int i = 0;
-    int j = 0;
-
-    // Only send window size if the option was successfully negotiated with the telnet server
-    if (telnetCtx.optState[TELOPT_NAWS].us != YES)
-        return;
-
+    *columns = 80;
+    *lines = 25;
     if(XEmulatorBase && xemIO && XEmulatorBase->lib_Version >= 4)
     {
         ULONG Result = XEmulatorInfo(xemIO,XEMI_CONSOLE_DIMENSIONS);
 
-        Columns = XEMI_EXTRACT_COLUMNS(Result);
-        Lines   = XEMI_EXTRACT_LINES(Result);
+        *columns = (UWORD)XEMI_EXTRACT_COLUMNS(Result);
+        *lines   = (UWORD)XEMI_EXTRACT_LINES(Result);
     }
     else if (win && win->RPort && win->RPort->Font)
     {
         // The grid ibmcon draws: the window's text area, not its outer size
         // (a Workbench window's title bar and borders are not rows).
-        UWORD cols, rows;
-
-        TerminalGrid(&cols, &rows);
-        Columns = cols;
-        Lines   = rows;
+        TerminalGrid(columns, lines);
     }
+}
+
+static void TelnetSendWindowSize(void)
+{
+    UBYTE buf[16];
+    UBYTE vals[4];
+    UWORD Columns, Lines;
+    int i = 0;
+    int j = 0;
+
+    if (SshConn_Active())               // SSH: a window-change request instead
+    {
+        TerminalSize(&Columns, &Lines);
+        SshConn_WindowChange(Columns, Lines);
+        return;
+    }
+    // Only send window size if the option was successfully negotiated with the telnet server
+    if (telnetCtx.optState[TELOPT_NAWS].us != YES)
+        return;
+
+    TerminalSize(&Columns, &Lines);
 
     buf[i++] = IAC;     buf[i++] = SB;    buf[i++] = TELOPT_NAWS;
 

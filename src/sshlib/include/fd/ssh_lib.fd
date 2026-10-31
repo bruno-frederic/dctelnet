@@ -1,0 +1,15 @@
+##base _SshBase
+##bias 30
+##public
+Ssh_Create(s)(a0)
+Ssh_Delete(s)(a0)
+Ssh_Receive(s,data,len)(a0,a1,d0)
+Ssh_Send(s,data,len)(a0,a1,d0)
+Ssh_TakeOutput(s,out,max)(a0,a1,d0)
+Ssh_TakeText(s,out,max)(a0,a1,d0)
+Ssh_WindowChange(s,cols,rows)(a0,d0,d1)
+Ssh_KeepAlive(s)(a0)
+Ssh_Disconnect(s)(a0)
+Ssh_Fingerprint(fp,out)(a0,a1)
+Ssh_AddEntropy(data,len)(a0,d0)
+##end
