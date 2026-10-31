@@ -60,3 +60,9 @@ BOOL ScreenFont_TallPixels(UWORD resolutionX, UWORD resolutionY)
 {
     return resolutionX != 0 && resolutionY > resolutionX;
 }
+
+UWORD ScreenFont_ToolSlotWidth(UWORD imageWidth, UWORD labelChars, UWORD charWidth)
+{
+    UWORD labelWidth = (UWORD)(labelChars * charWidth);
+    return labelWidth > imageWidth ? labelWidth : imageWidth;
+}

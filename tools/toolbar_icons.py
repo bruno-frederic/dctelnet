@@ -11,7 +11,7 @@ DCTELNET_PALETTE=RRGGBB,... (one entry per pen of the image). DCTelnet maps
 each colour to the closest pen of the screen the tool bar opens on
 (src/iconpens.c, OpenToolBarWindow in src/guis.c), so the colours suit every
 screen, and the symbols can be antialiased. What differs between screens is
-the shape of their pixels: Square holds 24x24 symbols, Wide the same twice as
+the shape of their pixels: Square holds 20x20 symbols, Wide the same twice as
 wide for modes whose pixels are twice as tall (hires without interlace, such
 as 640x256), where square art looked squeezed.
 
@@ -40,7 +40,9 @@ PACKAGE = os.path.join(HERE, "..", "build", "package", "DCTelnet")
 SCICONS = os.path.join(PACKAGE, "SCIcons")
 ICONDIRS = [os.path.join(PACKAGE, "ToolBar", "Square"), os.path.join(PACKAGE, "ToolBar", "Wide"), SCICONS]
 # Symbol size (width, height) in pixels per set.
-SYMBOL_SIZES = {"Square": (24, 24), "Wide": (48, 24)}
+SYMBOL_SIZES = {"Square": (20, 20), "Wide": (40, 20)}
+# Button image size per set: the symbol and a 2 pixel margin. SCIcons keep their own.
+IMAGE_SIZES = {"Square": (24, 24), "Wide": (48, 24)}
 SVGDIR = os.path.join(HERE, "toolbar_icons")
 
 # Icon file -> Lucide symbol.
@@ -89,8 +91,11 @@ class Image:
             raise ValueError("image data runs past the end of the file")
 
     def encode(self, pixels, depth=DEPTH):
-        """This image's header with `depth` planes holding `pixels` (rows of pens)."""
-        out = bytearray(struct.pack(">hhhhhIBBI", self.left, self.top, self.width, self.height,
+        """This image's header with `depth` planes holding `pixels` (rows of pens);
+        the image takes the size of `pixels`."""
+        height, width = len(pixels), len(pixels[0])
+        self.rowbytes = (width + 15) // 16 * 2
+        out = bytearray(struct.pack(">hhhhhIBBI", self.left, self.top, width, height,
                                     depth, self.dataptr or 1, (1 << depth) - 1, 0, self.nextptr))
         for bit in range(depth):
             for row in pixels:
@@ -158,7 +163,10 @@ class Icon:
         for t in tool_types:
             data = t.encode("latin-1") + b"\0"
             types += struct.pack(">I", len(data)) + data
-        return (self.raw[:self.image_start] + images
+        raw = bytearray(self.raw)
+        if normal is not None:     # do_Gadget Width and Height follow the image
+            struct.pack_into(">hh", raw, 4 + 8, len(normal[0]), len(normal))
+        return (bytes(raw[:self.image_start]) + images
                 + self.raw[self.image_end:self.tool_types_start] + types
                 + self.raw[self.tool_types_end:])
 
@@ -199,8 +207,9 @@ def build(icondir):
         icon = Icon(open(path, "rb").read())
         if len(icon.images) != 2:
             raise ValueError(path + ": needs a normal and a pressed image")
-        w, h = icon.images[0].width, icon.images[0].height
-        cover = symbol_coverage(symbol, SYMBOL_SIZES[os.path.basename(os.path.normpath(icondir))])
+        set_name = os.path.basename(os.path.normpath(icondir))
+        w, h = IMAGE_SIZES[set_name]
+        cover = symbol_coverage(symbol, SYMBOL_SIZES[set_name])
         label = icon.tool_types[:1]
         out = icon.rebuilt(compose(cover, w, h, NORMAL), compose(cover, w, h, PRESSED),
                            label + [PALETTE_TOOLTYPE])
@@ -251,6 +260,26 @@ def check(icondir):
                 elif image.depth != DEPTH or image.pick != (1 << DEPTH) - 1:
                     errors.append("%s: depth %d PlanePick %d, want %d and %d"
                                   % (path, image.depth, image.pick, DEPTH, (1 << DEPTH) - 1))
+            if want != SC_PALETTE_TOOLTYPE and len(icon.images) == 2:
+                # No rsvg-convert here (the CI container lacks it): the size is checked
+                # from the stored pixels, the symbol's extent against SYMBOL_SIZES.
+                set_name = os.path.basename(os.path.normpath(icondir))
+                w, h = IMAGE_SIZES[set_name]
+                if (icon.gadget_width, icon.gadget_height) != (w, h):
+                    errors.append("%s: gadget is %dx%d, want the image size %dx%d"
+                                  % (path, icon.gadget_width, icon.gadget_height, w, h))
+                for image in icon.images:
+                    if (image.width, image.height) != (w, h):
+                        errors.append("%s: image header says %dx%d, want %dx%d"
+                                      % (path, image.width, image.height, w, h))
+                        continue
+                    bg = pixels(icon, raw, image)[0][0]
+                    hits = [(x, y) for y, row in enumerate(pixels(icon, raw, image))
+                            for x, p in enumerate(row) if p != bg]
+                    sw, sh = SYMBOL_SIZES[set_name]
+                    if not hits or (max(x for x, _ in hits) - min(x for x, _ in hits) + 1 > sw
+                                    or max(y for _, y in hits) - min(y for _, y in hits) + 1 > sh):
+                        errors.append("%s: symbol is not within %dx%d" % (path, sw, sh))
             if not icon.tool_types or icon.tool_types[0].startswith("DCTELNET_"):
                 errors.append(path + ": no label (the tool bar shows the first tool type)")
             if want not in icon.tool_types:

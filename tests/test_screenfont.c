@@ -74,7 +74,7 @@ static void test_window_may_be_132_columns_wide(void) {
     assert(cols == 132);
 }
 
-/* 24x24 tool bar symbols drawn for square pixels looked tall and thin on
+/* 20x20 tool bar symbols drawn for square pixels looked tall and thin on
  * DCTelnet's own 640x256 screen (hires: ticks 22 x 44). */
 static void test_hires_without_interlace_has_tall_pixels(void) {
     assert(ScreenFont_TallPixels(22, 44));      /* hires */
@@ -84,7 +84,17 @@ static void test_hires_without_interlace_has_tall_pixels(void) {
     assert(!ScreenFont_TallPixels(0, 0));       /* unknown: square */
 }
 
+/* 24 px icons under "Disconnect" (10 chars of 8 px): the old step
+ * (icon width + spacing) put the next label 5 px into this one. */
+static void test_tool_slot_is_as_wide_as_its_label(void) {
+    assert(ScreenFont_ToolSlotWidth(24, 10, 8) == 80);   /* label wider */
+    assert(ScreenFont_ToolSlotWidth(48, 4, 8) == 48);    /* icon wider */
+    assert(ScreenFont_ToolSlotWidth(55, 0, 8) == 55);    /* no label */
+    assert(ScreenFont_ToolSlotWidth(24, 8, 8) == 64);
+}
+
 int main(void) {
+    test_tool_slot_is_as_wide_as_its_label();
     test_hires_without_interlace_has_tall_pixels();
     test_window_stops_at_80_columns();
     test_window_may_be_132_columns_wide();

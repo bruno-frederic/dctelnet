@@ -43,6 +43,10 @@ UWORD ScreenFont_MaxWindowWidth(UWORD columns, UWORD cellX, UWORD borders);
  * looks squeezed there; the tool bar takes its wide icons. */
 BOOL ScreenFont_TallPixels(UWORD resolutionX, UWORD resolutionY);
 
+/* Width of one tool bar button slot: the icon, or its label when that is
+ * wider, so neighbouring labels never overlap. The icon is centred in it. */
+UWORD ScreenFont_ToolSlotWidth(UWORD imageWidth, UWORD labelChars, UWORD charWidth);
+
 #define TOPAZ_PRO_NAME "TopazPro.font"
 #define TOPAZ_PRO_SIZE 16
 
