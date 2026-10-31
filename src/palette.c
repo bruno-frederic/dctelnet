@@ -74,6 +74,77 @@ BOOL Palette_AnsiPens(UWORD depth, UBYTE pens[16])
     return TRUE;
 }
 
+BOOL Palette_OwnPens(ULONG state, UWORD depth, UBYTE pens[16])
+{
+    if (!(state & (APP_RENDERER_IBMCON_DEVICE | APP_RENDERER_BUILTIN)))
+        return FALSE;
+    if (depth == 4 && (state & APP_RENDERER_BUILTIN))
+    {
+        // 16 colours: no pens to spare, so the same 16 colours change places.
+        // Pens 0-3 are Intuition's 4-colour order (background, shadow and
+        // text, shine, fill): light grey, black, bright white and bright blue, the
+        // ANSI colour nearest to the 0x68B title-bar blue of Workbench. The other
+        // twelve follow in ANSI order. Only the built-in renderer draws
+        // through a pen table; XEM, console.device and ibmcon use pens 0-15.
+        static const UBYTE pen[16] = { 1, 4, 5, 6, 7, 8, 9, 0, 10, 11, 12, 13, 3, 14, 15, 2 };
+        int i;
+
+        for (i = 0; i < 16; i++)
+            pens[i] = pen[i];
+        return TRUE;
+    }
+    return Palette_AnsiPens(depth, pens);
+}
+
+void Palette_ScreenColours(const UWORD palette[16], const UBYTE pens[16], const ULONG ui[PALETTE_UI_SHARED],
+                           ULONG out[16])
+{
+    int i;
+
+    for (i = 0; i < 16; i++)
+        out[i] = (ui && pens[i] < PALETTE_UI_SHARED) ? ui[pens[i]] : Palette_RGB32(palette[i]);
+}
+
+// Intuition's default colours (the 4-colour Workbench palette) and which of
+// them each DrawInfo pen takes, in DrawInfo order: DETAIL, BLOCK, TEXT, SHINE,
+// SHADOW, FILL, FILLTEXT, BACKGROUND, HIGHLIGHTTEXT, BARDETAIL, BARBLOCK,
+// BARTRIM.
+#define UI_GREY  0x0AAA
+#define UI_BLACK 0x0000
+#define UI_WHITE 0x0FFF
+// Saturated blue: of the ANSI blues it picks the dark one, which white text
+// stays legible on (Intuition's grey-blue would pick the bright blue).
+#define UI_BLUE  0x000F
+static const UWORD uiColours[12] = {
+    UI_GREY,  UI_BLACK, UI_BLACK, UI_WHITE, UI_BLACK, UI_BLUE,
+    UI_WHITE, UI_GREY,  UI_WHITE, UI_BLACK, UI_WHITE, UI_BLACK
+};
+
+static ULONG rgb4Distance(UWORD a, UWORD b)
+{
+    LONG dr = (LONG)((a >> 8) & 0xF) - (LONG)((b >> 8) & 0xF);
+    LONG dg = (LONG)((a >> 4) & 0xF) - (LONG)((b >> 4) & 0xF);
+    LONG db = (LONG)(a & 0xF) - (LONG)(b & 0xF);
+
+    return (ULONG)(dr * dr + dg * dg + db * db);
+}
+
+void Palette_UiPens(const UWORD penColours[16], UWORD out[PALETTE_UI_PENS])
+{
+    int i, pen;
+
+    for (i = 0; i < 12; i++)
+    {
+        int best = 0;
+
+        for (pen = 1; pen < 16; pen++)
+            if (rgb4Distance(penColours[pen], uiColours[i]) < rgb4Distance(penColours[best], uiColours[i]))
+                best = pen;
+        out[i] = (UWORD)best;
+    }
+    out[12] = 0xFFFF;
+}
+
 static const char *const ansiNames[16] =
 {
     "Black", "Red", "Green", "Brown", "Blue", "Magenta", "Cyan", "White",
@@ -155,4 +226,33 @@ UWORD Palette_MenuTextPen(UWORD driVersion, const UWORD *driPens)
     if (driVersion >= 2 && driPens != NULL)
         return driPens[BARDETAILPEN];
     return 0;
+}
+
+BOOL Palette_Valid(const UWORD palette[16])
+{
+    BOOL nonZero = FALSE;
+    int i;
+
+    for (i = 0; i < 16; i++)
+    {
+        if (palette[i] & 0xF000)
+            return FALSE;
+        if (palette[i])
+            nonZero = TRUE;
+    }
+    return nonZero;
+}
+
+void Palette_Repair(struct PrefsStruct *p)
+{
+    BOOL ansiOk = Palette_Valid(p->AnsiColors), deviceOk = Palette_Valid(p->DeviceColors);
+    int i;
+
+    for (i = 0; i < 16; i++)       /* (the order swap is its own inverse) */
+    {
+        if (!ansiOk)
+            p->AnsiColors[i] = deviceOk ? p->DeviceColors[Palette_IbmconToAnsi(i)] : defaultAnsiColors[i];
+        if (!deviceOk)
+            p->DeviceColors[i] = ansiOk ? p->AnsiColors[Palette_IbmconToAnsi(i)] : defaultDeviceColors[i];
+    }
 }

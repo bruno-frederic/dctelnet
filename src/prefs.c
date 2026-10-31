@@ -41,35 +41,6 @@ char const keysFilename[]  = "PROGDIR:DCTelnet.Keys";
 // to an entry in the screen's color palette.
 // Doc: https://amigadev.elowar.com/read/ADCD_2.1/Libraries_Manual_guide/node00EC.html
 
-// Pens in ANSI palette:
-const UWORD ansiPens[] = {
-    7,  // #AAA DETAILPEN compatible with V34. Used to render text in the screen's title bar.
-    4,  // #00A  BLOCKPEN compatible with V34. Used to fill the screen's title bar
-
-    7,  // #AAA TEXTPEN for regular text on BACKGROUNDPEN
-    7,  // #AAA bright edge on 3D objects
-    6,  // #0AA   dark edge on 3D objects
-    4,  // #00A FILLPEN for filling the active window borders and selected gadgets.
-    7,  // #A0A FILLTEXTPEN for text rendered over FILLPEN
-    0,  // #000 BACKGROUNDPEN for the background color. (Used for requesters in DCTelnet)
-    5,  // #A0A HIGHLIGHTTEXTPEN for "special color" or highlighted text on BACKGROUNDPEN
-
-    // Pens used by windows with WFLG_NEWLOOKMENUS set (V39+):
-    4,  // #00A Title bar text, menu titles and keyboard shortcut in menus
-    7,  // #AAA screen-bar/menus fill
-    6,  // #0AA line under screen-bar and menus
-
-    // There's no way to select the text pen for a highlighted menu item; the OS binary-
-    // complements the text color instead (HIGHCOMP).
-
-    0xFFFF  // end of palette
-};
-
-// Original DCTelnet pens for ibmcon/console.device:
-// 0 = #000 black ; 1 = #DDD dark white ; 4 = #00D blue ; 5 = #D0D magenta ;
-// 6 = #0DD cyan  ; 7 = #D00 red
-const UWORD devicePens[]  = { 1,4, 1,1,6,4,1,0,5, 4,1,6, 0xFFFF };
-
 // Fallback pen table for screens limited to 2 or 4 colors (1 or 2 bitplanes).
 //static const UWORD defaultPens[] = { 0xFFFF };
 /* TODO palette more sympathic for other modes:
@@ -87,36 +58,6 @@ const UWORD defaultPens[] = {  1,4, 1,1,1,4,1,0,7, 4,1,1, 0xFFFF };
 #define WIN_DEFAULT_HEIGHT   200   // 200 = display height in HiRes NTSC
 
 /**
- * @brief Validate the format of a 16-entry RGB4 palette.
- *
- * Amiga RGB4 palette entries use only the low twelve bits: 0x0RGB. The four most significant bits
- * must remain clear, and a palette must contain at least one visible colour. This also rejects the
- * all-zero palette produced by the zero-initialized prefs structure before defaults are applied.
- * The palette is not modified.
- *
- * @return TRUE if every entry uses the RGB4 format, FALSE otherwise.
- */
-static BOOL ValidatePalette(const UWORD palette[16])
-{
-    UWORD i;
-    BOOL hasNonZeroColor = FALSE;
-
-    if (palette == NULL)
-        return FALSE;
-
-    for (i = 0; i < 16; i++)
-    {
-        if ((palette[i] & 0xF000) != 0)
-            return FALSE;
-
-        if (palette[i] != 0)
-            hasNonZeroColor = TRUE;
-    }
-
-    return hasNonZeroColor;
-}
-
-/**
  * @brief Initialize the prefs structure, replacing any aberrant field with a sensible default.
  *
  * Used both to build the initial default configuration and to sanitize preferences just loaded
@@ -131,11 +72,8 @@ static void ValidateAndInitPrefs(BOOL *userMustChooseAScreenMode)
     if (prefs.State == 0)
         prefs.State = APP_FULLSCREEN | APP_RENDERER_BUILTIN;
 
-    if (!ValidatePalette(prefs.AnsiColors))
-        memcpy(prefs.AnsiColors,   defaultAnsiColors,   sizeof(defaultAnsiColors));
-
-    if (!ValidatePalette(prefs.DeviceColors))
-        memcpy(prefs.DeviceColors, defaultDeviceColors, sizeof(defaultDeviceColors));
+    // Both palettes usable: a 1.x file has only the console's.
+    Palette_Repair(&prefs);
 
     // Full-screen geometry: bounds depend on the active renderer.
     if (!Prefs_ScreenFits(&prefs))

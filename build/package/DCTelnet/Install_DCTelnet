@@ -192,6 +192,31 @@
         (confirm)
     )
 
+    ; ssh.library: one build per CPU family, picked from the installer's CPU
+    ; database. The 68060 build avoids the 64-bit mulu.l the 68060 traps on.
+    (SET #cpu (database "cpu"))
+    (if (= #cpu "68060")
+        (SET #SrcSsh "Libs/ssh.library.060")
+        (if (= #cpu "68040")
+            (SET #SrcSsh "Libs/ssh.library.040")
+            (if (OR (= #cpu "68020") (= #cpu "68030"))
+                (SET #SrcSsh "Libs/ssh.library.020")
+                (SET #SrcSsh "Libs/ssh.library.000")
+            )
+        )
+    )
+    (transcript "ssh.library build for " #cpu ": " #SrcSsh)
+    (COPYLIB
+        (prompt    "\n\nInstalling SSH support for the " #cpu ": ssh.library")
+        (help    "\n\nssh.library connects to SSH servers (Telnet replacement with encryption).\n\n"
+            "DCTelnet works without it; only SSH connections need it."
+            )
+        (source #SrcSsh)
+        (newname "ssh.library")
+        (dest    "libs:")
+        (confirm)
+    )
+
     (COPYLIB
         (prompt    "\n\nInstalling device for ANSI color display: ibmcom.device")
         (help    "\n\nibmcon.device is used to display the 'pretty' ANSI gfx/colors.\n\n"

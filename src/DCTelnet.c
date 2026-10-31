@@ -65,6 +65,7 @@ extern struct Library *CyberGfxBase;
 #include "waitfor.h"
 #include "rexxcmd.h"
 #include "rlogin.h"
+#include "sshconn.h"
 #include "charset.h"
 #include "ansimusic.h"
 #include "sound.h"
@@ -156,6 +157,7 @@ static struct NewMenu mainMenuDesc[] =
     {    NM_ITEM, "Telnet terminal type..",         "9",             0,               0, (APTR)MENU_TELNET_TERM_TYPE},
     {    NM_ITEM, "Raw Connection",                 "7", HIGHCOMP|CHECKIT|MENUTOGGLE, 0, (APTR)MENU_RAW_CONNECTION},
     {    NM_ITEM, "Rlogin",                          0 , HIGHCOMP|CHECKIT|MENUTOGGLE, 0, (APTR)MENU_RLOGIN},
+    {    NM_ITEM, "SSH",                             0 , HIGHCOMP|CHECKIT|MENUTOGGLE, 0, (APTR)MENU_SSH},
 //  {    NM_ITEM, "Convert incoming LF to CRLF",    "L", HIGHCOMP|CHECKIT|MENUTOGGLE, 0, (APTR)MENU_INCOMING_LF_TO_CRLF},
     {    NM_ITEM, "PETSCII Mode",                    0 , HIGHCOMP|CHECKIT|MENUTOGGLE, 0, (APTR)MENU_PETSCII_MODE},
     {    NM_ITEM, "Character Set",                   0 ,             0,               0, (APTR)MENU_CHARSET},
@@ -227,6 +229,7 @@ static void CaptureWrite(const UBYTE *data, long len);
 static void CaptureStop(void);
 static BOOL SelectionAvailable(void);
 static void SendMisc(char *str, long len);
+static void TerminalSize(UWORD *columns, UWORD *lines);
 static void ReopenTerminal(void);
 static void OpenAnsiFont(void);
 static void RenewWorkbenchPens(void);
@@ -380,8 +383,63 @@ BYTE dontUseSig31 = -1; // don't use it, ibmcon.device will destroy it.
 #define send_data(data, len) TCPSend((data), (len))
 #include "term-engine.c"
 
+static void ObtainWorkbenchPens(void);
+
+/**
+ * @brief The built-in renderer's terminal: the text area of the terminal window.
+ *        Below the screen's title bar, so the rows match what the BBS is told.
+ */
+static int BuiltinInit(void)
+{
+    WORD x0 = win->LeftEdge + win->BorderLeft, y0 = win->TopEdge + win->BorderTop;
+    BOOL gzz = (win->Flags & WFLG_GIMMEZEROZERO) != 0;
+    int res;
+
+    // On the Workbench the ANSI colours are on 16 shared pens (the
+    // RastPort path draws with them); on the own screen on pens 0-15.
+    ObtainWorkbenchPens();
+    // A PETSCII session: the C64 font's 16x8 cells, 40 columns (OpenPetsciiFonts).
+    res = term_init_area(scr, win->RPort, gzz ? x0 : win->LeftEdge, gzz ? y0 : win->TopEdge,
+                         x0, y0, win->Width - win->BorderLeft - win->BorderRight,
+                         win->Height - win->BorderTop - win->BorderBottom,
+                         petsciiFont ? petsciiFont : ansiFont);
+    term_set_pens(ansiOwnPens ? ansiColourPens : NULL);
+    return res;
+}
+
+/**
+ * @brief Tell retro32-term whether anything lies over the terminal: a layer in
+ *        front of the terminal window that overlaps it (a requester, another
+ *        DCTelnet window, an open menu). It draws straight into the screen
+ *        bitmap only while nothing does; otherwise through the window's
+ *        RastPort, whose layer keeps what is covered. Before it did, it drew
+ *        over such windows, scrolled them along, and left them behind.
+ */
+static void BuiltinCovered(void)
+{
+    struct Layer *l;
+    WORD x0, y0, x1, y1;
+    BOOL covered = FALSE;
+
+    if (!scr || !win)
+        return;
+    x0 = win->LeftEdge + win->BorderLeft;
+    y0 = win->TopEdge + win->BorderTop;
+    x1 = win->LeftEdge + win->Width - win->BorderRight - 1;
+    y1 = win->TopEdge + win->Height - win->BorderBottom - 1;
+    if (LayersBase) LockLayerInfo(&scr->LayerInfo); else Forbid();
+    for (l = scr->LayerInfo.top_layer; l && l != win->WLayer && !covered; l = l->back)
+        covered = l->bounds.MinX <= x1 && l->bounds.MaxX >= x0
+               && l->bounds.MinY <= y1 && l->bounds.MaxY >= y0;
+    if (LayersBase) UnlockLayerInfo(&scr->LayerInfo); else Permit();
+    term_covered(covered);
+}
+
 
 static void SelectionHide(void);
+
+// console.device's colour fix: a sequence split between writes (ConWrite).
+static struct AnsiSwap17 consoleSwap;
 
 static void ConWrite(char *data, long len)
 {
@@ -392,9 +450,11 @@ static void ConWrite(char *data, long len)
         {
             // With retro32-term, drawing only ever happens with the cursor hidden, so glyphs never
             // land on an inverted cell.
+            BuiltinCovered();
             cursor_hide();
             while (len-- > 0)
                 term_feed((UBYTE)*data++);
+            term_flush();
             cursor_show();
             return; // direct return because maximal optimization is needed for this frequently called function
         }
@@ -408,6 +468,25 @@ static void ConWrite(char *data, long len)
             // Doc about passing requests to I/O device:
             // https://amigadev.elowar.com/read/ADCD_2.1/Devices_Manual_guide/node0006.html
 
+            // console.device: SGR colours swap 1 and 7 (Ansi_Swap17): it draws plain
+            // text in pen 1, white in ibmcon's order, and SGR 31 (red) in pen 1 too.
+            if (STATE_IS(APP_RENDERER_CONSOLE_DEVICE))
+            {
+                static UBYTE swapped[1024 + ANSI_SWAP17_HELD];
+
+                while (len > 0)
+                {
+                    long part = len < 1024 ? len : 1024;
+
+                    writeConsoleReq->io_Data = swapped;
+                    writeConsoleReq->io_Length = (LONG)Ansi_Swap17(&consoleSwap, (UBYTE *)data, (size_t)part, swapped);
+                    writeConsoleReq->io_Command = CMD_WRITE;
+                    DoIO((struct IORequest *)writeConsoleReq);
+                    data += part;
+                    len -= part;
+                }
+                return;
+            }
             // An I/O request typically has three fields set for every command sent to a device:
             writeConsoleReq->io_Data = data;
             writeConsoleReq->io_Length = len;
@@ -489,6 +568,12 @@ long TCPSend(const UBYTE *buf, long len)
 {
     if (prefs.AntiIdleMinutes)
         ScheduleKeepAlive();            // idle counts from now (the timer catches up)
+    if (SshConn_Active())               // SSH: encrypted into the session channel
+    {
+        if (SshConn_Write((const UBYTE *)buf, len) < 0) return -1;
+        nBytesSent += len;
+        return len;
+    }
     // Some SDKs declare send() with const buf, others without; this mismatch triggers SAS/C
     // warning 104, temporarily ignored here until properly handled.
     #ifdef __SASC
@@ -751,6 +836,7 @@ static void DisConnect(char remote, char quiet)
                       spent/3600, (spent/60)%60, spent%60);
             LocalPrint(disconnectNote);
         }
+        SshConn_End(remote);            // (a closed socket gets no goodbye)
         shutdown(tcpSocket, 2);
         CloseSocket(tcpSocket);
 
@@ -1214,7 +1300,21 @@ static void RunPendingConnect(void)
         Charset_Utf8Init(&utf8In);
         Charset_Utf8Init(&utf8Echo);
         AnsiMusic_Init(&ansiMusic);
-        if (STATE_IS(APP_RLOGIN))               // rlogin: the login message first
+        if (STATE_IS(APP_SSH))                  // SSH: the encrypted login first
+        {
+            UWORD cols, rows;
+
+            TerminalSize(&cols, &rows);
+            if (!SshConn_Start(pendingConnect.host, pendingConnect.port,
+                               pendingConnect.username, pendingConnect.password,
+                               PETSCII_SESSION() ? "PETSCII" : (const char *)prefs.TelnetTermType,
+                               cols, rows))
+            {
+                DisConnect(FALSE, TRUE);
+                return;
+            }
+        }
+        else if (STATE_IS(APP_RLOGIN))          // rlogin: the login message first
         {
             char hello[160];
             size_t n = Rlogin_Handshake(pendingConnect.username, pendingConnect.password,
@@ -1295,7 +1395,12 @@ static void TimerTick(void)
     }
     if ((due & TICK_NOP) && isConnected)
     {
-        if (TELNET_DATA())
+        if (SshConn_Active())
+        {
+            SshConn_KeepAlive();            // SSH_MSG_IGNORE: nothing shows either
+            ScheduleKeepAlive();
+        }
+        else if (TELNET_DATA())
             TCPSend("\377\361", 2);           // IAC NOP: the BBS shows nothing
         else
             ScheduleKeepAlive();
@@ -1369,7 +1474,7 @@ BOOL ScreenModeInto(struct PrefsStruct *target)
     {
         result = ScreenModeRequester(win, &target->DisplayID,
                                     &target->DisplayWidth, &target->DisplayHeight, &target->DisplayDepth,
-                                    Prefs_MaxDepth(target));
+                                    32);
     }
     else    // fallback to legacy ReqTools library
     {
@@ -1388,7 +1493,7 @@ BOOL ScreenModeInto(struct PrefsStruct *target)
             if (rtScreenModeRequest (scrmodereq, "Screen Mode..",
                                      RT_Window,    win,
                                      RTSC_Flags,    SCREQF_DEPTHGAD|SCREQF_SIZEGADS|SCREQF_GUIMODES,
-                                     RTSC_MaxDepth,    Prefs_MaxDepth(target) < 8 ? Prefs_MaxDepth(target) : 8,
+                                     RTSC_MaxDepth,    8,
                                      TAG_END))
             {
                 target->DisplayID     = scrmodereq->DisplayID;
@@ -1431,6 +1536,14 @@ static void TerminalGrid(UWORD *cols, UWORD *rows)
 {
     struct TextFont *cell = win->RPort->Font;
 
+    // The built-in renderer's grid is the engine's: at most 80 columns
+    // however wide the window (term_init_area).
+    if (STATE_IS(APP_RENDERER_BUILTIN) && term_rows > 0)
+    {
+        *cols = (UWORD)term_cols;
+        *rows = (UWORD)term_rows;
+        return;
+    }
     ScreenFont_Grid(win->Width, win->Height, win->GZZWidth, win->GZZHeight,
                     (win->Flags & WFLG_GIMMEZEROZERO) != 0,
                     cell->tf_XSize, cell->tf_YSize, cols, rows);
@@ -1582,23 +1695,71 @@ static UWORD LegacyPen(UWORD ibmconIndex)
     return ibmconIndex;
 }
 
-// Load target's palette onto the screen: the ANSI pens (in ANSI order, 8 bits
-// a gun) on 32+ colours, pens 0-15 otherwise.
+// The Workbench's UI colours (background, shadow, shine, fill; 0x00RRGGBB):
+// on 16 colours the built-in renderer's ANSI colours share these pens with
+// the UI, and the owner wants the dialogs to look like the Workbench's.
+static ULONG wbUiColours[PALETTE_UI_SHARED];
+static BOOL  wbUiKnown;
+
+static void ReadWorkbenchUiColours(void)
+{
+    static const UWORD driPen[PALETTE_UI_SHARED] = { BACKGROUNDPEN, SHADOWPEN, SHINEPEN, FILLPEN };
+    struct Screen *wb = LockPubScreen((STRPTR)"Workbench");
+    struct DrawInfo *dri = wb ? GetScreenDrawInfo(wb) : NULL;
+    int i;
+
+    wbUiKnown = FALSE;
+    if (dri && dri->dri_NumPens > FILLPEN)
+    {
+        for (i = 0; i < PALETTE_UI_SHARED; i++)
+        {
+            UWORD pen = dri->dri_Pens[driPen[i]];
+
+            if (GfxBase->LibNode.lib_Version >= 39)
+            {
+                ULONG rgb[3];
+
+                GetRGB32(wb->ViewPort.ColorMap, pen, 1, rgb);
+                wbUiColours[i] = (rgb[0] >> 24) << 16 | (rgb[1] >> 24) << 8 | (rgb[2] >> 24);
+            }
+            else
+                wbUiColours[i] = Palette_RGB32((UWORD)GetRGB4(wb->ViewPort.ColorMap, pen));
+        }
+        wbUiKnown = TRUE;
+    }
+    if (dri) FreeScreenDrawInfo(wb, dri);
+    if (wb) UnlockPubScreen(NULL, wb);
+}
+
+// Load target's palette onto screen s's ANSI pens (Palette_ScreenColours):
+// 8 bits a gun from V39, 4 before.
+static void ShowAnsiColours(struct Screen *s, struct PrefsStruct *target)
+{
+    UWORD i, colours[16];
+    ULONG shown[16];
+
+    Palette_Get(target, colours);               // the renderer's palette, ANSI order
+    Palette_ScreenColours(colours, ansiColourPens, wbUiKnown ? wbUiColours : NULL, shown);
+    for (i = 0; i < 16; i++)
+    {
+        ULONG c = shown[i];
+
+        if (GfxBase->LibNode.lib_Version >= 39)
+            SetRGB32(&s->ViewPort, ansiColourPens[i], ((c >> 16) & 0xFF) * 0x01010101UL,
+                     ((c >> 8) & 0xFF) * 0x01010101UL, (c & 0xFF) * 0x01010101UL);
+        else
+            SetRGB4(&s->ViewPort, ansiColourPens[i], (c >> 20) & 0xF, (c >> 12) & 0xF, (c >> 4) & 0xF);
+    }
+}
+
+// Load target's palette onto the screen: the ANSI pens (in ANSI order) on 32+
+// colours and with the built-in renderer on 16, pens 0-15 otherwise.
 static void LoadAnsiPalette(struct PrefsStruct *target)
 {
     if (STATE_IS_NOT(APP_FULLSCREEN))
         return;                 // the Workbench's pens are shared: never recolour them
-    if (ansiOwnPens && GfxBase->LibNode.lib_Version >= 39)
-    {
-        UWORD i;
-
-        for (i = 0; i < 16; i++)
-        {
-            ULONG c = Palette_AnsiColour(target->DeviceColors, i);
-            SetRGB32(&scr->ViewPort, ansiColourPens[i], ((c >> 16) & 0xFF) * 0x01010101UL,
-                     ((c >> 8) & 0xFF) * 0x01010101UL, (c & 0xFF) * 0x01010101UL);
-        }
-    }
+    if (ansiOwnPens)
+        ShowAnsiColours(scr, target);
     else
         LoadRGB4(&scr->ViewPort, Prefs_Palette(target), 16);
 }
@@ -1662,6 +1823,8 @@ static void ShowEditedColour(int ansi, UWORD rgb4)
 {
     if (!editLive)
         return;
+    if (ansiOwnPens && wbUiKnown && editPens[ansi] < PALETTE_UI_SHARED)
+        return;                 // a UI pen: keeps the Workbench's colour (ShowAnsiColours)
     SetRGB4(&scr->ViewPort, editPens[ansi], (rgb4 >> 8) & 0xF, (rgb4 >> 4) & 0xF, rgb4 & 0xF);
 }
 
@@ -2036,15 +2199,21 @@ static void Receive(void)
     LONG i;
     LONG outLen = 0;
 
-    len = recv(tcpSocket, recvBuffer, sizeof(recvBuffer), 0);
+    // SSH: the session's decrypted bytes (none yet while the protocol talks)
+    len = SshConn_Active() ? SshConn_Read(recvBuffer, sizeof(recvBuffer))
+                           : recv(tcpSocket, recvBuffer, sizeof(recvBuffer), 0);
 
     #ifdef _DEBUG_WAITSELECT
         Printf("   --> Receive() => %ld\n", len);
     #endif
 
+    if (len == SSHCONN_AGAIN)
+        return;
+
     if (len <= 0) // Connection closed or error
     {
-        DisConnect(TRUE, FALSE);
+        // (SSH: DCTelnet itself may have ended it -- a refused key, a cancelled login)
+        DisConnect(!SshConn_Active() || SshConn_ClosedByServer(), FALSE);
         return;
     }
 
@@ -2135,24 +2304,22 @@ static void Receive(void)
                  * (PETSCII_MAX_OUT_PER_BYTE) fits: output is never truncated. */
                 static UBYTE petsciiOut[sizeof(recvBuffer)];
                 const LONG chunkMax = sizeof(petsciiOut) / PETSCII_MAX_OUT_PER_BYTE;
-                LONG done;
+                LONG done, chunk;
 
-                for (done = 0; done < outLen; done += chunkMax)
+                for (done = 0; done < outLen; done += chunk)
                 {
-                    LONG chunk = (outLen - done < chunkMax) ? outLen - done : chunkMax;
                     LONG petsciiOutLen;
 
+                    chunk = (outLen - done < chunkMax) ? outLen - done : chunkMax;
                     if (petsciiFont) {
+                        // A part ends after a charset switch (14 lower case,
+                        // 142 upper case): what came before it is drawn in the
+                        // font it was sent for, then the font changes.
+                        if (petsciiFontLower)
+                            chunk = (LONG)petscii_part_length(outBuffer + done, (size_t)chunk);
                         petsciiOutLen = (LONG)petscii_stream_to_rawglyphs(&g_petsciiState,
                                                                              outBuffer + done, (size_t)chunk,
                                                                              petsciiOut, sizeof(petsciiOut));
-                        /* Charset-shift control code (14/142) toggles between the
-                         * upper/graphics and shifted/lowercase C64 charsets --
-                         * swap the active console font to match. */
-                        if (win && petsciiFontLower) {
-                            struct TextFont *wanted = g_petsciiState.shift_lowercase ? petsciiFontLower : petsciiFont;
-                            if (win->RPort->Font != wanted) SetFont(win->RPort, wanted);
-                        }
                     } else {
                         petsciiOutLen = (LONG)petscii_stream_to_ansi(&g_petsciiState,
                                                                       outBuffer + done, (size_t)chunk,
@@ -2165,6 +2332,28 @@ static void Receive(void)
                     }
                     if (STATE_IS(APP_SCROLLBACK_ENABLED))
                         AddBuf((char *)petsciiOut, petsciiOutLen);
+
+                    /* Charset-shift control code (14/142) toggles between the
+                     * upper/graphics and shifted/lowercase C64 charsets --
+                     * swap the active font to match, for what follows. */
+                    if (win && petsciiFont && petsciiFontLower) {
+                        struct TextFont *wanted = g_petsciiState.shift_lowercase ? petsciiFontLower : petsciiFont;
+                        if (win->RPort->Font != wanted)
+                        {
+                            if (STATE_IS(APP_RENDERER_BUILTIN))
+                                term_set_font(wanted);      // (sets the RastPort's too)
+                            else
+                            {
+                                SetFont(win->RPort, wanted);
+                                // console.device draws with its own copy of the font
+                                // (ConUnit cu_Font, set at OpenDevice): both C64 sets
+                                // have the same cell, so it takes the other one live.
+                                if (STATE_IS(APP_RENDERER_CONSOLE_DEVICE) && isConDeviceOpened
+                                    && writeConsoleReq->io_Unit)
+                                    ((struct ConUnit *)writeConsoleReq->io_Unit)->cu_Font = wanted;
+                            }
+                        }
+                    }
                 }
             }
             else
@@ -2737,7 +2926,8 @@ int main(int argc, char *argv[])
                 // If the time limit expires, WaitSelect() returns 0.
                 // Reception of a user signal with no socket ready will cause WaitSelect() to stop
                 // and to return 0.
-                timeout.tv_sec = 30; timeout.tv_usec = 0;
+                // SSH bytes already decrypted: the socket will not wake us for them
+                timeout.tv_sec = SshConn_Buffered() ? 0 : 30; timeout.tv_usec = 0;
                 i = WaitSelect(tcpSocket + 1, &rd, 0, 0, &timeout, &sigmask);
 
                 #ifdef _DEBUG
@@ -2770,9 +2960,13 @@ int main(int argc, char *argv[])
                 }
             }
 
-            if(i != 0) Receive();
+            if(i != 0 || SshConn_Buffered()) Receive();
 
         } else { // app is not iconified
+
+            // Windows opened or closed over the built-in renderer's terminal since the last time
+            if (STATE_IS(APP_RENDERER_BUILTIN))
+                BuiltinCovered();
 
             winsig = 1L << win->UserPort->mp_SigBit;
             if(isConnected)
@@ -2787,7 +2981,8 @@ int main(int argc, char *argv[])
                 if (toolBarWin) sigmask |= 1L << toolBarWin->UserPort->mp_SigBit;
                 sigmask |= TimerSig() | RexxSig();
 
-                timeout.tv_sec = 30; timeout.tv_usec = 0;
+                // SSH bytes already decrypted: the socket will not wake us for them
+                timeout.tv_sec = SshConn_Buffered() ? 0 : 30; timeout.tv_usec = 0;
                 i = WaitSelect(tcpSocket + 1, &rd, 0, 0, &timeout, &sigmask);
 
                 #ifdef _DEBUG_WAITSELECT
@@ -2819,7 +3014,7 @@ int main(int argc, char *argv[])
                 if(packetWin) GetWindowMsg(packetWin);
                 if (toolBarWin) GetWindowMsg(toolBarWin);
 
-                if(i != 0)
+                if(i != 0 || SshConn_Buffered())
                 {
                     // Draw when Title bar AND LEDs are enabled :
                     if (STATE_ARE_ALL(APP_TITLE_BAR_ENABLED | APP_LEDS_ENABLED))
@@ -2867,6 +3062,16 @@ int main(int argc, char *argv[])
                 if (sigmask & RexxSig()) RexxMessages();
             }
 
+            // The C64 display in place first: the built-in and XEM renderers
+            // (and a console that will not reopen) ask for the full reopen
+            // instead, which must also come before the pending connect below
+            // -- else the BBS's first screen was drawn on the old display and
+            // then cleared.
+            if (shouldReopenConsole && !shouldRestart)
+            {
+                ReopenTerminal();
+                shouldReopenConsole = FALSE;
+            }
             if(shouldRestart)
             {
                 CloseDisplay(shouldReopenScreen);
@@ -2876,11 +3081,6 @@ int main(int argc, char *argv[])
                 shouldRestart = FALSE;
                 shouldReopenScreen = FALSE;
                 shouldReopenConsole = FALSE;    // the full reopen covered it
-            }
-            else if (shouldReopenConsole)
-            {
-                ReopenTerminal();
-                shouldReopenConsole = FALSE;
             }
 
             // A disconnect that reopened the display: its notice again.
@@ -3778,6 +3978,28 @@ static void PasteClipboard(void)
     if (out) FreeVec(out);
 }
 
+/**
+ * @brief How the own screen lays out its pens for a renderer (OpenAppScreen):
+ *        ANSI colours on pens 0-15 in ANSI order (built-in, XEM), in ibmcon's
+ *        order (console.device, ibmcon), or on pens of their own with
+ *        Intuition's UI pens (ibmcon and the built-in renderer with 32+
+ *        colours; the built-in renderer with 16, where the colours change
+ *        places). Intuition applies it
+ *        only when the screen opens: a renderer of another layout needs a new
+ *        screen -- console.device after ibmcon on 256 colours drew on the
+ *        UI's grey pen 0.
+ */
+static int ScreenPenLayout(ULONG renderer)
+{
+    UBYTE pens[16];
+
+    if (Palette_OwnPens(renderer, prefs.DisplayDepth, pens))
+        return 2;
+    if (renderer & (APP_RENDERER_BUILTIN | APP_RENDERER_XEM_LIB))
+        return 0;
+    return 1;
+}
+
 static void GetWindowMsg(struct Window *wwin)
 {
     struct IntuiMessage *message;
@@ -4258,6 +4480,10 @@ static void GetWindowMsg(struct Window *wwin)
                         UpdatePrefsFromMenu(item, APP_RLOGIN);
                         break;
 
+                    case MENU_SSH:
+                        UpdatePrefsFromMenu(item, APP_SSH);
+                        break;
+
                     case MENU_FAST_SCROLL:
                         #ifdef _DEBUG
                             // This item must be disabled when ibmcon.device is not in use.
@@ -4280,12 +4506,10 @@ static void GetWindowMsg(struct Window *wwin)
                             // Changing the pen mapping requires reopening the screen,
                             // because Intuition only applies SA_Pens during screen creation
                             // (was: the renderer being left).
-                            shouldReopenScreen = (was & (APP_RENDERER_CONSOLE_DEVICE
-                                                         | APP_RENDERER_IBMCON_DEVICE)) != 0;
+                            shouldReopenScreen = ScreenPenLayout(was) != ScreenPenLayout(prefs.State & APP_RENDERER_ALL);
 
-                            // A screen mode chosen for another renderer (a 256-colour
-                            // ibmcon screen) is not one the built-in renderer can draw:
-                            // it draws 4 bitplanes, so pen 0 was not ANSI black.
+                            // A screen mode chosen for another renderer may be one the
+                            // built-in renderer cannot hold 80x25 cells in.
                             if (STATE_IS(APP_FULLSCREEN) && !Prefs_ScreenFits(&prefs))
                             {
                                 ULONG oldID = prefs.DisplayID;
@@ -4301,8 +4525,8 @@ static void GetWindowMsg(struct Window *wwin)
                                     prefs.DisplayWidth = oldW;
                                     prefs.DisplayHeight = oldH;
                                     prefs.DisplayDepth = oldD;
-                                    SimpleReq("The built-in renderer needs a 640 pixel wide\n"
-                                              "screen of 200 to 256 lines with 16 colours.");
+                                    SimpleReq("The built-in renderer needs a screen of at least\n"
+                                              "640x200 pixels with 16 colours or more.");
                                     STATE_UNSET(APP_RENDERER_ALL);
                                     STATE_SET(was);
                                     shouldReopenScreen = FALSE;
@@ -4321,8 +4545,7 @@ static void GetWindowMsg(struct Window *wwin)
                             STATE_UNSET(APP_RENDERER_ALL);
                             STATE_SET(APP_RENDERER_CONSOLE_DEVICE);
 
-                            shouldReopenScreen = (was & (APP_RENDERER_BUILTIN
-                                                         | APP_RENDERER_XEM_LIB)) != 0;
+                            shouldReopenScreen = ScreenPenLayout(was) != ScreenPenLayout(prefs.State & APP_RENDERER_ALL);
                             shouldRestart = TRUE;
                         }
                     break;
@@ -4341,8 +4564,7 @@ static void GetWindowMsg(struct Window *wwin)
                             STATE_UNSET(APP_RENDERER_ALL);
                             STATE_SET(APP_RENDERER_XEM_LIB);
 
-                            shouldReopenScreen = (was & (APP_RENDERER_CONSOLE_DEVICE
-                                                         | APP_RENDERER_IBMCON_DEVICE)) != 0;
+                            shouldReopenScreen = ScreenPenLayout(was) != ScreenPenLayout(prefs.State & APP_RENDERER_ALL);
                         }
 
                         // Restart even when prefs.displaydriver[0] == '\0', this forces a menu
@@ -4359,8 +4581,7 @@ static void GetWindowMsg(struct Window *wwin)
                             STATE_UNSET(APP_RENDERER_ALL);
                             STATE_SET(APP_RENDERER_IBMCON_DEVICE);
 
-                            shouldReopenScreen = (was & (APP_RENDERER_BUILTIN
-                                                         | APP_RENDERER_XEM_LIB)) != 0;
+                            shouldReopenScreen = ScreenPenLayout(was) != ScreenPenLayout(prefs.State & APP_RENDERER_ALL);
                             shouldRestart = TRUE;
                         }
                     break;
@@ -4822,14 +5043,15 @@ static struct TextFont *OpenBundledFont(STRPTR name, STRPTR progdirPath, UWORD y
 
 /**
  * @brief Open the C64 fonts when the display should be the C64 one (a PETSCII
- *        session on a console device), and record which display this is. The
- *        built-in renderer and XEM draw with their own glyphs: there the
+ *        session on a console device or the built-in renderer), and record
+ *        which display this is. XEM draws with its own glyphs: there the
  *        PETSCII stream is translated to ANSI (Receive) and no C64 font opens.
  */
 static void OpenPetsciiFonts(void)
 {
     displayIsPetscii = PETSCII_SESSION() != 0;
-    if (displayIsPetscii && STATE_IS(APP_RENDERER_IBMCON_DEVICE | APP_RENDERER_CONSOLE_DEVICE))
+    if (displayIsPetscii && STATE_IS(APP_RENDERER_IBMCON_DEVICE | APP_RENDERER_CONSOLE_DEVICE
+                                     | APP_RENDERER_BUILTIN))
     {
         /* Petscii/PetsciiLower.font: real C64 glyphs indexed by raw PETSCII
          * byte, double-width (16x8) cells so 40 columns fill roughly the
@@ -4847,18 +5069,20 @@ static void ClosePetsciiFonts(void)
     if(petsciiFontLower)      { CloseFont(petsciiFontLower);        petsciiFontLower = NULL; }
 }
 
-// The ANSI colours for ibmcon on the Workbench: 16 shared pens of exactly
-// their colours from its palette (V39), given back with ReleaseWorkbenchPens().
+// The ANSI colours for ibmcon and the built-in renderer on the Workbench: 16
+// shared pens of exactly the renderer's colours (Palette_Get) from its palette
+// (V39), given back with ReleaseWorkbenchPens().
 static void ObtainWorkbenchPens(void)
 {
-    UWORD i;
+    UWORD i, colours[16];
 
-    if (!STATE_IS(APP_RENDERER_IBMCON_DEVICE) || STATE_IS(APP_FULLSCREEN)
-        || GfxBase->LibNode.lib_Version < 39)
+    if (!STATE_IS(APP_RENDERER_IBMCON_DEVICE | APP_RENDERER_BUILTIN) || STATE_IS(APP_FULLSCREEN)
+        || GfxBase->LibNode.lib_Version < 39 || wbPensObtained)
         return;
+    Palette_Get(&prefs, colours);
     for (i = 0; i < 16; i++)
     {
-        ULONG c = Palette_AnsiColour(prefs.DeviceColors, i);
+        ULONG c = Palette_RGB32(colours[i]);
         ULONG r = ((c >> 16) & 0xFF) * 0x01010101UL, g = ((c >> 8) & 0xFF) * 0x01010101UL,
               bl = (c & 0xFF) * 0x01010101UL;
         LONG pen = ObtainBestPen(scr->ViewPort.ColorMap, r, g, bl,
@@ -4905,11 +5129,13 @@ static void SendPenTable(void)
 // would clear it): new shared pens, handed to the running ibmcon.
 static void RenewWorkbenchPens(void)
 {
-    if (!isConDeviceOpened || !wbPensObtained)
+    if (!wbPensObtained || (!isConDeviceOpened && STATE_IS_NOT(APP_RENDERER_BUILTIN)))
         return;
     ReleaseWorkbenchPens();
     ObtainWorkbenchPens();
     SendPenTable();
+    if (STATE_IS(APP_RENDERER_BUILTIN))
+        term_set_pens(ansiOwnPens ? ansiColourPens : NULL);
 }
 
 /**
@@ -4961,6 +5187,7 @@ static BOOL OpenConsoleDevice(void)
     // ibmcon on the Workbench: the ANSI colours take 16 shared pens of exactly
     // their colours from its palette (V39); they go back in CloseConsoleDevice().
     ObtainWorkbenchPens();
+    memset(&consoleSwap, 0, sizeof(consoleSwap));   // a fresh console: no sequence half-read
 
     //the window that is used by the console device for output:
     writeConsoleReq->io_Data = win;
@@ -5223,29 +5450,28 @@ struct Screen* OpenAppScreen(void)
         int i;
 
         UBYTE deepPens[16];
-        BOOL  deep = STATE_IS(APP_RENDERER_IBMCON_DEVICE)
-                  && Palette_AnsiPens(prefs.DisplayDepth, deepPens);
+        BOOL  deep = Palette_OwnPens(prefs.State, prefs.DisplayDepth, deepPens);
 
-        if (STATE_IS(APP_RENDERER_BUILTIN | APP_RENDERER_XEM_LIB))
-        {
-            colorsRGB4 = prefs.AnsiColors;
-            pens       = ansiPens;
-        }
-        else
-        {
-            colorsRGB4 = prefs.DeviceColors;
-            pens       = devicePens;
-        }
+        ReadWorkbenchUiColours();
+        UWORD ansiColours[16];
+        static UWORD uiPens[PALETTE_UI_PENS];
 
-        pens = (prefs.DisplayDepth < 3) ? defaultPens : pens;
-        // ibmcon with 32+ colours: the UI keeps Intuition's own pens and
+        // The terminal's colours on pens 0-15 (the built-in and XEM renderers
+        // in ANSI order, the console devices in ibmcon's order) and a UI pen
+        // table of the pens nearest to Intuition's own colours among them.
+        colorsRGB4 = STATE_IS(APP_RENDERER_BUILTIN | APP_RENDERER_XEM_LIB) ? prefs.AnsiColors
+                                                                           : prefs.DeviceColors;
+        Palette_UiPens(colorsRGB4, uiPens);
+        pens = (prefs.DisplayDepth < 3) ? defaultPens : uiPens;
+        // ibmcon and the built-in renderer with 32+ colours: the UI keeps Intuition's own pens and
         // colours, the ANSI colours get pens of their own (in ANSI order).
         if (deep)
             pens = intuitionPens;
 
         // Convert RGB4 colors array to ColorSpec array needed for SA_Colors during screen open:
+        Palette_Get(&prefs, ansiColours);       // ANSI order, whichever palette the renderer keeps
         for (i = 0; i < 16; i++) {
-            UWORD c = deep ? colorsRGB4[Palette_IbmconToAnsi(i)] : colorsRGB4[i];
+            UWORD c = deep ? ansiColours[i] : colorsRGB4[i];
 
             colors[i].ColorIndex = deep ? deepPens[i] : i;
             colors[i].Red   = (c >> 8) & 0xF;
@@ -5279,9 +5505,12 @@ struct Screen* OpenAppScreen(void)
             STATE_SET(APP_CUSTOM_SCREEN_OPENED);
     }
 
-    // Own screen with 32+ colours and ibmcon: the ANSI colours on pens of their own.
-    ansiOwnPens = scr && STATE_IS(APP_FULLSCREEN) && STATE_IS(APP_RENDERER_IBMCON_DEVICE)
-               && Palette_AnsiPens(AppScreenDepth(scr), ansiColourPens);
+    // Own screen with 32+ colours, ibmcon or the built-in renderer: the ANSI
+    // colours on pens of their own.
+    ansiOwnPens = scr && STATE_IS(APP_FULLSCREEN)
+               && Palette_OwnPens(prefs.State, AppScreenDepth(scr), ansiColourPens);
+    if (ansiOwnPens)
+        ShowAnsiColours(scr, &prefs);   // exact colours: SA_Colors has 4 bits a gun
 
     // Border blank (V39, ECS/AGA): the overscan border shows colour 0, which
     // on 32+ colours is the UI's grey pen 0 -- keep it black like the terminal.
@@ -5557,6 +5786,7 @@ void CreateAppMenus(void)
     SetNewMenuCheckFromPref(MENU_LOCAL_ECHO,              APP_LOCAL_ECHO);
     SetNewMenuCheckFromPref(MENU_RAW_CONNECTION,          APP_RAW_CONNECTION);
     SetNewMenuCheckFromPref(MENU_RLOGIN,                  APP_RLOGIN);
+    SetNewMenuCheckFromPref(MENU_SSH,                     APP_SSH);
     SetNewMenuCheckFromPref(MENU_FAST_SCROLL,             APP_FAST_SCROLL_ENABLED);
     SetNewMenuCheckFromPref(MENU_PETSCII_MODE,            APP_PETSCII_MODE);
     GetNewMenuItemFromID(MENU_CHARSET_CP437)->nm_Flags  = CHECKIT | (prefs.Charset == CHARSET_CP437 ? CHECKED : 0);
@@ -5698,7 +5928,7 @@ BOOL OpenDisplay(void)
 
     if (STATE_IS(APP_RENDERER_BUILTIN))
     {
-        int res = term_init(scr, ansiFont);
+        int res = BuiltinInit();
 
         // If it fails fallback to console.device.
         if (res != RETURN_OK)

@@ -3,6 +3,7 @@
  * @brief The DCTelnet.Prefs file as bytes (see prefs_file.h).
  */
 #include "prefs_file.h"
+#include "palette.h"
 
 // DCTelnet 1.x PrefsStruct: byte offsets of its fields (68000 layout, no padding).
 enum
@@ -38,6 +39,7 @@ enum
 #define OLD_VT_KEYS             (1UL << 17)
 #define OLD_RLOGIN              (1UL << 18)
 #define OLD_132_COLUMNS         (1UL << 19)
+#define OLD_SSH                 (1UL << 20)
 
 static UWORD Word(const UBYTE *p) { return (UWORD)(p[0] << 8 | p[1]); }
 static ULONG Long(const UBYTE *p) { return (ULONG)p[0] << 24 | (ULONG)p[1] << 16 | (ULONG)p[2] << 8 | p[3]; }
@@ -75,10 +77,11 @@ static ULONG StateFromOldFlags(ULONG f)
     if (f & OLD_VT_KEYS)                s |= APP_VT_KEYS;
     if (f & OLD_RLOGIN)                 s |= APP_RLOGIN;
     if (f & OLD_132_COLUMNS)            s |= APP_132_COLUMNS;
+    if (f & OLD_SSH)                    s |= APP_SSH;
     return s;
 }
 
-BOOL Prefs_FromLegacy(const UBYTE *old, size_t len, struct PrefsStruct *out)
+static BOOL FromLegacy(const UBYTE *old, size_t len, struct PrefsStruct *out)
 {
     int i;
 
@@ -127,6 +130,14 @@ BOOL Prefs_FromLegacy(const UBYTE *old, size_t len, struct PrefsStruct *out)
     return TRUE;
 }
 
+BOOL Prefs_FromLegacy(const UBYTE *old, size_t len, struct PrefsStruct *out)
+{
+    if (!FromLegacy(old, len, out))
+        return FALSE;
+    Palette_Repair(out);        // 1.x had one palette, the console's: the built-in/XEM one from it
+    return TRUE;
+}
+
 int Prefs_Decode(const UBYTE *file, size_t len, struct PrefsStruct *out)
 {
     struct DCTFileHeader hdr;
@@ -155,8 +166,9 @@ UWORD *Prefs_Palette(struct PrefsStruct *p)
 BOOL Prefs_ScreenFits(const struct PrefsStruct *p)
 {
     if (p->State & APP_RENDERER_BUILTIN)
-        return p->DisplayWidth == 640 && p->DisplayHeight >= 200 && p->DisplayHeight <= 256
-            && p->DisplayDepth == 4;
+        return p->DisplayWidth >= 640 && p->DisplayWidth <= DISP_MAX_WIDTH
+            && p->DisplayHeight >= 200 && p->DisplayHeight <= DISP_MAX_HEIGHT
+            && p->DisplayDepth >= 4 && p->DisplayDepth <= 32;
     if (p->State & APP_RENDERER_IBMCON_DEVICE)             // ibmcon.device crashes at 1920x1200
         return p->DisplayWidth >= WIN_MIN_WIDTH && p->DisplayWidth <= 1920
             && p->DisplayHeight >= WIN_MIN_HEIGHT && p->DisplayHeight <= 1080
@@ -166,7 +178,3 @@ BOOL Prefs_ScreenFits(const struct PrefsStruct *p)
         && p->DisplayDepth != 0 && p->DisplayDepth <= 32;
 }
 
-UWORD Prefs_MaxDepth(const struct PrefsStruct *p)
-{
-    return (p->State & APP_RENDERER_BUILTIN) ? 4 : 32;
-}

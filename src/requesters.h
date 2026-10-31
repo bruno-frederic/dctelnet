@@ -37,6 +37,8 @@ LONG ConfirmRequester(struct Window *parent, CONST_STRPTR gadgetFormat, CONST_ST
                          ...); // varargs parameters
 BOOL GetStringRequester(struct Window *parent, STRPTR title, STRPTR prompt,
                            STRPTR buffer, UWORD maxLen);
+BOOL GetSecretRequester(struct Window *parent, STRPTR title, STRPTR prompt,
+                           STRPTR buffer, UWORD maxLen);       // a password: shows stars
 BOOL DirectoryRequester(struct Window *parent, STRPTR dirName, UWORD maxLen);
 BOOL FileRequester(struct Window *parent, STRPTR dirName, UWORD dirMaxLen,
                    STRPTR fileName, UWORD fileMaxLen,
