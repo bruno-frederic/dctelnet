@@ -208,6 +208,20 @@ static void test_local_text_escape_spans_calls(void) {
     assert(b[0] == '2' && b[1] == 'm' && b[2] == 'O' && b[3] == 'K');
 }
 
+/* A packet with both charsets in it: each part is drawn in its own font,
+ * so it is cut after the switch (it was drawn whole in the last one). */
+static void test_a_packet_is_cut_after_each_charset_switch(void)
+{
+    const uint8_t both[] = { 'H', 'I', 14, 'l', 'o', 142, 'X' };
+    const uint8_t none[] = { 'A', 'B', 'C' };
+
+    assert(petscii_part_length(both, sizeof(both)) == 3);
+    assert(petscii_part_length(both + 3, sizeof(both) - 3) == 3);
+    assert(petscii_part_length(both + 6, 1) == 1);
+    assert(petscii_part_length(none, sizeof(none)) == 3);
+    assert(petscii_part_length(none, 0) == 0);
+}
+
 int main(void) {
     test_local_text_reads_in_the_upper_case_set();
     test_local_text_reads_in_the_lower_case_set();
@@ -223,6 +237,7 @@ int main(void) {
     test_colour_change_keeps_reverse();
     test_delete_and_bell();
     test_no_byte_expands_past_the_declared_maximum();
+    test_a_packet_is_cut_after_each_charset_switch();
     printf("petscii_dispatch: all assertions passed\n");
     return 0;
 }

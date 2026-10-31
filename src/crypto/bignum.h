@@ -1,0 +1,76 @@
+/* src/crypto/bignum.h -- modular exponentiation for SSH: RSA signatures and
+ * Diffie-Hellman group 14, by Montgomery multiplication.
+ *
+ * Numbers are arrays of 32-bit limbs, least significant first. All the
+ * multiplying is done by one primitive, Bn_MulAdd; on the Amiga it is
+ * 68000 or 68020 assembly (bn_muladd.s), picked at run time, since vbcc
+ * turns every 64-bit product in C into a library call. */
+#ifndef BIGNUM_H
+#define BIGNUM_H
+
+#include <exec/types.h>
+#include <string.h>
+
+#define BN_MAX_BITS  4096
+#define BN_MAX_LIMBS (BN_MAX_BITS / 32 + 1)
+
+typedef ULONG bn_limb;
+
+struct BnMod                  /* a modulus, ready for Montgomery arithmetic */
+{
+    bn_limb m[BN_MAX_LIMBS];
+    bn_limb rr[BN_MAX_LIMBS]; /* R^2 mod m, R = 2^(32 n) */
+    UWORD   n;                /* limbs */
+    bn_limb minv;             /* -m^-1 mod 2^32 */
+};
+
+/* The working space of Bn_SetMod and Bn_ModExp. The caller owns it (in the
+ * session, not on the stack and not in a static): ssh.library has one data
+ * segment for all the tasks that open it. One call at a time per scratch. */
+struct BnScratch
+{
+    bn_limb t[2 * BN_MAX_LIMBS + 2];        /* a product being reduced */
+    bn_limb x[BN_MAX_LIMBS], acc[BN_MAX_LIMBS], one[BN_MAX_LIMBS];
+    bn_limb table[16][BN_MAX_LIMBS];        /* x^0 .. x^15, Montgomery form */
+};
+
+/* TRUE when the CPU has the 64-bit mulu.l in hardware: 68020 to 68040.
+ * The 68060 traps on it (060 support library, over 100 cycles per limb),
+ * so it gets the 16-bit mulu.w loops like the 68000. attnFlags is
+ * ExecBase->AttnFlags. */
+#define BN_AFF_68020 (1U << 1)                  /* AFF_68020, exec/execbase.h */
+#define BN_AFF_68060 (1U << 7)                  /* AFF_68060 */
+BOOL Bn_HasMul64(UWORD attnFlags);
+
+/* r[0..n) += a[0..n) * w; returns the limb carried out (n >= 1). On the
+ * Amiga a call through a pointer straight into the assembly for this CPU
+ * (set on the first call): a C wrapper cost more than a limb product. */
+#ifdef BN_ASM
+typedef bn_limb (*BnMulAddFn)(__reg("a0") bn_limb *r, __reg("a1") const bn_limb *a,
+                              __reg("d0") UWORD n, __reg("d1") bn_limb w);
+extern BnMulAddFn Bn_MulAddFn;
+#define Bn_MulAdd(r, a, n, w) Bn_MulAddFn((r), (a), (n), (w))
+#else
+bn_limb Bn_MulAdd(bn_limb *r, const bn_limb *a, UWORD n, bn_limb w);
+#endif
+
+/* t[0..2n) = x[0..n)^2: each cross product once, doubled, then the
+ * squares on the diagonal -- about half the products of x * x. */
+void Bn_Square(bn_limb *t, const bn_limb *x, UWORD n);
+
+/* The modulus from its big-endian bytes (odd, at most BN_MAX_BITS). FALSE
+ * for an even or too long one. */
+BOOL Bn_SetMod(struct BnMod *mod, const UBYTE *bytes, size_t len, struct BnScratch *sc);
+
+/* The byte width of numbers modulo mod: n * 4. */
+#define Bn_Bytes(mod) ((size_t)(mod)->n * 4)
+
+/* out = base^exp mod m. base and out are big-endian, Bn_Bytes(mod) long
+ * (base must be smaller than m); exp is big-endian of any length. */
+void Bn_ModExp(const struct BnMod *mod, const UBYTE *base, const UBYTE *exp, size_t expLen, UBYTE *out,
+                struct BnScratch *sc);
+
+/* Big-endian bytes (any length) padded or cut to width bytes. */
+void Bn_Fit(const UBYTE *in, size_t len, UBYTE *out, size_t width);
+
+#endif /* BIGNUM_H */
