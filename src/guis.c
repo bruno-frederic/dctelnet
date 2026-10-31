@@ -23,6 +23,7 @@
 #include "DCTelnet.h"
 #include "requesters.h"
 #include "utils.h"
+#include "nearest_pen.h"
 #include "prefs.h"
 #include "site_prefs.h"
 #include "charset.h"               // CHARSET_*

@@ -3,7 +3,7 @@
 CC := cc
 CFLAGS := -std=c99 -Wall -Wextra -Werror -I../src
 
-TESTS := test_petscii_modules test_petscii_dispatch test_prefs_file test_site_prefs test_palette test_screenfont test_progdir test_listsel test_textedit test_dsr test_keys test_clip test_ansiscan test_ticks test_rexx test_rlogin test_ansimusic test_booklist test_iconpens
+TESTS := test_petscii_modules test_petscii_dispatch test_prefs_file test_site_prefs test_palette test_screenfont test_progdir test_listsel test_textedit test_dsr test_keys test_clip test_ansiscan test_ticks test_rexx test_rlogin test_ansimusic test_booklist test_iconpens test_nearest_pen
 
 .PHONY: all clean check-encoding check-fonts check-icons
 all: $(TESTS) check-encoding check-fonts check-icons
@@ -104,6 +104,9 @@ test_booklist: test_booklist.c ../src/booklist.c ../src/booklist.h
 	$(CC) $(CFLAGS) -Ishim -o $@ $(filter %.c,$^)
 
 test_iconpens: test_iconpens.c ../src/iconpens.c ../src/iconpens.h ../src/palette.c ../src/palette.h ../src/prefs.h ../src/prefs_file.c ../src/prefs_file.h
+	$(CC) $(CFLAGS) -Ishim -o $@ $(filter %.c,$^)
+
+test_nearest_pen: test_nearest_pen.c ../src/nearest_pen.c ../src/nearest_pen.h ../src/iconpens.c ../src/iconpens.h shim/proto/graphics.h
 	$(CC) $(CFLAGS) -Ishim -o $@ $(filter %.c,$^)
 
 clean:

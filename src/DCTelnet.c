@@ -84,6 +84,7 @@ extern struct Library *CyberGfxBase;
 #include "Xem_wrapper.h"
 #include "requesters.h"
 #include "utils.h"
+#include "nearest_pen.h"
 #include "prefs.h"
 #include "prefs_file.h"
 #include "palette.h"
