@@ -84,17 +84,27 @@ static void test_hires_without_interlace_has_tall_pixels(void) {
     assert(!ScreenFont_TallPixels(0, 0));       /* unknown: square */
 }
 
-/* 24 px icons under "Disconnect" (10 chars of 8 px): the old step
+/* 24 px icons under "Disconnect" (80 px in topaz 8): the old step
  * (icon width + spacing) put the next label 5 px into this one. */
 static void test_tool_slot_is_as_wide_as_its_label(void) {
-    assert(ScreenFont_ToolSlotWidth(24, 10, 8) == 80);   /* label wider */
-    assert(ScreenFont_ToolSlotWidth(48, 4, 8) == 48);    /* icon wider */
-    assert(ScreenFont_ToolSlotWidth(55, 0, 8) == 55);    /* no label */
-    assert(ScreenFont_ToolSlotWidth(24, 8, 8) == 64);
+    assert(ScreenFont_ToolSlotWidth(24, 80) == 80);   /* label wider */
+    assert(ScreenFont_ToolSlotWidth(48, 32) == 48);   /* icon wider */
+    assert(ScreenFont_ToolSlotWidth(55, 0) == 55);    /* no label */
+}
+
+/* On a Workbench with a proportional font, labels sized as characters times
+ * tf_XSize sat up to 4.5 px off their icons' centres (A1200, 680x270). The
+ * label is centred by its drawn width. */
+static void test_label_is_centred_under_its_icon(void) {
+    assert(ScreenFont_LabelLeft(100, 48, 30) == 109);   /* icon wider */
+    assert(ScreenFont_LabelLeft(100, 24, 64) == 80);    /* label wider: left of the icon */
+    assert(ScreenFont_LabelLeft(0, 24, 64) == -20);     /* never wraps below zero */
+    assert(ScreenFont_LabelLeft(100, 48, 48) == 100);
 }
 
 int main(void) {
     test_tool_slot_is_as_wide_as_its_label();
+    test_label_is_centred_under_its_icon();
     test_hires_without_interlace_has_tall_pixels();
     test_window_stops_at_80_columns();
     test_window_may_be_132_columns_wide();

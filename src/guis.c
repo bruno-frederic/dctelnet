@@ -2560,8 +2560,9 @@ void OpenToolBarWindow(char setmenus)
                 if(gad) gad->NextGadget = &dob[i]->do_Gadget;
                 gad = &dob[i]->do_Gadget;
                 gad->NextGadget = 0;
-                slot = ScreenFont_ToolSlotWidth(gad->Width, strlen((char *)dob[i]->do_ToolTypes[0]),
-                                                scr->RastPort.Font->tf_XSize);
+                slot = ScreenFont_ToolSlotWidth(gad->Width,
+                                                TextLength(&scr->RastPort, (STRPTR)dob[i]->do_ToolTypes[0],
+                                                           strlen((char *)dob[i]->do_ToolTypes[0])));
                 gad->LeftEdge = nextleft + (slot - gad->Width) / 2;   // icon centred over its label
                 gad->TopEdge = wintop + 1;
                 if(gad->SelectRender == 0)
@@ -2640,7 +2641,9 @@ void OpenToolBarWindow(char setmenus)
             {
                 register UWORD len = strlen((char *)gad->UserData);
 
-                Move(toolBarWin->RPort, gad->LeftEdge + ((gad->Width - (len*scr->RastPort.Font->tf_XSize)) / 2), wintop + maxheight + scr->RastPort.Font->tf_YSize - 1);
+                Move(toolBarWin->RPort,
+                     ScreenFont_LabelLeft(gad->LeftEdge, gad->Width, TextLength(toolBarWin->RPort, (STRPTR)gad->UserData, len)),
+                     wintop + maxheight + scr->RastPort.Font->tf_YSize - 1);
                 Text(toolBarWin->RPort, (char *)gad->UserData, len);
 
                 gad = gad->NextGadget;

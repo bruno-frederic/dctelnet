@@ -61,8 +61,12 @@ BOOL ScreenFont_TallPixels(UWORD resolutionX, UWORD resolutionY)
     return resolutionX != 0 && resolutionY > resolutionX;
 }
 
-UWORD ScreenFont_ToolSlotWidth(UWORD imageWidth, UWORD labelChars, UWORD charWidth)
+UWORD ScreenFont_ToolSlotWidth(UWORD imageWidth, UWORD labelWidth)
 {
-    UWORD labelWidth = (UWORD)(labelChars * charWidth);
     return labelWidth > imageWidth ? labelWidth : imageWidth;
+}
+
+WORD ScreenFont_LabelLeft(WORD iconLeft, UWORD iconWidth, UWORD labelWidth)
+{
+    return (WORD)(iconLeft + ((WORD)iconWidth - (WORD)labelWidth) / 2);
 }

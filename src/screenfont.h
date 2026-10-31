@@ -44,8 +44,14 @@ UWORD ScreenFont_MaxWindowWidth(UWORD columns, UWORD cellX, UWORD borders);
 BOOL ScreenFont_TallPixels(UWORD resolutionX, UWORD resolutionY);
 
 /* Width of one tool bar button slot: the icon, or its label when that is
- * wider, so neighbouring labels never overlap. The icon is centred in it. */
-UWORD ScreenFont_ToolSlotWidth(UWORD imageWidth, UWORD labelChars, UWORD charWidth);
+ * wider, so neighbouring labels never overlap. The icon is centred in it.
+ * labelWidth is in pixels as the font draws it (TextLength): the Workbench
+ * font may be proportional, so characters times tf_XSize is not its width. */
+UWORD ScreenFont_ToolSlotWidth(UWORD imageWidth, UWORD labelWidth);
+
+/* Left edge of a label centred under an icon at iconLeft; left of the icon
+ * when the label is the wider of the two. */
+WORD ScreenFont_LabelLeft(WORD iconLeft, UWORD iconWidth, UWORD labelWidth);
 
 #define TOPAZ_PRO_NAME "TopazPro.font"
 #define TOPAZ_PRO_SIZE 16
