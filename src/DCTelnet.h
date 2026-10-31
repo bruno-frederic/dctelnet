@@ -6,6 +6,8 @@
 
 // Types
 struct PrefsStruct;
+struct Screen;      // so the prototypes below are valid without the Intuition headers
+struct RastPort;
 
 // ID of the gadget in top right corner when title bar is hidden in full screen
 #define GADGET_SCREEN_TO_BACK  20
