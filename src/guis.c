@@ -23,6 +23,7 @@
 #include "DCTelnet.h"
 #include "requesters.h"
 #include "utils.h"
+#include "nearest_pen.h"
 #include "prefs.h"
 #include "site_prefs.h"
 #include "charset.h"               // CHARSET_*
@@ -32,6 +33,8 @@
 #include "textedit.h"
 #include "ansiscan.h"
 #include "booklist.h"
+#include "iconpens.h"
+#include "screenfont.h"
 #include <intuition/sghooks.h>
 
 struct BookStruct
@@ -2291,21 +2294,220 @@ void CheckDimensions(struct NewWindow *newwin)
     if(newwin->TopEdge + newwin->Height > scr->Height) newwin->TopEdge = 0;
 }
 
+// Tool bar icons that carry their colours (DCTELNET_PALETTE, iconpens.h) are
+// redrawn with the screen's closest pens on the Workbench, and with the closest
+// terminal pens on the own screen: images drawn for fixed pens showed
+// whatever colours a screen had there (MagicWB icons on a standard Workbench,
+// on DCTelnet's own 256-colour screen). An icon without the tool type, such as
+// one a user drew, is shown as it is.
+static struct Image *toolImage[BUTTON_COUNT][2];
+
+// The icons of a set share one palette, so the pens are found once per tool bar
+// opening, not once per icon (an ObtainBestPen is a pass over the colour map):
+// one entry per distinct DCTELNET_PALETTE value.
+struct ToolPalette
+{
+    char  value[ICONPENS_MAX * 7 + 4];   // text + NUL, rounded to 4: no padding
+    int   n;
+    UWORD depth;                // planes the pens need
+    UBYTE pen[ICONPENS_MAX];
+    BOOL  owned[ICONPENS_MAX];
+};
+static struct ToolPalette toolPalette[BUTTON_COUNT];
+static UWORD toolPalettes;
+
+// The standard Workbench colours: the match without ObtainBestPen (OS 2).
+static const ULONG standardPens[4] = { 0xAAAAAA, 0x000000, 0xFFFFFF, 0x6688BB };
+static const UWORD standardRoles[4] = { BACKGROUNDPEN, SHADOWPEN, SHINEPEN, FILLPEN };
+
+// The Workbench pen for an icon colour (OS 3): the icons are drawn in the
+// standard colours and blends of them (antialiased edges). A standard colour
+// takes the screen's pen of the same role, a blend the closest pen to the same
+// blend of those pens' colours. Matched on colour alone, the edges of a custom
+// palette (a dark background, a light symbol) fell on unrelated pens.
+static UBYTE ToolPen(ULONG rgb, BOOL *owned)
+{
+    struct ColorMap *cm = scr->ViewPort.ColorMap;
+    ULONG role[4], c[3];
+    int j;
+
+    *owned = FALSE;
+    for (j = 0; j < 4; j++)
+        if (rgb == standardPens[j])
+            return (UBYTE)drawInfo->dri_Pens[standardRoles[j]];
+    for (j = 0; j < 4; j++)
+    {
+        GetRGB32(cm, drawInfo->dri_Pens[standardRoles[j]], 1, c);
+        role[j] = ((c[0] >> 8) & 0xFF0000) | ((c[1] >> 16) & 0xFF00) | (c[2] >> 24);
+    }
+    return ObtainNearestPen(cm, IconPens_Translate(rgb, standardPens, role, 4), PRECISION_IMAGE,
+                            owned);
+}
+
+// The pens for an icon on the own screen: each declared colour on the closest
+// terminal colour, read from the screen as it is now (the user's palette, the
+// ANSI pens on 32+ colours). The icon's pen 0 is the window's background pen
+// (what fills the tool bar), and no other colour takes that pen. With spare
+// pens (V39, 32+ colours) each colour gets a pen of exactly its own, released
+// with the tool bar; without one it keeps its terminal pen.
+static void TerminalToolPens(const ULONG *rgb, int n, UBYTE *pen, BOOL *owned)
+{
+    ULONG termRgb[16], c[3];
+    UBYTE termPen[16], exact[ICONPENS_MAX], bgPen = (UBYTE)drawInfo->dri_Pens[BACKGROUNDPEN];
+    BOOL have[ICONPENS_MAX];
+    UWORD i;
+    int k;
+
+    for (i = 0; i < 16; i++)
+    {
+        termPen[i] = (UBYTE)LegacyPen(i);
+        if (GfxBase->LibNode.lib_Version >= 39)
+        {
+            GetRGB32(scr->ViewPort.ColorMap, termPen[i], 1, c);
+            termRgb[i] = ((c[0] >> 8) & 0xFF0000) | ((c[1] >> 16) & 0xFF00) | (c[2] >> 24);
+        }
+        else                                        // 0x0RGB, each 4 bits x17
+        {
+            ULONG rgb4 = (ULONG)GetRGB4(scr->ViewPort.ColorMap, termPen[i]);
+
+            termRgb[i] = (((rgb4 >> 8) & 15) * 17) << 16 | (((rgb4 >> 4) & 15) * 17) << 8
+                       | ((rgb4 & 15) * 17);
+        }
+    }
+    IconPens_TerminalMap(rgb, n, termRgb, termPen, bgPen, pen);
+    if (GfxBase->LibNode.lib_Version < 39 || prefs.DisplayDepth < 5)
+        return;                                     // no spare pens to share
+    for (k = 1; k < n; k++)
+    {
+        exact[k] = ObtainNearestPen(scr->ViewPort.ColorMap, rgb[k], PRECISION_EXACT, &owned[k]);
+        have[k] = owned[k];                         // not owned: no free pen, keep the terminal's
+    }
+    IconPens_ExactMap(n, exact, have, bgPen, pen);
+}
+
+static struct Image *RemapToolImage(const struct Image *img, const UBYTE *map, int n, UWORD depth)
+{
+    struct Image *out;
+    ULONG plane;
+
+    plane = IconPens_PlaneSize(img->Width, img->Height);
+    if (!(out = AllocVec(sizeof(struct Image), MEMF_CLEAR)))
+        return NULL;
+    if (!(out->ImageData = AllocVec(plane * depth, MEMF_CHIP)))
+    {
+        FreeVec(out);
+        return NULL;
+    }
+    out->LeftEdge   = img->LeftEdge;
+    out->TopEdge    = img->TopEdge;
+    out->Width      = img->Width;
+    out->Height     = img->Height;
+    out->Depth      = depth;
+    out->PlanePick  = (UBYTE)((1 << depth) - 1);
+    IconPens_Remap(img->ImageData, img->Width, img->Height, img->Depth, img->PlanePick,
+                   img->PlaneOnOff, map, n, out->ImageData, depth);
+    return out;
+}
+
+// The pens for the palette value: the ones found for an earlier icon with the
+// same value, or new ones.
+static struct ToolPalette *ToolPaletteFor(const char *value, const ULONG *rgb, int n)
+{
+    struct ToolPalette *tp;
+    UBYTE maxPen;
+    UWORD j;
+    int k;
+
+    for (j = 0; j < toolPalettes; j++)
+        if (strcmp(toolPalette[j].value, value) == 0)
+            return &toolPalette[j];
+    tp = &toolPalette[toolPalettes++];
+    strlcpy(tp->value, value, sizeof(tp->value));
+    tp->n = n;
+    for (k = 0; k < n; k++)
+        tp->owned[k] = FALSE;
+    if (STATE_IS(APP_FULLSCREEN))
+        TerminalToolPens(rgb, n, tp->pen, tp->owned);
+    for (k = 0; k < n; k++)
+    {
+        if (STATE_IS(APP_FULLSCREEN))               // SCIcons: TerminalToolPens()
+            continue;
+        else if (k == 0)                            // the icon's background
+            tp->pen[k] = (UBYTE)drawInfo->dri_Pens[BACKGROUNDPEN];
+        else if (GfxBase->LibNode.lib_Version >= 39)
+            tp->pen[k] = ToolPen(rgb[k], &tp->owned[k]);
+        else
+            tp->pen[k] = (UBYTE)IconPens_Nearest(rgb[k], standardPens, 4);
+    }
+    for (k = 0, maxPen = 0; k < n; k++)
+        if (tp->pen[k] > maxPen) maxPen = tp->pen[k];
+    tp->depth = IconPens_Depth(maxPen);
+    return tp;
+}
+
+static void RemapToolIcon(UWORD i)
+{
+    struct Gadget *gad = &dob[i]->do_Gadget;
+    struct Image **render[2];
+    struct ToolPalette *tp;
+    ULONG rgb[ICONPENS_MAX];
+    char *value;
+    int n, k;
+
+    value = (char *)FindToolType((CONST_STRPTR *)dob[i]->do_ToolTypes, ICONPENS_TOOLTYPE);
+    if (!value || strlen(value) >= sizeof(tp->value) || !(n = IconPens_Parse(value, rgb)))
+        return;
+    tp = ToolPaletteFor(value, rgb, n);
+    render[0] = (struct Image **)&gad->GadgetRender;
+    render[1] = (struct Image **)&gad->SelectRender;
+    for (k = 0; k < 2; k++)
+    {
+        struct Image *img = *render[k];
+
+        // The icon's pens are the screen's (SCIcons on the console renderers):
+        // it is drawn as it was authored, with no redraw.
+        if (!img || IconPens_IsIdentity(tp->pen, n, img->Depth, tp->depth))
+            continue;
+        if ((toolImage[i][k] = RemapToolImage(img, tp->pen, n, tp->depth)))
+            *render[k] = toolImage[i][k];
+    }
+}
+
+static void FreeToolIcons(void)
+{
+    UWORD i, k;
+
+    for (i = 0; i < toolPalettes; i++)
+        for (k = 0; k < toolPalette[i].n; k++)
+            if (toolPalette[i].owned[k])
+            {
+                ReleasePen(scr->ViewPort.ColorMap, toolPalette[i].pen[k]);
+                toolPalette[i].owned[k] = FALSE;
+            }
+    toolPalettes = 0;
+    for (i = 0; i < BUTTON_COUNT; i++)
+    {
+        for (k = 0; k < 2; k++)
+            if (toolImage[i][k])
+            {
+                FreeVec(toolImage[i][k]->ImageData);
+                FreeVec(toolImage[i][k]);
+                toolImage[i][k] = NULL;
+            }
+        if (dob[i]) { FreeDiskObject(dob[i]);  dob[i] = NULL; }
+    }
+}
+
 void CloseToolBarWindow(void)
 {
     if (toolBarWin)
     {
         register struct MenuItem *item;
-         register UWORD i;
 
         ClearMenuStrip(toolBarWin);
         CloseWindow(toolBarWin);
         toolBarWin = NULL;
-
-        for(i=0; i<BUTTON_COUNT; i++)
-        {
-            if(dob[i]) { FreeDiskObject(dob[i]);  dob[i]= NULL; }
-        }
+        FreeToolIcons();
 
         item = GetMenuItemFromID(MENU_TOOL_BAR);
         if (item != NULL)
@@ -2326,13 +2528,21 @@ void OpenToolBarWindow(char setmenus)
 
         do
         {
-            strlcpy(buf,
-                    STATE_IS(APP_FULLSCREEN) ? "PROGDIR:SCIcons/" : "PROGDIR:WBIcons/",
-                    sizeof(buf));
+            // On the own screen SCIcons, drawn for the terminal colours 0-7
+            // and shown on the pens of those colours whatever the palette
+            // (LegacyPen(): the identity on the console renderers, so no
+            // redraw); on the Workbench the Lucide set, in the shape of its
+            // pixels, on the closest pens.
+            if (STATE_IS(APP_FULLSCREEN))
+                strlcpy(buf, "PROGDIR:SCIcons/", sizeof(buf));
+            else
+                strlcpy(buf, ScreenFont_TallPixels(modeResX, modeResY) ? "PROGDIR:ToolBar/Wide/"
+                                                                       : "PROGDIR:ToolBar/Square/", sizeof(buf));
             strlcat(buf, icons[i], sizeof(buf));
             dob[i] = GetDiskObjectNew(buf);
             if(dob[i])
             {
+                RemapToolIcon(i);
                 if(gad) gad->NextGadget = &dob[i]->do_Gadget;
                 gad = &dob[i]->do_Gadget;
                 gad->NextGadget = 0;
@@ -2402,6 +2612,8 @@ void OpenToolBarWindow(char setmenus)
         CheckDimensions(&newWin);
 
         toolBarWin = OpenWindow(&newWin);
+        if (!toolBarWin)
+            FreeToolIcons();
         if (toolBarWin)
         {
             if(setmenus) ResetMenuStrip(toolBarWin, mainMenuStrip);

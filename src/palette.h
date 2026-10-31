@@ -20,6 +20,12 @@ BOOL Palette_AnsiPens(UWORD depth, UBYTE pens[16]);
 /* ibmcon's unit-1 order <-> ANSI order (the swap is its own inverse). */
 int Palette_IbmconToAnsi(int index);
 
+/* The screen pen of terminal colour `ibmconIndex` (ibmcon's order): the ANSI
+ * pens when the screen has them (ansiPens, else NULL), pens 0-15 in ANSI order
+ * for the built-in and XEM renderers (ansiOrder), pens 0-15 as they are for
+ * the console devices. */
+UBYTE Palette_TerminalPen(int ibmconIndex, const UBYTE *ansiPens, BOOL ansiOrder);
+
 /* ANSI colour `ansi` of a device palette, as 0x00RRGGBB. */
 ULONG Palette_AnsiColour(const UWORD deviceColors[16], int ansi);
 

@@ -98,6 +98,25 @@ static void test_menu_text_is_legible_on_os2_and_os3(void) {
     assert(Palette_MenuTextPen(2, pens) == 109);    /* OS 3.x: BARDETAILPEN (9) */
 }
 
+/* The own-screen tool bar's SCIcons are drawn for terminal colours 0-7 in
+ * ibmcon order (7 red). Each icon pen lands on the pen of its terminal colour,
+ * whatever RGB the palette gives it: red stays on the terminal's red pen, not
+ * on the pen whose colour is nearest (#27: red came out magenta). */
+static void test_toolbar_red_stays_on_the_terminal_red_pen(void) {
+    UBYTE ansi[16];
+    int i;
+
+    for (i = 0; i < 16; i++)                    /* console renderers: identity */
+        assert(Palette_TerminalPen(i, NULL, FALSE) == i);
+    assert(Palette_TerminalPen(7, NULL, TRUE) == 1);  /* built-in: ANSI red */
+    assert(Palette_TerminalPen(1, NULL, TRUE) == 7);  /* built-in: ANSI white */
+    assert(Palette_TerminalPen(5, NULL, TRUE) == 5);  /* magenta stays put */
+    assert(Palette_AnsiPens(8, ansi));          /* deep screen: ANSI pens */
+    assert(Palette_TerminalPen(7, ansi, TRUE) == 9);
+    assert(Palette_TerminalPen(7, ansi, FALSE) == 9);
+    assert(Palette_TerminalPen(0, ansi, FALSE) == 8);
+}
+
 int main(void) {
     test_menu_text_is_legible_on_os2_and_os3();
     test_the_editor_sees_the_renderers_palette_in_ansi_order();
@@ -105,6 +124,7 @@ int main(void) {
     test_a_recolour_that_would_merge_colours_is_refused();
     test_ansi_colours_come_from_the_device_palette_in_ansi_order();
     test_ansi_pen_layout();
+    test_toolbar_red_stays_on_the_terminal_red_pen();
     printf("palette: all assertions passed\n");
     return 0;
 }

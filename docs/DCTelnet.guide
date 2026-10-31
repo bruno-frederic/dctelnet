@@ -453,10 +453,18 @@ NOTE: See...@{b}@{u} Preferences menu, XEM LIBRARY @{ub}@{uu}
   Puts icons at the top of the window so you have easier access to
 Connect, Disconnect, Address, Info, Upload, Download & Quit.
 
-  If you wish to change these icons, they are located in the
-   SCIcons and WBIcons directory, and use standard file names.
-   They are Project type icons.  So, you can use your favorate
-   icon editor.
+  DCTelnet's own screen shows the icons of the SCIcons drawer, drawn on
+the tool bar's own background. Their colours are exact on screens with 32
+or more colours; on 16 colours they take the closest terminal colours
+(black where DCTelnet 1.6 drew blue), never the colour of the background. On the Workbench the icons are in the ToolBar drawer:
+ToolBar/Square for screens with square pixels, ToolBar/Wide for modes
+whose pixels are twice as tall (such as 640x256). Every icon carries its
+own colours (the tool type DCTELNET_PALETTE), so it looks right on every
+screen.
+
+  To use icons of your own, replace the files with Project icons of the
+same names; the first tool type is the label under the icon. Icons
+without DCTELNET_PALETTE are drawn with the screen's pens as they are.
 
                               @{b}@{u} Return = CR+LF @{ub}@{uu}
                                ~~~~~~~~~~~~~~
@@ -1211,6 +1219,9 @@ Build & Toolchain:
 
 - VBCC Docker builder image by George Sokianos
   (https://github.com/walkero-gr).
+- The Workbench tool bar symbols are Lucide icons (ISC license, see
+  Docs/Lucide-LICENSE.txt).
+
 
 - Thanks to Ray Akey for his help with the file tranfer code,
   it wouldn't have worked without his help.
