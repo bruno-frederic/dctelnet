@@ -238,7 +238,7 @@ static void test_an_identity_map_needs_no_remap(void)
 }
 
 /* The tool type the SCIcons carry (tools/toolbar_icons.py SC_PALETTE_TOOLTYPE). */
-static const char scicons[] = "000000,DDDDDD,00DD00,DDDD00,000000,DD00DD,00DDDD,DD0000";
+static const char scicons[] = "000000,DDDDDD,00DD00,DDDD00,000000,DD00DD,555555,DD0000";
 
 /* The colour terminal pen i shows on the default palette, as 0xRRGGBB. */
 static void default_terminal_colours(ULONG termRgb[16])
@@ -251,7 +251,8 @@ static void default_terminal_colours(ULONG termRgb[16])
 
 /* SCIcons were drawn on the default terminal colours of pens 0-7
  * (defaultDeviceColors in src/palette.c, ibmcon pen order) and name them, but
- * pen 4: black, not the palette's blue. The table must stay in step, so a
+ * pen 4: black, not the palette's blue, and pen 6: the dark grey 555555 of
+ * the bevel's shadow and the artwork, not the palette's cyan. The table must stay in step, so a
  * palette change that leaves the icons behind fails here. */
 static void test_scicons_palette_is_the_default_terminal_pens_with_black_for_blue(void)
 {
@@ -261,8 +262,9 @@ static void test_scicons_palette_is_the_default_terminal_pens_with_black_for_blu
     default_terminal_colours(term);
     assert(IconPens_Parse(scicons, rgb) == 8);
     for (i = 0; i < 8; i++)
-        assert(rgb[i] == (i == 4 ? 0x000000 : term[i]));
+        assert(rgb[i] == (i == 4 ? 0x000000 : i == 6 ? 0x555555 : term[i]));
     assert(term[4] == 0x0000DD);
+    assert(term[6] == 0x00DDDD);
 }
 
 /* The SCIcons' pen 4 drew blue on DCTelnet's own screens whatever their tool
@@ -280,8 +282,11 @@ static void check_scicons_on(const UBYTE termPen[16])
     IconPens_TerminalMap(rgb, 8, term, termPen, termPen[15], map);
     assert(map[4] == termPen[0]);                    /* black, not blue */
     for (k = 1; k < 8; k++)
-        if (k != 4)
+        if (k != 4 && k != 6)
             assert(map[k] == termPen[k]);
+    assert(term[8] == 0x555555);                     /* pen 6: the terminal's dark grey */
+    assert(map[6] == termPen[8]);
+    assert(map[6] != termPen[0] && map[6] != termPen[15]);   /* not black, not the bar */
 }
 
 static void test_scicons_pen_4_draws_black_on_16_and_256_colour_screens(void)
@@ -300,6 +305,26 @@ static void test_scicons_pen_4_draws_black_on_16_and_256_colour_screens(void)
         termPen[i] = Palette_TerminalPen(i, ansiPens, FALSE);
     check_scicons_on(termPen);
     assert(termPen[0] != 0);                         /* a black of its own, not pen 0 */
+}
+
+/* Pen 6 is the one pen of the bevel's shadow and of the artwork (monitor
+ * outlines, cable, door frame) and names 555555: on the 16-colour screen all of
+ * it draws the terminal's dark grey, never cyan. */
+static void test_tool_bar_button_shadow_and_artwork_draw_dark_grey_not_cyan(void)
+{
+    ULONG rgb[ICONPENS_MAX], term[16];
+    UBYTE termPen[16], map[8];
+    int i;
+
+    default_terminal_colours(term);
+    for (i = 0; i < 16; i++)
+        termPen[i] = Palette_TerminalPen(i, NULL, FALSE);
+    assert(IconPens_Parse(scicons, rgb) == 8);
+    IconPens_TerminalMap(rgb, 8, term, termPen, termPen[15], map);
+    assert(term[8] == 0x555555 && term[6] == 0x00DDDD);
+    assert(rgb[6] == 0x555555);
+    assert(map[6] == termPen[8]);        /* dark grey */
+    assert(map[6] != termPen[6]);        /* not cyan */
 }
 
 static void test_plane_size_rounds_rows_to_words(void)
@@ -403,6 +428,7 @@ int main(void)
     test_an_identity_map_needs_no_remap();
     test_scicons_palette_is_the_default_terminal_pens_with_black_for_blue();
     test_scicons_pen_4_draws_black_on_16_and_256_colour_screens();
+    test_tool_bar_button_shadow_and_artwork_draw_dark_grey_not_cyan();
     test_plane_size_rounds_rows_to_words();
     test_own_screen_icon_background_matches_toolbar_background();
     test_pen_1_never_maps_to_the_background_pen_on_16_colour_screens();

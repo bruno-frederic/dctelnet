@@ -65,7 +65,9 @@ PALETTE_TOOLTYPE = "DCTELNET_PALETTE=" + ",".join("%02X%02X%02X" % c for c in PA
 # on the Workbench the closest Workbench pen. Pen 4, blue in that palette, is
 # black: the owner's choice over DCTelnet 1.6's blue (0000DD).
 DEVICE_COLORS = [0x000, 0xDDD, 0x0D0, 0xDD0, 0x00D, 0xD0D, 0x0DD, 0xD00]
-SC_COLORS = {4: 0x000}   # pen -> colour where the icons differ from DEVICE_COLORS
+# Pen 2 (green in that palette) is unused by the artwork and stays as it is. Pen 6 (cyan
+# there: bevel shadow, monitor outlines, cable, door frame) is the owner's dark grey 555555.
+SC_COLORS = {4: 0x000, 6: 0x555}   # pen -> colour where the icons differ from DEVICE_COLORS
 SC_PALETTE_TOOLTYPE = "DCTELNET_PALETTE=" + ",".join(
     "%02X%02X%02X" % ((c >> 8 & 15) * 17, (c >> 4 & 15) * 17, (c & 15) * 17)
     for c in (SC_COLORS.get(k, d) for k, d in enumerate(DEVICE_COLORS)))
