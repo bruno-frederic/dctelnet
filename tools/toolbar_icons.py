@@ -21,8 +21,8 @@ colours each for the antialiased edges. Every byte of the icon other than the
 two images and the tool types is kept.
 
 SCIcons, the hand-drawn icons for DCTelnet's own screens, are not rendered: build
-only gives them the tool type naming the terminal colours (pens 0-7) they were
-drawn with, check verifies it.
+only gives them the tool type naming their colours (SC_PALETTE_TOOLTYPE), check
+verifies it.
 
   toolbar_icons.py build [ICONDIR...]  render the SVGs into the icons (default: both drawers)
   toolbar_icons.py check [ICONDIR...]  verify every icon
@@ -58,14 +58,17 @@ DEPTH = 3
 PALETTE_TOOLTYPE = "DCTELNET_PALETTE=" + ",".join("%02X%02X%02X" % c for c in PALETTE)
 
 # SCIcons (DCTelnet's own screens) are hand-drawn pixel art, not rendered from the
-# SVGs. They use the terminal pens 0-7 of the default ibmcon palette
-# (defaultDeviceColors in src/palette.c, 4 bits per channel, each x17). On an
-# own screen DCTelnet draws pen k with the pen of terminal colour k, whatever
-# the palette: the identity on the console renderers (drawn as authored), the
-# ANSI pens on the built-in renderer. Their colours are not matched.
+# SVGs. They were drawn on the terminal pens 0-7 of the default ibmcon palette
+# (defaultDeviceColors in src/palette.c, 4 bits per channel, each x17). Like
+# every tool bar icon they are drawn in the colours their tool type names: on an
+# own screen each pen takes the closest terminal colour (IconPens_TerminalMap),
+# on the Workbench the closest Workbench pen. Pen 4, blue in that palette, is
+# black: the owner's choice over DCTelnet 1.6's blue (0000DD).
 DEVICE_COLORS = [0x000, 0xDDD, 0x0D0, 0xDD0, 0x00D, 0xD0D, 0x0DD, 0xD00]
+SC_COLORS = {4: 0x000}   # pen -> colour where the icons differ from DEVICE_COLORS
 SC_PALETTE_TOOLTYPE = "DCTELNET_PALETTE=" + ",".join(
-    "%02X%02X%02X" % ((c >> 8 & 15) * 17, (c >> 4 & 15) * 17, (c & 15) * 17) for c in DEVICE_COLORS)
+    "%02X%02X%02X" % ((c >> 8 & 15) * 17, (c >> 4 & 15) * 17, (c & 15) * 17)
+    for c in (SC_COLORS.get(k, d) for k, d in enumerate(DEVICE_COLORS)))
 
 
 HEADER = 78          # struct DiskObject as stored

@@ -2295,8 +2295,8 @@ void CheckDimensions(struct NewWindow *newwin)
 }
 
 // Tool bar icons that carry their colours (DCTELNET_PALETTE, iconpens.h) are
-// redrawn with the screen's closest pens on the Workbench, and with the pens of
-// their terminal colours on the own screen: images drawn for fixed pens showed
+// redrawn with the screen's closest pens on the Workbench, and with the closest
+// terminal pens on the own screen: images drawn for fixed pens showed
 // whatever colours a screen had there (MagicWB icons on a standard Workbench,
 // on DCTelnet's own 256-colour screen). An icon without the tool type, such as
 // one a user drew, is shown as it is.
@@ -2344,6 +2344,35 @@ static UBYTE ToolPen(ULONG rgb, BOOL *owned)
                             owned);
 }
 
+// The pens for an icon on the own screen: each declared colour on the closest
+// terminal colour, read from the screen as it is now (the user's palette, the
+// ANSI pens on 32+ colours). The icon's pen 0 is terminal black there too, not
+// the window's background pen, so every terminal pen is a candidate.
+static void TerminalToolPens(const ULONG *rgb, int n, UBYTE *pen)
+{
+    ULONG termRgb[16], c[3];
+    UBYTE termPen[16];
+    UWORD i;
+
+    for (i = 0; i < 16; i++)
+    {
+        termPen[i] = (UBYTE)LegacyPen(i);
+        if (GfxBase->LibNode.lib_Version >= 39)
+        {
+            GetRGB32(scr->ViewPort.ColorMap, termPen[i], 1, c);
+            termRgb[i] = ((c[0] >> 8) & 0xFF0000) | ((c[1] >> 16) & 0xFF00) | (c[2] >> 24);
+        }
+        else                                        // 0x0RGB, each 4 bits x17
+        {
+            ULONG rgb4 = (ULONG)GetRGB4(scr->ViewPort.ColorMap, termPen[i]);
+
+            termRgb[i] = (((rgb4 >> 8) & 15) * 17) << 16 | (((rgb4 >> 4) & 15) * 17) << 8
+                       | ((rgb4 & 15) * 17);
+        }
+    }
+    IconPens_TerminalMap(rgb, n, termRgb, termPen, pen);
+}
+
 static struct Image *RemapToolImage(const struct Image *img, const UBYTE *map, int n, UWORD depth)
 {
     struct Image *out;
@@ -2383,11 +2412,13 @@ static struct ToolPalette *ToolPaletteFor(const char *value, const ULONG *rgb, i
     tp = &toolPalette[toolPalettes++];
     strlcpy(tp->value, value, sizeof(tp->value));
     tp->n = n;
+    if (STATE_IS(APP_FULLSCREEN))
+        TerminalToolPens(rgb, n, tp->pen);
     for (k = 0; k < n; k++)
     {
         tp->owned[k] = FALSE;
-        if (STATE_IS(APP_FULLSCREEN))               // SCIcons: terminal colour k
-            tp->pen[k] = (UBYTE)LegacyPen((UWORD)k);
+        if (STATE_IS(APP_FULLSCREEN))               // SCIcons: TerminalToolPens()
+            continue;
         else if (k == 0)                            // the icon's background
             tp->pen[k] = (UBYTE)drawInfo->dri_Pens[BACKGROUNDPEN];
         else if (GfxBase->LibNode.lib_Version >= 39)

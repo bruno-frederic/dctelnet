@@ -25,6 +25,14 @@ int IconPens_Nearest(ULONG rgb, const ULONG *palette, int n);
 /* How far apart two 0x00RRGGBB colours look (IconPens_Nearest's measure). */
 ULONG IconPens_Distance(ULONG a, ULONG b);
 
+/* The pens for an icon on DCTelnet's own screen: each colour rgb[0..n) of the
+ * tool type to the closest of the 16 terminal colours, termRgb[i] being the colour
+ * terminal pen termPen[i] shows (the screen's colour map, not the defaults: the
+ * terminal palette is the user's), into map[0..n). Without it pen k was terminal
+ * colour k whatever the tool type said, so the declared colours did not decide. */
+void IconPens_TerminalMap(const ULONG *rgb, int n, const ULONG termRgb[16],
+                          const UBYTE termPen[16], UBYTE *map);
+
 /* rgb carried from the palette from[0..n) to to[0..n): a colour of from
  * becomes the colour of to at the same index, and a blend of two of them (an
  * antialiased edge between symbol and background) the same blend of their
