@@ -3,10 +3,10 @@
 CC := cc
 CFLAGS := -std=c99 -Wall -Wextra -Werror -I../src
 
-TESTS := test_petscii_modules test_petscii_dispatch test_prefs_file test_site_prefs test_palette test_screenfont test_progdir test_listsel test_textedit test_dsr test_keys test_clip test_ansiscan test_ticks test_rexx test_rlogin test_ansimusic test_booklist
+TESTS := test_petscii_modules test_petscii_dispatch test_prefs_file test_site_prefs test_palette test_screenfont test_progdir test_listsel test_textedit test_dsr test_keys test_clip test_ansiscan test_ticks test_rexx test_rlogin test_ansimusic test_booklist test_iconpens
 
-.PHONY: all clean check-encoding check-fonts
-all: $(TESTS) check-encoding check-fonts
+.PHONY: all clean check-encoding check-fonts check-icons
+all: $(TESTS) check-encoding check-fonts check-icons
 	@for t in $(TESTS); do echo "--- $$t ---"; ./$$t || exit 1; done
 
 # Check the file are standard printable ASCII or ISO-8859
@@ -38,6 +38,12 @@ check-encoding:
 # failed silently.
 check-fonts:
 	python3 ../tools/check_amiga_font.py ../build/package/DCTelnet/Fonts/Petscii.font ../build/package/DCTelnet/Fonts/PetsciiLower.font ../build/package/DCTelnet/Fonts/TopazPro.font
+
+# The tool bar icons carry their colours (DCTELNET_PALETTE) and DCTelnet maps
+# them to the screen's nearest pens. The 1.6 icons were 8-colour MagicWB art
+# for fixed pens and drew pink and cyan on a standard palette.
+check-icons:
+	python3 ../tools/toolbar_icons.py check
 
 MODULE_SRC := ../src/petscii_screencode.c ../src/petscii_fallback.c ../src/petscii_keymap.c
 MODULE_HDR := ../src/petscii_screencode.h ../src/petscii_fallback.h ../src/petscii_keymap.h
@@ -95,6 +101,9 @@ test_ansimusic: test_ansimusic.c ../src/ansimusic.c ../src/ansimusic.h
 	$(CC) $(CFLAGS) -Ishim -o $@ $(filter %.c,$^)
 
 test_booklist: test_booklist.c ../src/booklist.c ../src/booklist.h
+	$(CC) $(CFLAGS) -Ishim -o $@ $(filter %.c,$^)
+
+test_iconpens: test_iconpens.c ../src/iconpens.c ../src/iconpens.h
 	$(CC) $(CFLAGS) -Ishim -o $@ $(filter %.c,$^)
 
 clean:
