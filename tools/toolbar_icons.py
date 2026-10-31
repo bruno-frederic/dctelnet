@@ -16,8 +16,8 @@ wide for modes whose pixels are twice as tall (hires without interlace, such
 as 640x256), where square art looked squeezed.
 
 The symbols are Lucide icons (ISC, tools/toolbar_icons/LICENSE), rendered with
-rsvg-convert: black on grey normally, white on blue pressed, with two blend
-colours each for the antialiased edges. Every byte of the icon other than the
+rsvg-convert: grey on black normally, white on black selected (pressed and
+hovered), with two blend colours each for the antialiased edges. Every byte of the icon other than the
 two images and the tool types is kept.
 
 SCIcons, the hand-drawn icons for DCTelnet's own screens, are not rendered: build
@@ -49,13 +49,14 @@ SVGDIR = os.path.join(HERE, "toolbar_icons")
 SYMBOLS = {"connect": "plug-zap", "disconnect": "unplug", "addressbook": "book-user",
            "information": "info", "upload": "upload", "download": "download", "quit": "power"}
 
-# Pen 0 is the background: DCTelnet draws it with the window's background pen,
-# so an icon blends into any tool bar. Pens 0-3 are the standard Workbench
-# colours; 4-7 the blends of the antialiased edges.
-PALETTE = [(0xAA, 0xAA, 0xAA), (0x00, 0x00, 0x00), (0xFF, 0xFF, 0xFF), (0x66, 0x88, 0xBB),
-           (0x71, 0x71, 0x71), (0x38, 0x38, 0x38), (0x99, 0xB0, 0xD2), (0xCC, 0xD7, 0xE8)]
-NORMAL = (0, 4, 5, 1)    # background, 1/3, 2/3, full symbol
-PRESSED = (3, 6, 7, 2)
+# Pen 0 is the background: DCTelnet draws it with the pen it fills the tool
+# bar with, black, so the icons sit straight on the terminal's black. The
+# symbol is mid grey (pen 1) and, on the selected image, white (pen 2); pens
+# 3-4 and 5-6 are the blends toward the background of the antialiased edges.
+PALETTE = [(0x00, 0x00, 0x00), (0x88, 0x88, 0x88), (0xFF, 0xFF, 0xFF), (0x2D, 0x2D, 0x2D),
+           (0x5B, 0x5B, 0x5B), (0x55, 0x55, 0x55), (0xAA, 0xAA, 0xAA)]
+NORMAL = (0, 3, 4, 1)    # background, 1/3, 2/3, full symbol
+PRESSED = (0, 5, 6, 2)   # also what the pointer hovering over the icon shows
 DEPTH = 3
 PALETTE_TOOLTYPE = "DCTELNET_PALETTE=" + ",".join("%02X%02X%02X" % c for c in PALETTE)
 
@@ -268,6 +269,12 @@ def check(icondir):
                 if (icon.gadget_width, icon.gadget_height) != (w, h):
                     errors.append("%s: gadget is %dx%d, want the image size %dx%d"
                                   % (path, icon.gadget_width, icon.gadget_height, w, h))
+                for image, pens in zip(icon.images, (NORMAL, PRESSED)):
+                    if (image.width, image.height) == (w, h):
+                        used = {p for row in pixels(icon, raw, image) for p in row}
+                        if not used <= set(pens) or PALETTE[pens[0]] != (0, 0, 0):
+                            errors.append("%s: pens %s, want only %s on a black background"
+                                          % (path, sorted(used), sorted(pens)))
                 for image in icon.images:
                     if (image.width, image.height) != (w, h):
                         errors.append("%s: image header says %dx%d, want %dx%d"
