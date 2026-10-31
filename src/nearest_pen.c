@@ -1,6 +1,12 @@
 /* src/nearest_pen.c -- the pen of a screen nearest to a colour. */
 #include <exec/types.h>
+#ifdef __VBCC__
+    #pragma dontwarn 306
+#endif
 #include <proto/graphics.h>           // ObtainBestPen(), GetRGB32()
+#ifdef __VBCC__
+    #pragma popwarn
+#endif
 #include "nearest_pen.h"
 #include "iconpens.h"                 // IconPens_Distance()
 
