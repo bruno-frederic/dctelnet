@@ -276,7 +276,7 @@ static struct TextFont *petsciiFont = NULL;      // upper/graphics charset font
 static struct TextFont *petsciiFontLower = NULL; // shifted/lowercase charset font
 // PETSCII only makes sense in a PETSCII BBS session: the C64 fonts and console
 // setup are up only while a connection is being made or live (connectionDisplay)
-// with PETSCII Mode on. Start-up and disconnected text keep the normal font.
+// with Terminal Type PETSCII. Start-up and disconnected text keep the normal font.
 static BOOL connectionDisplay = FALSE;   // a connection is being prepared or is live
 // The Workbench window's place when the display was last closed: a reopen
 // (an entry's settings, a font change) keeps it. The saved place
@@ -970,7 +970,7 @@ static void ScheduleKeepAlive(void)
 }
 
 // Reopen the display when the C64 display it shows no longer matches what
-// the connection state and PETSCII Mode want.
+// the connection state and Terminal Type PETSCII want.
 static void SyncPetsciiDisplay(void)
 {
     if ((PETSCII_SESSION() != 0) != displayIsPetscii)
@@ -1599,7 +1599,7 @@ static void ApplyTerminalWidth(void)
 
 /**
  * @brief Keep the terminal at most ArtColumns() text columns wide (80, 132
- *        with Display > 132 Columns, 40 in PETSCII Mode): BBS art is drawn
+ *        with Display > 132 Columns, 40 with Terminal Type PETSCII): BBS art is drawn
  *        for exactly that width and wraps at its edge. A Workbench window
  *        stops there (WindowLimits); on DCTelnet's own screen the window is
  *        that wide and centred, the screen's background around it ANSI black
@@ -2436,7 +2436,7 @@ cont:
                 }
                 break;
             default:
-norm:                // Typed text in PETSCII Mode goes out case-swapped (petscii_keymap);
+norm:                // Typed text with Terminal Type PETSCII goes out case-swapped (petscii_keymap);
                 // a macro's text is typed text too. Escapes (\r, \123) stay raw.
                 buf[j] = PETSCII_SESSION()
                          ? (char)petscii_translate_key((unsigned char)str[i], 0) : str[i];
@@ -2644,7 +2644,7 @@ static void Finger(void)
         // End any entry session (and its connection) BEFORE touching the
         // flag: ending it later, inside the connect, would restore the
         // global settings over APP_RAW_CONNECTION.
-        // Finger is plain text: no C64 display, whatever PETSCII Mode says.
+        // Finger is plain text: no C64 display, whatever the Terminal Type says.
         if (isConnected) DisConnect(FALSE, FALSE);
         EndEntrySession();
         if (shouldRestart || shouldReopenConsole)
@@ -2837,7 +2837,7 @@ int main(int argc, char *argv[])
     shouldReopenScreen = FALSE;
 
     // Connect to server if it was specified in the command line. It needs an opened display,
-    // and in PETSCII Mode the C64 one: the main loop reopens it, then connects.
+    // and with Terminal Type PETSCII the C64 one: the main loop reopens it, then connects.
     if (server[0] != '\0')
     {
         if (stricmp(server, "--test-speed") == 0)
@@ -3018,7 +3018,7 @@ int main(int argc, char *argv[])
                 sig |= TimerSig() | RexxSig();
 
                 // A display reopen or a connect already queued (an entry's
-                // settings, PETSCII Mode) runs now, not after the next event.
+                // settings, Terminal Type) runs now, not after the next event.
                 if (shouldRestart || shouldReopenConsole || pendingConnect.active)
                     sigmask = SetSignal(0L, sig | winsig | SIGBREAKF_CTRL_C)
                             & (sig | winsig | SIGBREAKF_CTRL_C);
@@ -3511,7 +3511,7 @@ static void OutKey(unsigned char key)
         EchoWrite(&key, 1);
 }
 
-// One byte of typed text. In PETSCII Mode: BS and DEL are PETSCII's own DEL
+// One byte of typed text. With Terminal Type PETSCII: BS and DEL are PETSCII's own DEL
 // (APP_BACKSPACE_DEL_SWAPPED is an ASCII-only concept), the rest case-swapped.
 static void SendTypedChar(UBYTE c)
 {
@@ -3533,7 +3533,7 @@ static void SendTypedChar(UBYTE c)
     if (c == '\r' && STATE_IS(APP_RETURN_SENDING_CRLF)) OutKey('\n');
 }
 
-// A key that is not text (keys.h). F1-F10 send their macro; in PETSCII Mode
+// A key that is not text (keys.h). F1-F10 send their macro; with Terminal Type PETSCII
 // a key without one sends the C64 function-key byte (F1-F8). Cursor and
 // navigation keys send what the BBS expects: PETSCII codes, or ANSI-BBS /
 // VT codes (Terminal > VT Keys), cursor keys in the host's cursor key mode.
@@ -5078,7 +5078,7 @@ static UWORD EstablishTCPConnection(char *servername, UWORD port)
      * every printable byte "wrapped" and got its own line. */
     petscii_dispatch_init(&g_petsciiState, 40, 25);
     if (PETSCII_SESSION() && !petsciiFont)
-        LocalPrint("\r\nPETSCII Mode: Petscii.font not found in FONTS: or PROGDIR:Fonts/, "
+        LocalPrint("\r\nPETSCII: Petscii.font not found in FONTS: or PROGDIR:Fonts/, "
                    "showing CP437 lookalikes.\r\n");
 
     Dsr_Init(&bbsDsr);      // a request cut off by the last disconnect is not this BBS's
@@ -5659,7 +5659,7 @@ void OpenAppWindow(void)
 
         {
             // No snapshot and not a reopen: the BBS size, 80x25 characters
-            // (40x25 in PETSCII Mode) of the terminal's font, on any mode.
+            // (40x25 with Terminal Type PETSCII) of the terminal's font, on any mode.
             struct TextFont *cell = petsciiFont ? petsciiFont : ansiFont;
             BOOL bbsSize = !wbWindowBoxValid && STATE_IS_NOT(APP_WINDOW_SNAPSHOT);
 

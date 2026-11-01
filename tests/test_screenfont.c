@@ -52,7 +52,7 @@ static void test_window_size_sent_to_the_bbs_is_the_text_area(void) {
 
 /* A Workbench window could be sized wider than 80 columns, and a BBS title
  * drawn for 80 columns wrapped in the wrong places. The window stops at 80
- * columns of text (40 in PETSCII Mode) plus its borders; resized back
+ * columns of text (40 with Terminal Type PETSCII) plus its borders; resized back
  * down, the grid measures 80. */
 static void test_window_stops_at_80_columns(void) {
     UWORD max = ScreenFont_MaxWindowWidth(SCREENFONT_ANSI_COLUMNS, 8, 22);
