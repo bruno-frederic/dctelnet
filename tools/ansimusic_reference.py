@@ -23,7 +23,8 @@ sessions; reference = GW-BASIC PLAY, GWSTS.ASM, plus SyncTERM cterm.txt):
   Intro      ESC[N and ESC[| always start music. ESC[M starts music only when
              the next byte that is not a space starts music: B F L S (MB MF ML
              MS), N not followed by a digit (MN), a note A-G, N + digit, O P T
-             < > or 0x0E. Anything else: ESC[M is Delete Line and stays text.
+             < > or 0x0E. At most 8 spaces are skipped; a 9th space, or anything
+             else, makes ESC[M Delete Line and it stays text.
   End        0x0E ends the string. ESC, CAN (0x18) or SUB (0x1A) end it early:
              the command being read is played, CAN and SUB are swallowed, ESC
              starts the next escape sequence.
@@ -137,9 +138,11 @@ def play_string(player, body):
 
 def starts_music_after_m(data, i):
     """After ESC[M (data[i] is the first byte after it): is this music?"""
-    while i < len(data) and data[i] == 0x20:
+    spaces = 0
+    while i < len(data) and data[i] == 0x20 and spaces < 8:
         i += 1
-    if i >= len(data):
+        spaces += 1
+    if i >= len(data) or data[i] == 0x20:
         return False
     c = chr(data[i]).upper()
     if c == "N":
@@ -224,6 +227,10 @@ def main():
     add("intro-m-ms", b"\x1b[MSC\x0e", "ESC[M then S = MS (staccato)")
     add("intro-m-space", b"\x1b[M T200C\x0e", "ESC[M, spaces, then music (!ANSIMUS.ANS form)")
     add("delete-line", b"\x1b[MHello\x1b[2Mx", "ESC[M then text = Delete Line; ESC[2M is Delete Lines")
+    add("intro-m-8-spaces", b"\x1b[M" + b" " * 8 + b"C\x0e",
+        "ESC[M, 8 spaces, then a note: music (the space check stops at 8)")
+    add("intro-m-9-spaces", b"\x1b[M" + b" " * 9 + b"C",
+        "ESC[M, 9 spaces, then C: Delete Line; the spaces and the C stay text")
     add("skip-cr-lf", b"\x1b[NO2A\r\nB\"C\x0e", "CR, LF and '\"' inside a string are skipped")
     add("smile-effect", b"\x1b[MF 7000;.12;200;15;-100\x0ex",
         "a string with ';' is a SMILE sound effect: no notes, no text")

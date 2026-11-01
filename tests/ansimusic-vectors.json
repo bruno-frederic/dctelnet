@@ -1,5 +1,5 @@
 {
- "about": "Reference model of ANSI music and generator of the shared test vectors.\n\nANSI music is the BASIC PLAY language sent by a BBS between an intro\n(ESC[M, ESC[N or ESC[|) and the terminator 0x0E. DCTelnet, UP-Term (vtcon),\nDEViLBOX and later the AmiExpress web BBS all test against one vector file:\n\n    /Users/spot/Code/DEViLBOX/src/lib/import/__tests__/fixtures/ansi-music/vectors.json\n\nDEViLBOX owns and commits that file. DCTelnet keeps a byte-identical copy in\ntests/ansimusic-vectors.json (tests/Makefile compares the two when both exist).\n\nThe rules (agreed 2026-11-01 between the DCTelnet, vtcon and DEViLBOX\nsessions; reference = GW-BASIC PLAY, GWSTS.ASM, plus SyncTERM cterm.txt):\n\n  Pitch      GW-BASIC NOTTAB: the octave-6 table in whole Hz, shifted right by\n             (6 - octave), plus the last bit shifted out (\"ADC BX,0\"; that is\n             round half up). O2 A = 440, O3 C = 523, O4 C = 1047.\n  N n        0-84. N0 is a rest. N1 = C in O0; octave = (n-1) div 12. N34 = 440.\n  Dots       Each dot multiplies the length by 1.5 (C.. = 2.25 x).\n  Gate       MN 7/8 of the length, MS 3/4, ML all of it; the rest is silent.\n  Limits     L 1-64, T 32-255, O 0-6 (clamped). Defaults O4 L4 T120 MN.\n  Intro      ESC[N and ESC[| always start music. ESC[M starts music only when\n             the next byte that is not a space starts music: B F L S (MB MF ML\n             MS), N not followed by a digit (MN), a note A-G, N + digit, O P T\n             < > or 0x0E. Anything else: ESC[M is Delete Line and stays text.\n  End        0x0E ends the string. ESC, CAN (0x18) or SUB (0x1A) end it early:\n             the command being read is played, CAN and SUB are swallowed, ESC\n             starts the next escape sequence.\n  Bytes      Other bytes inside a string (CR, LF, '\"', unknown letters) are\n             skipped; the string keeps playing.\n  SMILE      A string that contains ';' is a SMILE sound effect\n             (MF freq;dur;cycles;delay;variation): no notes, no text.\n\nDurations are in milliseconds: a note of length L at tempo T lasts\n240000 / (T * L) ms. Values are rounded to 3 decimals; hosts compare with a\ntolerance of 1 ms (DCTelnet truncates to whole ms).",
+ "about": "Reference model of ANSI music and generator of the shared test vectors.\n\nANSI music is the BASIC PLAY language sent by a BBS between an intro\n(ESC[M, ESC[N or ESC[|) and the terminator 0x0E. DCTelnet, UP-Term (vtcon),\nDEViLBOX and later the AmiExpress web BBS all test against one vector file:\n\n    /Users/spot/Code/DEViLBOX/src/lib/import/__tests__/fixtures/ansi-music/vectors.json\n\nDEViLBOX owns and commits that file. DCTelnet keeps a byte-identical copy in\ntests/ansimusic-vectors.json (tests/Makefile compares the two when both exist).\n\nThe rules (agreed 2026-11-01 between the DCTelnet, vtcon and DEViLBOX\nsessions; reference = GW-BASIC PLAY, GWSTS.ASM, plus SyncTERM cterm.txt):\n\n  Pitch      GW-BASIC NOTTAB: the octave-6 table in whole Hz, shifted right by\n             (6 - octave), plus the last bit shifted out (\"ADC BX,0\"; that is\n             round half up). O2 A = 440, O3 C = 523, O4 C = 1047.\n  N n        0-84. N0 is a rest. N1 = C in O0; octave = (n-1) div 12. N34 = 440.\n  Dots       Each dot multiplies the length by 1.5 (C.. = 2.25 x).\n  Gate       MN 7/8 of the length, MS 3/4, ML all of it; the rest is silent.\n  Limits     L 1-64, T 32-255, O 0-6 (clamped). Defaults O4 L4 T120 MN.\n  Intro      ESC[N and ESC[| always start music. ESC[M starts music only when\n             the next byte that is not a space starts music: B F L S (MB MF ML\n             MS), N not followed by a digit (MN), a note A-G, N + digit, O P T\n             < > or 0x0E. At most 8 spaces are skipped; a 9th space, or anything\n             else, makes ESC[M Delete Line and it stays text.\n  End        0x0E ends the string. ESC, CAN (0x18) or SUB (0x1A) end it early:\n             the command being read is played, CAN and SUB are swallowed, ESC\n             starts the next escape sequence.\n  Bytes      Other bytes inside a string (CR, LF, '\"', unknown letters) are\n             skipped; the string keeps playing.\n  SMILE      A string that contains ';' is a SMILE sound effect\n             (MF freq;dur;cycles;delay;variation): no notes, no text.\n\nDurations are in milliseconds: a note of length L at tempo T lasts\n240000 / (T * L) ms. Values are rounded to 3 decimals; hosts compare with a\ntolerance of 1 ms (DCTelnet truncates to whole ms).",
  "generator": "DCTelnet tools/ansimusic_reference.py",
  "tolerance_ms": 1,
  "event_fields": "hz (whole Hz, 0 for a rest), ms (whole length), gate (ms of sound), rest",
@@ -384,6 +384,27 @@
    "note": "ESC[M then text = Delete Line; ESC[2M is Delete Lines",
    "input_hex": "1b5b4d48656c6c6f1b5b324d78",
    "text_hex": "1b5b4d48656c6c6f1b5b324d78",
+   "events": []
+  },
+  {
+   "name": "intro-m-8-spaces",
+   "note": "ESC[M, 8 spaces, then a note: music (the space check stops at 8)",
+   "input_hex": "1b5b4d2020202020202020430e",
+   "text_hex": "",
+   "events": [
+    {
+     "hz": 1047,
+     "ms": 500.0,
+     "gate": 437.5,
+     "rest": false
+    }
+   ]
+  },
+  {
+   "name": "intro-m-9-spaces",
+   "note": "ESC[M, 9 spaces, then C: Delete Line; the spaces and the C stay text",
+   "input_hex": "1b5b4d20202020202020202043",
+   "text_hex": "1b5b4d20202020202020202043",
    "events": []
   },
   {
