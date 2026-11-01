@@ -1,6 +1,7 @@
 /* src/site_prefs.c -- per-Address-Book-entry settings (issue #10). */
 #include "site_prefs.h"
 #include "prefs_file.h"
+#include "palette.h"
 #include "charset.h"
 
 /* Flags whose change needs the screen reopened (OpenAppScreen reads them).
@@ -34,7 +35,7 @@ static void replace_keeping_geometry(struct PrefsStruct *live, const struct Pref
 }
 
 #define TERMINAL_GROUP_FLAGS  (APP_PETSCII_MODE | APP_RENDERER_ALL | APP_RAW_CONNECTION | APP_LOCAL_ECHO \
-                               | APP_RLOGIN)
+                               | APP_RLOGIN | APP_SSH)
 #define KEYBOARD_GROUP_FLAGS  (APP_BACKSPACE_DEL_SWAPPED | APP_RETURN_SENDING_CRLF | APP_VT_KEYS)
 
 static void copy_flags(struct PrefsStruct *to, const struct PrefsStruct *from, ULONG mask)
@@ -262,6 +263,7 @@ BOOL SitePrefs_Decode(struct SiteSettings *out, const UBYTE *buf, size_t len,
     }
     else
         return FALSE;
+    Palette_Repair(&s.prefs);      // a 1.x (DCS1-4) entry has only the console palette
     *out = s;
     return TRUE;
 }
@@ -418,6 +420,7 @@ void SitePrefs_GroupSummary(ULONG group, const struct PrefsStruct *p, char *out,
         else if (p->Charset == CHARSET_LATIN1) put(out, &len, max, ", Amiga characters");
         if (p->State & APP_RAW_CONNECTION) put(out, &len, max, ", Raw Connection");
         if (p->State & APP_RLOGIN)         put(out, &len, max, ", Rlogin");
+        if (p->State & APP_SSH)            put(out, &len, max, ", SSH");
         if (p->State & APP_LOCAL_ECHO)     put(out, &len, max, ", Local Echo");
     }
     else if (group == SITE_GROUP_KEYBOARD)

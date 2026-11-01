@@ -25,9 +25,9 @@ int petscii_translate_key(int ascii_or_special, int is_special) {
         }
     }
     if (ascii_or_special >= 'A' && ascii_or_special <= 'Z')
-        return ascii_or_special - 'A' + 'a';
+        return ascii_or_special - 'A' + 0xC1;   /* shifted letter, as the C64 keyboard sends it */
     if (ascii_or_special >= 'a' && ascii_or_special <= 'z')
-        return ascii_or_special - 'a' + 'A';
+        return ascii_or_special - 'a' + 0x41;
     return ascii_or_special; /* digits, punctuation: unchanged */
 }
 
@@ -38,4 +38,18 @@ int petscii_fkey_from_console_digit(char digit) {
     };
     if (digit < '0' || digit > '7') return -1;
     return petscii_translate_key(fkeys[digit - '0'], 1);
+}
+
+int petscii_key_from_digit(char digit, int ctrl, int commodore) {
+    static const unsigned char ctrl_bytes[10] = {
+        0x92, 0x90, 0x05, 0x1C, 0x9F, 0x9C, 0x1E, 0x1F, 0x9E, 0x12   /* 0-9 */
+    };
+    static const unsigned char cbm_bytes[8] = {
+        0x81, 0x95, 0x96, 0x97, 0x98, 0x99, 0x9A, 0x9B                /* 1-8 */
+    };
+
+    if (digit < '0' || digit > '9') return -1;
+    if (ctrl) return ctrl_bytes[digit - '0'];
+    if (commodore && digit >= '1' && digit <= '8') return cbm_bytes[digit - '1'];
+    return -1;
 }

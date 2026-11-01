@@ -48,16 +48,14 @@ BOOL Prefs_FromLegacy(const UBYTE *old, size_t len, struct PrefsStruct *out);
 
 /*
  * TRUE when p's full-screen mode suits p's renderer: the built-in renderer
- * (retro32-term) draws 4 bitplanes of a 640-pixel wide, 200-256 line screen;
- * ibmcon.device at most 1920x1080; the others any size. Checked on load and
- * whenever the renderer changes -- a mode chosen for another renderer (a
- * 256-colour ibmcon screen) is not one the built-in renderer can use.
+ * (retro32-term) needs 80 columns and 25 rows of 8x8 cells, at least
+ * 640x200 (it draws 16 colours straight into the bitplanes of a 4-plane
+ * screen, through the RastPort on any other); ibmcon.device at most
+ * 1920x1080; the others any size. Checked on load and whenever the
+ * renderer changes.
  */
 BOOL Prefs_ScreenFits(const struct PrefsStruct *p);
 
-/* The most bitplanes a screen mode may have for p's renderer (the screen
- * mode requester's limit): 4 for the built-in renderer, else 32. */
-UWORD Prefs_MaxDepth(const struct PrefsStruct *p);
 
 /*
  * The palette settings p's renderer shows: AnsiColors (ANSI order) for the

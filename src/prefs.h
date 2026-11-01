@@ -150,6 +150,7 @@ struct PrefsStruct
 
 #define APP_RLOGIN                   (1UL << 13)  // Rlogin (RFC 1282): a raw byte stream after the login
                                                   // message, no telnet codes
+#define APP_SSH                      (1UL << 14)  // SSH (encrypted login, sshconn.c): no telnet codes
 #define APP_PETSCII_MODE             (1UL << 15)
 #define APP_WINDOW_SNAPSHOT          (1UL << 16)  // MainWin* hold a Snapshot Windows size;
                                                   // clear: the Workbench window opens 80x25

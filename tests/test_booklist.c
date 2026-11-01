@@ -17,6 +17,13 @@ static const char list[] =
     "[Vertrauen]\r\n"
     "\tConnectionType=RLogin\r\n"
     "\tAddress=vert.synchro.net\r\n"
+    "[Uprough]\r\n"
+    "\tConnectionType=SSH\r\n"
+    "\tAddress=bbs.uprough.net\r\n"
+    "[Uprough 31337]\r\n"
+    "\tConnectionType=SSHNA\r\n"
+    "\tAddress=bbs.uprough.net\r\n"
+    "\tPort=31337\r\n"
     "[A Modem Board]\r\n"
     "\tConnectionType=Modem\r\n"
     "\tAddress=555-1234\r\n"
@@ -38,6 +45,12 @@ static void test_reads_every_entry(void)
 
     assert(BookList_Next(list, sizeof(list) - 1, &pos, &b));
     assert(strcmp(b.name, "Vertrauen") == 0 && b.type == BBS_RLOGIN && b.port == 513);
+
+    /* SSH entries import now (port 22 unless given); they were skipped. */
+    assert(BookList_Next(list, sizeof(list) - 1, &pos, &b));
+    assert(strcmp(b.name, "Uprough") == 0 && b.type == BBS_SSH && b.port == 22);
+    assert(BookList_Next(list, sizeof(list) - 1, &pos, &b));
+    assert(strcmp(b.name, "Uprough 31337") == 0 && b.type == BBS_SSH && b.port == 31337);
 
     assert(BookList_Next(list, sizeof(list) - 1, &pos, &b));
     assert(strcmp(b.name, "A Modem Board") == 0 && b.type == BBS_OTHER);
