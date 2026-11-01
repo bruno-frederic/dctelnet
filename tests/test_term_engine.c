@@ -420,13 +420,11 @@ static void test_vtopen_twice_never_draws_through_the_previous_engine(void)
     assert(term_init_area(&screen, &winRp, 0, TOP, 0, TOP, W, H - TOP, &font) == 0);
     assert(VtOpen() == 0);
     assert(vtTerm != NULL);
+    VtClose();
+    assert(vtTerm == NULL);
     newCalls = 0;
-    /* a new scrollback size is the one reopen that needs a new engine */
-    prefs.State |= APP_SCROLLBACK_ENABLED;
-    prefs.nScrollbackLines = 100;
-    assert(VtOpen() == 0);
-    assert(newSb == 100);
-    assert(newCalls == 1 && newSawTerm == 0);   /* the previous engine was closed first */
+    assert(VtOpen() == 0);                      /* no engine: the one open that makes one */
+    assert(newCalls == 1 && newSawTerm == 0);
     assert(vtTerm != NULL);
     VtClose();
     assert(vtTerm == NULL);
@@ -1298,14 +1296,52 @@ static void test_ma4_2_long_art_fills_the_engine_scrollback_and_only_when_asked(
     assert(newSb == 0);
     VtClose();
 
-    /* the preference is read at every VtOpen: the full reopen DCTelnet does on a toggle */
+    /* the preference is read at every VtOpen (a display reopen) and on the menu
+     * toggle (VtApplyScrollback): the live engine takes the new size */
     sb_begin(APP_SCROLLBACK_ENABLED, 40);
     assert(newSb == 40);
+    newCalls = 0;
     prefs.State = 0;
-    assert(VtOpen() == 0 && newSb == 0);
+    assert(VtOpen() == 0 && vtTermSb == 0);
     prefs.State = APP_SCROLLBACK_ENABLED;
     prefs.nScrollbackLines = 100000UL;
-    assert(VtOpen() == 0 && newSb == 32767);                              /* clamped to the engine's int */
+    VtApplyScrollback();
+    assert(vtTermSb == 32767);                                           /* clamped to the engine's int */
+    assert(newCalls == 0);
+    VtClose();
+}
+
+/* A1200, built-in renderer, connected: Settings > ScrollBack Lines.. (or the
+ * ScrollBack toggle) made a new engine (VtOpen after a full reopen): the
+ * screen and the scrollback were gone. The live engine takes the new size in
+ * place: the screen stays, and the newest scrollback lines that fit. */
+static void test_a_scrollback_size_change_keeps_the_screen_and_the_newest_lines(void)
+{
+    const vt_cell *r;
+    int n;
+
+    sb_begin(APP_SCROLLBACK_ENABLED, 500);
+    sb_art(SB_ART_ROWS);                                                 /* grid L171..L200, 170 back */
+    VtScrollView(5);                                                     /* the user is looking back */
+    newCalls = 0;
+    prefs.nScrollbackLines = 40;                                         /* ScrollBack Lines.. */
+    VtApplyScrollback();
+    assert(newCalls == 0);                                               /* the same engine */
+    assert(vtScrollOff == 0);                                            /* back on the live grid */
+    assert(vt_scrollback_lines(vtTerm) == 40);
+    r = vt_row(vtTerm, 0, &n);                                           /* the screen: still L171 */
+    assert(r && r[1].ch == '1' && r[2].ch == '7' && r[3].ch == '1');
+    r = vt_row(vtTerm, -40, &n);                                         /* the oldest kept: L131 */
+    assert(r && r[1].ch == '1' && r[2].ch == '3' && r[3].ch == '1');
+
+    /* the same through a display reopen (VtOpen): grows back, the lines stay */
+    VtReleasePens();
+    prefs.nScrollbackLines = 300;
+    assert(VtOpen() == 0);
+    assert(newCalls == 0 && vtTermSb == 300);
+    assert(vt_scrollback_lines(vtTerm) == 40);
+    r = vt_row(vtTerm, 0, &n);
+    assert(r && r[1].ch == '1' && r[2].ch == '7' && r[3].ch == '1');
     VtClose();
 }
 
@@ -1440,6 +1476,7 @@ int main(void)
     test_ma3_4_5_mouse_press_release_bytes_and_selection_fallthrough();
     test_ma3_6_motion_modes_and_the_mouse_move_flag();
     test_ma4_2_long_art_fills_the_engine_scrollback_and_only_when_asked();
+    test_a_scrollback_size_change_keeps_the_screen_and_the_newest_lines();
     test_ma4_3_shift_page_up_draws_the_previous_page_and_page_down_returns();
     test_ma4_3_a_scrollback_line_narrower_than_the_grid_is_blank_filled();
     test_ma4_4_the_alt_screen_leaves_the_scrollback_alone();

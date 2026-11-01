@@ -4436,8 +4436,7 @@ static void GetWindowMsg(struct Window *wwin)
 
                     case MENU_SCROLLBACK:
                         UpdatePrefsFromMenu(item, APP_SCROLLBACK_ENABLED);
-                        // the built-in terminal sizes its scrollback at vt_new(): full reopen
-                        if (Renderer_Route(prefs.State) == ROUTE_BUILTIN) shouldRestart = TRUE;
+                        VtApplyScrollback();    // the built-in terminal's, in place: its text stays
                         break;
 
                     case MENU_PACKET_WINDOW:
@@ -4761,7 +4760,7 @@ static void GetWindowMsg(struct Window *wwin)
                     case MENU_SCROLLBACK_LINES:
                         InitializeReqToolsLib(reqtoolsTags);
                         rtGetLongA(&prefs.nScrollbackLines, "ScrollBack Lines..", NULL, (struct TagItem *)&reqtoolsTags);
-                        if (Renderer_Route(prefs.State) == ROUTE_BUILTIN && STATE_IS(APP_SCROLLBACK_ENABLED)) shouldRestart = TRUE;
+                        VtApplyScrollback();    // the built-in terminal's, in place: its text stays
                         break;
 
                     case MENU_SNAPSHOT_WINDOWS:

@@ -390,19 +390,20 @@ static void VtProbeFont(void)
     vtGlyphEnc = Vt_GlyphEncoding(Vt_PersonalityForConnection(&prefs, &vtSniff).charset, vtFontEnc);
 }
 
-/* The scrollback line count the live engine was made with (vt_new). */
+/* The scrollback line count the live engine holds (vt_new, vt_set_scrollback). */
 static int vtTermSb;
 
 static void VtRedraw(void);
+static void VtApplyScrollback(void);
 
 /* The terminal for the grid term_init_area() has just laid out (and
  * cleared). 0 when it is ready.
  *
  * The engine's cells belong to the session, not to the display: a display
  * reopen (Tool Bar, Title Bar, Full-screen, iconify) closes the window and
- * this runs again for the new one. An engine still alive with the scrollback
- * size the preferences ask for is kept, resized to the new grid and drawn
- * again; only a new scrollback size (made at vt_new) needs a new engine. */
+ * this runs again for the new one. An engine still alive is kept, given the
+ * scrollback size the preferences ask for (VtApplyScrollback), resized to the
+ * new grid and drawn again. Only a first open makes an engine. */
 static int VtOpen(void)
 {
     static const vt_callbacks cb = { VtDraw, VtScroll, VtReply, NULL, VtTitle, NULL, NULL };
@@ -416,8 +417,9 @@ static int VtOpen(void)
 
         vtTrueColour = depth > 8;
     }
-    if (vtTerm && vtTermSb == VtScrollbackCap()) {
+    if (vtTerm) {
         VtReleasePens();    /* the pens were the old display's */
+        VtApplyScrollback();
         vt_resize(vtTerm, term_cols, term_rows);
         Vt_MouseReset(&vtMouse);
         vtTitleSeen[0] = vtTitleShown[0] = 0;
@@ -495,6 +497,23 @@ static int VtScrollView(int delta)
     cursor_show();
     VtLayersUnlock();
     return vtScrollOff;
+}
+
+/* The preferences' scrollback size (Settings > ScrollBack, ScrollBack
+ * Lines..) on the live engine, in place: the screen and the newest scrollback
+ * lines that fit stay (vt_set_scrollback). The view goes back to the live grid
+ * first, so it never shows a line that went. Without the memory for the new
+ * size the engine keeps its old size and lines, and the next call tries again. */
+static void VtApplyScrollback(void)
+{
+    int want = VtScrollbackCap();
+
+    if (!vtTerm || want == vtTermSb)
+        return;
+    if (vtScrollOff)
+        VtScrollView(-vtScrollOff);
+    if (vt_set_scrollback(vtTerm, want))
+        vtTermSb = want;
 }
 
 /* A key or wheel event for the scrollback: Shift+Page Up/Down scroll a page
