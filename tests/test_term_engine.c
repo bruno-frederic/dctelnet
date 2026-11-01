@@ -416,11 +416,16 @@ static void test_a_16_pixel_font_gives_40_columns(void)
 static void test_vtopen_twice_never_draws_through_the_previous_engine(void)
 {
     setup();
+    memset(&prefs, 0, sizeof(prefs));
     assert(term_init_area(&screen, &winRp, 0, TOP, 0, TOP, W, H - TOP, &font) == 0);
     assert(VtOpen() == 0);
     assert(vtTerm != NULL);
     newCalls = 0;
+    /* a new scrollback size is the one reopen that needs a new engine */
+    prefs.State |= APP_SCROLLBACK_ENABLED;
+    prefs.nScrollbackLines = 100;
     assert(VtOpen() == 0);
+    assert(newSb == 100);
     assert(newCalls == 1 && newSawTerm == 0);   /* the previous engine was closed first */
     assert(vtTerm != NULL);
     VtClose();
@@ -619,6 +624,42 @@ static void expect_cursor(int x, int y)
     vt_cursor(vtTerm, &cx, &cy);
     assert(cx == x && cy == y);
     assert(cur_x == x && cur_y == y);           /* VtSyncCursor put them there */
+}
+
+/* A1200, built-in renderer, own screen: Tool Bar on while connected reopens
+ * the display (CloseDisplay/OpenDisplay). CloseConsoleDevice() freed the
+ * engine and VtOpen() made a blank one: the BBS's text was gone. The engine
+ * outlives the reopen; the new, shorter window (the tool bar above it) gets
+ * the same cells drawn again. */
+static void test_a_display_reopen_keeps_the_text_and_draws_it_again(void)
+{
+    const vt_cell *row;
+    int n, i, seen = 0;
+    char line[8];
+
+    vt_begin();
+    vt_put("HELLO\r\nBBS");
+    VtReleasePens();                        /* CloseConsoleDevice() in CloseDisplay() */
+    /* the reopened window: 16 pixels lower and shorter, two rows fewer */
+    assert(term_init_area(&screen, &winRp, 0, TOP + 16, 0, TOP + 16, W, H - TOP - 16, &font) == 0);
+    newCalls = 0;
+    probes = 0;
+    assert(VtOpen() == 0);
+    assert(newCalls == 0);                  /* the same engine, not a blank one */
+    assert(vt_rows(vtTerm) == term_rows && vt_cols(vtTerm) == term_cols);
+    row = vt_row(vtTerm, 0, &n);
+    for (i = 0; i < 5; i++) line[i] = (char)row[i].ch;
+    line[5] = 0;
+    assert(strcmp(line, "HELLO") == 0);
+    row = vt_row(vtTerm, 1, &n);
+    assert(row[0].ch == 'B' && row[2].ch == 'S');
+    /* and drawn: the reopen cleared the area, the cells reach the glyph writer */
+    for (i = 0; i < probes && i < PROBE_MAX; i++)
+        if (probe[i].y == 0 && probe[i].x == 0 && probe[i].code == 'H') seen |= 1;
+        else if (probe[i].y == 1 && probe[i].x == 2 && probe[i].code == 'S') seen |= 2;
+    assert(seen == 3);
+    expect_cursor(3, 1);
+    VtClose();
 }
 
 static void test_ma1_8_cursor_save_restore_position_and_erase(void)
@@ -1368,6 +1409,7 @@ int main(void)
     test_an_8_plane_screen_takes_the_rastport();
     test_a_16_pixel_font_gives_40_columns();
     test_vtopen_twice_never_draws_through_the_previous_engine();
+    test_a_display_reopen_keeps_the_text_and_draws_it_again();
     test_a_menu_cannot_open_while_the_terminal_draws_into_the_bitmap();
     test_a_menu_open_over_the_terminal_is_drawn_around();
     test_a_menu_opened_while_an_answer_is_sent_is_drawn_around();

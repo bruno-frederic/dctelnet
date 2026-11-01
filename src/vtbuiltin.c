@@ -374,6 +374,7 @@ static void VtMouseMove(int x, int y, int mods)
 }
 
 static void VtClose(void);
+static void VtReleasePens(void);
 
 /* The encoding of the terminal's font, from its glyph 0xC4: a line in an IBM
  * (CP437) font, a letter in an Amiga (Latin-1) one. After the font is
@@ -389,15 +390,25 @@ static void VtProbeFont(void)
     vtGlyphEnc = Vt_GlyphEncoding(Vt_PersonalityForConnection(&prefs, &vtSniff).charset, vtFontEnc);
 }
 
-/* A new terminal for the grid term_init_area() has just laid out (and
- * cleared). 0 when it is ready. */
+/* The scrollback line count the live engine was made with (vt_new). */
+static int vtTermSb;
+
+static void VtRedraw(void);
+
+/* The terminal for the grid term_init_area() has just laid out (and
+ * cleared). 0 when it is ready.
+ *
+ * The engine's cells belong to the session, not to the display: a display
+ * reopen (Tool Bar, Title Bar, Full-screen, iconify) closes the window and
+ * this runs again for the new one. An engine still alive with the scrollback
+ * size the preferences ask for is kept, resized to the new grid and drawn
+ * again; only a new scrollback size (made at vt_new) needs a new engine. */
 static int VtOpen(void)
 {
     static const vt_callbacks cb = { VtDraw, VtScroll, VtReply, NULL, VtTitle, NULL, NULL };
 
     vtScrollOff = 0;
     VtProbeFont();
-    VtClose();      /* vt_new() draws through VtDraw(): vtTerm must not be the freed one */
     vtTrueColour = FALSE;
     if (scr && scr->RastPort.BitMap) {
         struct BitMap *bm = scr->RastPort.BitMap;
@@ -405,7 +416,18 @@ static int VtOpen(void)
 
         vtTrueColour = depth > 8;
     }
-    vtTerm = vt_new(term_cols, term_rows, VtScrollbackCap(), &cb, NULL);
+    if (vtTerm && vtTermSb == VtScrollbackCap()) {
+        VtReleasePens();    /* the pens were the old display's */
+        vt_resize(vtTerm, term_cols, term_rows);
+        Vt_MouseReset(&vtMouse);
+        vtTitleSeen[0] = vtTitleShown[0] = 0;
+        VtSyncMouseIdcmp();
+        VtRedraw();         /* the cells again, on the cleared area */
+        return 0;
+    }
+    VtClose();      /* vt_new() draws through VtDraw(): vtTerm must not be the freed one */
+    vtTermSb = VtScrollbackCap();
+    vtTerm = vt_new(term_cols, term_rows, vtTermSb, &cb, NULL);
     if (!vtTerm)
         return 1;
     VtApplyPersonality();
@@ -431,11 +453,19 @@ static void VtRedraw(void)
     VtLayersUnlock();
 }
 
-static void VtClose(void)
+/* The true-colour pens go back to the screen they came from: before that
+ * screen closes (CloseConsoleDevice), and when a new display takes over. */
+static void VtReleasePens(void)
 {
     while (vtTcN > 0)
         ReleasePen(scr->ViewPort.ColorMap, (ULONG)vtTc[--vtTcN].pen);
     vtTcLast = 0;
+}
+
+/* The engine and its cells go: quitting, or another renderer. */
+static void VtClose(void)
+{
+    VtReleasePens();
     if (vtTerm) {
         vt_free(vtTerm);
         vtTerm = NULL;

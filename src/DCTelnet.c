@@ -3089,6 +3089,7 @@ clean_exit:
     Sound_Close();
     CaptureStop();                  // the capture file is complete
     CloseDisplay(TRUE);
+    VtClose();                      // the built-in terminal outlives display reopens, not the program
 
     ClearScrollBack();
     FreeMem(scrollbackList, sizeof(struct List));
@@ -5319,7 +5320,9 @@ static BOOL OpenConsoleDevice(void)
 static void CloseConsoleDevice(void)
 {
     ReleaseWorkbenchPens();
-    VtClose();
+    // The built-in terminal's engine stays: a display reopen draws its cells
+    // again (VtOpen); only the pens go with the screen.
+    VtReleasePens();
 
     // https://amigadev.elowar.com/read/ADCD_2.1/Devices_Manual_guide/node0190.html
     if (isConDeviceOpened)
@@ -6011,6 +6014,11 @@ BOOL OpenDisplay(void)
             ResetMenuStrip(win, mainMenuStrip);
         }
 
+
+    // Another renderer: the built-in terminal's engine, kept over the
+    // reopen (CloseConsoleDevice), and its text go.
+    if (!STATE_IS(APP_RENDERER_BUILTIN))
+        VtClose();
 
     if (STATE_IS(APP_RENDERER_BUILTIN))
     {
