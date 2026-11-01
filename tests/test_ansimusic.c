@@ -21,9 +21,35 @@ static UBYTE out[256 + ANSIMUSIC_HELD];
 static struct Note notes[64];
 static int n;
 
+static size_t used;
+
+/* One call, as the display pipeline makes it. */
+static size_t filter1(const char *s)
+{
+    return AnsiMusic_Filter(&m, (const UBYTE *)s, strlen(s), out, notes, 64, &n, &used);
+}
+
+/* The whole input, calling again after each foreground stop: the text out,
+ * the notes of all calls in notes[], their count in n. */
 static size_t filter(const char *s)
 {
-    return AnsiMusic_Filter(&m, (const UBYTE *)s, strlen(s), out, notes, 64, &n);
+    static UBYTE part[256 + ANSIMUSIC_HELD];
+    static struct Note all[64];
+    size_t len = strlen(s), p = 0, o = 0;
+    int total = 0, k;
+
+    while (p < len)
+    {
+        size_t w = AnsiMusic_Filter(&m, (const UBYTE *)s + p, len - p, part, notes, 64, &n, &used);
+
+        memcpy(out + o, part, w);
+        o += w;
+        for (k = 0; k < n; k++) all[total++] = notes[k];
+        p += used;
+    }
+    memcpy(notes, all, sizeof(struct Note) * (size_t)total);
+    n = total;
+    return o;
 }
 
 /* The tune leaves the text; the text around it stays. */
@@ -142,6 +168,66 @@ static void test_early_end(void)
     assert(filter("\x1b[NE\x18y") == 1 && out[0] == 'y' && n == 2 && notes[0].hz == 1319);
 }
 
+/* Owner ear test: "AFTER MUSIC" showed while the scale played. A foreground
+ * tune stops the filter at its end; the text after it comes on the next call. */
+static void test_text_after_a_foreground_tune_waits(void)
+{
+    static const char in[] = "\x1b[MFT120O3L4CDE\x0e" "AFTER";
+    size_t end = strlen("\x1b[MFT120O3L4CDE\x0e");
+
+    AnsiMusic_Init(&m);
+    assert(filter1(in) == 0 && used == end && n == 6);
+    assert(filter1(in + used) == 5 && memcmp(out, "AFTER", 5) == 0 && used == 5 && n == 0);
+}
+
+/* No MF needed: foreground is the default (SyncTERM, GW-BASIC PLAY). */
+static void test_default_is_foreground(void)
+{
+    static const char in[] = "\x1b[MT120CDE\x0e" "AFTER";
+
+    AnsiMusic_Init(&m);
+    assert(filter1(in) == 0 && used == strlen("\x1b[MT120CDE\x0e") && n == 6);
+    AnsiMusic_Init(&m);
+    assert(filter1("\x1b[NCDE\x0e" "AFTER") == 0 && used == 7 && n == 6);     /* ESC[N too */
+}
+
+/* MB plays in the background: the text does not wait. */
+static void test_background_does_not_wait(void)
+{
+    AnsiMusic_Init(&m);
+    assert(filter1("\x1b[MBCDE\x0e" "AFTER") == 5 && memcmp(out, "AFTER", 5) == 0);
+    assert(used == strlen("\x1b[MBCDE\x0e" "AFTER") && n == 6);
+}
+
+/* MB stays in force for the strings after it; MF inside a string after MB
+ * makes that string foreground (a note is queued while MF is on). */
+static void test_background_persists_and_mid_string_mf(void)
+{
+    AnsiMusic_Init(&m);
+    assert(filter1("\x1b[MBC\x0e") == 0 && used == 6);
+    assert(filter1("\x1b[MCD\x0e X") == 2 && used == 8);          /* second string: still background */
+    assert(filter1("\x1b[MFCD\x0e X") == 0 && used == 7);         /* MF again: foreground */
+    AnsiMusic_Init(&m);
+    filter1("\x1b[MBC\x0e");
+    assert(filter1("\x1b[MBCMFD\x0e" "X") == 0 && used == 9 && n == 4);
+}
+
+/* SMILE plays nothing, so it never holds the text. */
+static void test_smile_never_waits(void)
+{
+    AnsiMusic_Init(&m);
+    assert(filter1("\x1b[MFC 7000;.12;200\x0ex") == 1 && out[0] == 'x' && n == 0);
+}
+
+/* A string ended early by ESC is foreground too; the ESC sequence after it
+ * still parses when the rest is filtered afterwards. */
+static void test_early_end_by_esc_waits(void)
+{
+    AnsiMusic_Init(&m);
+    assert(filter1("\x1b[MC\x1b[1mX") == 0 && used == 5 && n == 2);
+    assert(filter1("[1mX") == 5 && memcmp(out, "\x1b[1mX", 5) == 0 && used == 4);
+}
+
 int main(void)
 {
     test_pitch();
@@ -156,6 +242,12 @@ int main(void)
     test_clamps();
     test_smile_effect();
     test_early_end();
+    test_text_after_a_foreground_tune_waits();
+    test_default_is_foreground();
+    test_background_does_not_wait();
+    test_background_persists_and_mid_string_mf();
+    test_smile_never_waits();
+    test_early_end_by_esc_waits();
     printf("ansimusic: all assertions passed\n");
     return 0;
 }
