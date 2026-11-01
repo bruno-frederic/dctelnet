@@ -3424,44 +3424,17 @@ static void UpdatePrefsFromMenu(struct MenuItem *item, ULONG flag)
 }
 
 /*
- Uncheck a menu item and clear the corresponding flag in prefs.State,
- or check the menu item and set the flag, depending on the "wantedState" parameter.
- https://amigadev.elowar.com/read/ADCD_2.1/Includes_and_Autodocs_2._guide/node024A.html
- https://www.amiga-news.de/en/news/AN-2023-10-00017-EN.html
+ Set or clear APP_LOCAL_ECHO and bring the menu check marks of every window
+ that shares the menu strip up to date (SyncMenuChecks).
 */
 static void SetLocalEchoBack(BOOL wantedState)
 {
-    struct MenuItem *item = NULL;
+    if (STATE_IS(APP_LOCAL_ECHO) == (wantedState != FALSE))
+        return;
 
-    BOOL currentState = STATE_IS(APP_LOCAL_ECHO);
-
-    #ifdef _DEBUG
-        PutStr("›34m--> SetLocalEchoBack()›m\n");
-    #endif
-
-    if (currentState != wantedState)
-    {
-        #ifdef _DEBUG
-            PutStr("›34mcurrentState != wantedState›m\n");
-        #endif
-        ClearMenuStrip(win);
-
-        item = GetMenuItemFromID(MENU_LOCAL_ECHO);
-        if (item != NULL)
-        {
-            if (wantedState)
-            {
-                item->Flags |= CHECKED;
-                STATE_SET(APP_LOCAL_ECHO);
-            }
-            else
-            {
-                item->Flags &= ~CHECKED;
-                STATE_UNSET(APP_LOCAL_ECHO);
-            }
-        }
-        ResetMenuStrip(win, mainMenuStrip);
-    }
+    if (wantedState) STATE_SET(APP_LOCAL_ECHO);
+    else             STATE_UNSET(APP_LOCAL_ECHO);
+    SyncMenuChecks();
 }
 
 static void OutKey(unsigned char key)
