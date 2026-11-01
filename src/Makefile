@@ -224,11 +224,16 @@ ibmcon:
 	$(info =========================== make ibmcon ==================================)
 	$(DOCKER_RUN) make -C ../ibmcon
 
-# ssh.library for every CPU (src/sshlib). The container's vbcc and NDK replace
+# Where the builder keeps vbcc and the SDKs: the Docker image paths by default.
+# "make host-ci" points them at a host copy of the same toolchain.
+CI_VBCC := /opt/vbcc
+CI_SDK  := /opt/sdk
+
+# ssh.library for every CPU (src/sshlib). The builder's vbcc and NDK replace
 # the Homebrew defaults; clean first because build/aos68k.cfg holds the NDK path.
 sshlib:
 	$(info =========================== make sshlib ==================================)
-	$(DOCKER_RUN) make -C sshlib clean all VBCC=/opt/vbcc NDK=/opt/sdk/NDK3.2/Include_H
+	$(DOCKER_RUN) make -C sshlib clean all VBCC=$(CI_VBCC) NDK=$(CI_SDK)/NDK3.2/Include_H
 
 tests:
 	$(info =========================== make tests ==================================)
@@ -237,6 +242,23 @@ tests:
 package:
 	$(info =========================== make package ==================================)
 	$(DOCKER_RUN) env TOOLCHAIN=$(TOOLCHAIN) sh ../build/package.sh
+
+# "make ci" without Docker: the same steps, run on the host with a copy of the
+# builder's toolchain (vbcc 0.9hP3, vasm 2.0f, vlink 0.18a, NDK 3.2, Roadshow
+# netinclude) that ../build/host-toolchain.sh installs in HOST_TOOLCHAIN.
+# The Docker "make ci" stays the reference build (AGENTS.md).
+ifeq ($(shell uname -s),Darwin)
+HOST_TOOLCHAIN ?= $(HOME)/Library/Caches/dctelnet-toolchain
+else
+HOST_TOOLCHAIN ?= $(HOME)/.cache/dctelnet-toolchain
+endif
+host-ci: CI_VBCC := $(HOST_TOOLCHAIN)/opt/vbcc
+host-ci: CI_SDK  := $(HOST_TOOLCHAIN)/opt/sdk
+host-ci: DOCKER_RUN = env VBCC=$(CI_VBCC) PATH="$(CI_VBCC)/bin:$$PATH" NDK32_INC=$(CI_SDK)/NDK3.2/Include_H NET_INC=$(CI_SDK)/Roadshow-SDK/netinclude
+host-ci: host-toolchain-check ci
+
+host-toolchain-check:
+	@test -x $(HOST_TOOLCHAIN)/opt/vbcc/bin/vbccm68k || { echo "No host toolchain in $(HOST_TOOLCHAIN): run sh ../build/host-toolchain.sh"; exit 1; }
 
 # for debugging builder container
 enter-builder: INTERACTIVE := --interactive --tty
