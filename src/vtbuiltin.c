@@ -329,7 +329,16 @@ static void VtTitleRestore(void)
 static struct VtMouse vtMouse;
 
 /* IDCMP_MOUSEMOVE only while ?1002 or ?1003 is on (the built-in renderer has
- * no selection to drag). */
+ * no selection to drag). Intuition only delivers it while ReportMouse is on
+ * as well, so the two follow the same decision (DCTelnet.c). */
+static void TerminalMouseReport(void);
+
+/* TRUE when ReportMouse must be on: a selection drag, or a motion mode. */
+static BOOL VtReportMouseWanted(BOOL dragging)
+{
+    return (BOOL)(dragging || (Vt_IdcmpFor(0, IDCMP_MOUSEMOVE, vtTerm, FALSE) & IDCMP_MOUSEMOVE));
+}
+
 static void VtSyncMouseIdcmp(void)
 {
     ULONG want;
@@ -339,6 +348,7 @@ static void VtSyncMouseIdcmp(void)
     want = Vt_IdcmpFor(win->IDCMPFlags, IDCMP_MOUSEMOVE, vtTerm, FALSE);
     if (want != win->IDCMPFlags)
         ModifyIDCMP(win, want);
+    TerminalMouseReport();
 }
 
 /* TRUE when the program owns the mouse (a mouse mode is on, Shift not held):

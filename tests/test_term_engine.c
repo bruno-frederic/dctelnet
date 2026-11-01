@@ -182,6 +182,12 @@ static void SetWindowTitles(struct Window *w, UBYTE *t, UBYTE *s)
 }
 static void LEDs(void) { ledCalls++; }
 static void ModifyIDCMP(struct Window *w, ULONG flags) { w->IDCMPFlags = flags; }
+/* DCTelnet.c's ReportMouse decision (TerminalMouseReport), recorded: Intuition
+ * sends no IDCMP_MOUSEMOVE while it is off. */
+static BOOL selDragging, reportMouse;
+static int reportCalls;
+static void ReportMouse(BOOL on, struct Window *w) { (void)w; reportMouse = on; reportCalls++; }
+static void TerminalMouseReport(void);
 /* The built-in renderer reads the user's preferences. */
 struct PrefsStruct prefs;
 
@@ -213,6 +219,7 @@ static vt_term *probe_new(int cols, int rows, int sb, const vt_callbacks *cb, vo
 #include "../src/vtbuiltin.c"
 #undef term_glyph
 #undef vt_new
+static void TerminalMouseReport(void) { ReportMouse(VtReportMouseWanted(selDragging), win); }
 static vt_term *probe_new(int cols, int rows, int sb, const vt_callbacks *cb, void *user)
 {
     newCalls++;
@@ -1223,6 +1230,31 @@ static void test_ma3_6_motion_modes_and_the_mouse_move_flag(void)
     VtClose();
 }
 
+/* With ?1002/?1003 on and no drag, the host got no motion reports: Intuition
+ * delivers IDCMP_MOUSEMOVE only while ReportMouse is on, so it must follow the
+ * mode, and a selection drag ending must not turn it off under a live mode. */
+static void test_any_motion_mode_turns_report_mouse_on_without_a_drag(void)
+{
+    xterm_begin();
+    ma3_reset_sentinels();
+    window.IDCMPFlags = IDCMP_RAWKEY;
+    selDragging = FALSE;
+    VtOpen();
+    assert(!reportMouse);
+    vt_put("\x1b[?1003h");
+    assert(reportMouse);
+    selDragging = TRUE;                                                   /* a drag ends under the mode */
+    TerminalMouseReport();
+    selDragging = FALSE;
+    TerminalMouseReport();
+    assert(reportMouse);
+    vt_put("\x1b[?1003l\x1b[?1002h");
+    assert(reportMouse);
+    vt_put("\x1b[?1002l");
+    assert(!reportMouse);
+    VtClose();
+}
+
 /* --- MA4: engine scrollback for the built-in renderer --- */
 
 #define SB_ART_ROWS 200
@@ -1439,6 +1471,7 @@ int main(void)
     test_ma3_2_title_shows_in_screen_bar_on_own_screen();
     test_ma3_4_5_mouse_press_release_bytes_and_selection_fallthrough();
     test_ma3_6_motion_modes_and_the_mouse_move_flag();
+    test_any_motion_mode_turns_report_mouse_on_without_a_drag();
     test_ma4_2_long_art_fills_the_engine_scrollback_and_only_when_asked();
     test_ma4_3_shift_page_up_draws_the_previous_page_and_page_down_returns();
     test_ma4_3_a_scrollback_line_narrower_than_the_grid_is_blank_filled();

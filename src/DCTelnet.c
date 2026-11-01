@@ -3872,6 +3872,14 @@ static void CopyRange(const struct ClipRange *r)
     if (iff) FreeVec(iff);
 }
 
+// ReportMouse follows the drag and the host's ?1002/?1003: Intuition sends no
+// IDCMP_MOUSEMOVE without it, whatever the window's IDCMP flags say.
+static void TerminalMouseReport(void)
+{
+    if (win)
+        ReportMouse(VtReportMouseWanted(selDragging), win);
+}
+
 static void SelectionDown(WORD mx, WORD my)
 {
     if (!SelectionAvailable())
@@ -3881,7 +3889,7 @@ static void SelectionDown(WORD mx, WORD my)
     selRow = selDownRow;
     selCol = selDownCol;
     selDragging = TRUE;
-    ReportMouse(TRUE, win);
+    TerminalMouseReport();
 }
 
 static void SelectionMove(WORD mx, WORD my)
@@ -3908,7 +3916,7 @@ static void SelectionUp(void)
     if (!selDragging)
         return;
     selDragging = FALSE;
-    ReportMouse(FALSE, win);                    // the selection waits for Amiga-C
+    TerminalMouseReport();                      // the selection waits for Amiga-C
 }
 
 static void CopyScreen(void)
