@@ -10,7 +10,7 @@ CFLAGS := -std=c99 -Wall -Wextra -Werror -I../src
 STACK_MAX := 400
 STACKCHK := $(shell $(CC) -Werror -Wstack-usage=$(STACK_MAX) -c -x c /dev/null -o /dev/null 2>/dev/null && echo -Wstack-usage=$(STACK_MAX))
 
-TESTS := test_petscii_modules test_petscii_dispatch test_prefs_file test_site_prefs test_palette test_screenfont test_progdir test_listsel test_textedit test_dsr test_keys test_clip test_ansiscan test_ticks test_renderer test_rexx test_rlogin test_ansimusic test_booklist test_crypto test_ssh test_knownhosts test_term_engine
+TESTS := test_petscii_modules test_petscii_dispatch test_prefs_file test_site_prefs test_palette test_screenfont test_progdir test_listsel test_textedit test_dsr test_keys test_clip test_ansiscan test_ticks test_renderer test_rexx test_rlogin test_ansimusic test_booklist test_crypto test_ssh test_knownhosts test_term_engine test_vtshadow
 
 .PHONY: all clean check-encoding check-fonts check-stack check-statics check-debug-stack check-currenttime-null
 all: $(TESTS) check-encoding check-fonts check-stack check-statics check-debug-stack check-currenttime-null
@@ -172,6 +172,9 @@ test_vtpersonality: test_vtpersonality.c ../src/vtpersonality.c ../src/vtpersona
 
 test_vtinput: test_vtinput.c ../src/vtinput.c ../src/vtinput.h $(VTCON)/engine/vtengine.c
 	$(CC) $(CFLAGS) -Wno-unused-function -Wno-unused-parameter -Ishim $(VTCONI) -o $@ test_vtinput.c ../src/vtinput.c $(VTCON)/engine/vtengine.c
+
+test_vtshadow: test_vtshadow.c ../src/vtshadow.c ../src/vtshadow.h ../src/ansiscan.c ../src/ansiscan.h $(VTCON)/engine/vtengine.c
+	$(CC) $(CFLAGS) -Wno-unused-function -Wno-unused-parameter -Ishim $(VTCONI) -o $@ test_vtshadow.c ../src/vtshadow.c ../src/ansiscan.c $(VTCON)/engine/vtengine.c
 
 test_vtpens: test_vtpens.c ../src/vtpens.c ../src/vtpens.h $(VTCON)/engine/vtengine.c
 	$(CC) $(CFLAGS) -Wno-unused-function -Wno-unused-parameter -Ishim $(VTCONI) -o $@ test_vtpens.c ../src/vtpens.c $(VTCON)/engine/vtengine.c
