@@ -248,9 +248,9 @@ static void test_petscii_terminal_type_behaves_as_bbs_and_is_named_petscii(void)
     assert(r.personality == bbs.personality && r.charset == bbs.charset);
     assert(r.personality == VT_PCANSI && r.charset == VT_CS_CP437);
     assert(strcmp(Vt_SshTermName(&p), "PETSCII") == 0);
-    assert(strcmp(Vt_TelnetTermName(&p), "PETSCII") == 0);
+    assert(strcmp(Prefs_TelnetTermName(&p), "PETSCII") == 0);
     p.TermType = TERMTYPE_UNIX;
-    assert(strcmp(Vt_TelnetTermName(&p), "VT102") == 0);
+    assert(strcmp(Prefs_TelnetTermName(&p), "VT102") == 0);
     for (p.Charset = CHARSET_CP437; p.Charset <= CHARSET_UTF8; p.Charset++)
         assert(Vt_CharsetAfterTermType(TERMTYPE_PETSCII, p.Charset) == p.Charset);
 }

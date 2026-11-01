@@ -27,10 +27,6 @@ struct VtPersonality Vt_PersonalityFor(const struct PrefsStruct *p);
  * console / XEM renderers (an ANSI-only subset). Not the telnet TTYPE string. */
 const char *Vt_SshTermName(const struct PrefsStruct *p);
 
-/* The terminal type a telnet or rlogin board is told: "PETSCII" for Terminal Type
- * PETSCII, else the Display ID string (TelnetTermType). */
-const char *Vt_TelnetTermName(const struct PrefsStruct *p);
-
 /* The byte the Backspace key sends: DEL (0x7F) under the xterm personality,
  * BS (0x08) under PC ANSI. APP_BACKSPACE_DEL_SWAPPED swaps the two. */
 UBYTE Vt_BackspaceByte(const struct PrefsStruct *p);

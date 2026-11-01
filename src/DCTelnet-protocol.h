@@ -353,7 +353,7 @@ static void TelnetSendTType(void)
     // PETSCII-aware BBS (classifyTerminalType()-style detection) can
     // auto-flip into its native mode, independent of the user's normal
     // displayidstr (VT102/ANSI/etc. for non-PETSCII sessions).
-    const char *ttypeString = Vt_TelnetTermName(&prefs);
+    const char *ttypeString = Prefs_TelnetTermName(&prefs);
 
     // Only send terminal type if the option was successfully negotiated with the telnet server
     if (telnetCtx.optState[TELOPT_TTYPE].us != YES)

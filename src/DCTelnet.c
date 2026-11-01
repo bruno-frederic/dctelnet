@@ -1306,7 +1306,7 @@ static void RunPendingConnect(void)
         {
             char hello[160];
             size_t n = Rlogin_Handshake(pendingConnect.username, pendingConnect.password,
-                                        Vt_TelnetTermName(&prefs),
+                                        Prefs_TelnetTermName(&prefs),
                                         "38400", hello, sizeof(hello));
             if (n) TCPSend(hello, (long)n);
             rloginAckPending = TRUE;

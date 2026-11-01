@@ -183,6 +183,10 @@ struct PrefsStruct
 // The one predicate for PETSCII (was the State flag APP_OLD_PETSCII_MODE).
 #define Prefs_IsPetscii(p) ((p)->TermType == TERMTYPE_PETSCII)
 
+// The terminal name a board is told over telnet TTYPE and rlogin: Terminal Type
+// PETSCII always says "PETSCII", whatever prefs.TelnetTermType holds.
+#define Prefs_TelnetTermName(p) (Prefs_IsPetscii(p) ? "PETSCII" : (const char *)(p)->TelnetTermType)
+
 // prefs.Blink
 #define BLINK_ICE    0   // blink makes the background bright (iCE colours), the cell does not blink
 #define BLINK_STEADY 1   // blink is ignored: the cell is drawn as sent

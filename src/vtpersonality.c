@@ -39,11 +39,6 @@ const char *Vt_SshTermName(const struct PrefsStruct *p)
          ? "xterm" : "ansi";
 }
 
-const char *Vt_TelnetTermName(const struct PrefsStruct *p)
-{
-    return Prefs_IsPetscii(p) ? "PETSCII" : (const char *)p->TelnetTermType;
-}
-
 UBYTE Vt_BackspaceByte(const struct PrefsStruct *p)
 {
     BOOL del = Vt_PersonalityFor(p).personality == VT_XTERM;

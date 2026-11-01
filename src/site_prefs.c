@@ -418,7 +418,7 @@ void SitePrefs_GroupSummary(ULONG group, const struct PrefsStruct *p, char *out,
         // The terminal type the board is told (TelnetSendTType): Terminal Type
         // PETSCII always says "PETSCII", whatever Display ID holds.
         put(out, &len, max, ", type ");
-        put(out, &len, max, Prefs_IsPetscii(p) ? "PETSCII" : (const char *)p->TelnetTermType);
+        put(out, &len, max, Prefs_TelnetTermName(p));
         if (p->Charset == CHARSET_UTF8)        put(out, &len, max, ", UTF-8");
         else if (p->Charset == CHARSET_LATIN1) put(out, &len, max, ", Amiga characters");
         if (p->State & APP_RAW_CONNECTION) put(out, &len, max, ", Raw Connection");
