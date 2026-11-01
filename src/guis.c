@@ -1152,7 +1152,7 @@ static const struct SettingsGadgetDef settingsDefs[SG_COUNT] =
     { 256,  75,  26, 11, "Local Echoback",       PLACETEXT_RIGHT, CHECKBOX_KIND },
     {  80,  91, 136, 13, "Renderer",             PLACETEXT_LEFT,  CYCLE_KIND    },
     { 432,  75,  26, 11, "Rlogin",               PLACETEXT_RIGHT, CHECKBOX_KIND },
-    { 312,  91,  96, 13, "Characters",           PLACETEXT_LEFT,  CYCLE_KIND    },
+    { 304,  91,  96, 13, "Characters",           PLACETEXT_LEFT,  CYCLE_KIND    },
     { 536,  75,  26, 11, "SSH",                  PLACETEXT_RIGHT, CHECKBOX_KIND },
     { 516,  91,  96, 13, "Terminal Type",        PLACETEXT_LEFT,  CYCLE_KIND    },
 
