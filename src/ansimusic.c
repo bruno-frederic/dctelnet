@@ -1,26 +1,27 @@
-/* src/ansimusic.c -- ANSI music (as SyncTERM, BananaCom). */
+/* src/ansimusic.c -- ANSI music (as GW-BASIC PLAY, SyncTERM). The rules and
+ * the test vectors: tools/ansimusic_reference.py. */
 #include "ansimusic.h"
 
 enum { ST_TEXT, ST_ESC, ST_CSI, ST_CSI_M, ST_MUSIC };
 enum { STYLE_NORMAL = 7, STYLE_LEGATO = 8, STYLE_STACCATO = 6 };    /* eighths played */
+enum { MAX_SPACES = 8, MAX_DOTS = 6 };
 
-/* Octave 3 in Hz x 100: C C# D D# E F F# G G# A A# B (C4 is middle C). */
-static const ULONG octave3[12] = { 26163, 27718, 29366, 31113, 32963, 34923,
-                                   36999, 39200, 41530, 44000, 46616, 49388 };
+/* GW-BASIC NOTTAB: octave 6 in whole Hz, C C# D D# E F F# G G# A A# B. */
+static const UWORD octave6[12] = { 4186, 4435, 4699, 4978, 5274, 5588,
+                                   5920, 6272, 6645, 7040, 7459, 7902 };
 
 UWORD AnsiMusic_Hz(int n)
 {
-    int semitone, octave;
-    ULONG centi;
+    int shift;
+    UWORD v;
 
     if (n < 1 || n > 84)
         return 0;
-    semitone = (n - 1) % 12;
-    octave = (n - 1) / 12;              /* 0-6; octave 3 holds A 440 (n 46) */
-    centi = octave3[semitone];
-    if (octave > 3) centi <<= (octave - 3);
-    else            centi >>= (3 - octave);
-    return (UWORD)((centi + 50) / 100);
+    v = octave6[(n - 1) % 12];
+    shift = 6 - (n - 1) / 12;
+    if (shift == 0)
+        return v;
+    return (UWORD)((v >> shift) + ((v >> (shift - 1)) & 1));    /* SHR, then ADC: half up */
 }
 
 void AnsiMusic_Init(struct AnsiMusic *m)
@@ -42,24 +43,25 @@ static void add(struct Note *notes, int maxNotes, int *n, UWORD hz, ULONG ms)
     (*n)++;
 }
 
-/* Milliseconds of a note of length len (1 whole .. 64) with dots. */
-static ULONG duration(const struct AnsiMusic *m, UWORD len, UBYTE dots)
-{
-    ULONG whole = 240000UL / m->tempo;              /* 4 quarters */
-    ULONG ms = whole / (len ? len : 1), add = ms;
-
-    while (dots--) { add /= 2; ms += add; }
-    return ms;
-}
-
-/* A note or rest (hz 0) of the pending command, played in the style. */
+/* A note or rest (hz 0) of length len (1 whole .. 64) with the pending
+ * dots, played in the style. Length in ms = 240000 / (T * L) x 1.5^dots,
+ * kept as one fraction so the sound and the silence add up to it. */
 static void play(struct AnsiMusic *m, struct Note *notes, int maxNotes, int *n, UWORD hz, UWORD len)
 {
-    ULONG ms = duration(m, len, m->dots);
+    ULONG num = 240000UL, den = (ULONG)m->tempo * len, ms, sound;
+    int d;
 
+    for (d = 0; d < m->dots && d < MAX_DOTS; d++) { num *= 3; den *= 2; }
+    ms = num / den;
     if (hz == 0) { add(notes, maxNotes, n, 0, ms); return; }
-    add(notes, maxNotes, n, hz, ms * m->style / 8);
-    add(notes, maxNotes, n, 0, ms - ms * m->style / 8);
+    sound = num * m->style / (den * 8);
+    add(notes, maxNotes, n, hz, sound);
+    add(notes, maxNotes, n, 0, ms - sound);
+}
+
+static UWORD clamp(UWORD v, UWORD lo, UWORD hi)
+{
+    return v < lo ? lo : v > hi ? hi : v;
 }
 
 /* The command collected so far (m->cmd with its number) is complete. */
@@ -67,39 +69,60 @@ static void finish(struct AnsiMusic *m, struct Note *notes, int maxNotes, int *n
 {
     char c = m->cmd;
     UWORD v = m->num;
+    BOOL has = m->hasNum;
 
-    m->cmd = 0;
-    if (c >= 'A' && c <= 'G')
+    if (c == 'n')                               /* M then N, no digit: MN */
+        m->style = STYLE_NORMAL;
+    else if (c >= 'A' && c <= 'G')
     {
         static const int base[7] = { 9, 11, 0, 2, 4, 5, 7 };     /* A B C D E F G */
-        int semi = base[c - 'A'] + m->sharp - m->flat;
-        int note = m->octave * 12 + semi + 1;
+        int note = m->octave * 12 + base[c - 'A'] + m->sharp - m->flat + 1;
 
-        play(m, notes, maxNotes, n, AnsiMusic_Hz(note), m->hasNum && v ? v : m->length);
+        play(m, notes, maxNotes, n, AnsiMusic_Hz(note), has && v ? clamp(v, 1, 64) : m->length);
     }
-    else if (c == 'N') play(m, notes, maxNotes, n, AnsiMusic_Hz(v), m->length);
-    else if (c == 'P') play(m, notes, maxNotes, n, 0, m->hasNum && v ? v : m->length);
-    else if (c == 'T' && v >= 32) m->tempo = v > 255 ? 255 : v;
-    else if (c == 'L' && v >= 1 && v <= 64) m->length = (UBYTE)v;
-    else if (c == 'O' && m->hasNum) m->octave = (UBYTE)(v > 6 ? 6 : v);
+    else if (c == 'N' && has && v <= 84) play(m, notes, maxNotes, n, AnsiMusic_Hz(v), m->length);
+    else if (c == 'P') play(m, notes, maxNotes, n, 0, has && v ? clamp(v, 1, 64) : m->length);
+    else if (c == 'T' && has) m->tempo = clamp(v, 32, 255);
+    else if (c == 'L' && has) m->length = (UBYTE)clamp(v, 1, 64);
+    else if (c == 'O' && has) m->octave = (UBYTE)clamp(v, 0, 6);
+    m->cmd = 0;
     m->dots = m->flat = m->sharp = 0;
     m->num = 0;
     m->hasNum = FALSE;
 }
 
-/* What may follow ESC[M in a tune: a command of the music language, or the
- * tune's end. Anything else makes it a Delete Line. */
+/* What may follow ESC[M (and its spaces) in a tune: a command of the music
+ * language, or the tune's end. Anything else makes it a Delete Line. */
 static BOOL MusicStarts(UBYTE c)
 {
     if (c >= 'a' && c <= 'z') c = (UBYTE)(c - 32);
     return (c >= 'A' && c <= 'G') || c == 'N' || c == 'P' || c == 'T' || c == 'L'
-        || c == 'O' || c == 'M' || c == '<' || c == '>' || c == 0x0E;
+        || c == 'O' || c == 'S' || c == '<' || c == '>' || c == 0x0E;
+}
+
+static void StartString(struct AnsiMusic *m, char cmd)
+{
+    m->state = ST_MUSIC;
+    m->cmd = cmd;
+    m->num = 0;
+    m->hasNum = FALSE;
+    m->dots = m->flat = m->sharp = 0;
+    m->smile = FALSE;
+}
+
+/* The string ends: its last command plays (not in a SMILE effect). */
+static void EndString(struct AnsiMusic *m, struct Note *notes, int maxNotes, int *n)
+{
+    if (!m->smile && m->cmd && m->cmd != 'M') finish(m, notes, maxNotes, n);
+    m->cmd = 0;
+    m->smile = FALSE;
 }
 
 size_t AnsiMusic_Filter(struct AnsiMusic *m, const UBYTE *in, size_t len, UBYTE *out,
                         struct Note *notes, int maxNotes, int *nNotes)
 {
     size_t i, o = 0;
+    int first = 0;                              /* the first note of this string in notes[] */
 
     *nNotes = 0;
     for (i = 0; i < len; i++)
@@ -119,46 +142,66 @@ size_t AnsiMusic_Filter(struct AnsiMusic *m, const UBYTE *in, size_t len, UBYTE 
         case ST_CSI:                                /* ESC [ then ... */
             if (c == 'N' || c == '|')
             {
-                m->state = ST_MUSIC;                /* a music string follows */
-                m->cmd = 0;
+                StartString(m, 0);                  /* a music string follows */
+                first = *nNotes;
             }
             else if (c == 'M')
+            {
                 m->state = ST_CSI_M;                /* music, or Delete Line */
+                m->spaces = 0;
+            }
             else { out[o++] = 0x1B; out[o++] = '['; out[o++] = c; m->state = ST_TEXT; }
             break;
-        case ST_CSI_M:                              /* ESC [ M then ... */
-            if (MusicStarts(c))
+        case ST_CSI_M:                              /* ESC [ M, spaces, then ... */
+            if (c == ' ' && m->spaces < MAX_SPACES)
             {
-                m->state = ST_MUSIC;
-                m->cmd = 'M';                       /* MF/MB/MN... or plain music */
+                m->spaces++;
+                break;
+            }
+            if (c != ' ' && MusicStarts(c))
+            {
+                StartString(m, 'M');                /* MF/MB/MN... or plain music */
+                first = *nNotes;
             }
             else
             {
                 out[o++] = 0x1B; out[o++] = '['; out[o++] = 'M';
+                while (m->spaces) { out[o++] = ' '; m->spaces--; }
                 m->state = ST_TEXT;                 /* Delete Line: c is text again */
             }
             i--;                                    /* c once more, in the new state */
             break;
         case ST_MUSIC:
-            if (c == 0x0E)                          /* the end of the tune */
-            {
-                if (m->cmd && m->cmd != 'M') finish(m, notes, maxNotes, nNotes);
-                m->cmd = 0;
-                m->state = ST_TEXT;
+            if (c == 0x0E || c == 0x1B || c == 0x18 || c == 0x1A)
+            {                                       /* the end; ESC, CAN, SUB: early */
+                EndString(m, notes, maxNotes, nNotes);
+                m->state = c == 0x1B ? ST_ESC : ST_TEXT;
                 break;
             }
+            if (c == ';' && !m->smile)              /* a SMILE sound effect: no tune */
+            {
+                m->smile = TRUE;
+                *nNotes = first;
+            }
+            if (m->smile)
+                break;
             if (c >= 'a' && c <= 'z') c = (UBYTE)(c - 32);
-            if (m->cmd == 'M' && (c == 'F' || c == 'B' || c == 'N' || c == 'L' || c == 'S'))
+            if (m->cmd == 'M')                      /* the letter after M */
             {
-                if (c == 'N') m->style = STYLE_NORMAL;
-                if (c == 'L') m->style = STYLE_LEGATO;
-                if (c == 'S') m->style = STYLE_STACCATO;
                 m->cmd = 0;
-                break;
+                if (c == 'F' || c == 'B') break;
+                if (c == 'L') { m->style = STYLE_LEGATO; break; }
+                if (c == 'S') { m->style = STYLE_STACCATO; break; }
+                if (c == 'N') { m->cmd = 'n'; break; }      /* MN, or note N n */
             }
-            if (c >= '0' && c <= '9' && m->cmd && m->cmd != 'M')
+            if (m->cmd == 'n')
             {
-                m->num = (UWORD)(m->num * 10 + (c - '0'));
+                if (c >= '0' && c <= '9') m->cmd = 'N';
+                else finish(m, notes, maxNotes, nNotes);    /* MN */
+            }
+            if (c >= '0' && c <= '9' && m->cmd)
+            {
+                m->num = (UWORD)(m->num > 6553 ? 65535 : m->num * 10 + (c - '0'));
                 m->hasNum = TRUE;
             }
             else if ((c == '#' || c == '+') && m->cmd >= 'A' && m->cmd <= 'G') m->sharp = 1;
@@ -166,19 +209,17 @@ size_t AnsiMusic_Filter(struct AnsiMusic *m, const UBYTE *in, size_t len, UBYTE 
             else if (c == '.' && m->cmd) m->dots++;
             else if (c == '>' || c == '<')
             {
-                if (m->cmd && m->cmd != 'M') finish(m, notes, maxNotes, nNotes);
+                finish(m, notes, maxNotes, nNotes);
                 if (c == '>' && m->octave < 6) m->octave++;
                 if (c == '<' && m->octave > 0) m->octave--;
-                m->cmd = 0;
             }
             else if ((c >= 'A' && c <= 'G') || c == 'N' || c == 'P' || c == 'T' || c == 'L' || c == 'O'
                      || c == 'M')                   /* M: MN ML MS MF MB anywhere */
             {
-                if (m->cmd && m->cmd != 'M') finish(m, notes, maxNotes, nNotes);
+                finish(m, notes, maxNotes, nNotes);
                 m->cmd = (char)c;
             }
-            else if (m->cmd == 'M' && c != ' ')
-                m->cmd = 0;                         /* ESC[M then something else */
+            /* anything else (space, CR, LF, '"', unknown letters): skipped */
             break;
         }
     }

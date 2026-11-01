@@ -1,0 +1,1402 @@
+{
+ "about": "Reference model of ANSI music and generator of the shared test vectors.\n\nANSI music is the BASIC PLAY language sent by a BBS between an intro\n(ESC[M, ESC[N or ESC[|) and the terminator 0x0E. DCTelnet, UP-Term (vtcon),\nDEViLBOX and later the AmiExpress web BBS all test against one vector file:\n\n    /Users/spot/Code/DEViLBOX/src/lib/import/__tests__/fixtures/ansi-music/vectors.json\n\nDEViLBOX owns and commits that file. DCTelnet keeps a byte-identical copy in\ntests/ansimusic-vectors.json (tests/Makefile compares the two when both exist).\n\nThe rules (agreed 2026-11-01 between the DCTelnet, vtcon and DEViLBOX\nsessions; reference = GW-BASIC PLAY, GWSTS.ASM, plus SyncTERM cterm.txt):\n\n  Pitch      GW-BASIC NOTTAB: the octave-6 table in whole Hz, shifted right by\n             (6 - octave), plus the last bit shifted out (\"ADC BX,0\"; that is\n             round half up). O2 A = 440, O3 C = 523, O4 C = 1047.\n  N n        0-84. N0 is a rest. N1 = C in O0; octave = (n-1) div 12. N34 = 440.\n  Dots       Each dot multiplies the length by 1.5 (C.. = 2.25 x).\n  Gate       MN 7/8 of the length, MS 3/4, ML all of it; the rest is silent.\n  Limits     L 1-64, T 32-255, O 0-6 (clamped). Defaults O4 L4 T120 MN.\n  Intro      ESC[N and ESC[| always start music. ESC[M starts music only when\n             the next byte that is not a space starts music: B F L S (MB MF ML\n             MS), N not followed by a digit (MN), a note A-G, N + digit, O P T\n             < > or 0x0E. Anything else: ESC[M is Delete Line and stays text.\n  End        0x0E ends the string. ESC, CAN (0x18) or SUB (0x1A) end it early:\n             the command being read is played, CAN and SUB are swallowed, ESC\n             starts the next escape sequence.\n  Bytes      Other bytes inside a string (CR, LF, '\"', unknown letters) are\n             skipped; the string keeps playing.\n  SMILE      A string that contains ';' is a SMILE sound effect\n             (MF freq;dur;cycles;delay;variation): no notes, no text.\n\nDurations are in milliseconds: a note of length L at tempo T lasts\n240000 / (T * L) ms. Values are rounded to 3 decimals; hosts compare with a\ntolerance of 1 ms (DCTelnet truncates to whole ms).",
+ "generator": "DCTelnet tools/ansimusic_reference.py",
+ "tolerance_ms": 1,
+ "event_fields": "hz (whole Hz, 0 for a rest), ms (whole length), gate (ms of sound), rest",
+ "hosts_field": "per-host notes where a host is unconfirmed or differs on purpose",
+ "vectors": [
+  {
+   "name": "pitch-o2-a",
+   "note": "O2 A = 440 Hz (GW-BASIC); default L4 T120 MN: 500 ms, gate 437.5",
+   "input_hex": "1b5b4e4f32410e",
+   "text_hex": "",
+   "events": [
+    {
+     "hz": 440,
+     "ms": 500.0,
+     "gate": 437.5,
+     "rest": false
+    }
+   ]
+  },
+  {
+   "name": "pitch-o3-c",
+   "note": "O3 C = 523 Hz, not middle C",
+   "input_hex": "1b5b4e4f33430e",
+   "text_hex": "",
+   "events": [
+    {
+     "hz": 523,
+     "ms": 500.0,
+     "gate": 437.5,
+     "rest": false
+    }
+   ]
+  },
+  {
+   "name": "pitch-o4-c",
+   "note": "O4 C = 1047 Hz (1046.5 rounds half up)",
+   "input_hex": "1b5b4e4f34430e",
+   "text_hex": "",
+   "events": [
+    {
+     "hz": 1047,
+     "ms": 500.0,
+     "gate": 437.5,
+     "rest": false
+    }
+   ]
+  },
+  {
+   "name": "pitch-octave-ends",
+   "note": "O0 C = 65 Hz, O6 B = 7902 Hz",
+   "input_hex": "1b5b4e4f30434f36420e",
+   "text_hex": "",
+   "events": [
+    {
+     "hz": 65,
+     "ms": 500.0,
+     "gate": 437.5,
+     "rest": false
+    },
+    {
+     "hz": 7902,
+     "ms": 500.0,
+     "gate": 437.5,
+     "rest": false
+    }
+   ]
+  },
+  {
+   "name": "pitch-sharp-flat",
+   "note": "# and + sharp, - flat",
+   "input_hex": "1b5b4e4f324123422d432b0e",
+   "text_hex": "",
+   "events": [
+    {
+     "hz": 466,
+     "ms": 500.0,
+     "gate": 437.5,
+     "rest": false
+    },
+    {
+     "hz": 466,
+     "ms": 500.0,
+     "gate": 437.5,
+     "rest": false
+    },
+    {
+     "hz": 277,
+     "ms": 500.0,
+     "gate": 437.5,
+     "rest": false
+    }
+   ]
+  },
+  {
+   "name": "n-numbers",
+   "note": "N34 = 440, N46 = 880, N1 = O0 C, N84 = O6 B, N0 rest",
+   "input_hex": "1b5b4e4e33344e34364e314e38344e300e",
+   "text_hex": "",
+   "events": [
+    {
+     "hz": 440,
+     "ms": 500.0,
+     "gate": 437.5,
+     "rest": false
+    },
+    {
+     "hz": 880,
+     "ms": 500.0,
+     "gate": 437.5,
+     "rest": false
+    },
+    {
+     "hz": 65,
+     "ms": 500.0,
+     "gate": 437.5,
+     "rest": false
+    },
+    {
+     "hz": 7902,
+     "ms": 500.0,
+     "gate": 437.5,
+     "rest": false
+    },
+    {
+     "hz": 0,
+     "ms": 500.0,
+     "gate": 0,
+     "rest": true
+    }
+   ]
+  },
+  {
+   "name": "dots-compound",
+   "note": "dots x1.5 each: 500, 750, 1125 ms",
+   "input_hex": "1b5b4e4c3443432e432e2e0e",
+   "text_hex": "",
+   "events": [
+    {
+     "hz": 1047,
+     "ms": 500.0,
+     "gate": 437.5,
+     "rest": false
+    },
+    {
+     "hz": 1047,
+     "ms": 750.0,
+     "gate": 656.25,
+     "rest": false
+    },
+    {
+     "hz": 1047,
+     "ms": 1125.0,
+     "gate": 984.375,
+     "rest": false
+    }
+   ]
+  },
+  {
+   "name": "rest-dots",
+   "note": "P with a dot: 750 ms; P8: 250 ms",
+   "input_hex": "1b5b4e50342e50380e",
+   "text_hex": "",
+   "events": [
+    {
+     "hz": 0,
+     "ms": 750.0,
+     "gate": 0,
+     "rest": true
+    },
+    {
+     "hz": 0,
+     "ms": 250.0,
+     "gate": 0,
+     "rest": true
+    }
+   ]
+  },
+  {
+   "name": "articulation",
+   "note": "ML full, MS 3/4, MN 7/8",
+   "input_hex": "1b5b4e4d4c434d53434d4e430e",
+   "text_hex": "",
+   "events": [
+    {
+     "hz": 1047,
+     "ms": 500.0,
+     "gate": 500.0,
+     "rest": false
+    },
+    {
+     "hz": 1047,
+     "ms": 500.0,
+     "gate": 375.0,
+     "rest": false
+    },
+    {
+     "hz": 1047,
+     "ms": 500.0,
+     "gate": 437.5,
+     "rest": false
+    }
+   ]
+  },
+  {
+   "name": "length-and-tempo",
+   "note": "T240 L8: 125 ms; C16: 62.5 ms",
+   "input_hex": "1b5b4e543234304c38434331360e",
+   "text_hex": "",
+   "events": [
+    {
+     "hz": 1047,
+     "ms": 125.0,
+     "gate": 109.375,
+     "rest": false
+    },
+    {
+     "hz": 1047,
+     "ms": 62.5,
+     "gate": 54.688,
+     "rest": false
+    }
+   ]
+  },
+  {
+   "name": "limits-clamp",
+   "note": "T20 -> 32, T300 -> 255, O9 -> 6, L99 -> 64",
+   "input_hex": "1b5b4e5432304354333030434f39434c3939430e",
+   "text_hex": "",
+   "events": [
+    {
+     "hz": 1047,
+     "ms": 1875.0,
+     "gate": 1640.625,
+     "rest": false
+    },
+    {
+     "hz": 1047,
+     "ms": 235.294,
+     "gate": 205.882,
+     "rest": false
+    },
+    {
+     "hz": 4186,
+     "ms": 235.294,
+     "gate": 205.882,
+     "rest": false
+    },
+    {
+     "hz": 4186,
+     "ms": 14.706,
+     "gate": 12.868,
+     "rest": false
+    }
+   ]
+  },
+  {
+   "name": "octave-steps",
+   "note": "> above O6 and < below O0 stay inside 0-6",
+   "input_hex": "1b5b4e4f363e434f303c430e",
+   "text_hex": "",
+   "events": [
+    {
+     "hz": 4186,
+     "ms": 500.0,
+     "gate": 437.5,
+     "rest": false
+    },
+    {
+     "hz": 65,
+     "ms": 500.0,
+     "gate": 437.5,
+     "rest": false
+    }
+   ]
+  },
+  {
+   "name": "lower-case",
+   "note": "commands in lower case (the intro letter stays upper case: ESC[n is not music)",
+   "input_hex": "1b5b4e6f326123622d0e",
+   "text_hex": "",
+   "events": [
+    {
+     "hz": 466,
+     "ms": 500.0,
+     "gate": 437.5,
+     "rest": false
+    },
+    {
+     "hz": 466,
+     "ms": 500.0,
+     "gate": 437.5,
+     "rest": false
+    }
+   ]
+  },
+  {
+   "name": "intro-pipe",
+   "note": "ESC[| starts music",
+   "input_hex": "1b5b7c4f32410e",
+   "text_hex": "",
+   "events": [
+    {
+     "hz": 440,
+     "ms": 500.0,
+     "gate": 437.5,
+     "rest": false
+    }
+   ]
+  },
+  {
+   "name": "intro-m-music",
+   "note": "ESC[M then B = MB (background), then music",
+   "input_hex": "1b5b4d42204f33205431323020430e",
+   "text_hex": "",
+   "events": [
+    {
+     "hz": 523,
+     "ms": 500.0,
+     "gate": 437.5,
+     "rest": false
+    }
+   ]
+  },
+  {
+   "name": "intro-m-n-note",
+   "note": "ESC[M then N + digit = note N34",
+   "input_hex": "1b5b4d4e33340e",
+   "text_hex": "",
+   "events": [
+    {
+     "hz": 440,
+     "ms": 500.0,
+     "gate": 437.5,
+     "rest": false
+    }
+   ]
+  },
+  {
+   "name": "intro-m-mn",
+   "note": "ESC[M then N, no digit = MN",
+   "input_hex": "1b5b4d4e430e",
+   "text_hex": "",
+   "events": [
+    {
+     "hz": 1047,
+     "ms": 500.0,
+     "gate": 437.5,
+     "rest": false
+    }
+   ]
+  },
+  {
+   "name": "intro-m-ms",
+   "note": "ESC[M then S = MS (staccato)",
+   "input_hex": "1b5b4d53430e",
+   "text_hex": "",
+   "events": [
+    {
+     "hz": 1047,
+     "ms": 500.0,
+     "gate": 375.0,
+     "rest": false
+    }
+   ]
+  },
+  {
+   "name": "intro-m-space",
+   "note": "ESC[M, spaces, then music (!ANSIMUS.ANS form)",
+   "input_hex": "1b5b4d2054323030430e",
+   "text_hex": "",
+   "events": [
+    {
+     "hz": 1047,
+     "ms": 300.0,
+     "gate": 262.5,
+     "rest": false
+    }
+   ]
+  },
+  {
+   "name": "delete-line",
+   "note": "ESC[M then text = Delete Line; ESC[2M is Delete Lines",
+   "input_hex": "1b5b4d48656c6c6f1b5b324d78",
+   "text_hex": "1b5b4d48656c6c6f1b5b324d78",
+   "events": []
+  },
+  {
+   "name": "skip-cr-lf",
+   "note": "CR, LF and '\"' inside a string are skipped",
+   "input_hex": "1b5b4e4f32410d0a4222430e",
+   "text_hex": "",
+   "events": [
+    {
+     "hz": 440,
+     "ms": 500.0,
+     "gate": 437.5,
+     "rest": false
+    },
+    {
+     "hz": 494,
+     "ms": 500.0,
+     "gate": 437.5,
+     "rest": false
+    },
+    {
+     "hz": 262,
+     "ms": 500.0,
+     "gate": 437.5,
+     "rest": false
+    }
+   ]
+  },
+  {
+   "name": "smile-effect",
+   "note": "a string with ';' is a SMILE sound effect: no notes, no text",
+   "input_hex": "1b5b4d4620373030303b2e31323b3230303b31353b2d3130300e78",
+   "text_hex": "78",
+   "events": []
+  },
+  {
+   "name": "end-by-esc",
+   "note": "ESC ends the string early: B still plays, ESC[1m stays",
+   "input_hex": "1b5b4e4f3241421b5b316d78",
+   "text_hex": "1b5b316d78",
+   "events": [
+    {
+     "hz": 440,
+     "ms": 500.0,
+     "gate": 437.5,
+     "rest": false
+    },
+    {
+     "hz": 494,
+     "ms": 500.0,
+     "gate": 437.5,
+     "rest": false
+    }
+   ]
+  },
+  {
+   "name": "end-by-can",
+   "note": "CAN ends the string early and is swallowed",
+   "input_hex": "1b5b4e4f32411878",
+   "text_hex": "78",
+   "events": [
+    {
+     "hz": 440,
+     "ms": 500.0,
+     "gate": 437.5,
+     "rest": false
+    }
+   ]
+  },
+  {
+   "name": "logo-ans",
+   "note": "Terminate ANSMUSIC.DOC LOGO.ANS: first note 523 Hz, 1000 ms",
+   "input_hex": "1b5b4d42204f332054313230204c32434f34434f334c36424741424f344c32434f334c32434c32414c31474c3243464c34454c364344454c34464c33444c364f32424f3343444c34454c32430e",
+   "text_hex": "",
+   "events": [
+    {
+     "hz": 523,
+     "ms": 1000.0,
+     "gate": 875.0,
+     "rest": false
+    },
+    {
+     "hz": 1047,
+     "ms": 1000.0,
+     "gate": 875.0,
+     "rest": false
+    },
+    {
+     "hz": 988,
+     "ms": 333.333,
+     "gate": 291.667,
+     "rest": false
+    },
+    {
+     "hz": 784,
+     "ms": 333.333,
+     "gate": 291.667,
+     "rest": false
+    },
+    {
+     "hz": 880,
+     "ms": 333.333,
+     "gate": 291.667,
+     "rest": false
+    },
+    {
+     "hz": 988,
+     "ms": 333.333,
+     "gate": 291.667,
+     "rest": false
+    },
+    {
+     "hz": 1047,
+     "ms": 1000.0,
+     "gate": 875.0,
+     "rest": false
+    },
+    {
+     "hz": 523,
+     "ms": 1000.0,
+     "gate": 875.0,
+     "rest": false
+    },
+    {
+     "hz": 880,
+     "ms": 1000.0,
+     "gate": 875.0,
+     "rest": false
+    },
+    {
+     "hz": 784,
+     "ms": 2000.0,
+     "gate": 1750.0,
+     "rest": false
+    },
+    {
+     "hz": 523,
+     "ms": 1000.0,
+     "gate": 875.0,
+     "rest": false
+    },
+    {
+     "hz": 699,
+     "ms": 1000.0,
+     "gate": 875.0,
+     "rest": false
+    },
+    {
+     "hz": 659,
+     "ms": 500.0,
+     "gate": 437.5,
+     "rest": false
+    },
+    {
+     "hz": 523,
+     "ms": 333.333,
+     "gate": 291.667,
+     "rest": false
+    },
+    {
+     "hz": 587,
+     "ms": 333.333,
+     "gate": 291.667,
+     "rest": false
+    },
+    {
+     "hz": 659,
+     "ms": 333.333,
+     "gate": 291.667,
+     "rest": false
+    },
+    {
+     "hz": 699,
+     "ms": 500.0,
+     "gate": 437.5,
+     "rest": false
+    },
+    {
+     "hz": 587,
+     "ms": 666.667,
+     "gate": 583.333,
+     "rest": false
+    },
+    {
+     "hz": 494,
+     "ms": 333.333,
+     "gate": 291.667,
+     "rest": false
+    },
+    {
+     "hz": 523,
+     "ms": 333.333,
+     "gate": 291.667,
+     "rest": false
+    },
+    {
+     "hz": 587,
+     "ms": 333.333,
+     "gate": 291.667,
+     "rest": false
+    },
+    {
+     "hz": 659,
+     "ms": 500.0,
+     "gate": 437.5,
+     "rest": false
+    },
+    {
+     "hz": 523,
+     "ms": 1000.0,
+     "gate": 875.0,
+     "rest": false
+    }
+   ]
+  },
+  {
+   "name": "MUSIC_pavt199.ANS#0",
+   "note": "LOGO.ANS tune written with < and >",
+   "input_hex": "1b5b4d42204f332054313230204c32433e433c4c36424741423e4c32433c43414731434645344c36434445463444334c363c423e4344453443320e",
+   "text_hex": "",
+   "events": [
+    {
+     "hz": 523,
+     "ms": 1000.0,
+     "gate": 875.0,
+     "rest": false
+    },
+    {
+     "hz": 1047,
+     "ms": 1000.0,
+     "gate": 875.0,
+     "rest": false
+    },
+    {
+     "hz": 988,
+     "ms": 333.333,
+     "gate": 291.667,
+     "rest": false
+    },
+    {
+     "hz": 784,
+     "ms": 333.333,
+     "gate": 291.667,
+     "rest": false
+    },
+    {
+     "hz": 880,
+     "ms": 333.333,
+     "gate": 291.667,
+     "rest": false
+    },
+    {
+     "hz": 988,
+     "ms": 333.333,
+     "gate": 291.667,
+     "rest": false
+    },
+    {
+     "hz": 1047,
+     "ms": 1000.0,
+     "gate": 875.0,
+     "rest": false
+    },
+    {
+     "hz": 523,
+     "ms": 1000.0,
+     "gate": 875.0,
+     "rest": false
+    },
+    {
+     "hz": 880,
+     "ms": 1000.0,
+     "gate": 875.0,
+     "rest": false
+    },
+    {
+     "hz": 784,
+     "ms": 2000.0,
+     "gate": 1750.0,
+     "rest": false
+    },
+    {
+     "hz": 523,
+     "ms": 1000.0,
+     "gate": 875.0,
+     "rest": false
+    },
+    {
+     "hz": 699,
+     "ms": 1000.0,
+     "gate": 875.0,
+     "rest": false
+    },
+    {
+     "hz": 659,
+     "ms": 500.0,
+     "gate": 437.5,
+     "rest": false
+    },
+    {
+     "hz": 523,
+     "ms": 333.333,
+     "gate": 291.667,
+     "rest": false
+    },
+    {
+     "hz": 587,
+     "ms": 333.333,
+     "gate": 291.667,
+     "rest": false
+    },
+    {
+     "hz": 659,
+     "ms": 333.333,
+     "gate": 291.667,
+     "rest": false
+    },
+    {
+     "hz": 699,
+     "ms": 500.0,
+     "gate": 437.5,
+     "rest": false
+    },
+    {
+     "hz": 587,
+     "ms": 666.667,
+     "gate": 583.333,
+     "rest": false
+    },
+    {
+     "hz": 494,
+     "ms": 333.333,
+     "gate": 291.667,
+     "rest": false
+    },
+    {
+     "hz": 523,
+     "ms": 333.333,
+     "gate": 291.667,
+     "rest": false
+    },
+    {
+     "hz": 587,
+     "ms": 333.333,
+     "gate": 291.667,
+     "rest": false
+    },
+    {
+     "hz": 659,
+     "ms": 500.0,
+     "gate": 437.5,
+     "rest": false
+    },
+    {
+     "hz": 523,
+     "ms": 1000.0,
+     "gate": 875.0,
+     "rest": false
+    }
+   ],
+   "source": "MUSIC_pavt199.ANS bytes 0-59"
+  },
+  {
+   "name": "!ANSIMUS.ANS#0",
+   "note": "ESC[M space T200: intro with a space",
+   "input_hex": "1b5b4d20543230304f3345382e443136433844384538442b384538433844384438443844322e44382e4331364f324238200e",
+   "text_hex": "",
+   "events": [
+    {
+     "hz": 659,
+     "ms": 225.0,
+     "gate": 196.875,
+     "rest": false
+    },
+    {
+     "hz": 587,
+     "ms": 75.0,
+     "gate": 65.625,
+     "rest": false
+    },
+    {
+     "hz": 523,
+     "ms": 150.0,
+     "gate": 131.25,
+     "rest": false
+    },
+    {
+     "hz": 587,
+     "ms": 150.0,
+     "gate": 131.25,
+     "rest": false
+    },
+    {
+     "hz": 659,
+     "ms": 150.0,
+     "gate": 131.25,
+     "rest": false
+    },
+    {
+     "hz": 622,
+     "ms": 150.0,
+     "gate": 131.25,
+     "rest": false
+    },
+    {
+     "hz": 659,
+     "ms": 150.0,
+     "gate": 131.25,
+     "rest": false
+    },
+    {
+     "hz": 523,
+     "ms": 150.0,
+     "gate": 131.25,
+     "rest": false
+    },
+    {
+     "hz": 587,
+     "ms": 150.0,
+     "gate": 131.25,
+     "rest": false
+    },
+    {
+     "hz": 587,
+     "ms": 150.0,
+     "gate": 131.25,
+     "rest": false
+    },
+    {
+     "hz": 587,
+     "ms": 150.0,
+     "gate": 131.25,
+     "rest": false
+    },
+    {
+     "hz": 587,
+     "ms": 900.0,
+     "gate": 787.5,
+     "rest": false
+    },
+    {
+     "hz": 587,
+     "ms": 225.0,
+     "gate": 196.875,
+     "rest": false
+    },
+    {
+     "hz": 523,
+     "ms": 75.0,
+     "gate": 65.625,
+     "rest": false
+    },
+    {
+     "hz": 494,
+     "ms": 150.0,
+     "gate": 131.25,
+     "rest": false
+    }
+   ],
+   "source": "!ANSIMUS.ANS bytes 3134-3184"
+  },
+  {
+   "name": "RELIGIOU.MUS#1",
+   "note": "CR LF inside the string: skipped, keeps playing",
+   "input_hex": "1b5b4d424f33543039304c34444c32474c384241474c324250384c34414c32474c34454c32445031364c34444c32474c384241474c324250384c34414f344c314450384f330d0a4c34424f344c32444c38444f33424c324750384c34444c32454c3847454c32445031364c34444c32474c3842474c32424c34414c32470e",
+   "text_hex": "",
+   "events": [
+    {
+     "hz": 587,
+     "ms": 666.667,
+     "gate": 583.333,
+     "rest": false
+    },
+    {
+     "hz": 784,
+     "ms": 1333.333,
+     "gate": 1166.667,
+     "rest": false
+    },
+    {
+     "hz": 988,
+     "ms": 333.333,
+     "gate": 291.667,
+     "rest": false
+    },
+    {
+     "hz": 880,
+     "ms": 333.333,
+     "gate": 291.667,
+     "rest": false
+    },
+    {
+     "hz": 784,
+     "ms": 333.333,
+     "gate": 291.667,
+     "rest": false
+    },
+    {
+     "hz": 988,
+     "ms": 1333.333,
+     "gate": 1166.667,
+     "rest": false
+    },
+    {
+     "hz": 0,
+     "ms": 333.333,
+     "gate": 0,
+     "rest": true
+    },
+    {
+     "hz": 880,
+     "ms": 666.667,
+     "gate": 583.333,
+     "rest": false
+    },
+    {
+     "hz": 784,
+     "ms": 1333.333,
+     "gate": 1166.667,
+     "rest": false
+    },
+    {
+     "hz": 659,
+     "ms": 666.667,
+     "gate": 583.333,
+     "rest": false
+    },
+    {
+     "hz": 587,
+     "ms": 1333.333,
+     "gate": 1166.667,
+     "rest": false
+    },
+    {
+     "hz": 0,
+     "ms": 166.667,
+     "gate": 0,
+     "rest": true
+    },
+    {
+     "hz": 587,
+     "ms": 666.667,
+     "gate": 583.333,
+     "rest": false
+    },
+    {
+     "hz": 784,
+     "ms": 1333.333,
+     "gate": 1166.667,
+     "rest": false
+    },
+    {
+     "hz": 988,
+     "ms": 333.333,
+     "gate": 291.667,
+     "rest": false
+    },
+    {
+     "hz": 880,
+     "ms": 333.333,
+     "gate": 291.667,
+     "rest": false
+    },
+    {
+     "hz": 784,
+     "ms": 333.333,
+     "gate": 291.667,
+     "rest": false
+    },
+    {
+     "hz": 988,
+     "ms": 1333.333,
+     "gate": 1166.667,
+     "rest": false
+    },
+    {
+     "hz": 0,
+     "ms": 333.333,
+     "gate": 0,
+     "rest": true
+    },
+    {
+     "hz": 880,
+     "ms": 666.667,
+     "gate": 583.333,
+     "rest": false
+    },
+    {
+     "hz": 1175,
+     "ms": 2666.667,
+     "gate": 2333.333,
+     "rest": false
+    },
+    {
+     "hz": 0,
+     "ms": 333.333,
+     "gate": 0,
+     "rest": true
+    },
+    {
+     "hz": 988,
+     "ms": 666.667,
+     "gate": 583.333,
+     "rest": false
+    },
+    {
+     "hz": 1175,
+     "ms": 1333.333,
+     "gate": 1166.667,
+     "rest": false
+    },
+    {
+     "hz": 1175,
+     "ms": 333.333,
+     "gate": 291.667,
+     "rest": false
+    },
+    {
+     "hz": 988,
+     "ms": 333.333,
+     "gate": 291.667,
+     "rest": false
+    },
+    {
+     "hz": 784,
+     "ms": 1333.333,
+     "gate": 1166.667,
+     "rest": false
+    },
+    {
+     "hz": 0,
+     "ms": 333.333,
+     "gate": 0,
+     "rest": true
+    },
+    {
+     "hz": 587,
+     "ms": 666.667,
+     "gate": 583.333,
+     "rest": false
+    },
+    {
+     "hz": 659,
+     "ms": 1333.333,
+     "gate": 1166.667,
+     "rest": false
+    },
+    {
+     "hz": 784,
+     "ms": 333.333,
+     "gate": 291.667,
+     "rest": false
+    },
+    {
+     "hz": 659,
+     "ms": 333.333,
+     "gate": 291.667,
+     "rest": false
+    },
+    {
+     "hz": 587,
+     "ms": 1333.333,
+     "gate": 1166.667,
+     "rest": false
+    },
+    {
+     "hz": 0,
+     "ms": 166.667,
+     "gate": 0,
+     "rest": true
+    },
+    {
+     "hz": 587,
+     "ms": 666.667,
+     "gate": 583.333,
+     "rest": false
+    },
+    {
+     "hz": 784,
+     "ms": 1333.333,
+     "gate": 1166.667,
+     "rest": false
+    },
+    {
+     "hz": 988,
+     "ms": 333.333,
+     "gate": 291.667,
+     "rest": false
+    },
+    {
+     "hz": 784,
+     "ms": 333.333,
+     "gate": 291.667,
+     "rest": false
+    },
+    {
+     "hz": 988,
+     "ms": 1333.333,
+     "gate": 1166.667,
+     "rest": false
+    },
+    {
+     "hz": 880,
+     "ms": 666.667,
+     "gate": 583.333,
+     "rest": false
+    },
+    {
+     "hz": 784,
+     "ms": 1333.333,
+     "gate": 1166.667,
+     "rest": false
+    }
+   ],
+   "source": "RELIGIOU.MUS bytes 245-371"
+  },
+  {
+   "name": "RELIGIOU.MUS#8",
+   "note": "CR LF and '\"' inside the string",
+   "input_hex": "1b5b4d424f32543039304c32474c3447234c34414c35454c344746234c32464f3350364c32444c36434c344f324247414f334c35434c354f32414c32474f3350384c32450d0a4c3445454344454c36444c324350384c34434f32414c32474c3447474c32474c3441424f334c3243220e",
+   "text_hex": "",
+   "events": [
+    {
+     "hz": 392,
+     "ms": 1333.333,
+     "gate": 1166.667,
+     "rest": false
+    },
+    {
+     "hz": 415,
+     "ms": 666.667,
+     "gate": 583.333,
+     "rest": false
+    },
+    {
+     "hz": 440,
+     "ms": 666.667,
+     "gate": 583.333,
+     "rest": false
+    },
+    {
+     "hz": 330,
+     "ms": 533.333,
+     "gate": 466.667,
+     "rest": false
+    },
+    {
+     "hz": 392,
+     "ms": 666.667,
+     "gate": 583.333,
+     "rest": false
+    },
+    {
+     "hz": 370,
+     "ms": 666.667,
+     "gate": 583.333,
+     "rest": false
+    },
+    {
+     "hz": 349,
+     "ms": 1333.333,
+     "gate": 1166.667,
+     "rest": false
+    },
+    {
+     "hz": 0,
+     "ms": 444.444,
+     "gate": 0,
+     "rest": true
+    },
+    {
+     "hz": 587,
+     "ms": 1333.333,
+     "gate": 1166.667,
+     "rest": false
+    },
+    {
+     "hz": 523,
+     "ms": 444.444,
+     "gate": 388.889,
+     "rest": false
+    },
+    {
+     "hz": 494,
+     "ms": 666.667,
+     "gate": 583.333,
+     "rest": false
+    },
+    {
+     "hz": 392,
+     "ms": 666.667,
+     "gate": 583.333,
+     "rest": false
+    },
+    {
+     "hz": 440,
+     "ms": 666.667,
+     "gate": 583.333,
+     "rest": false
+    },
+    {
+     "hz": 523,
+     "ms": 533.333,
+     "gate": 466.667,
+     "rest": false
+    },
+    {
+     "hz": 440,
+     "ms": 533.333,
+     "gate": 466.667,
+     "rest": false
+    },
+    {
+     "hz": 392,
+     "ms": 1333.333,
+     "gate": 1166.667,
+     "rest": false
+    },
+    {
+     "hz": 0,
+     "ms": 333.333,
+     "gate": 0,
+     "rest": true
+    },
+    {
+     "hz": 659,
+     "ms": 1333.333,
+     "gate": 1166.667,
+     "rest": false
+    },
+    {
+     "hz": 659,
+     "ms": 666.667,
+     "gate": 583.333,
+     "rest": false
+    },
+    {
+     "hz": 659,
+     "ms": 666.667,
+     "gate": 583.333,
+     "rest": false
+    },
+    {
+     "hz": 523,
+     "ms": 666.667,
+     "gate": 583.333,
+     "rest": false
+    },
+    {
+     "hz": 587,
+     "ms": 666.667,
+     "gate": 583.333,
+     "rest": false
+    },
+    {
+     "hz": 659,
+     "ms": 666.667,
+     "gate": 583.333,
+     "rest": false
+    },
+    {
+     "hz": 587,
+     "ms": 444.444,
+     "gate": 388.889,
+     "rest": false
+    },
+    {
+     "hz": 523,
+     "ms": 1333.333,
+     "gate": 1166.667,
+     "rest": false
+    },
+    {
+     "hz": 0,
+     "ms": 333.333,
+     "gate": 0,
+     "rest": true
+    },
+    {
+     "hz": 523,
+     "ms": 666.667,
+     "gate": 583.333,
+     "rest": false
+    },
+    {
+     "hz": 440,
+     "ms": 666.667,
+     "gate": 583.333,
+     "rest": false
+    },
+    {
+     "hz": 392,
+     "ms": 1333.333,
+     "gate": 1166.667,
+     "rest": false
+    },
+    {
+     "hz": 392,
+     "ms": 666.667,
+     "gate": 583.333,
+     "rest": false
+    },
+    {
+     "hz": 392,
+     "ms": 666.667,
+     "gate": 583.333,
+     "rest": false
+    },
+    {
+     "hz": 392,
+     "ms": 1333.333,
+     "gate": 1166.667,
+     "rest": false
+    },
+    {
+     "hz": 440,
+     "ms": 666.667,
+     "gate": 583.333,
+     "rest": false
+    },
+    {
+     "hz": 494,
+     "ms": 666.667,
+     "gate": 583.333,
+     "rest": false
+    },
+    {
+     "hz": 523,
+     "ms": 1333.333,
+     "gate": 1166.667,
+     "rest": false
+    }
+   ],
+   "source": "RELIGIOU.MUS bytes 1314-1426"
+  },
+  {
+   "name": "ANSIPL20_INTRO.ANS#0",
+   "note": "MF MS T150: music, no ';'",
+   "input_hex": "1b5b4d46204d532054313530204338443845384638473846384538443843320e",
+   "text_hex": "",
+   "events": [
+    {
+     "hz": 1047,
+     "ms": 200.0,
+     "gate": 150.0,
+     "rest": false
+    },
+    {
+     "hz": 1175,
+     "ms": 200.0,
+     "gate": 150.0,
+     "rest": false
+    },
+    {
+     "hz": 1319,
+     "ms": 200.0,
+     "gate": 150.0,
+     "rest": false
+    },
+    {
+     "hz": 1397,
+     "ms": 200.0,
+     "gate": 150.0,
+     "rest": false
+    },
+    {
+     "hz": 1568,
+     "ms": 200.0,
+     "gate": 150.0,
+     "rest": false
+    },
+    {
+     "hz": 1397,
+     "ms": 200.0,
+     "gate": 150.0,
+     "rest": false
+    },
+    {
+     "hz": 1319,
+     "ms": 200.0,
+     "gate": 150.0,
+     "rest": false
+    },
+    {
+     "hz": 1175,
+     "ms": 200.0,
+     "gate": 150.0,
+     "rest": false
+    },
+    {
+     "hz": 1047,
+     "ms": 800.0,
+     "gate": 600.0,
+     "rest": false
+    }
+   ],
+   "source": "ANSIPL20_INTRO.ANS bytes 11302-11334"
+  },
+  {
+   "name": "ANSIPL20_INTRO.ANS#1",
+   "note": "SMILE sound effect with ';': no notes",
+   "input_hex": "1b5b4d4620373030303b2e31323b3230303b31353b2d3130300e",
+   "text_hex": "",
+   "events": [],
+   "source": "ANSIPL20_INTRO.ANS bytes 12901-12927"
+  },
+  {
+   "name": "ANSIPL20_INTRO.ANS#2",
+   "note": "SMILE with CR LF before the numbers: no notes",
+   "input_hex": "1b5b4d460d0a313339373b343b323b3235300e",
+   "text_hex": "",
+   "events": [],
+   "source": "ANSIPL20_INTRO.ANS bytes 12927-12946"
+  }
+ ]
+}

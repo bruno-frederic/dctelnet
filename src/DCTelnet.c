@@ -3156,7 +3156,7 @@ static void EchoWrite(UBYTE *data, long len)
 
 static UBYTE *SoundFilter(UBYTE *text, long *len)
 {
-    static UBYTE played[4096 + 3];     // + 3: AnsiMusic_Filter
+    static UBYTE played[4096 + ANSIMUSIC_HELD];    // AnsiMusic_Filter holds back ESC[M
     static struct Note notes[48];
     size_t n = (size_t)*len;
     int count;

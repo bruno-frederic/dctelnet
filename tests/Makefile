@@ -21,8 +21,8 @@ ifneq ($(HOST_ID),$(shell cat .host-id 2>/dev/null))
 $(shell rm -f $(TESTS) ansimusic_dump; echo '$(HOST_ID)' > .host-id)
 endif
 
-.PHONY: all clean check-encoding check-fonts check-currenttime-null check-stack check-statics check-petscii-reopen
-all: $(TESTS) check-encoding check-fonts check-currenttime-null check-stack check-statics check-petscii-reopen
+.PHONY: all clean check-encoding check-fonts check-currenttime-null check-stack check-statics check-petscii-reopen check-ansimusic
+all: $(TESTS) check-encoding check-fonts check-currenttime-null check-stack check-statics check-petscii-reopen check-ansimusic
 	@for t in $(TESTS); do echo "--- $$t ---"; ./$$t || exit 1; done
 
 # Check the file are standard printable ASCII or ISO-8859
@@ -144,6 +144,14 @@ test_rlogin: test_rlogin.c ../src/rlogin.c ../src/rlogin.h
 
 test_ansimusic: test_ansimusic.c ../src/ansimusic.c ../src/ansimusic.h
 	$(CC) $(CFLAGS) -Ishim -o $@ $(filter %.c,$^)
+
+ansimusic_dump: ansimusic_dump.c ../src/ansimusic.c ../src/ansimusic.h
+	$(CC) $(CFLAGS) -Ishim -o $@ $(filter %.c,$^)
+
+# The ANSI music vectors shared with DEViLBOX and UP-Term, made by
+# tools/ansimusic_reference.py.
+check-ansimusic: ansimusic_dump
+	python3 ../tools/check_ansimusic_vectors.py ./ansimusic_dump ansimusic-vectors.json
 
 test_booklist: test_booklist.c ../src/booklist.c ../src/booklist.h
 	$(CC) $(CFLAGS) -Ishim -o $@ $(filter %.c,$^)
