@@ -32,10 +32,17 @@ int main(int argc, char **argv)
         step = bytewise ? 1 : len;
         for (i = 0; i < len; i += step)
         {
-            size_t o = AnsiMusic_Filter(&m, in + i, step, out, notes, 512, &n);
+            size_t p = 0;
 
-            for (k = 0; k < o; k++) text[t++] = out[k];
-            for (j = 0; j < n; j++) all[count++] = notes[j];
+            while (p < step)                    /* a foreground tune stops the call early */
+            {
+                size_t used;
+                size_t o = AnsiMusic_Filter(&m, in + i + p, step - p, out, notes, 512, &n, &used);
+
+                for (k = 0; k < o; k++) text[t++] = out[k];
+                for (j = 0; j < n; j++) all[count++] = notes[j];
+                p += used;
+            }
         }
         if (t == 0) printf("-");
         for (k = 0; k < t; k++) printf("%02x", text[k]);

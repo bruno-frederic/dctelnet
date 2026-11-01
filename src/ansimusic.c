@@ -32,11 +32,16 @@ void AnsiMusic_Init(struct AnsiMusic *m)
     m->length = 4;
     m->octave = 4;
     m->style = STYLE_NORMAL;
+    m->foreground = TRUE;                       /* as SyncTERM and GW-BASIC PLAY */
 }
 
-static void add(struct Note *notes, int maxNotes, int *n, UWORD hz, ULONG ms)
+static void add(struct AnsiMusic *m, struct Note *notes, int maxNotes, int *n, UWORD hz, ULONG ms)
 {
-    if (ms == 0 || *n >= maxNotes)
+    if (ms == 0)
+        return;
+    if (m->foreground)
+        m->heldFore = TRUE;                     /* queued in the foreground, even if notes[] is full */
+    if (*n >= maxNotes)
         return;
     notes[*n].hz = hz;
     notes[*n].ms = (UWORD)(ms > 60000 ? 60000 : ms);
@@ -53,10 +58,10 @@ static void play(struct AnsiMusic *m, struct Note *notes, int maxNotes, int *n, 
 
     for (d = 0; d < m->dots && d < MAX_DOTS; d++) { num *= 3; den *= 2; }
     ms = num / den;
-    if (hz == 0) { add(notes, maxNotes, n, 0, ms); return; }
+    if (hz == 0) { add(m, notes, maxNotes, n, 0, ms); return; }
     sound = num * m->style / (den * 8);
-    add(notes, maxNotes, n, hz, sound);
-    add(notes, maxNotes, n, 0, ms - sound);
+    add(m, notes, maxNotes, n, hz, sound);
+    add(m, notes, maxNotes, n, 0, ms - sound);
 }
 
 static UWORD clamp(UWORD v, UWORD lo, UWORD hi)
@@ -119,12 +124,14 @@ static void EndString(struct AnsiMusic *m, struct Note *notes, int maxNotes, int
 }
 
 size_t AnsiMusic_Filter(struct AnsiMusic *m, const UBYTE *in, size_t len, UBYTE *out,
-                        struct Note *notes, int maxNotes, int *nNotes)
+                        struct Note *notes, int maxNotes, int *nNotes, size_t *used)
 {
     size_t i, o = 0;
     int first = 0;                              /* the first note of this string in notes[] */
 
     *nNotes = 0;
+    *used = len;
+    m->stopped = FALSE;
     for (i = 0; i < len; i++)
     {
         UBYTE c = in[i];
@@ -176,11 +183,19 @@ size_t AnsiMusic_Filter(struct AnsiMusic *m, const UBYTE *in, size_t len, UBYTE 
             {                                       /* the end; ESC, CAN, SUB: early */
                 EndString(m, notes, maxNotes, nNotes);
                 m->state = c == 0x1B ? ST_ESC : ST_TEXT;
+                if (m->heldFore)                    /* a foreground tune: the caller holds the rest */
+                {
+                    m->heldFore = FALSE;
+                    m->stopped = TRUE;
+                    *used = i + 1;
+                    return o;
+                }
                 break;
             }
             if (c == ';' && !m->smile)              /* a SMILE sound effect: no tune */
             {
                 m->smile = TRUE;
+                m->heldFore = FALSE;
                 *nNotes = first;
             }
             if (m->smile)
@@ -189,7 +204,7 @@ size_t AnsiMusic_Filter(struct AnsiMusic *m, const UBYTE *in, size_t len, UBYTE 
             if (m->cmd == 'M')                      /* the letter after M */
             {
                 m->cmd = 0;
-                if (c == 'F' || c == 'B') break;
+                if (c == 'F' || c == 'B') { m->foreground = c == 'F'; break; }
                 if (c == 'L') { m->style = STYLE_LEGATO; break; }
                 if (c == 'S') { m->style = STYLE_STACCATO; break; }
                 if (c == 'N') { m->cmd = 'n'; break; }      /* MN, or note N n */

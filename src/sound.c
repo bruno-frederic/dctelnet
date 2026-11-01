@@ -89,6 +89,22 @@ void Sound_Play(const struct Note *notes, int count)
     }
 }
 
+BOOL Sound_Busy(void)
+{
+    int i;
+
+    if (!opened) return FALSE;
+    Reclaim();
+    for (i = 0; i < REQUESTS; i++)
+        if (busy[i]) return TRUE;
+    return FALSE;
+}
+
+ULONG Sound_Signal(void)
+{
+    return port ? 1UL << port->mp_SigBit : 0;
+}
+
 void Sound_Beep(void)
 {
     static const struct Note beep = { 880, 150 };
