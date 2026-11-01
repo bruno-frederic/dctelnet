@@ -80,6 +80,7 @@ extern struct Library *CyberGfxBase;
     #pragma popwarn
 #endif
 #include "DCTelnet.h"
+#include "vtpersonality.h"
 #include "guis.h"
 #include "connect.h"
 #include "Xfer.h"
@@ -1293,12 +1294,13 @@ static void RunPendingConnect(void)
             TerminalSize(&cols, &rows);
             if (!SshConn_Start(pendingConnect.host, pendingConnect.port,
                                pendingConnect.username, pendingConnect.password,
-                               PETSCII_SESSION() ? "PETSCII" : (const char *)prefs.TelnetTermType,
+                               PETSCII_SESSION() ? "PETSCII" : Vt_SshTermName(&prefs),
                                cols, rows))
             {
                 DisConnect(FALSE, TRUE);
                 return;
             }
+            SetLocalEchoBack(FALSE);            // the pty echoes, as after telnet WILL ECHO
         }
         else if (STATE_IS(APP_RLOGIN))          // rlogin: the login message first
         {
@@ -3489,14 +3491,10 @@ static void SetLocalEchoBack(BOOL wantedState)
 
 static void OutKey(unsigned char key)
 {
-    if(STATE_IS(APP_BACKSPACE_DEL_SWAPPED))
-    {
-        if(key == '\b') // Backspace
-            key = DEL_CHAR;
-        else {
-            if(key == DEL_CHAR) key = '\b';
-        }
-    }
+    if(key == '\b') // Backspace: DEL under xterm, BS under PC ANSI, inverted by the swap flag
+        key = Vt_BackspaceByte(&prefs);
+    else if(key == DEL_CHAR && STATE_IS(APP_BACKSPACE_DEL_SWAPPED))
+        key = '\b';
     if(isConnected)
     {
         TCPSend((void *)&key, 1);

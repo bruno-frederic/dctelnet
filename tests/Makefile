@@ -10,7 +10,7 @@ CFLAGS := -std=c99 -Wall -Wextra -Werror -I../src
 STACK_MAX := 400
 STACKCHK := $(shell $(CC) -Werror -Wstack-usage=$(STACK_MAX) -c -x c /dev/null -o /dev/null 2>/dev/null && echo -Wstack-usage=$(STACK_MAX))
 
-TESTS := test_petscii_modules test_petscii_dispatch test_prefs_file test_site_prefs test_palette test_screenfont test_progdir test_listsel test_textedit test_dsr test_keys test_clip test_ansiscan test_ticks test_renderer test_rexx test_rlogin test_ansimusic test_booklist test_crypto test_ssh test_knownhosts test_term_engine test_connectaddr
+TESTS := test_petscii_modules test_petscii_dispatch test_prefs_file test_site_prefs test_palette test_screenfont test_progdir test_listsel test_textedit test_dsr test_keys test_clip test_ansiscan test_ticks test_renderer test_rexx test_rlogin test_ansimusic test_booklist test_crypto test_ssh test_knownhosts test_term_engine test_connectaddr test_vtpersonality
 
 # The test programs are host executables, but make only compares
 # timestamps. Docker "make ci" (Linux) and "make host-ci" (macOS) share this
@@ -21,8 +21,8 @@ ifneq ($(HOST_ID),$(shell cat .host-id 2>/dev/null))
 $(shell rm -f $(TESTS) ansimusic_dump; echo '$(HOST_ID)' > .host-id)
 endif
 
-.PHONY: all clean check-encoding check-fonts check-currenttime-null check-stack check-statics check-petscii-reopen check-debug-stack
-all: $(TESTS) check-encoding check-fonts check-currenttime-null check-stack check-statics check-petscii-reopen check-debug-stack
+.PHONY: all clean check-encoding check-fonts check-currenttime-null check-stack check-statics check-petscii-reopen check-debug-stack check-ssh-terminal
+all: $(TESTS) check-encoding check-fonts check-currenttime-null check-stack check-statics check-petscii-reopen check-debug-stack check-ssh-terminal
 	@for t in $(TESTS); do echo "--- $$t ---"; ./$$t || exit 1; done
 
 # Check the file are standard printable ASCII or ISO-8859
@@ -73,6 +73,19 @@ check-debug-stack:
 	@cd ../src && if LC_ALL=C grep --quiet --text 'CreateNewProc' *.c \
 		&& LC_ALL=C grep --text 'DEBUG_CFLAGS' Makefile | LC_ALL=C grep --quiet -- '[[:space:]]-stack-check'; then \
 		echo "ERROR: src/Makefile debug flags use vbcc -stack-check, which breaks code run by a second process (CreateNewProc)."; \
+		exit 1; \
+	fi
+
+# SSH terminal wiring (host tests cannot link DCTelnet.c): the pty TERM comes from
+# Vt_SshTermName (terminfo is case-sensitive, the telnet "VT102" is unknown), the
+# pty echoes so local echo goes off right after SshConn_Start, and Backspace is
+# decided by Vt_BackspaceByte.
+check-ssh-terminal:
+	@cd ../src && if ! LC_ALL=C grep --text --quiet 'Vt_SshTermName(&prefs)' DCTelnet.c \
+		|| LC_ALL=C grep --text --after-context=12 'SshConn_Start(' DCTelnet.c | LC_ALL=C grep --text --quiet 'TelnetTermType' \
+		|| ! LC_ALL=C grep --text --after-context=12 'SshConn_Start(' DCTelnet.c | LC_ALL=C grep --text --quiet 'SetLocalEchoBack(FALSE)' \
+		|| ! LC_ALL=C grep --text --after-context=6 'static void OutKey' DCTelnet.c | LC_ALL=C grep --text --quiet 'Vt_BackspaceByte'; then \
+		echo "ERROR: DCTelnet.c must pass Vt_SshTermName to SshConn_Start, call SetLocalEchoBack(FALSE) after it, and use Vt_BackspaceByte in OutKey."; \
 		exit 1; \
 	fi
 

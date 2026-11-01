@@ -188,6 +188,48 @@ static void test_glyph_encoding_follows_the_font_except_for_cp437(void)
     assert(Vt_GlyphEncoding(VT_CS_LATIN1, VT_ENC_LATIN1) == VT_ENC_LATIN1);
 }
 
+/* SSH TERM: terminfo is case-sensitive, so the name is what the engine emulates. */
+static void test_ssh_term_name_follows_the_personality(void)
+{
+    struct PrefsStruct p;
+
+    memset(&p, 0, sizeof(p));
+    p.State = APP_RENDERER_BUILTIN;
+    strcpy((char *)p.TelnetTermType, "VT102");
+    p.TermType = TERMTYPE_BBS;  p.Charset = CHARSET_UTF8;
+    assert(strcmp(Vt_SshTermName(&p), "ansi") == 0);
+    p.TermType = TERMTYPE_UNIX; p.Charset = CHARSET_CP437;
+    assert(strcmp(Vt_SshTermName(&p), "xterm") == 0);
+    p.TermType = TERMTYPE_AUTO; p.Charset = CHARSET_UTF8;
+    assert(strcmp(Vt_SshTermName(&p), "xterm") == 0);
+    p.Charset = CHARSET_CP437;
+    assert(strcmp(Vt_SshTermName(&p), "ansi") == 0);
+    /* the console renderer is ANSI only, whatever the personality */
+    p.State = APP_RENDERER_CONSOLE_DEVICE;
+    p.TermType = TERMTYPE_UNIX;
+    assert(strcmp(Vt_SshTermName(&p), "ansi") == 0);
+}
+
+/* Backspace: DEL for xterm (Mac tty erase is ^?), BS for PC ANSI; the swap flag inverts. */
+static void test_backspace_byte_follows_the_personality_and_swap(void)
+{
+    struct PrefsStruct p;
+
+    memset(&p, 0, sizeof(p));
+    p.TermType = TERMTYPE_BBS;  p.Charset = CHARSET_UTF8;
+    assert(Vt_BackspaceByte(&p) == 0x08);
+    p.TermType = TERMTYPE_UNIX; p.Charset = CHARSET_CP437;
+    assert(Vt_BackspaceByte(&p) == 0x7F);
+    p.TermType = TERMTYPE_AUTO; p.Charset = CHARSET_UTF8;
+    assert(Vt_BackspaceByte(&p) == 0x7F);
+    p.Charset = CHARSET_CP437;
+    assert(Vt_BackspaceByte(&p) == 0x08);
+    p.State = APP_BACKSPACE_DEL_SWAPPED;
+    assert(Vt_BackspaceByte(&p) == 0x7F);
+    p.TermType = TERMTYPE_UNIX;
+    assert(Vt_BackspaceByte(&p) == 0x08);
+}
+
 int main(void)
 {
     test_glyph_encoding_follows_the_font_except_for_cp437();
@@ -197,6 +239,8 @@ int main(void)
     test_ma2_13_unix_with_cp437_swaps_to_utf8_only();
     test_ma2_14_first_valid_utf8_sequence_fires_once_invalid_bytes_never();
     test_ma2_14_fired_sniffer_keeps_utf8_until_the_user_changes_prefs();
+    test_ssh_term_name_follows_the_personality();
+    test_backspace_byte_follows_the_personality_and_swap();
     printf("vtpersonality: all assertions passed\n");
     return 0;
 }

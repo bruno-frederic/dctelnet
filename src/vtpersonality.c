@@ -30,6 +30,21 @@ struct VtPersonality Vt_PersonalityFor(const struct PrefsStruct *p)
     return r;
 }
 
+const char *Vt_SshTermName(const struct PrefsStruct *p)
+{
+    return (p->State & APP_RENDERER_BUILTIN) && Vt_PersonalityFor(p).personality == VT_XTERM
+         ? "xterm" : "ansi";
+}
+
+UBYTE Vt_BackspaceByte(const struct PrefsStruct *p)
+{
+    BOOL del = Vt_PersonalityFor(p).personality == VT_XTERM;
+
+    if (p->State & APP_BACKSPACE_DEL_SWAPPED)
+        del = !del;
+    return del ? 0x7F : 0x08;
+}
+
 BOOL Vt_EngineDecodesUtf8(const struct PrefsStruct *p)
 {
     return (p->State & APP_RENDERER_BUILTIN) != 0

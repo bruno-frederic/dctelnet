@@ -20,6 +20,16 @@ struct VtPersonality {
  * reads the Character Set. */
 struct VtPersonality Vt_PersonalityFor(const struct PrefsStruct *p);
 
+/* The TERM an SSH host is told (the pty request): what the renderer really
+ * emulates, spelt as terminfo knows it (case-sensitive): "xterm" for the
+ * xterm personality on the built-in renderer, "ansi" for PC ANSI and for the
+ * console / XEM renderers (an ANSI-only subset). Not the telnet TTYPE string. */
+const char *Vt_SshTermName(const struct PrefsStruct *p);
+
+/* The byte the Backspace key sends: DEL (0x7F) under the xterm personality,
+ * BS (0x08) under PC ANSI. APP_BACKSPACE_DEL_SWAPPED swaps the two. */
+UBYTE Vt_BackspaceByte(const struct PrefsStruct *p);
+
 /* Which encoding vt_map_glyph() maps a code point into. CP437 is a byte
  * pass-through (the font decides the look), so it stays CP437 whatever the
  * font is; real Unicode (UTF-8, Latin-1) is the font's own encoding, as
