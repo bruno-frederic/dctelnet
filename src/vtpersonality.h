@@ -13,7 +13,8 @@ struct VtPersonality {
     enum vt_charset charset;
 };
 
-/* Terminal Type (prefs.TermType) decides the personality: BBS is the IBM PC
+/* Terminal Type (prefs.TermType) decides the personality: PETSCII counts as BBS
+ * (the C64 display takes the bytes before the engine), BBS is the IBM PC
  * ANSI.SYS terminal, Unix is xterm, Automatic takes xterm for Character Set
  * UTF-8 and the PC terminal for anything else. PC ANSI reads CP437 (a Latin-1
  * site gets its bytes through unchanged, the font decides the look); xterm
@@ -25,6 +26,10 @@ struct VtPersonality Vt_PersonalityFor(const struct PrefsStruct *p);
  * xterm personality on the built-in renderer, "ansi" for PC ANSI and for the
  * console / XEM renderers (an ANSI-only subset). Not the telnet TTYPE string. */
 const char *Vt_SshTermName(const struct PrefsStruct *p);
+
+/* The terminal type a telnet or rlogin board is told: "PETSCII" for Terminal Type
+ * PETSCII, else the Display ID string (TelnetTermType). */
+const char *Vt_TelnetTermName(const struct PrefsStruct *p);
 
 /* The byte the Backspace key sends: DEL (0x7F) under the xterm personality,
  * BS (0x08) under PC ANSI. APP_BACKSPACE_DEL_SWAPPED swaps the two. */

@@ -34,9 +34,10 @@ static struct SiteSettings entry_with(ULONG groups, struct PrefsStruct p) {
  * window geometry stays where the windows are. */
 static void test_apply_takes_only_overridden_groups(void) {
     struct PrefsStruct global = make(APP_BACKSPACE_DEL_SWAPPED, "IBM.font", 8), live = global;
-    struct PrefsStruct e = make(APP_PETSCII_MODE | APP_LEDS_ENABLED, "Petscii.font", 8);
+    struct PrefsStruct e = make(APP_LEDS_ENABLED, "Petscii.font", 8);
     struct SiteSettings entry;
 
+    e.TermType = TERMTYPE_PETSCII;
     strcpy((char *)e.TelnetTermType, "PETSCII");
     strcpy((char *)e.XferLibrary, "xprkermit.library");
     e.nScrollbackLines = 9999;                       /* app-wide: never from an entry */
@@ -47,7 +48,7 @@ static void test_apply_takes_only_overridden_groups(void) {
     SitePrefs_ApplyEntry(&live, &global, &entry);
 
     assert(strcmp((char *)live.FontName, "Petscii.font") == 0);        /* Screen: entry */
-    assert(live.State & APP_PETSCII_MODE);                     /* Terminal: entry */
+    assert(Prefs_IsPetscii(&live));                              /* Terminal: entry */
     assert(strcmp((char *)live.TelnetTermType, "PETSCII") == 0);
     assert(live.State & APP_BACKSPACE_DEL_SWAPPED);                      /* Keyboard: global */
     assert(strcmp((char *)live.XferLibrary, "xprkermit.library") != 0); /* Transfer: global */
@@ -140,7 +141,7 @@ static void test_each_group_moves_only_its_members(void) {
  * moved them during the session. */
 static void test_restore_brings_back_global_but_keeps_moved_windows(void) {
     struct PrefsStruct global = make(0, "IBM.font", 8);
-    struct PrefsStruct live = make(APP_PETSCII_MODE | APP_LOCAL_ECHO, "Petscii.font", 8);
+    struct PrefsStruct live = make(APP_LOCAL_ECHO, "Petscii.font", 8);
     live.MainWinLeftEdge = 55;
 
     SitePrefs_Restore(&live, &global);
@@ -155,7 +156,7 @@ static void test_restore_brings_back_global_but_keeps_moved_windows(void) {
  * ARE the global ones (today's behaviour). */
 static void test_save_writes_global_during_a_session(void) {
     struct PrefsStruct global = make(0, "IBM.font", 8);
-    struct PrefsStruct live = make(APP_PETSCII_MODE | APP_LOCAL_ECHO, "Petscii.font", 8);
+    struct PrefsStruct live = make(APP_LOCAL_ECHO, "Petscii.font", 8);
     struct PrefsStruct out;
     live.MainWinTopEdge = 77;
 
@@ -180,7 +181,7 @@ static void test_display_differs_names_what_needs_a_reopen(void) {
     b = a; b.FontSize = 11;                              /* font: screen reopen */
     assert(SitePrefs_DisplayDiffers(&a, &b, &screen) && screen);
 
-    b = a; b.State |= APP_PETSCII_MODE;   /* C64 display follows the connection, not the flag */
+    b = a; b.TermType = TERMTYPE_PETSCII;   /* C64 display follows the connection, not the flag */
     assert(!SitePrefs_DisplayDiffers(&a, &b, &screen));
 
     b = a; b.DisplayDepth = 3;
@@ -205,7 +206,8 @@ static void test_sidecar_round_trip_and_rejects(void) {
     static UBYTE buf[SITE_FILE_SIZE_MAX + 8];
     size_t n;
 
-    in = entry_with(SITE_GROUP_TERMINAL, make(APP_PETSCII_MODE, "Petscii.font", 8));
+    in = entry_with(SITE_GROUP_TERMINAL, make(0, "Petscii.font", 8));
+    in.prefs.TermType = TERMTYPE_PETSCII;
     strcpy((char *)in.fKeys, "F1 macro");
     strcpy(in.loginMacro, "\\u\\r\\p\\r");
     n = SitePrefs_Encode(&in, buf, sizeof(buf));
@@ -246,13 +248,14 @@ static void test_a_dcs1_snapshot_loads_as_all_groups(void) {
     static TEXT globalKeys[SITE_FKEY_BYTES];
     UBYTE buf[4 + 376];
 
-    make_old_prefs(1UL << 15, "Petscii.font");               /* PETSCII Mode */
+    make_old_prefs(1UL << 15, "Petscii.font");               /* old PETSCII Mode flag */
     memcpy(buf, "DCS1", 4);
     memcpy(buf + 4, oldPrefs, 376);
     strcpy((char *)globalKeys, "global F1");
     assert(SitePrefs_Decode(&out, buf, sizeof(buf), globalKeys));
     assert(out.groups == SITE_GROUPS_ALL);
-    assert(!strcmp((char *)out.prefs.FontName, "Petscii.font") && (out.prefs.State & APP_PETSCII_MODE));
+    assert(!strcmp((char *)out.prefs.FontName, "Petscii.font") && Prefs_IsPetscii(&out.prefs));
+    assert(!(out.prefs.State & APP_OLD_PETSCII_MODE));
     assert(strcmp((char *)out.fKeys, "global F1") == 0);
     assert(out.loginMacro[0] == 0);
     assert(!SitePrefs_Decode(&out, buf, sizeof(buf) - 1, globalKeys));
@@ -363,7 +366,7 @@ static void test_differing_groups_names_what_changed(void) {
     assert(SitePrefs_DifferingGroups(&a, &b, keysA, keysB) == SITE_GROUP_TRANSFER);
     b = a; strcpy((char *)keysB, "F1");
     assert(SitePrefs_DifferingGroups(&a, &b, keysA, keysB) == SITE_GROUP_KEYBOARD);
-    b = a; b.State |= APP_BACKSPACE_DEL_SWAPPED | APP_PETSCII_MODE;
+    b = a; b.State |= APP_BACKSPACE_DEL_SWAPPED; b.TermType = TERMTYPE_PETSCII;
     assert(SitePrefs_DifferingGroups(&a, &b, keysA, keysB) == (SITE_GROUP_KEYBOARD | SITE_GROUP_TERMINAL));
 }
 
@@ -450,20 +453,22 @@ static void test_a_font_picked_while_connected_is_not_saved(void) {
 
 /* The settings window's one-line summary per group. */
 static void test_group_summaries(void) {
-    struct PrefsStruct p = make(APP_FULLSCREEN | APP_PETSCII_MODE | APP_BACKSPACE_DEL_SWAPPED, "Petscii.font", 8);
+    struct PrefsStruct p = make(APP_FULLSCREEN | APP_BACKSPACE_DEL_SWAPPED, "Petscii.font", 8);
     char out[80];
 
-    strcpy((char *)p.TelnetTermType, "VT102");    /* PETSCII Mode sends "PETSCII" regardless */
+    strcpy((char *)p.TelnetTermType, "VT102");    /* PETSCII sends "PETSCII" regardless */
+    p.TermType = TERMTYPE_PETSCII;
     strcpy((char *)p.XferLibrary, "xprzmodem.library");
     SitePrefs_GroupSummary(SITE_GROUP_SCREEN, &p, out, sizeof(out));
     assert(strcmp(out, "Petscii 8") == 0);
     SitePrefs_GroupSummary(SITE_GROUP_TERMINAL, &p, out, sizeof(out));
-    assert(strcmp(out, "PETSCII Mode, type PETSCII") == 0);
+    assert(strcmp(out, "PETSCII, type PETSCII") == 0);
     SitePrefs_GroupSummary(SITE_GROUP_KEYBOARD, &p, out, sizeof(out));
     assert(strcmp(out, "BS/DEL Swap") == 0);
     SitePrefs_GroupSummary(SITE_GROUP_TRANSFER, &p, out, sizeof(out));
     assert(strcmp(out, "xprzmodem.library") == 0);
 
+    p.TermType = TERMTYPE_AUTO;
     p.State = APP_RENDERER_XEM_LIB | APP_RETURN_SENDING_CRLF;      /* on the Workbench */
     strcpy((char *)p.XemLibrary, "xemvt340.library");
     SitePrefs_GroupSummary(SITE_GROUP_TERMINAL, &p, out, 20);        /* truncates safely */

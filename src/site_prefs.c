@@ -5,7 +5,7 @@
 #include "charset.h"
 
 /* Flags whose change needs the screen reopened (OpenAppScreen reads them).
- * APP_PETSCII_MODE is not one: the C64 display is up only during a
+ * Terminal Type PETSCII is not one: the C64 display is up only during a
  * connection, and DCTelnet.c switches it with the connection itself. */
 #define SCREEN_FLAGS  (APP_FULLSCREEN | APP_TITLE_BAR_ENABLED)
 
@@ -34,7 +34,7 @@ static void replace_keeping_geometry(struct PrefsStruct *live, const struct Pref
     copy_geometry(live, &geometry);
 }
 
-#define TERMINAL_GROUP_FLAGS  (APP_PETSCII_MODE | APP_RENDERER_ALL | APP_RAW_CONNECTION | APP_LOCAL_ECHO \
+#define TERMINAL_GROUP_FLAGS  (APP_RENDERER_ALL | APP_RAW_CONNECTION | APP_LOCAL_ECHO \
                                | APP_RLOGIN | APP_SSH)
 #define KEYBOARD_GROUP_FLAGS  (APP_BACKSPACE_DEL_SWAPPED | APP_RETURN_SENDING_CRLF | APP_VT_KEYS)
 
@@ -224,6 +224,7 @@ static BOOL decode_body(struct SiteSettings *out, const UBYTE *p, size_t left, s
     {
         memset(&out->prefs, 0, sizeof(out->prefs));
         memcpy(&out->prefs, p, prefsLen < sizeof(out->prefs) ? prefsLen : sizeof(out->prefs));
+        Prefs_MigratePetscii(&out->prefs);
     }
     p += prefsLen;
     memcpy(out->fKeys, p, sizeof(out->fKeys));       p += sizeof(out->fKeys);
@@ -405,8 +406,8 @@ void SitePrefs_GroupSummary(ULONG group, const struct PrefsStruct *p, char *out,
     }
     else if (group == SITE_GROUP_TERMINAL)
     {
-        if (p->State & APP_PETSCII_MODE)
-            put(out, &len, max, "PETSCII Mode");
+        if (Prefs_IsPetscii(p))
+            put(out, &len, max, "PETSCII");
         else if (p->State & APP_RENDERER_XEM_LIB)
         {
             put(out, &len, max, "XEM ");
@@ -414,10 +415,10 @@ void SitePrefs_GroupSummary(ULONG group, const struct PrefsStruct *p, char *out,
         }
         else
             put(out, &len, max, "ANSI");
-        // The terminal type the board is told (TelnetSendTType): PETSCII Mode
-        // always says "PETSCII", whatever Display ID holds.
+        // The terminal type the board is told (TelnetSendTType): Terminal Type
+        // PETSCII always says "PETSCII", whatever Display ID holds.
         put(out, &len, max, ", type ");
-        put(out, &len, max, (p->State & APP_PETSCII_MODE) ? "PETSCII" : (const char *)p->TelnetTermType);
+        put(out, &len, max, Prefs_IsPetscii(p) ? "PETSCII" : (const char *)p->TelnetTermType);
         if (p->Charset == CHARSET_UTF8)        put(out, &len, max, ", UTF-8");
         else if (p->Charset == CHARSET_LATIN1) put(out, &len, max, ", Amiga characters");
         if (p->State & APP_RAW_CONNECTION) put(out, &len, max, ", Raw Connection");

@@ -162,15 +162,15 @@ static struct NewMenu mainMenuDesc[] =
     {    NM_ITEM, "Rlogin",                          0 , HIGHCOMP|CHECKIT|MENUTOGGLE, 0, (APTR)MENU_RLOGIN},
     {    NM_ITEM, "SSH",                             0 , HIGHCOMP|CHECKIT|MENUTOGGLE, 0, (APTR)MENU_SSH},
 //  {    NM_ITEM, "Convert incoming LF to CRLF",    "L", HIGHCOMP|CHECKIT|MENUTOGGLE, 0, (APTR)MENU_INCOMING_LF_TO_CRLF},
-    {    NM_ITEM, "PETSCII Mode",                    0 , HIGHCOMP|CHECKIT|MENUTOGGLE, 0, (APTR)MENU_PETSCII_MODE},
     {    NM_ITEM, "Character Set",                   0 ,             0,               0, (APTR)MENU_CHARSET},
     {       NM_SUB, "IBM PC (CP437)",                0 ,       CHECKIT,       ~1L & 7, (APTR)MENU_CHARSET_CP437},
     {       NM_SUB, "Amiga (ISO-8859-1)",            0 ,       CHECKIT,       ~2L & 7, (APTR)MENU_CHARSET_LATIN1},
     {       NM_SUB, "UTF-8",                         0 ,       CHECKIT,       ~4L & 7, (APTR)MENU_CHARSET_UTF8},
     {    NM_ITEM, "Terminal Type",                   0 ,             0,               0, (APTR)MENU_TERMTYPE},
-    {       NM_SUB, "Automatic",                     0 ,       CHECKIT,       ~1L & 7, (APTR)MENU_TERMTYPE_AUTO},
-    {       NM_SUB, "BBS",                           0 ,       CHECKIT,       ~2L & 7, (APTR)MENU_TERMTYPE_BBS},
-    {       NM_SUB, "Unix",                          0 ,       CHECKIT,       ~4L & 7, (APTR)MENU_TERMTYPE_UNIX},
+    {       NM_SUB, "Automatic",                     0 ,       CHECKIT,       ~1L & 15, (APTR)MENU_TERMTYPE_AUTO},
+    {       NM_SUB, "BBS",                           0 ,       CHECKIT,       ~2L & 15, (APTR)MENU_TERMTYPE_BBS},
+    {       NM_SUB, "Unix",                          0 ,       CHECKIT,       ~4L & 15, (APTR)MENU_TERMTYPE_UNIX},
+    {       NM_SUB, "PETSCII",                       0 ,       CHECKIT,       ~8L & 15, (APTR)MENU_TERMTYPE_PETSCII},
     {    NM_ITEM, "Bell",                            0 ,             0,               0, (APTR)MENU_BELL},
     {       NM_SUB, "Flash",                         0 ,       CHECKIT,       ~1L & 7, (APTR)MENU_BELL_FLASH},
     {       NM_SUB, "Sound",                         0 ,       CHECKIT,       ~2L & 7, (APTR)MENU_BELL_SOUND},
@@ -291,7 +291,7 @@ static BOOL wbWindowBoxValid = FALSE;
 static const char *consoleFrom = "the system";   // where ibmcon.device came from
 static char fontMissing[48];    // the font setting that could not be opened ("" = none)
 static BOOL displayIsPetscii = FALSE;    // the display was opened for PETSCII
-#define PETSCII_SESSION() (connectionDisplay && STATE_IS(APP_PETSCII_MODE))
+#define PETSCII_SESSION() (connectionDisplay && Prefs_IsPetscii(&prefs))
 // 32+ colours with ibmcon.device: the 16 ANSI colours get pens of their own
 // (Palette_AnsiPens), handed to ibmcon with IBMCMD_SETPENS; the UI keeps
 // Intuition's pens 0-7. On the Workbench they are 16 shared pens (V39).
@@ -1294,7 +1294,7 @@ static void RunPendingConnect(void)
             TerminalSize(&cols, &rows);
             if (!SshConn_Start(pendingConnect.host, pendingConnect.port,
                                pendingConnect.username, pendingConnect.password,
-                               PETSCII_SESSION() ? "PETSCII" : Vt_SshTermName(&prefs),
+                               Vt_SshTermName(&prefs),
                                cols, rows))
             {
                 DisConnect(FALSE, TRUE);
@@ -1306,7 +1306,7 @@ static void RunPendingConnect(void)
         {
             char hello[160];
             size_t n = Rlogin_Handshake(pendingConnect.username, pendingConnect.password,
-                                        PETSCII_SESSION() ? "PETSCII" : (const char *)prefs.TelnetTermType,
+                                        Vt_TelnetTermName(&prefs),
                                         "38400", hello, sizeof(hello));
             if (n) TCPSend(hello, (long)n);
             rloginAckPending = TRUE;
@@ -4506,11 +4506,19 @@ static void GetWindowMsg(struct Window *wwin)
                     case MENU_TERMTYPE_AUTO:
                     case MENU_TERMTYPE_BBS:
                     case MENU_TERMTYPE_UNIX:
+                    case MENU_TERMTYPE_PETSCII:
                         prefs.TermType = (UBYTE)((ULONG)GTMENUITEM_USERDATA(item) - MENU_TERMTYPE_AUTO);
                         Charset_Utf8Init(&utf8In);
                         Charset_Utf8Init(&utf8Echo);
                         Charset_Utf8Init(&utf8Sb);
                         VtApplyPersonality();
+                        if (Prefs_IsPetscii(&prefs))
+                            petscii_dispatch_init(&g_petsciiState, 40, 25);
+                        /* The C64 display is up only during a connection. Changed
+                         * while connected, the display reopens (the console fixes its
+                         * cell size at OpenDevice() time, as for MENU_SCREEN_FONT);
+                         * changed while disconnected, nothing visible changes. */
+                        SyncPetsciiDisplay();
                         break;
 
                     case MENU_COPY:
@@ -4659,16 +4667,6 @@ static void GetWindowMsg(struct Window *wwin)
                             shouldRestart = TRUE;
                         }
                     break;
-
-                    case MENU_PETSCII_MODE:
-                        UpdatePrefsFromMenu(item, APP_PETSCII_MODE);
-                        petscii_dispatch_init(&g_petsciiState, 40, 25);
-                        /* The C64 display is up only during a connection. Toggled
-                         * while connected, the display reopens (the console fixes its
-                         * cell size at OpenDevice() time, as for MENU_SCREEN_FONT);
-                         * toggled while disconnected, nothing visible changes. */
-                        SyncPetsciiDisplay();
-                        break;
 
                     case MENU_SCREEN_MODE:
                         oldDispID = prefs.DisplayID;
@@ -5871,13 +5869,13 @@ void CreateAppMenus(void)
     SetNewMenuCheckFromPref(MENU_RLOGIN,                  APP_RLOGIN);
     SetNewMenuCheckFromPref(MENU_SSH,                     APP_SSH);
     SetNewMenuCheckFromPref(MENU_FAST_SCROLL,             APP_FAST_SCROLL_ENABLED);
-    SetNewMenuCheckFromPref(MENU_PETSCII_MODE,            APP_PETSCII_MODE);
     GetNewMenuItemFromID(MENU_CHARSET_CP437)->nm_Flags  = CHECKIT | (prefs.Charset == CHARSET_CP437 ? CHECKED : 0);
     GetNewMenuItemFromID(MENU_CHARSET_LATIN1)->nm_Flags = CHECKIT | (prefs.Charset == CHARSET_LATIN1 ? CHECKED : 0);
     GetNewMenuItemFromID(MENU_CHARSET_UTF8)->nm_Flags   = CHECKIT | (prefs.Charset == CHARSET_UTF8 ? CHECKED : 0);
     GetNewMenuItemFromID(MENU_TERMTYPE_AUTO)->nm_Flags = CHECKIT | (prefs.TermType == TERMTYPE_AUTO ? CHECKED : 0);
     GetNewMenuItemFromID(MENU_TERMTYPE_BBS)->nm_Flags  = CHECKIT | (prefs.TermType == TERMTYPE_BBS ? CHECKED : 0);
     GetNewMenuItemFromID(MENU_TERMTYPE_UNIX)->nm_Flags = CHECKIT | (prefs.TermType == TERMTYPE_UNIX ? CHECKED : 0);
+    GetNewMenuItemFromID(MENU_TERMTYPE_PETSCII)->nm_Flags = CHECKIT | (Prefs_IsPetscii(&prefs) ? CHECKED : 0);
     GetNewMenuItemFromID(MENU_BELL_FLASH)->nm_Flags = CHECKIT | (prefs.Bell == BELL_FLASH ? CHECKED : 0);
     GetNewMenuItemFromID(MENU_BELL_SOUND)->nm_Flags = CHECKIT | (prefs.Bell == BELL_SOUND ? CHECKED : 0);
     GetNewMenuItemFromID(MENU_BELL_OFF)->nm_Flags   = CHECKIT | (prefs.Bell == BELL_OFF ? CHECKED : 0);

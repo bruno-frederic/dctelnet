@@ -1113,7 +1113,7 @@ static ULONG NextSettingsId(struct List *list)
 enum
 {
     SG_SCREEN_OVR, SG_SCREEN_SUM, SG_SCREEN_CUR, SG_SCREEN_FONT, SG_SCREEN_PALETTE,
-    SG_TERM_OVR, SG_TERM_SUM, SG_TERM_CUR, SG_TERM_PETSCII, SG_TERM_XEMLIB, SG_TERM_DISPID,
+    SG_TERM_OVR, SG_TERM_SUM, SG_TERM_CUR, SG_TERM_XEMLIB, SG_TERM_DISPID,
     SG_TERM_RAW, SG_TERM_ECHO, SG_TERM_RENDERER, SG_TERM_RLOGIN, SG_TERM_CHARSET, SG_TERM_SSH, SG_TERM_TERMTYPE,
     SG_KEY_OVR, SG_KEY_SUM, SG_KEY_CUR, SG_KEY_BSDEL, SG_KEY_CRLF, SG_KEY_FKEYS, SG_KEY_VT,
     SG_XFER_OVR, SG_XFER_SUM, SG_XFER_CUR, SG_XFER_PROTO, SG_XFER_OPTS,
@@ -1145,7 +1145,6 @@ static const struct SettingsGadgetDef settingsDefs[SG_COUNT] =
     {  80,  42, 112, 13, "Terminal",             PLACETEXT_LEFT,  CYCLE_KIND    },
     { 196,  42, 300, 13, NULL,                   0,               TEXT_KIND     },
     { 500,  42, 112, 13, "Use Current",          PLACETEXT_IN,    BUTTON_KIND   },
-    {  80,  59,  26, 11, "PETSCII Mode",         PLACETEXT_RIGHT, CHECKBOX_KIND },
     { 316,  58, 136, 13, "XEM Library...",       PLACETEXT_IN,    BUTTON_KIND   },
     { 456,  58, 120, 13, "Display ID...",        PLACETEXT_IN,    BUTTON_KIND   },
     {  80,  75,  26, 11, "Raw Connection",       PLACETEXT_RIGHT, CHECKBOX_KIND },
@@ -1178,8 +1177,8 @@ static const struct SettingsGadgetDef settingsDefs[SG_COUNT] =
 static STRPTR overrideLabels[] = { (STRPTR)"Global", (STRPTR)"This Entry", NULL };
 // The Character Set (charset.h: CHARSET_CP437, _LATIN1, _UTF8).
 static STRPTR charsetLabels[] = { (STRPTR)"IBM PC", (STRPTR)"Amiga", (STRPTR)"UTF-8", NULL };
-// The Terminal Type (prefs.h: TERMTYPE_AUTO, _BBS, _UNIX).
-static STRPTR termTypeLabels[] = { (STRPTR)"Automatic", (STRPTR)"BBS", (STRPTR)"Unix", NULL };
+// The Terminal Type (prefs.h: TERMTYPE_AUTO, _BBS, _UNIX, _PETSCII).
+static STRPTR termTypeLabels[] = { (STRPTR)"Automatic", (STRPTR)"BBS", (STRPTR)"Unix", (STRPTR)"PETSCII", NULL };
 // The Renderer cycle: APP_RENDERER_BUILTIN .. APP_RENDERER_IBMCON_DEVICE, in bit order.
 static STRPTR rendererLabels[] = { (STRPTR)"Built-in", (STRPTR)"console.device", (STRPTR)"XEM Library",
                                    (STRPTR)"ibmcon.device", NULL };
@@ -1221,7 +1220,6 @@ static void RefreshSettingsWindow(const struct SiteSettings *work)
         GT_SetGadgetAttrs(settingsGadgets[summaryGadget[g]], settingsWnd, NULL,
                           GTTX_Text, summary[g], TAG_DONE);
     }
-    SetChecked(SG_TERM_PETSCII, (shown.State & APP_PETSCII_MODE) != 0);
     SetChecked(SG_TERM_RAW,     (shown.State & APP_RAW_CONNECTION) != 0);
     SetChecked(SG_TERM_ECHO,    (shown.State & APP_LOCAL_ECHO) != 0);
     SetChecked(SG_TERM_RLOGIN,  (shown.State & APP_RLOGIN) != 0);
@@ -1516,9 +1514,6 @@ static BOOL EditEntrySettings(const char *entryName, struct SiteSettings *entry,
                     if (!EditPalette(&work.prefs)) work = undo;
                     break;
 
-                case SG_TERM_PETSCII:
-                    SetFlagFromGadget(&work, SITE_GROUP_TERMINAL, SG_TERM_PETSCII, APP_PETSCII_MODE, FALSE);
-                    break;
                 case SG_TERM_RENDERER:
                     OverrideGroup(&work, SITE_GROUP_TERMINAL);
                     work.prefs.State = Renderer_Select(work.prefs.State, (UWORD)code);

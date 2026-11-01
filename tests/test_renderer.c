@@ -11,7 +11,7 @@ static const ULONG bits[RENDERER_COUNT] = {
 
 static void test_only_the_builtin_renderer_reaches_vtcon(void)
 {
-    ULONG other = APP_PETSCII_MODE | APP_RAW_CONNECTION;
+    ULONG other = APP_LOCAL_ECHO | APP_RAW_CONNECTION;
 
     assert(Renderer_Route(APP_RENDERER_BUILTIN | other) == ROUTE_BUILTIN);
     assert(Renderer_Route(APP_RENDERER_CONSOLE_DEVICE | other) == ROUTE_CONSOLE);
@@ -36,7 +36,7 @@ static void test_iconified_draws_nothing(void)
 
 static void test_the_cycle_visits_all_four_in_bit_order(void)
 {
-    ULONG state = APP_PETSCII_MODE | APP_RENDERER_XEM_LIB;
+    ULONG state = APP_LOCAL_ECHO | APP_RENDERER_XEM_LIB;
     UWORD i;
 
     for (i = 0; i < RENDERER_COUNT; i++)
@@ -44,9 +44,9 @@ static void test_the_cycle_visits_all_four_in_bit_order(void)
         state = Renderer_Select(state, i);
         assert((state & APP_RENDERER_ALL) == bits[i]);
         assert(Renderer_Index(state) == i);
-        assert(state & APP_PETSCII_MODE);
+        assert(state & APP_LOCAL_ECHO);
     }
-    assert(Renderer_Index(APP_PETSCII_MODE) == 0);
+    assert(Renderer_Index(APP_LOCAL_ECHO) == 0);
 }
 
 int main(void)

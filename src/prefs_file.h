@@ -54,6 +54,14 @@ BOOL Prefs_FromLegacy(const UBYTE *old, size_t len, struct PrefsStruct *out);
  * 1920x1080; the others any size. Checked on load and whenever the
  * renderer changes.
  */
+/*
+ * PETSCII Mode used to be State bit 15 (APP_OLD_PETSCII_MODE); it is the Terminal
+ * Type PETSCII now. A p with the old flag gets TermType PETSCII and the flag
+ * cleared; the one place that reads the flag. Prefs_Decode and the Address Book
+ * entry decoder call it, so what they hand out never carries the flag.
+ */
+void Prefs_MigratePetscii(struct PrefsStruct *p);
+
 BOOL Prefs_ScreenFits(const struct PrefsStruct *p);
 
 

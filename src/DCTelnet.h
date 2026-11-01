@@ -65,15 +65,15 @@ enum MenuItemID
         MENU_RLOGIN,
         MENU_SSH,
 //      MENU_INCOMING_LF_TO_CRLF,
-        MENU_PETSCII_MODE,
         MENU_CHARSET,
             MENU_CHARSET_CP437,     // CP437, LATIN1, UTF8 in this order:
             MENU_CHARSET_LATIN1,    //   minus MENU_CHARSET_CP437 is the
             MENU_CHARSET_UTF8,      //   charset.h value
         MENU_TERMTYPE,
-            MENU_TERMTYPE_AUTO,     // AUTO, BBS, UNIX in this order: minus
+            MENU_TERMTYPE_AUTO,     // AUTO, BBS, UNIX, PETSCII in this order: minus
             MENU_TERMTYPE_BBS,      //   MENU_TERMTYPE_AUTO is the prefs.h
             MENU_TERMTYPE_UNIX,     //   TERMTYPE_ value
+            MENU_TERMTYPE_PETSCII,
         MENU_BELL,
             MENU_BELL_FLASH,        // FLASH, SOUND, OFF in this order (prefs.h)
             MENU_BELL_SOUND,

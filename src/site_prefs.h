@@ -21,7 +21,7 @@
  *   Screen:   FontName, FontSize, AnsiColors, DeviceColors (the screen mode
  *             and Full-screen are app-wide: an entry never changes where or
  *             in which mode DCTelnet runs)
- *   Terminal: APP_PETSCII_MODE, the renderer (APP_RENDERER_*), XemLibrary,
+ *   Terminal: the renderer (APP_RENDERER_*), XemLibrary,
  *             TelnetTermType, Charset, Blink, TermType, APP_RAW_CONNECTION, APP_LOCAL_ECHO, APP_RLOGIN,
  *             APP_SSH
  *             (+ XEM options)

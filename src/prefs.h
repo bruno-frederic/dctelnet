@@ -121,7 +121,7 @@ struct PrefsStruct
     UBYTE Blink;                // SGR 5 (blink): BLINK_ICE (0), BLINK_STEADY
 
     // Added after the first 2.x files: a shorter file loads with these 0.
-    UBYTE TermType;             // TERMTYPE_AUTO (0), _BBS, _UNIX (vtpersonality.h)
+    UBYTE TermType;             // TERMTYPE_AUTO (0), _BBS, _UNIX, _PETSCII (below)
     UBYTE Reserved[3];          // keeps the struct a multiple of 4; a new UBYTE field takes one
 };
 
@@ -155,7 +155,8 @@ struct PrefsStruct
 #define APP_RLOGIN                   (1UL << 13)  // Rlogin (RFC 1282): a raw byte stream after the login
                                                   // message, no telnet codes
 #define APP_SSH                      (1UL << 14)  // SSH (encrypted login, sshconn.c): no telnet codes
-#define APP_PETSCII_MODE             (1UL << 15)
+#define APP_OLD_PETSCII_MODE         (1UL << 15)  // retired: PETSCII is TERMTYPE_PETSCII now. Read only by
+                                                  // Prefs_MigratePetscii (prefs_file.c), never written
 #define APP_WINDOW_SNAPSHOT          (1UL << 16)  // MainWin* hold a Snapshot Windows size;
                                                   // clear: the Workbench window opens 80x25
 #define APP_VT_KEYS                  (1UL << 17)  // Home/End/Page/Insert send VT codes (ESC[1~ ...);
@@ -177,6 +178,10 @@ struct PrefsStruct
 #define TERMTYPE_AUTO 0  // from the Character Set: UTF-8 is Unix, anything else a BBS
 #define TERMTYPE_BBS  1  // PC ANSI (BBS art), whatever the Character Set
 #define TERMTYPE_UNIX 2  // xterm, whatever the Character Set
+#define TERMTYPE_PETSCII 3  // a Commodore 64 board: the C64 display and font, PETSCII keys
+
+// The one predicate for PETSCII (was the State flag APP_OLD_PETSCII_MODE).
+#define Prefs_IsPetscii(p) ((p)->TermType == TERMTYPE_PETSCII)
 
 // prefs.Blink
 #define BLINK_ICE    0   // blink makes the background bright (iCE colours), the cell does not blink

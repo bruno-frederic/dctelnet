@@ -230,6 +230,31 @@ static void test_backspace_byte_follows_the_personality_and_swap(void)
     assert(Vt_BackspaceByte(&p) == 0x08);
 }
 
+/* PETSCII Terminal Type: a PC-style personality like BBS, named PETSCII on
+ * the wire for SSH and telnet. */
+static void test_petscii_terminal_type_behaves_as_bbs_and_is_named_petscii(void)
+{
+    struct PrefsStruct p;
+    struct VtPersonality r, bbs;
+
+    memset(&p, 0, sizeof(p));
+    p.State = APP_RENDERER_BUILTIN;
+    strcpy((char *)p.TelnetTermType, "VT102");
+    p.Charset = CHARSET_UTF8;
+    p.TermType = TERMTYPE_BBS;
+    bbs = Vt_PersonalityFor(&p);
+    p.TermType = TERMTYPE_PETSCII;
+    r = Vt_PersonalityFor(&p);
+    assert(r.personality == bbs.personality && r.charset == bbs.charset);
+    assert(r.personality == VT_PCANSI && r.charset == VT_CS_CP437);
+    assert(strcmp(Vt_SshTermName(&p), "PETSCII") == 0);
+    assert(strcmp(Vt_TelnetTermName(&p), "PETSCII") == 0);
+    p.TermType = TERMTYPE_UNIX;
+    assert(strcmp(Vt_TelnetTermName(&p), "VT102") == 0);
+    for (p.Charset = CHARSET_CP437; p.Charset <= CHARSET_UTF8; p.Charset++)
+        assert(Vt_CharsetAfterTermType(TERMTYPE_PETSCII, p.Charset) == p.Charset);
+}
+
 int main(void)
 {
     test_glyph_encoding_follows_the_font_except_for_cp437();
@@ -241,6 +266,7 @@ int main(void)
     test_ma2_14_fired_sniffer_keeps_utf8_until_the_user_changes_prefs();
     test_ssh_term_name_follows_the_personality();
     test_backspace_byte_follows_the_personality_and_swap();
+    test_petscii_terminal_type_behaves_as_bbs_and_is_named_petscii();
     printf("vtpersonality: all assertions passed\n");
     return 0;
 }

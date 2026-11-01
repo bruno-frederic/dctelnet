@@ -21,8 +21,8 @@ ifneq ($(HOST_ID),$(shell cat .host-id 2>/dev/null))
 $(shell rm -f $(TESTS) ansimusic_dump; echo '$(HOST_ID)' > .host-id)
 endif
 
-.PHONY: all clean check-encoding check-fonts check-currenttime-null check-stack check-statics check-petscii-reopen check-debug-stack check-ssh-terminal
-all: $(TESTS) check-encoding check-fonts check-currenttime-null check-stack check-statics check-petscii-reopen check-debug-stack check-ssh-terminal
+.PHONY: all clean check-encoding check-fonts check-currenttime-null check-stack check-statics check-petscii-reopen check-debug-stack check-ssh-terminal check-petscii-termtype
+all: $(TESTS) check-encoding check-fonts check-currenttime-null check-stack check-statics check-petscii-reopen check-debug-stack check-ssh-terminal check-petscii-termtype
 	@for t in $(TESTS); do echo "--- $$t ---"; ./$$t || exit 1; done
 
 # Check the file are standard printable ASCII or ISO-8859
@@ -86,6 +86,19 @@ check-ssh-terminal:
 		|| ! LC_ALL=C grep --text --after-context=12 'SshConn_Start(' DCTelnet.c | LC_ALL=C grep --text --quiet 'SetLocalEchoBack(FALSE)' \
 		|| ! LC_ALL=C grep --text --after-context=6 'static void OutKey' DCTelnet.c | LC_ALL=C grep --text --quiet 'Vt_BackspaceByte'; then \
 		echo "ERROR: DCTelnet.c must pass Vt_SshTermName to SshConn_Start, call SetLocalEchoBack(FALSE) after it, and use Vt_BackspaceByte in OutKey."; \
+		exit 1; \
+	fi
+
+# PETSCII is a Terminal Type. The old State bit (APP_OLD_PETSCII_MODE) is read
+# only by the migration in prefs_file.c; every other test of "is this PETSCII"
+# goes through Prefs_IsPetscii, the View menu checks the PETSCII item from it,
+# and the old menu item and settings checkbox are gone.
+check-petscii-termtype:
+	@cd ../src && if LC_ALL=C grep -aqE 'APP_PETSCII_MODE|MENU_PETSCII_MODE|SG_TERM_PETSCII' *.c *.h \
+		|| LC_ALL=C grep -alE 'APP_OLD_PETSCII_MODE' *.c *.h | LC_ALL=C grep -qvxE 'prefs\.h|prefs_file\.[ch]' \
+		|| ! LC_ALL=C grep -a 'MENU_TERMTYPE_PETSCII' DCTelnet.c | LC_ALL=C grep -aq 'Prefs_IsPetscii(&prefs)' \
+		|| ! LC_ALL=C grep -a 'define PETSCII_SESSION' DCTelnet.c | LC_ALL=C grep -aq 'Prefs_IsPetscii'; then \
+		echo "ERROR: PETSCII must be read through Prefs_IsPetscii; APP_OLD_PETSCII_MODE only in prefs.h, prefs_file.c and prefs_file.h; the old menu item and checkbox must stay gone."; \
 		exit 1; \
 	fi
 

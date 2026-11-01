@@ -72,7 +72,6 @@ static ULONG StateFromOldFlags(ULONG f)
     if (f & OLD_LOCAL_ECHO)             s |= APP_LOCAL_ECHO;
     if (f & OLD_RAW_CONNECTION)         s |= APP_RAW_CONNECTION;
     if (f & OLD_JUMP_SCROLL)            s |= APP_FAST_SCROLL_ENABLED;
-    if (f & OLD_PETSCII_MODE)           s |= APP_PETSCII_MODE;
     if (f & OLD_WINDOW_SNAPSHOT)        s |= APP_WINDOW_SNAPSHOT;
     if (f & OLD_VT_KEYS)                s |= APP_VT_KEYS;
     if (f & OLD_RLOGIN)                 s |= APP_RLOGIN;
@@ -103,6 +102,8 @@ static BOOL FromLegacy(const UBYTE *old, size_t len, struct PrefsStruct *out)
         return TRUE;
 
     out->State = StateFromOldFlags(Long(old + OLD_FLAGS));
+    if (Long(old + OLD_FLAGS) & OLD_PETSCII_MODE)
+        out->TermType = TERMTYPE_PETSCII;
     out->MainWinLeftEdge       = (WORD)Word(old + OLD_WIN);
     out->MainWinTopEdge        = (WORD)Word(old + OLD_WIN + 2);
     out->MainWinWidth          = (WORD)Word(old + OLD_WIN + 4);
@@ -155,7 +156,17 @@ int Prefs_Decode(const UBYTE *file, size_t len, struct PrefsStruct *out)
     if (n > len - sizeof(hdr)) n = len - sizeof(hdr);           // (a file cut short)
     if (n > sizeof(*out))      n = sizeof(*out);
     memcpy(out, file + sizeof(hdr), n);
+    Prefs_MigratePetscii(out);
     return PREFS_FILE_V2;
+}
+
+void Prefs_MigratePetscii(struct PrefsStruct *p)
+{
+    if (p->State & APP_OLD_PETSCII_MODE)
+    {
+        p->State &= ~APP_OLD_PETSCII_MODE;
+        p->TermType = TERMTYPE_PETSCII;
+    }
 }
 
 UWORD *Prefs_Palette(struct PrefsStruct *p)

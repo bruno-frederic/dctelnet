@@ -10,7 +10,8 @@ struct VtPersonality Vt_PersonalityFor(const struct PrefsStruct *p)
 
     switch (p->TermType)
     {
-        case TERMTYPE_BBS:  xterm = FALSE; break;
+        case TERMTYPE_BBS:
+        case TERMTYPE_PETSCII: xterm = FALSE; break;   /* the C64 display bypasses the engine */
         case TERMTYPE_UNIX: xterm = TRUE;  break;
         default:            xterm = (p->Charset == CHARSET_UTF8); break;   /* Automatic */
     }
@@ -32,8 +33,15 @@ struct VtPersonality Vt_PersonalityFor(const struct PrefsStruct *p)
 
 const char *Vt_SshTermName(const struct PrefsStruct *p)
 {
+    if (Prefs_IsPetscii(p))
+        return "PETSCII";
     return (p->State & APP_RENDERER_BUILTIN) && Vt_PersonalityFor(p).personality == VT_XTERM
          ? "xterm" : "ansi";
+}
+
+const char *Vt_TelnetTermName(const struct PrefsStruct *p)
+{
+    return Prefs_IsPetscii(p) ? "PETSCII" : (const char *)p->TelnetTermType;
 }
 
 UBYTE Vt_BackspaceByte(const struct PrefsStruct *p)

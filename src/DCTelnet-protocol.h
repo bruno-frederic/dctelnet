@@ -349,11 +349,11 @@ static void TelnetSendTType(void)
 {
     UBYTE start[] = { IAC, SB, TELOPT_TTYPE, TELQUAL_IS };
     UBYTE   end[] = { IAC, SE };
-    // PETSCII mode identifies itself as "PETSCII" over TTYPE so a
+    // Terminal Type PETSCII identifies itself as "PETSCII" over TTYPE so a
     // PETSCII-aware BBS (classifyTerminalType()-style detection) can
     // auto-flip into its native mode, independent of the user's normal
     // displayidstr (VT102/ANSI/etc. for non-PETSCII sessions).
-    const char *ttypeString = STATE_IS(APP_PETSCII_MODE) ? "PETSCII" : prefs.TelnetTermType;
+    const char *ttypeString = Vt_TelnetTermName(&prefs);
 
     // Only send terminal type if the option was successfully negotiated with the telnet server
     if (telnetCtx.optState[TELOPT_TTYPE].us != YES)

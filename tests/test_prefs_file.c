@@ -120,9 +120,10 @@ static void test_an_old_prefs_file_keeps_all_its_settings(void)
     assert(got.nScrollbackLines == 1000);
     /* Use Workbench, BS/DEL swap, tool bar, local echo, PETSCII; title bar,
      * LEDs and scrollback were not hidden; the console was ibmcon.device. */
-    assert(got.State == (APP_BACKSPACE_DEL_SWAPPED | APP_TOOL_BAR_ENABLED | APP_LOCAL_ECHO | APP_PETSCII_MODE
+    assert(got.State == (APP_BACKSPACE_DEL_SWAPPED | APP_TOOL_BAR_ENABLED | APP_LOCAL_ECHO
                          | APP_TITLE_BAR_ENABLED | APP_LEDS_ENABLED | APP_SCROLLBACK_ENABLED
                          | APP_RENDERER_IBMCON_DEVICE));
+    assert(got.TermType == TERMTYPE_PETSCII);    /* the 1.x PETSCII flag became the terminal type */
 }
 
 /* The builds before v2.0 appended settings at 444 (a 508-byte struct). */
@@ -221,6 +222,28 @@ static void test_a_first_run_has_scrollback_history_on(void)
     assert((s & (APP_RENDERER_BUILTIN | APP_RENDERER_XEM_LIB | APP_RENDERER_IBMCON_DEVICE)) == APP_RENDERER_BUILTIN);
 }
 
+/* PETSCII Mode used to be State bit 15; it is now Terminal Type PETSCII.
+ * A file that still has the bit loads as that type with the bit clear, and
+ * Terminal Type 3 itself loads unchanged. */
+static void test_the_old_petscii_flag_becomes_the_petscii_terminal_type(void)
+{
+    struct PrefsStruct p, got;
+
+    memset(&p, 0, sizeof(p));
+    p.State = APP_LOCAL_ECHO | APP_OLD_PETSCII_MODE;
+    p.TermType = TERMTYPE_UNIX;
+    assert(Prefs_Decode(file, v2_file(&p, sizeof(p)), &got) == PREFS_FILE_V2);
+    assert(got.TermType == TERMTYPE_PETSCII && Prefs_IsPetscii(&got));
+    assert(got.State == APP_LOCAL_ECHO);
+    memset(&p, 0, sizeof(p));
+    p.TermType = TERMTYPE_PETSCII;
+    assert(Prefs_Decode(file, v2_file(&p, sizeof(p)), &got) == PREFS_FILE_V2);
+    assert(got.TermType == TERMTYPE_PETSCII && got.State == 0);
+    p.TermType = TERMTYPE_BBS;
+    assert(Prefs_Decode(file, v2_file(&p, sizeof(p)), &got) == PREFS_FILE_V2);
+    assert(!Prefs_IsPetscii(&got));
+}
+
 int main(void)
 {
     test_a_v2_file_round_trips();
@@ -236,6 +259,7 @@ int main(void)
     test_the_built_in_renderer_fits_any_screen_of_80x25_cells();
     test_a_1x_file_gives_the_built_in_renderer_its_colours();
     test_a_first_run_has_scrollback_history_on();
+    test_the_old_petscii_flag_becomes_the_petscii_terminal_type();
     printf("prefs_file: all assertions passed\n");
     return 0;
 }
