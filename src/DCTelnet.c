@@ -5620,7 +5620,9 @@ void OpenAppWindow(void)
 
         if (toolBarWin)    // Tool Window
         {
-            top = toolBarWin->TopEdge + toolBarWin->Height + 1;
+            // Straight under the bar: a row of screen between them showed
+            // pen 0 as a grey stripe over the black terminal.
+            top = toolBarWin->TopEdge + toolBarWin->Height;
             height = scr->Height - top;
             if(backgad)
             {
