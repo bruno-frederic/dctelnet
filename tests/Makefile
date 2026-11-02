@@ -12,8 +12,8 @@ STACKCHK := $(shell $(CC) -Werror -Wstack-usage=$(STACK_MAX) -c -x c /dev/null -
 
 TESTS := test_petscii_modules test_petscii_dispatch test_prefs_file test_site_prefs test_palette test_screenfont test_progdir test_listsel test_textedit test_dsr test_keys test_clip test_ansiscan test_ticks test_renderer test_rexx test_rlogin test_ansimusic test_booklist test_crypto test_ssh test_knownhosts test_term_engine
 
-.PHONY: all clean check-encoding check-fonts check-stack check-statics check-debug-stack check-currenttime-null
-all: $(TESTS) check-encoding check-fonts check-stack check-statics check-debug-stack check-currenttime-null
+.PHONY: all clean check-encoding check-fonts check-stack check-statics check-debug-stack check-currenttime-null check-font-cancel
+all: $(TESTS) check-encoding check-fonts check-stack check-statics check-debug-stack check-currenttime-null check-font-cancel
 	@for t in $(TESTS); do echo "--- $$t ---"; ./$$t || exit 1; done
 
 # Check the file are standard printable ASCII or ISO-8859
@@ -183,3 +183,13 @@ test_term_engine: test_term_engine.c ../src/third_party/retro32-term/term-engine
                   $(VTCON)/engine/vtengine.c $(VTCON)/render/glyphmap.c
 	$(CC) $(CFLAGS) -Wno-unused-function -Wno-unused-parameter -Ishim -I$(VTCON)/engine -I$(VTCON)/render \
 	      -o $@ test_term_engine.c ../src/glyphraster.c ../src/screenfont.c ../src/vtpersonality.c ../src/vtpens.c ../src/vtinput.c $(VTCON)/engine/vtengine.c $(VTCON)/render/glyphmap.c
+
+# Screen font menu: a cancelled font requester changes nothing, so neither the
+# display reopen nor the personality update may run (a068760 added the second
+# call under an if without braces, so it ran after every cancel).
+check-font-cancel:
+	@cd ../src && if ! LC_ALL=C grep --text --after-context=1 '^ *&prefs.FontSize))$$' DCTelnet.c \
+		| LC_ALL=C grep --text --quiet '^ *{$$'; then \
+		echo "ERROR: DCTelnet.c MENU_SCREEN_FONT: the FontRequester() branch needs braces, or VtApplyPersonality() runs after a cancel."; \
+		exit 1; \
+	fi
