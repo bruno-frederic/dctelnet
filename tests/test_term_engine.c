@@ -992,12 +992,34 @@ static void test_ma2_14_apply_personality_keeps_the_switch(void)
     VtApplyPersonality();
     vt_put("\xE2\x96\x88");
     row = vt_row(vtTerm, 0, &n);
-    assert(row[0].ch == 0x2588 && row[1].ch == ' ');     /* the apply reset the screen */
+    assert(row[0].ch == 0xE9 && row[1].ch == 0x2588);    /* same personality: no reset */
     prefs.Charset = CHARSET_LATIN1;                        /* the user's change wins */
     VtApplyPersonality();
     vt_put("\xE9");
     row = vt_row(vtTerm, 0, &n);
     assert(row[0].ch == 0xE9);
+    VtClose();
+}
+
+/* An entry session that ends (or starts) in the same personality: EndEntrySession()
+ * applies the global Terminal Type again. The screen, with the session's text and
+ * the disconnect note, stays; only a real personality change resets the engine. */
+static void test_a_session_end_in_the_same_personality_keeps_the_text(void)
+{
+    int n;
+    const vt_cell *row;
+
+    vt_begin();
+    vt_put("KEEPME\r\nConnection closed");
+    VtApplyPersonality();                                  /* EndEntrySession() */
+    row = vt_row(vtTerm, 0, &n);
+    assert(row[0].ch == 'K' && row[5].ch == 'E');
+    row = vt_row(vtTerm, 1, &n);
+    assert(row[0].ch == 'C');
+    prefs.TermType = prefs.TermType == TERMTYPE_UNIX ? TERMTYPE_BBS : TERMTYPE_UNIX;
+    VtApplyPersonality();                                  /* a real change resets */
+    row = vt_row(vtTerm, 0, &n);
+    assert(row[0].ch == 0 || row[0].ch == ' ');
     VtClose();
 }
 
@@ -1428,6 +1450,7 @@ int main(void)
     test_ma2_14_split_sequence_held_back_through_vtwrite();
     test_ma2_14_flush_draws_held_byte_split_block_still_whole();
     test_ma2_14_apply_personality_keeps_the_switch();
+    test_a_session_end_in_the_same_personality_keeps_the_text();
     test_ma2_6_glyph_map_and_fallback();
     test_ma2_8_256_colour_and_24_bit_give_the_same_pen();
     test_ma2_9_rtg_rgb_gets_an_obtained_pen_once_and_releases_it();

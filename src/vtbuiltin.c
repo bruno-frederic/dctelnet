@@ -259,7 +259,10 @@ static void VtSyncCursor(void)
 static struct VtUtf8Sniffer vtSniff;
 
 /* The personality and character set the preferences ask for (Terminal >
- * Terminal Type, Character Set): at open, and when either menu changes. */
+ * Terminal Type, Character Set): at open, when either menu changes, and when
+ * an entry session starts or ends. vt_set_personality() also resets the
+ * engine (clears the screen), so it runs only for a real change: a session
+ * that ends in the same personality keeps its text and the disconnect note. */
 static void VtApplyPersonality(void)
 {
     struct VtPersonality pers = Vt_PersonalityForConnection(&prefs, &vtSniff);
@@ -267,7 +270,8 @@ static void VtApplyPersonality(void)
     vtGlyphEnc = Vt_GlyphEncoding(pers.charset, vtFontEnc);
     if (!vtTerm)
         return;
-    vt_set_personality(vtTerm, pers.personality);
+    if (vt_personality(vtTerm) != pers.personality)
+        vt_set_personality(vtTerm, pers.personality);
     vt_set_charset(vtTerm, pers.charset);
 }
 
