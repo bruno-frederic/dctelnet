@@ -412,7 +412,8 @@ static BOOL vtKeptText;
  * new grid and drawn again. Only a first open makes an engine. */
 static int VtOpen(void)
 {
-    static const vt_callbacks cb = { VtDraw, VtScroll, VtReply, NULL, VtTitle, NULL, NULL };
+    static const vt_callbacks cb = { VtDraw, VtScroll, VtReply, NULL, VtTitle, NULL, NULL,
+                                     NULL, NULL, NULL, NULL, NULL };  /* clipboard, cwd, notify, music: not used */
 
     vtScrollOff = 0;
     VtProbeFont();
