@@ -396,6 +396,12 @@ static int vtTermSb;
 static void VtRedraw(void);
 static void VtApplyScrollback(void);
 
+/* TRUE when the last VtOpen() kept the live engine and drew its cells again
+ * (a display reopen); FALSE when it made a blank one. OpenDisplay() writes
+ * its welcome screen, which starts with a form feed that clears, only on a
+ * blank terminal. */
+static BOOL vtKeptText;
+
 /* The terminal for the grid term_init_area() has just laid out (and
  * cleared). 0 when it is ready.
  *
@@ -425,8 +431,10 @@ static int VtOpen(void)
         vtTitleSeen[0] = vtTitleShown[0] = 0;
         VtSyncMouseIdcmp();
         VtRedraw();         /* the cells again, on the cleared area */
+        vtKeptText = TRUE;
         return 0;
     }
+    vtKeptText = FALSE;
     VtClose();      /* vt_new() draws through VtDraw(): vtTerm must not be the freed one */
     vtTermSb = VtScrollbackCap();
     vtTerm = vt_new(term_cols, term_rows, vtTermSb, &cb, NULL);

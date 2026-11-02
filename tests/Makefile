@@ -12,8 +12,8 @@ STACKCHK := $(shell $(CC) -Werror -Wstack-usage=$(STACK_MAX) -c -x c /dev/null -
 
 TESTS := test_petscii_modules test_petscii_dispatch test_prefs_file test_site_prefs test_palette test_screenfont test_progdir test_listsel test_textedit test_dsr test_keys test_clip test_ansiscan test_ticks test_renderer test_rexx test_rlogin test_ansimusic test_booklist test_crypto test_ssh test_knownhosts test_term_engine test_vtshadow
 
-.PHONY: all clean check-encoding check-fonts check-stack check-statics check-debug-stack check-currenttime-null
-all: $(TESTS) check-encoding check-fonts check-stack check-statics check-debug-stack check-currenttime-null
+.PHONY: all clean check-encoding check-fonts check-stack check-statics check-debug-stack check-currenttime-null check-welcome-kept-text
+all: $(TESTS) check-encoding check-fonts check-stack check-statics check-debug-stack check-currenttime-null check-welcome-kept-text
 	@for t in $(TESTS); do echo "--- $$t ---"; ./$$t || exit 1; done
 
 # Check the file are standard printable ASCII or ISO-8859
@@ -59,6 +59,19 @@ check-debug-stack:
 check-currenttime-null:
 	@cd ../src && if LC_ALL=C grep --text --line-number --extended-regexp 'CurrentTime[[:space:]]*\([^;]*NULL' *.c; then \
 		echo "ERROR: CurrentTime() called with a NULL argument; pass a dummy ULONG."; \
+		exit 1; \
+	fi
+
+# A display reopen (Tool Bar, Title Bar, Full-screen) keeps the terminal's text
+# (vtKeptText, the console shadow). OpenDisplay()'s welcome screen starts with a
+# form feed that clears: it must be written only when the reopen kept nothing,
+# and displayKeptText must come from both renderers (host tests cannot link
+# DCTelnet.c).
+check-welcome-kept-text:
+	@cd ../src && if ! LC_ALL=C grep --text --quiet 'if(!isConnected && !displayKeptText)' DCTelnet.c \
+		|| ! LC_ALL=C grep --text --quiet 'displayKeptText = ShadowRestore() || (STATE_IS(APP_RENDERER_BUILTIN) && vtKeptText);' DCTelnet.c \
+		|| ! LC_ALL=C grep --text --after-context=80 'if(!isConnected && !displayKeptText)' DCTelnet.c | LC_ALL=C grep --text --quiet 'Processor: '; then \
+		echo "ERROR: DCTelnet.c OpenDisplay() must write the welcome screen only when !displayKeptText (set from ShadowRestore() and vtKeptText)."; \
 		exit 1; \
 	fi
 
