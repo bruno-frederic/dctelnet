@@ -21,8 +21,8 @@ ifneq ($(HOST_ID),$(shell cat .host-id 2>/dev/null))
 $(shell rm -f $(TESTS) ansimusic_dump; echo '$(HOST_ID)' > .host-id)
 endif
 
-.PHONY: all clean check-encoding check-fonts check-currenttime-null check-stack check-statics check-petscii-reopen check-debug-stack
-all: $(TESTS) check-encoding check-fonts check-currenttime-null check-stack check-statics check-petscii-reopen check-debug-stack
+.PHONY: all clean check-encoding check-fonts check-currenttime-null check-stack check-statics check-petscii-reopen check-debug-stack check-font-cancel
+all: $(TESTS) check-encoding check-fonts check-currenttime-null check-stack check-statics check-petscii-reopen check-debug-stack check-font-cancel
 	@for t in $(TESTS); do echo "--- $$t ---"; ./$$t || exit 1; done
 
 # Check the file are standard printable ASCII or ISO-8859
@@ -211,5 +211,15 @@ check-petscii-reopen:
 		| LC_ALL=C grep --text --after-context=3 '(PETSCII_SESSION() != 0) != displayIsPetscii)' \
 		| LC_ALL=C grep --text --quiet 'shouldRestart = TRUE;'; then \
 		echo "ERROR: DCTelnet.c ReopenTerminal() must send a PETSCII mode change to the full reopen (shouldRestart), not replay the old mode's text in place."; \
+		exit 1; \
+	fi
+
+# Screen font menu: a cancelled font requester changes nothing, so neither the
+# display reopen nor the personality update may run (a068760 added the second
+# call under an if without braces, so it ran after every cancel).
+check-font-cancel:
+	@cd ../src && if ! LC_ALL=C grep --text --after-context=1 '^ *&prefs.FontSize))$$' DCTelnet.c \
+		| LC_ALL=C grep --text --quiet '^ *{$$'; then \
+		echo "ERROR: DCTelnet.c MENU_SCREEN_FONT: the FontRequester() branch needs braces, or VtApplyPersonality() runs after a cancel."; \
 		exit 1; \
 	fi

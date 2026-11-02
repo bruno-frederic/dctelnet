@@ -4696,8 +4696,10 @@ static void GetWindowMsg(struct Window *wwin)
                         if (FontRequester(win,
                                           prefs.FontName, sizeof(prefs.FontName),
                                           &prefs.FontSize))
+                        {
                             RequestDisplayReopen(&before);
                             VtApplyPersonality();            // the Terminal Type of the site or the settings
+                        }
                         break;
                     }
 
