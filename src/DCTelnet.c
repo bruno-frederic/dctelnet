@@ -5991,6 +5991,18 @@ BOOL OpenDisplay(void)
         PutStr("--> OpenDisplay()\n");
     #endif
 
+    // Kept text is valid only in the display mode it was written in. When the
+    // PETSCII mode changes (an Address Book entry starts or ends: C64 font and
+    // personality against the ANSI ones) the reopen starts from a blank
+    // terminal: no kept engine below (VtClose), no console shadow replay
+    // (Shadow_Close), so displayKeptText is FALSE and the welcome screen shows.
+    // displayIsPetscii still holds the mode of the display being replaced.
+    if ((PETSCII_SESSION() != 0) != displayIsPetscii)
+    {
+        VtClose();
+        Shadow_Close();
+    }
+
     if (scr == NULL)  // We need to (re)open completely the screen
         scr = OpenAppScreen();
 

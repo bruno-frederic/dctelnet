@@ -164,6 +164,20 @@ static void test_a_display_reopen_on_a_console_renderer_replays_the_screen(void)
     vt_free(ref);
 }
 
+/* A reopen in another display mode: OpenDisplay() calls Shadow_Close() first,
+ * so the new unit is blank (a new shadow, nothing replayed). */
+static void test_a_reopen_in_another_display_mode_replays_nothing(void)
+{
+    static struct Sink s;
+
+    Shadow_Close();
+    Shadow_DisplayOpened(ROUTE_CONSOLE, 80, 25, SinkWrite, &s);
+    Shadow_Feed((const UBYTE *)fixture, (long)sizeof(fixture) - 1);
+    Shadow_Close();                         /* the mode changed */
+    s.len = 0; s.calls = 0;
+    assert(!Shadow_DisplayOpened(ROUTE_CONSOLE, 80, 25, SinkWrite, &s) && s.calls == 0);
+}
+
 static void test_switching_to_built_in_frees_the_shadow_and_replays_nothing(void)
 {
     static struct Sink s;
@@ -263,6 +277,7 @@ int main(void)
     test_the_replayed_screen_matches_cell_for_cell_console_device();
     test_an_empty_screen_replays_nothing();
     test_a_display_reopen_on_a_console_renderer_replays_the_screen();
+    test_a_reopen_in_another_display_mode_replays_nothing();
     test_switching_to_built_in_frees_the_shadow_and_replays_nothing();
     test_ibmcon_to_console_device_carries_the_screen_over();
     test_a_new_grid_size_resizes_before_the_replay();

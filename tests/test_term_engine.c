@@ -662,6 +662,28 @@ static void test_a_display_reopen_keeps_the_text_and_draws_it_again(void)
     VtClose();
 }
 
+/* A reopen in another display mode (PETSCII entry ends, or starts): OpenDisplay()
+ * drops the engine with VtClose() first, so VtOpen() makes a blank one and the
+ * welcome screen shows. A reopen in the same mode keeps (test above). */
+static void test_a_reopen_in_another_display_mode_starts_blank(void)
+{
+    const vt_cell *row;
+    int n;
+
+    vt_begin();
+    vt_put("C64 TEXT");
+    VtReleasePens();
+    VtClose();                              /* OpenDisplay(): the mode changed */
+    assert(term_init_area(&screen, &winRp, 0, TOP, 0, TOP, W, H - TOP, &font) == 0);
+    newCalls = 0;
+    assert(VtOpen() == 0);
+    assert(newCalls == 1);                  /* a blank engine */
+    assert(!vtKeptText);                    /* so the welcome screen is written */
+    row = vt_row(vtTerm, 0, &n);
+    assert(row[0].ch == 0 || row[0].ch == ' ');
+    VtClose();
+}
+
 static void test_ma1_8_cursor_save_restore_position_and_erase(void)
 {
     vt_begin();
@@ -1448,6 +1470,7 @@ int main(void)
     test_a_16_pixel_font_gives_40_columns();
     test_vtopen_twice_never_draws_through_the_previous_engine();
     test_a_display_reopen_keeps_the_text_and_draws_it_again();
+    test_a_reopen_in_another_display_mode_starts_blank();
     test_a_menu_cannot_open_while_the_terminal_draws_into_the_bitmap();
     test_a_menu_open_over_the_terminal_is_drawn_around();
     test_a_menu_opened_while_an_answer_is_sent_is_drawn_around();
