@@ -11,9 +11,9 @@ Each is 16x8: the C64's 8x8 cells drawn twice as wide, so 40 columns fill
 an Amiga hires line the way they fill a C64 screen. The glyphs are indexed
 by the raw PETSCII byte.
 
-Install: copy both .font files and their drawers to FONTS:, or leave them
-in DCTelnet's own Fonts drawer -- DCTelnet looks there too. Without them
-PETSCII Mode still works, with CP437 lookalike glyphs.
+DCTelnet has these glyphs built in and does not need the font files: they
+are for other programs (a text editor, an ANSI/PETSCII art viewer). To use
+them there, copy both .font files and their drawers to FONTS:.
 
 Check (DCTelnet's source tree): python3 tools/check_amiga_font.py
 build/package/DCTelnet/Fonts/Petscii.font parses a font the way
