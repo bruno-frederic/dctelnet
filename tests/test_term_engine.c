@@ -636,6 +636,7 @@ static void test_a_display_reopen_keeps_the_text_and_draws_it_again(void)
     char line[8];
 
     vt_begin();
+    assert(!vtKeptText);                    /* a first open: blank, OpenDisplay() may welcome */
     vt_put("HELLO\r\nBBS");
     VtReleasePens();                        /* CloseConsoleDevice() in CloseDisplay() */
     /* the reopened window: 16 pixels lower and shorter, two rows fewer */
@@ -644,6 +645,7 @@ static void test_a_display_reopen_keeps_the_text_and_draws_it_again(void)
     probes = 0;
     assert(VtOpen() == 0);
     assert(newCalls == 0);                  /* the same engine, not a blank one */
+    assert(vtKeptText);                     /* so OpenDisplay() writes no clearing welcome screen */
     assert(vt_rows(vtTerm) == term_rows && vt_cols(vtTerm) == term_cols);
     row = vt_row(vtTerm, 0, &n);
     for (i = 0; i < 5; i++) line[i] = (char)row[i].ch;

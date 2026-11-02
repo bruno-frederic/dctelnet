@@ -21,8 +21,8 @@ ifneq ($(HOST_ID),$(shell cat .host-id 2>/dev/null))
 $(shell rm -f $(TESTS) ansimusic_dump; echo '$(HOST_ID)' > .host-id)
 endif
 
-.PHONY: all clean check-encoding check-fonts check-currenttime-null check-stack check-statics check-petscii-reopen check-debug-stack
-all: $(TESTS) check-encoding check-fonts check-currenttime-null check-stack check-statics check-petscii-reopen check-debug-stack
+.PHONY: all clean check-encoding check-fonts check-currenttime-null check-stack check-statics check-petscii-reopen check-debug-stack check-welcome-kept-text
+all: $(TESTS) check-encoding check-fonts check-currenttime-null check-stack check-statics check-petscii-reopen check-debug-stack check-welcome-kept-text
 	@for t in $(TESTS); do echo "--- $$t ---"; ./$$t || exit 1; done
 
 # Check the file are standard printable ASCII or ISO-8859
@@ -73,6 +73,19 @@ check-debug-stack:
 	@cd ../src && if LC_ALL=C grep --quiet --text 'CreateNewProc' *.c \
 		&& LC_ALL=C grep --text 'DEBUG_CFLAGS' Makefile | LC_ALL=C grep --quiet -- '[[:space:]]-stack-check'; then \
 		echo "ERROR: src/Makefile debug flags use vbcc -stack-check, which breaks code run by a second process (CreateNewProc)."; \
+		exit 1; \
+	fi
+
+# A display reopen (Tool Bar, Title Bar, Full-screen) keeps the terminal's text
+# (vtKeptText, the console shadow). OpenDisplay()'s welcome screen starts with a
+# form feed that clears: it must be written only when the reopen kept nothing,
+# and displayKeptText must come from both renderers (host tests cannot link
+# DCTelnet.c).
+check-welcome-kept-text:
+	@cd ../src && if ! LC_ALL=C grep --text --quiet 'if(!isConnected && !displayKeptText)' DCTelnet.c \
+		|| ! LC_ALL=C grep --text --quiet 'displayKeptText = ShadowRestore() || (STATE_IS(APP_RENDERER_BUILTIN) && vtKeptText);' DCTelnet.c \
+		|| ! LC_ALL=C grep --text --after-context=80 'if(!isConnected && !displayKeptText)' DCTelnet.c | LC_ALL=C grep --text --quiet 'Processor: '; then \
+		echo "ERROR: DCTelnet.c OpenDisplay() must write the welcome screen only when !displayKeptText (set from ShadowRestore() and vtKeptText)."; \
 		exit 1; \
 	fi
 

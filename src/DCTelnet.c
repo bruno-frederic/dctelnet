@@ -804,6 +804,12 @@ WORD GetMenuNumberFromID(enum MenuItemID id)
 // display is back, which clears the console. Empty = nothing to reprint.
 static char disconnectNote[96];
 
+// The last OpenDisplay() kept the terminal's text: the built-in engine drew
+// its cells again (vtKeptText) or a console renderer got its screen back from
+// the shadow. Then the welcome screen (it starts with a form feed, which
+// clears) and the disconnect notice (already among the kept text) stay out.
+static BOOL displayKeptText;
+
 static void DisConnect(char remote, char quiet)
 {
     CancelConnectionJobs();
@@ -1546,12 +1552,12 @@ static void ShadowWrite(void *user, const char *data, long len)
 /* A display or console unit (re)opened: hand the renderer and the grid to the
  * shadow (vtshadow.h). console.device / ibmcon.device get their screen back;
  * Built-in and XEM free it. */
-static void ShadowRestore(void)
+static BOOL ShadowRestore(void)
 {
     UWORD cols, rows;
 
     TerminalGrid(&cols, &rows);
-    Shadow_DisplayOpened(Renderer_Route(prefs.State), cols, rows, ShadowWrite, NULL);
+    return Shadow_DisplayOpened(Renderer_Route(prefs.State), cols, rows, ShadowWrite, NULL);
 }
 
 // The columns BBS art is drawn for in this font: 40 in the C64 fonts, 132
@@ -3082,10 +3088,12 @@ int main(int argc, char *argv[])
                 shouldReopenConsole = FALSE;    // the full reopen covered it
             }
 
-            // A disconnect that reopened the display: its notice again.
+            // A disconnect that reopened the display: its notice again, unless
+            // the reopen kept the text it was printed into.
             if (disconnectNote[0] && !shouldRestart && !shouldReopenConsole && !isConnected)
             {
-                LocalPrint(disconnectNote);
+                if (!displayKeptText)
+                    LocalPrint(disconnectNote);
                 disconnectNote[0] = 0;
             }
 
@@ -6085,11 +6093,14 @@ BOOL OpenDisplay(void)
     /* After isAppIconified is cleared: ConWrite() drops writes while it is set. */
     if (isConDeviceOpened && displayIsPetscii)
         ConWrite(PETSCII_CONSOLE_SETUP, sizeof(PETSCII_CONSOLE_SETUP) - 1);
-    ShadowRestore();                // a console renderer's new unit is empty: the text comes back
+    // A console renderer's new unit is empty: the text comes back.
+    displayKeptText = ShadowRestore() || (STATE_IS(APP_RENDERER_BUILTIN) && vtKeptText);
 
     LEDs();
 
-    if(!isConnected)
+    // The welcome screen, on a blank terminal only: its form feed would clear
+    // the text a reopen (Tool Bar, Title Bar, Full-screen...) just kept.
+    if(!isConnected && !displayKeptText)
     {
         STRPTR strRenderer = NULL;
         register ULONG flags = SysBase->AttnFlags;
