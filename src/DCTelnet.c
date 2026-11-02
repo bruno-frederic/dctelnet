@@ -5082,7 +5082,13 @@ static void CloseConsoleDevice(void)
  */
 static void ReopenTerminal(void)
 {
-    if (!STATE_IS(APP_RENDERER_IBMCON_DEVICE | APP_RENDERER_CONSOLE_DEVICE) || !win)
+    // A PETSCII mode change (an entry starts or ends) is not a font change:
+    // the kept text belongs to the old mode and the welcome screen may be
+    // due. OpenDisplay() handles both (VtClose, Shadow_Close, welcome), so
+    // the console renderers take the full reopen too -- the in-place path
+    // below replayed C64 text into the ANSI console and the reverse.
+    if (!STATE_IS(APP_RENDERER_IBMCON_DEVICE | APP_RENDERER_CONSOLE_DEVICE) || !win
+        || (PETSCII_SESSION() != 0) != displayIsPetscii)
     {
         shouldRestart = TRUE;
         shouldReopenScreen = TRUE;

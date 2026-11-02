@@ -5,8 +5,8 @@ CFLAGS := -std=c99 -Wall -Wextra -Werror -I../src
 
 TESTS := test_petscii_modules test_petscii_dispatch test_prefs_file test_site_prefs test_palette test_screenfont test_progdir test_listsel test_textedit test_dsr test_keys test_clip test_ansiscan test_ticks test_rexx test_rlogin test_ansimusic test_booklist
 
-.PHONY: all clean check-encoding check-fonts
-all: $(TESTS) check-encoding check-fonts
+.PHONY: all clean check-encoding check-fonts check-petscii-reopen
+all: $(TESTS) check-encoding check-fonts check-petscii-reopen
 	@for t in $(TESTS); do echo "--- $$t ---"; ./$$t || exit 1; done
 
 # Check the file are standard printable ASCII or ISO-8859
@@ -99,3 +99,15 @@ test_booklist: test_booklist.c ../src/booklist.c ../src/booklist.h
 
 clean:
 	rm -f $(TESTS)
+# A PETSCII mode change (an Address Book entry starts or ends) must take the
+# full reopen on every renderer: OpenDisplay() drops the old mode's kept text
+# (VtClose, Shadow_Close) and writes the welcome screen. ReopenTerminal()'s
+# in-place console path replayed C64 text into the ANSI console and the
+# reverse (host tests cannot link DCTelnet.c).
+check-petscii-reopen:
+	@cd ../src && if ! LC_ALL=C grep --text --after-context=12 '^static void ReopenTerminal(void)' DCTelnet.c \
+		| LC_ALL=C grep --text --after-context=3 '(PETSCII_SESSION() != 0) != displayIsPetscii)' \
+		| LC_ALL=C grep --text --quiet 'shouldRestart = TRUE;'; then \
+		echo "ERROR: DCTelnet.c ReopenTerminal() must send a PETSCII mode change to the full reopen (shouldRestart), not replay the old mode's text in place."; \
+		exit 1; \
+	fi
