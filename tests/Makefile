@@ -14,8 +14,8 @@ all: $(TESTS) check-encoding check-fonts
 # Forbid bytes \x80-\x9F that are not ISO 8859 but windows codepage 125x
 # Allow only these control chars: \t \r \n and CSI 0x9B
 check-encoding:
-	@cd .. && if LC_ALL=C grep --recursive --line-number --text --perl-regexp \
-								'[^\x20-\x7E\xA0-\xC1\xF5-\xFF\t\r\n\x9B]' \
+	@cd .. && pat="$$(printf '[^\040-\176\240-\301\365-\377\t\r\233]')"; \
+	LC_ALL=C grep --recursive --line-number --text --extended-regexp "$$pat" \
 								--exclude-dir=third_party \
 								--exclude-dir=installed \
 								--include='*.c' \
@@ -28,8 +28,13 @@ check-encoding:
 								--include='*.guide' \
 								--include='*.readme' \
 								--include='*.DIZ' \
-	; then \
+								. ; \
+	rc=$$?; \
+	if [ $$rc -eq 0 ]; then \
 		echo "ERROR: Disallowed chars found in the files above; they may have been saved as UTF." ; \
+		exit 1 ; \
+	elif [ $$rc -ne 1 ]; then \
+		echo "ERROR: check-encoding: grep failed (exit $$rc), so the files were not checked." ; \
 		exit 1 ; \
 	fi
 
