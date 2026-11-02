@@ -54,6 +54,7 @@ extern struct Library *CyberGfxBase;
 #include <arpa/telnet.h>
 #include "petscii_dispatch.h"
 #include "petscii_keymap.h"
+#include "petscii_font.h"
 #include "site_prefs.h"
 #include "screenfont.h"
 #include "progdir.h"
@@ -5052,8 +5053,9 @@ static UWORD EstablishTCPConnection(char *servername, UWORD port)
      * every printable byte "wrapped" and got its own line. */
     petscii_dispatch_init(&g_petsciiState, 40, 25);
     if (PETSCII_SESSION() && !petsciiFont)
-        LocalPrint("\r\nPETSCII: Petscii.font not found in FONTS: or PROGDIR:Fonts/, "
-                   "showing CP437 lookalikes.\r\n");
+        LocalPrint(displayIsPetscii
+                   ? "\r\nPETSCII: no chip memory for the C64 font, showing CP437 lookalikes.\r\n"
+                   : "\r\nPETSCII: the XEM renderer has no C64 font, showing CP437 lookalikes.\r\n");
 
     Dsr_Init(&bbsDsr);      // a request cut off by the last disconnect is not this BBS's
     isConnected = TRUE;
@@ -5065,7 +5067,7 @@ static UWORD EstablishTCPConnection(char *servername, UWORD port)
 
 
 /**
- * @brief Open a font DCTelnet ships (Petscii, PetsciiLower, TopazPro) from
+ * @brief Open a font DCTelnet ships (TopazPro, or the settings' font) from
  *        FONTS:, else from the Fonts drawer next to the program.
  *
  * The release archive carries them in DCTelnet/Fonts/, and not every user copies them into
@@ -5089,6 +5091,50 @@ static struct TextFont *OpenBundledFont(STRPTR name, STRPTR progdirPath, UWORD y
     return font;
 }
 
+/* The C64 fonts are built in memory from the glyphs compiled into DCTelnet
+ * (petscii_font.h), so a PETSCII session draws real C64 glyphs whatever is
+ * installed in FONTS: or PROGDIR:Fonts/. The layout is the one
+ * tools/gen_petscii_font.py writes to the shipped Petscii fonts. */
+static struct TextFont petsciiFontUpperStore, petsciiFontLowerStore;
+static ULONG petsciiCharLoc[PETSCII_FONT_LOC_COUNT];
+
+static struct TextFont *BuildPetsciiFont(struct TextFont *tf, STRPTR name, const unsigned char *glyphs)
+{
+    // Chip memory: Text() and ibmcon draw the glyphs with the blitter.
+    UBYTE *data = AllocMem(PETSCII_FONT_DATA_SIZE, MEMF_CHIP);
+
+    if (!data)
+        return NULL;
+    petscii_font_strike(glyphs, data);
+    petscii_font_charloc(petsciiCharLoc);
+    memset(tf, 0, sizeof(*tf));
+    tf->tf_Message.mn_Node.ln_Type = NT_FONT;
+    tf->tf_Message.mn_Node.ln_Name = (char *)name;
+    tf->tf_YSize     = PETSCII_FONT_YSIZE;
+    tf->tf_Style     = FS_NORMAL;
+    tf->tf_Flags     = FPF_DESIGNED;
+    tf->tf_XSize     = PETSCII_FONT_XSIZE;
+    tf->tf_Baseline  = PETSCII_FONT_BASELINE;
+    tf->tf_BoldSmear = 1;
+    tf->tf_Accessors = 1;
+    tf->tf_LoChar    = 0;
+    tf->tf_HiChar    = PETSCII_FONT_GLYPHS - 1;
+    tf->tf_CharData  = data;
+    tf->tf_Modulo    = PETSCII_FONT_MODULO;
+    tf->tf_CharLoc   = petsciiCharLoc;
+    return tf;
+}
+
+static void FreePetsciiFont(struct TextFont **font)
+{
+    if (!*font)
+        return;
+    if ((*font)->tf_Style & FSF_TAGGED)     // ExtendFont() ran on it
+        StripFont(*font);
+    FreeMem((*font)->tf_CharData, PETSCII_FONT_DATA_SIZE);
+    *font = NULL;
+}
+
 /**
  * @brief Open the C64 fonts when the display should be the C64 one (a PETSCII
  *        session on a console device or the built-in renderer), and record
@@ -5101,20 +5147,20 @@ static void OpenPetsciiFonts(void)
     if (displayIsPetscii && STATE_IS(APP_RENDERER_IBMCON_DEVICE | APP_RENDERER_CONSOLE_DEVICE
                                      | APP_RENDERER_BUILTIN))
     {
-        /* Petscii/PetsciiLower.font: real C64 glyphs indexed by raw PETSCII
-         * byte, double-width (16x8) cells so 40 columns fill roughly the
-         * physical width the normal 80-column font needs. Not installed:
-         * both stay NULL and Receive() renders CP437 lookalikes instead. */
-        petsciiFont = OpenBundledFont("Petscii.font", "PROGDIR:Fonts/Petscii.font", 8);
+        /* Petscii/PetsciiLower: real C64 glyphs indexed by raw PETSCII byte,
+         * double-width (16x8) cells so 40 columns fill roughly the physical
+         * width the normal 80-column font needs. Only without chip memory
+         * do both stay NULL, and Receive() renders CP437 lookalikes. */
+        petsciiFont = BuildPetsciiFont(&petsciiFontUpperStore, "Petscii.font", petscii_glyphs_upper);
         petsciiFontLower = petsciiFont
-            ? OpenBundledFont("PetsciiLower.font", "PROGDIR:Fonts/PetsciiLower.font", 8) : NULL;
+            ? BuildPetsciiFont(&petsciiFontLowerStore, "PetsciiLower.font", petscii_glyphs_lower) : NULL;
     }
 }
 
 static void ClosePetsciiFonts(void)
 {
-    if(petsciiFont)           { CloseFont(petsciiFont);             petsciiFont = NULL; }
-    if(petsciiFontLower)      { CloseFont(petsciiFontLower);        petsciiFontLower = NULL; }
+    FreePetsciiFont(&petsciiFont);
+    FreePetsciiFont(&petsciiFontLower);
 }
 
 // The ANSI colours for ibmcon and the built-in renderer on the Workbench: 16

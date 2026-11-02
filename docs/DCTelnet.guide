@@ -393,9 +393,10 @@ the keys you type are sent as C64 codes.
   The C64 display is used only while connected; DCTelnet's own messages
 use the normal font.
 
-  Terminal Type PETSCII needs the Petscii and PetsciiLower fonts
-(included). Without them, lookalike characters of the IBM character set
-are used and a notice is shown on connect.
+  The C64 characters are built into DCTelnet: no font has to be
+installed. The XEM renderer has no C64 characters; there lookalike
+characters of the IBM character set are used and a notice is shown on
+connect.
 
 TIP:   Set it in the Terminal group of an Address Book entry's
        Settings..., so it is only used for C64 BBSes.
@@ -844,8 +845,9 @@ Starting with v1.8, a compatible version of the library is included in the
 TODO
 
 New Features:
-- PETSCII Mode for Commodore 64 BBSes, with the Petscii and PetsciiLower
-  fonts (Terminal menu)
+- PETSCII Mode for Commodore 64 BBSes (Terminal menu), with the C64
+  characters built in: no font has to be installed. The Petscii and
+  PetsciiLower fonts are included for other programs.
 - Per-BBS settings: each Address Book entry can override four groups of
   settings (Screen, Terminal, Keyboard, Transfer), and has a comment and
   a login macro. Connection > Save Settings to Address Book Entry saves what
