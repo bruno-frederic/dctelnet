@@ -151,7 +151,7 @@ else
 	$(error Invalid TOOLCHAIN value '$(TOOLCHAIN)'; choose 'vbcc' or 'gcc')
 endif
 
-BUILD_HASH := $(shell git rev-parse --short HEAD 2>/dev/null)
+BUILD_HASH := $(shell git rev-parse --short HEAD 2>$(NULL))
 
 CFLAGS += -D"COMPILER_STRING=$(COMPILER_STRING)" -DBUILD_HASH=$(BUILD_HASH) -D"AMIGADATE=$(AMIGADATE)"  $(INCLUDES)
 
