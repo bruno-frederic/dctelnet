@@ -150,7 +150,7 @@ else
 	$(error Invalid TOOLCHAIN value '$(TOOLCHAIN)'; choose 'vbcc' or 'gcc')
 endif
 
-BUILD_HASH := $(shell git rev-parse --short HEAD)
+BUILD_HASH := $(shell git rev-parse --short HEAD 2>/dev/null)
 
 CFLAGS += -D"COMPILER_STRING=$(COMPILER_STRING)" -DBUILD_HASH=$(BUILD_HASH) -D"AMIGADATE=$(AMIGADATE)"  $(INCLUDES)
 
@@ -208,13 +208,13 @@ DOCKER_RUN = $(DOCKER) run $(INTERACTIVE) --user $(DOCKER_USER) -q --rm --volume
 ci: docker-debug  docker-release  ibmcon  tests  package
 
 docker-debug:
-	$(DOCKER_RUN) make TOOLCHAIN=$(TOOLCHAIN) DEBUG=yes 68000
+	$(DOCKER_RUN) make TOOLCHAIN=$(TOOLCHAIN) BUILD_HASH=$(BUILD_HASH) DEBUG=yes 68000
 
 debug:
 	$(MAKE) DEBUG=yes all
 
 docker-release:
-	$(DOCKER_RUN) make TOOLCHAIN=$(TOOLCHAIN) all
+	$(DOCKER_RUN) make TOOLCHAIN=$(TOOLCHAIN) BUILD_HASH=$(BUILD_HASH) all
 
 release:
 	$(MAKE) all
