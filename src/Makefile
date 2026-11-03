@@ -192,10 +192,13 @@ build: $(TARGET_EXE)
 
 
 
-# Setting properly the user avoids git warnings about safe.directory:
-# Owner of this checkout. GNU stat takes -c, BSD stat (macOS) takes -f.
+# Setting properly the user avoids git warnings about safe.directory: Owner of this checkout.
 # "?=" lets an environment variable or command line value override it.
-DOCKER_USER ?= $(shell $(STAT) -c '%u:%g' Makefile 2>/dev/null || $(STAT) -f '%u:%g' Makefile)
+ifeq ($(OS),Windows_NT) # WSL's stat supports the -c format used here.
+    DOCKER_USER ?= $(shell $(STAT) -c '%u:%g' Makefile)
+else  # GNU stat takes -c, BSD stat (macOS) takes -f.
+    DOCKER_USER ?= $(shell $(STAT) -c '%u:%g' Makefile 2>/dev/null || $(STAT) -f '%u:%g' Makefile)
+endif
 
 # Recursive assignment with "=" so target-specific INTERACTIVE is expanded when the recipe runs:
 DOCKER_RUN = $(DOCKER) run $(INTERACTIVE) --user $(DOCKER_USER) -q --rm --volume "./..:/opt/code" --workdir /opt/code/src "$(BUILDER_IMAGE)"
