@@ -9,6 +9,10 @@
 
 void Sound_Play(const struct Note *notes, int count);
 void Sound_Beep(void);
+/* TRUE while queued notes are still playing (finished requests are reclaimed). */
+BOOL  Sound_Busy(void);
+/* The signal mask the sound port raises when a note ends; 0 when no channel is open. */
+ULONG Sound_Signal(void);
 void Sound_Close(void);
 
 #endif /* SOUND_H */

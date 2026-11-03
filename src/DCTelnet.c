@@ -217,7 +217,11 @@ static ULONG RexxSig(void);
 static void RexxMessages(void);
 static void CancelConnectionJobs(void);
 static UBYTE *DisplayBytes(struct Utf8Decoder *d, UBYTE *data, long *len);
-static UBYTE *SoundFilter(UBYTE *text, long *len);
+static UBYTE *SoundFilter(UBYTE *text, long *len, long *used, BOOL *stopped);
+static void ShowText(UBYTE *text, long len);
+static void MusicHoldPoll(void);
+static void MusicHoldDrop(void);
+static BOOL musicHold;                   // text held back by a foreground tune (see ShowText)
 static struct AnsiMusic ansiMusic;      // Terminal > ANSI Music: a tune split between reads
 static struct Utf8Decoder utf8In;       // Character Set UTF-8: a character split between reads
 static struct Utf8Decoder utf8Echo;     // the same for the local echo of what is sent
@@ -738,6 +742,7 @@ static char disconnectNote[96];
 static void DisConnect(char remote, char quiet)
 {
     CancelConnectionJobs();
+    MusicHoldDrop();                    // a tune's held text goes with the connection
     if(isConnected)
     {
         disconnectNote[0] = 0;
@@ -1214,6 +1219,7 @@ static void RunPendingConnect(void)
         Charset_Utf8Init(&utf8In);
         Charset_Utf8Init(&utf8Echo);
         AnsiMusic_Init(&ansiMusic);
+        MusicHoldDrop();
         if (STATE_IS(APP_RLOGIN))               // rlogin: the login message first
         {
             char hello[160];
@@ -2076,11 +2082,7 @@ static void Receive(void)
             long shown = len;
             UBYTE *text = DisplayBytes(&utf8In, recvBuffer, &shown);
 
-            text = SoundFilter(text, &shown);
-
-            BbsWrite((char *)text, shown);
-            if (STATE_IS(APP_SCROLLBACK_ENABLED))
-                AddBuf(text, shown);
+            ShowText(text, shown);
         }
 
         for (i = 0; i < len; i++)
@@ -2159,7 +2161,9 @@ static void Receive(void)
                                                                       petsciiOut, sizeof(petsciiOut));
                     }
                     {
-                        UBYTE *played = SoundFilter(petsciiOut, &petsciiOutLen);   // the Bell
+                        long taken;
+                        BOOL stopped;
+                        UBYTE *played = SoundFilter(petsciiOut, &petsciiOutLen, &taken, &stopped);   // the Bell
 
                         ConWrite((char *)played, petsciiOutLen);
                     }
@@ -2172,11 +2176,7 @@ static void Receive(void)
                 long shown = outLen;
                 UBYTE *text = DisplayBytes(&utf8In, outBuffer, &shown);
 
-                text = SoundFilter(text, &shown);
-
-                BbsWrite((char *)text, shown);
-                if (STATE_IS(APP_SCROLLBACK_ENABLED))
-                    AddBuf(text, shown);
+                ShowText(text, shown);
             }
         }
 
@@ -2723,8 +2723,8 @@ int main(int argc, char *argv[])
             if(isConnected)
             {
                 FD_ZERO(&rd);
-                FD_SET(tcpSocket, &rd);
-                sigmask = SIGBREAKF_CTRL_C | SIGBREAKF_CTRL_F | iconsig | TimerSig() | RexxSig();
+                if (!musicHold) FD_SET(tcpSocket, &rd);     // held: the rest stays at the server
+                sigmask = SIGBREAKF_CTRL_C | SIGBREAKF_CTRL_F | iconsig | TimerSig() | RexxSig() | Sound_Signal();
 
                 // https://wiki.amigaos.net/amiga/autodocs/bsdsocket.doc.txt (at the end)
                 // WaitSelect() should probably return the time remaining from the original timeout,
@@ -2739,6 +2739,7 @@ int main(int argc, char *argv[])
                 // and to return 0.
                 timeout.tv_sec = 30; timeout.tv_usec = 0;
                 i = WaitSelect(tcpSocket + 1, &rd, 0, 0, &timeout, &sigmask);
+                MusicHoldPoll();
 
                 #ifdef _DEBUG
                     if (i <  0)  InfoReq(win,
@@ -2770,7 +2771,7 @@ int main(int argc, char *argv[])
                 }
             }
 
-            if(i != 0) Receive();
+            if (!musicHold && i != 0) Receive();
 
         } else { // app is not iconified
 
@@ -2778,9 +2779,9 @@ int main(int argc, char *argv[])
             if(isConnected)
             {
                 FD_ZERO(&rd);
-                FD_SET(tcpSocket, &rd);
+                if (!musicHold) FD_SET(tcpSocket, &rd);     // held: the rest stays at the server
 
-                sigmask = winsig;
+                sigmask = winsig | Sound_Signal();
 
                 if(scrollbackWin) sigmask |= 1L << scrollbackWin->UserPort->mp_SigBit;
                 if(packetWin) sigmask |= 1L << packetWin->UserPort->mp_SigBit;
@@ -2789,6 +2790,7 @@ int main(int argc, char *argv[])
 
                 timeout.tv_sec = 30; timeout.tv_usec = 0;
                 i = WaitSelect(tcpSocket + 1, &rd, 0, 0, &timeout, &sigmask);
+                MusicHoldPoll();
 
                 #ifdef _DEBUG_WAITSELECT
                     if      (i <  0)
@@ -2819,7 +2821,7 @@ int main(int argc, char *argv[])
                 if(packetWin) GetWindowMsg(packetWin);
                 if (toolBarWin) GetWindowMsg(toolBarWin);
 
-                if(i != 0)
+                if (!musicHold && i != 0)
                 {
                     // Draw when Title bar AND LEDs are enabled :
                     if (STATE_ARE_ALL(APP_TITLE_BAR_ENABLED | APP_LEDS_ENABLED))
@@ -3003,23 +3005,86 @@ static void EchoWrite(UBYTE *data, long len)
 // What DCTelnet plays itself leaves the text for the console: ANSI music
 // (Terminal > ANSI Music) and, unless the Bell is Flash, BEL.
 
-static UBYTE *SoundFilter(UBYTE *text, long *len)
+static UBYTE *SoundFilter(UBYTE *text, long *len, long *used, BOOL *stopped)
 {
-    static UBYTE played[4096 + 3];     // + 3: AnsiMusic_Filter
+    static UBYTE played[4096 + ANSIMUSIC_HELD];    // AnsiMusic_Filter holds back ESC[M
     static struct Note notes[48];
     size_t n = (size_t)*len;
+    size_t taken = n;
     int count;
 
+    *stopped = FALSE;
     if (prefs.AnsiMusic && !PETSCII_SESSION() && n <= 4096)
     {
-        n = AnsiMusic_Filter(&ansiMusic, text, n, played, notes, 48, &count);
+        n = AnsiMusic_Filter(&ansiMusic, text, n, played, notes, 48, &count, &taken);
         text = played;
         if (count) Sound_Play(notes, count);
+        *stopped = ansiMusic.stopped;
     }
     if (prefs.Bell != BELL_FLASH && Ansi_StripByte(text, &n, 7) && prefs.Bell == BELL_SOUND)
         Sound_Beep();
     *len = (long)n;
+    *used = (long)taken;
     return text;
+}
+
+// Text after a foreground tune (MF, the default) waits until the tune has
+// played, as on GW-BASIC PLAY and SyncTERM. The rest of the read is held
+// here; the main loop stops reading the socket meanwhile (TCP flow control
+// keeps the rest at the server) and shows it when the sound port signals
+// that the notes are done. The window, menus and timers run on.
+static UBYTE musicHoldBuf[4096 + ANSIMUSIC_HELD];
+static long  musicHoldLen;
+
+// The text to the screen and the scrollback; a foreground tune in it holds
+// back what follows (while there is sound to wait for).
+static void ShowText(UBYTE *text, long len)
+{
+    for (;;)
+    {
+        long shown = len, used;
+        BOOL stopped;
+        UBYTE *t = SoundFilter(text, &shown, &used, &stopped);
+
+        BbsWrite((char *)t, shown);
+        if (STATE_IS(APP_SCROLLBACK_ENABLED))
+        {
+            AddBuf(t, shown);
+        }
+        if (!stopped)
+            return;
+        text += used;
+        len -= used;
+        if (Sound_Busy())
+        {
+            memmove(musicHoldBuf, text, (size_t)len);   // text may be musicHoldBuf itself
+            musicHoldLen = len;
+            musicHold = TRUE;
+            return;
+        }
+        if (len <= 0)                       // no audio channel: nothing to wait for
+            return;
+    }
+}
+
+// The tune has played (or its sound is gone, or ANSI music was turned off):
+// the held text goes on.
+static void MusicHoldPoll(void)
+{
+    if (musicHold && (!prefs.AnsiMusic || !Sound_Busy()))
+    {
+        long len = musicHoldLen;
+
+        musicHold = FALSE;
+        musicHoldLen = 0;
+        ShowText(musicHoldBuf, len);        // may hold again at the next tune
+    }
+}
+
+static void MusicHoldDrop(void)
+{
+    musicHold = FALSE;
+    musicHoldLen = 0;
 }
 
 // DC Telnet > Capture to File: everything the BBS sends -- after the telnet
@@ -4207,6 +4272,7 @@ static void GetWindowMsg(struct Window *wwin)
                     case MENU_ANSI_MUSIC:
                         prefs.AnsiMusic = (item->Flags & CHECKED) != 0;
                         AnsiMusic_Init(&ansiMusic);
+                        MusicHoldPoll();        // off: the held text shows at once
                         break;
 
                     case MENU_CHARSET_CP437:
