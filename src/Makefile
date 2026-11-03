@@ -184,7 +184,7 @@ MAKEFILE_UPTODATE=$(OBJDIR)/Makefile.uptodate
 
 
 # make treats a phony target as always out-of-date and runs its recipe when requested.
-.PHONY: all clean allclean debug release ci docker-debug docker-release ibmcon tests package
+.PHONY: all clean allclean debug release ci docker-debug docker-release ibmcon sshlib tests package
 
 all: $(MAKEFILE_UPTODATE) 68000 68020
 
@@ -211,7 +211,7 @@ DOCKER_RUN = $(DOCKER) run $(INTERACTIVE) --user $(DOCKER_USER) -q --rm --volume
 
 # "ci" target matches the behavior implemented in the GitHub Actions workflow.
 # Keep in sync with `.github/workflows/build.yml`.
-ci: docker-debug  docker-release  ibmcon  tests  package
+ci: docker-debug  docker-release  ibmcon  sshlib  tests  package
 
 docker-debug:
 	$(DOCKER_RUN) make TOOLCHAIN=$(TOOLCHAIN) BUILD_HASH=$(BUILD_HASH) DEBUG=yes 68000
@@ -228,6 +228,12 @@ release:
 ibmcon:
 	$(info =========================== make ibmcon ==================================)
 	$(DOCKER_RUN) make -C ../ibmcon
+
+# ssh.library for every CPU (src/sshlib). The container's vbcc and NDK replace
+# the Homebrew defaults; clean first because build/aos68k.cfg holds the NDK path.
+sshlib:
+	$(info =========================== make sshlib ==================================)
+	$(DOCKER_RUN) make -C sshlib clean all VBCC=/opt/vbcc NDK=/opt/sdk/NDK3.2/Include_H
 
 tests:
 	$(info =========================== make tests ==================================)
