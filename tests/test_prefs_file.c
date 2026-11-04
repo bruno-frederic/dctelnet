@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <string.h>
 #include "prefs_file.h"
+#include "palette.h"
 
 static UBYTE file[2048];
 
@@ -152,25 +153,44 @@ static void test_a_short_old_file_keeps_the_essentials(void)
     assert(got.MainWinWidth == 0);
 }
 
-/* The built-in renderer draws 4 bitplanes: a 256-colour screen chosen for
- * ibmcon (the RTG/AGA build's default) is not one it can use -- it showed a
- * grey background -- so switching to it must ask for another mode. */
-static void test_a_256_colour_screen_does_not_fit_the_built_in_renderer(void)
+/* The built-in renderer needs 80x25 cells of 8x8; any depth (on a screen
+ * other than 4 planes it draws through the RastPort), RTG too. */
+static void test_the_built_in_renderer_fits_any_screen_of_80x25_cells(void)
 {
     struct PrefsStruct p;
 
     memset(&p, 0, sizeof(p));
-    p.DisplayWidth = 640; p.DisplayHeight = 256; p.DisplayDepth = 8;
-    p.State = APP_RENDERER_IBMCON_DEVICE;
-    assert(Prefs_ScreenFits(&p) && Prefs_MaxDepth(&p) == 32);
     p.State = APP_RENDERER_BUILTIN;
-    assert(!Prefs_ScreenFits(&p) && Prefs_MaxDepth(&p) == 4);
-    p.DisplayDepth = 4;
+    p.DisplayWidth = 640; p.DisplayHeight = 256; p.DisplayDepth = 4;
     assert(Prefs_ScreenFits(&p));
-    p.DisplayWidth = 800;                       /* an RTG mode: not 640 wide */
+    p.DisplayDepth = 8;                         /* AGA 256 colours */
+    assert(Prefs_ScreenFits(&p));
+    p.DisplayWidth = 800; p.DisplayHeight = 600; p.DisplayDepth = 24;   /* RTG */
+    assert(Prefs_ScreenFits(&p));
+    p.DisplayWidth = 320; p.DisplayHeight = 256; p.DisplayDepth = 4;    /* 40 columns */
     assert(!Prefs_ScreenFits(&p));
-    p.State = APP_RENDERER_IBMCON_DEVICE; p.DisplayWidth = 1920; p.DisplayHeight = 1200;
+    p.DisplayWidth = 640; p.DisplayHeight = 199;
+    assert(!Prefs_ScreenFits(&p));
+    p.DisplayHeight = 256; p.DisplayDepth = 3;
+    assert(!Prefs_ScreenFits(&p));
+    p.State = APP_RENDERER_IBMCON_DEVICE; p.DisplayWidth = 1920; p.DisplayHeight = 1200; p.DisplayDepth = 8;
     assert(!Prefs_ScreenFits(&p));             /* ibmcon.device crashes there */
+}
+
+/* A 1.x file has one palette, the console's (ibmcon order): the built-in
+ * and XEM renderers' ANSI palette is made from it, not left black -- an
+ * entry converted from 1.x drew black text on black with the built-in one. */
+static void test_a_1x_file_gives_the_built_in_renderer_its_colours(void)
+{
+    struct PrefsStruct got;
+    int i;
+
+    legacy_file(0);
+    assert(Prefs_FromLegacy(file, 376, &got));
+    assert(got.DeviceColors[1] == 0xFFF && got.DeviceColors[7] == 0xF00);
+    for (i = 0; i < 16; i++)
+        assert(got.AnsiColors[i] == got.DeviceColors[Palette_IbmconToAnsi(i)]);
+    assert(got.AnsiColors[7] == 0xFFF && got.AnsiColors[1] == 0xF00);   /* white, red: ANSI order */
 }
 
 int main(void)
@@ -184,7 +204,8 @@ int main(void)
     test_the_flags_of_the_builds_before_v2_carry();
     test_the_extension_block_of_the_builds_before_v2_carries();
     test_a_short_old_file_keeps_the_essentials();
-    test_a_256_colour_screen_does_not_fit_the_built_in_renderer();
+    test_the_built_in_renderer_fits_any_screen_of_80x25_cells();
+    test_a_1x_file_gives_the_built_in_renderer_its_colours();
     printf("prefs_file: all assertions passed\n");
     return 0;
 }

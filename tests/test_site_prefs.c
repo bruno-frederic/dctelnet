@@ -4,6 +4,7 @@
 #include <string.h>
 #include "prefs.h"
 #include "site_prefs.h"
+#include "palette.h"
 
 static struct PrefsStruct make(ULONG flags, const char *font, UWORD size) {
     struct PrefsStruct p;
@@ -15,6 +16,8 @@ static struct PrefsStruct make(ULONG flags, const char *font, UWORD size) {
     p.DisplayWidth = 640; p.DisplayHeight = 256; p.DisplayDepth = 4;
     p.MainWinLeftEdge = 10; p.MainWinTopEdge = 20; p.MainWinWidth = 300; p.MainWinHeight = 200;
     strcpy((char *)p.TelnetTermType, "VT102");
+    memcpy(p.AnsiColors, defaultAnsiColors, sizeof(p.AnsiColors));        /* as live settings have */
+    memcpy(p.DeviceColors, defaultDeviceColors, sizeof(p.DeviceColors));
     return p;
 }
 
@@ -448,6 +451,25 @@ static void test_group_summaries(void) {
     assert(strcmp(out, "Standard keys") == 0);
 }
 
+/* An entry saved with an empty ANSI palette (converted from 1.x before the
+ * repair) loads with one made from its console palette. */
+static void test_an_entry_without_ansi_colours_gets_them_from_the_console_palette(void) {
+    static struct SiteSettings in, out;
+    static TEXT globalKeys[SITE_FKEY_BYTES];
+    static UBYTE buf[SITE_FILE_SIZE_MAX + 8];
+    size_t n;
+    int i;
+
+    in = entry_with(SITE_GROUP_SCREEN, make(APP_RENDERER_BUILTIN, "topaz.font", 8));
+    memset(in.prefs.AnsiColors, 0, sizeof(in.prefs.AnsiColors));
+    for (i = 0; i < 16; i++) in.prefs.DeviceColors[i] = (UWORD)(0x100 + i);
+    n = SitePrefs_Encode(&in, buf, sizeof(buf));
+    assert(SitePrefs_Decode(&out, buf, n, globalKeys));
+    for (i = 0; i < 16; i++)
+        assert(out.prefs.AnsiColors[i] == 0x100 + Palette_IbmconToAnsi(i));
+    assert(memcmp(out.prefs.DeviceColors, in.prefs.DeviceColors, sizeof(in.prefs.DeviceColors)) == 0);
+}
+
 int main(void) {
     test_login_macro_waits_for_text();
     test_differing_groups_names_what_changed();
@@ -465,6 +487,7 @@ int main(void) {
     test_restore_brings_back_global_but_keeps_moved_windows();
     test_save_writes_global_during_a_session();
     test_display_differs_names_what_needs_a_reopen();
+    test_an_entry_without_ansi_colours_gets_them_from_the_console_palette();
     printf("site_prefs: all assertions passed\n");
     return 0;
 }

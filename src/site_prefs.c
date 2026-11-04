@@ -1,6 +1,7 @@
 /* src/site_prefs.c -- per-Address-Book-entry settings (issue #10). */
 #include "site_prefs.h"
 #include "prefs_file.h"
+#include "palette.h"
 #include "charset.h"
 
 /* Flags whose change needs the screen reopened (OpenAppScreen reads them).
@@ -262,6 +263,7 @@ BOOL SitePrefs_Decode(struct SiteSettings *out, const UBYTE *buf, size_t len,
     }
     else
         return FALSE;
+    Palette_Repair(&s.prefs);      // a 1.x (DCS1-4) entry has only the console palette
     *out = s;
     return TRUE;
 }

@@ -281,3 +281,13 @@ void petscii_local_text(struct PetsciiLocalText *lt, char *buf, size_t len) {
             buf[i] = (char)(c - 'A' + 'a');
     }
 }
+
+size_t petscii_part_length(const uint8_t *in, size_t len)
+{
+    size_t k;
+
+    for (k = 0; k < len; k++)
+        if (in[k] == 14 || in[k] == 142)
+            return k + 1;
+    return len;
+}
