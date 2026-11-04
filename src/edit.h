@@ -15,6 +15,7 @@
 #define GD_COMMENT                             11
 #define GD_LOGIN_MACRO                         12
 #define GD_MACRO_HELP                          13
+#define GD_MACRO_HELP2                         14
 
 #define GDX_SITE                               0
 #define GDX_ADDRESS                            1
@@ -24,6 +25,6 @@
 #define GDX_USERNAME                           6
 #define GDX_PASSWORD                           7
 
-#define editProfile_CNT 14
+#define editProfile_CNT 15
 
 #endif /* EDIT_H */

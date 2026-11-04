@@ -25,6 +25,7 @@
 #include "utils.h"
 #include "prefs.h"
 #include "shipped.h"
+#include "sshconn.h"
 
 #define PATHLEN 256     // From third_party\Xpr\XprZmodem.h
 
@@ -59,6 +60,13 @@ static int posY(WORD n)
     return(((xrp->Font->tf_YSize+1)*n)+3+winTop);
 }
 
+
+/* The session's bytes: from the socket, or decrypted from an SSH session
+ * (SSHCONN_AGAIN when only protocol arrived). */
+static long NetRecv(UBYTE *buffer, long size)
+{
+    return SshConn_Active() ? SshConn_Read(buffer, size) : recv(tcpSocket, buffer, size, 0);
+}
 
 /**
  * @brief Remove Telnet escaped IAC bytes from a received data buffer.
@@ -278,14 +286,17 @@ long __SAVE_DS__ __ASM__ xpr_sread(__REG__(a0, char *buffer),
             FD_ZERO(&rd);
             FD_SET(tcpSocket, &rd);
 
-            if(WaitSelect(tcpSocket + 1, &rd, 0L, 0L, &timer, &sig) < 0) return(-1);
+            if (SshConn_Buffered())         // decrypted already: no waiting
+                sig = 0;
+            else if(WaitSelect(tcpSocket + 1, &rd, 0L, 0L, &timer, &sig) < 0) return(-1);
 
             // TODO: check if this the responsability of the XPR library ?
             if(xpr_chkabort() == -1) return(-1);
 
             if(FD_ISSET(tcpSocket, &rd))
             {
-                insize = recv(tcpSocket, buffer, size, 0);
+                insize = NetRecv(buffer, size);
+                if(insize == SSHCONN_AGAIN) continue;       // SSH protocol only
                 if(insize == -1) return(-1);
                 if(insize > 0)
                 {
@@ -304,7 +315,8 @@ long __SAVE_DS__ __ASM__ xpr_sread(__REG__(a0, char *buffer),
     // recv() return the length (as a long integer) of the message on successful completion.
     // If no messages are available at the socket, the receive call waits for a message to arrive,
     // unless the socket is nonblocking (see IoctlSocket()) in which case the value -1 is returned
-    insize = recv(tcpSocket, buffer, size, 0);
+    insize = NetRecv(buffer, size);
+    if(insize == SSHCONN_AGAIN) insize = 0;
     if(insize == -1)
     {
         er = Errno();
@@ -348,10 +360,10 @@ long __SAVE_DS__ xpr_sflush(void)
          and the external variable errno set to EAGAIN.
         */
         // TODO: Consider calling Receive() to continue processing pending Telnet IAC sequences.
-        len = recv(tcpSocket, recvBuffer, sizeof(recvBuffer), 0);
+        len = NetRecv(recvBuffer, sizeof(recvBuffer));
 
         i++;
-    } while (len > 0 && i < MAX_FLUSH_ITERATIONS);
+    } while ((len > 0 || len == SSHCONN_AGAIN) && i < MAX_FLUSH_ITERATIONS);
 
     // Set socket back to standard blocking mode:
     mode = 0;
@@ -846,6 +858,16 @@ long __SAVE_DS__ xpr_squery(void)
 
     timer.tv_sec = 0;
     timer.tv_usec = 1;
+
+    if (SshConn_Active())               // SSH: what the engine holds or can decrypt now
+    {
+        if (!SshConn_Buffered())
+        {
+            if(WaitSelect(tcpSocket + 1, &rd, 0L, 0L, &timer, 0L) < 0) return(-1);
+            if(!FD_ISSET(tcpSocket, &rd)) return(0);
+        }
+        return SshConn_Peek();
+    }
 
     if(WaitSelect(tcpSocket + 1, &rd, 0L, 0L, &timer, 0L) < 0) return(-1);
 
