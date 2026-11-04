@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <string.h>
 #include "screenfont.h"
+#include "prefs.h"
 
 /* Topaz was drawn for the Amiga's tall non-square pixels (PAL hires is 22x44
  * ticks per pixel); on square-pixel modes -- every RTG mode -- it looks
@@ -74,7 +75,72 @@ static void test_window_may_be_132_columns_wide(void) {
     assert(cols == 132);
 }
 
+/* 20x20 tool bar symbols drawn for square pixels looked tall and thin on
+ * DCTelnet's own 640x256 screen (hires: ticks 22 x 44). */
+static void test_hires_without_interlace_has_tall_pixels(void) {
+    assert(ScreenFont_TallPixels(22, 44));      /* hires */
+    assert(ScreenFont_TallPixels(11, 44));      /* super-hires */
+    assert(!ScreenFont_TallPixels(44, 44));     /* lores */
+    assert(!ScreenFont_TallPixels(22, 22));     /* hires interlaced */
+    assert(!ScreenFont_TallPixels(0, 0));       /* unknown: square */
+}
+
+/* 24 px icons under "Disconnect" (80 px in topaz 8): the old step
+ * (icon width + spacing) put the next label 5 px into this one. */
+static void test_tool_slot_is_as_wide_as_its_label(void) {
+    assert(ScreenFont_ToolSlotWidth(24, 80) == 80);   /* label wider */
+    assert(ScreenFont_ToolSlotWidth(48, 32) == 48);   /* icon wider */
+    assert(ScreenFont_ToolSlotWidth(55, 0) == 55);    /* no label */
+}
+
+/* On a Workbench with a proportional font, labels sized as characters times
+ * tf_XSize sat up to 4.5 px off their icons' centres (A1200, 680x270). The
+ * label is centred by its drawn width. */
+static void test_label_is_centred_under_its_icon(void) {
+    assert(ScreenFont_LabelLeft(100, 48, 30) == 109);   /* icon wider */
+    assert(ScreenFont_LabelLeft(100, 24, 64) == 80);    /* label wider: left of the icon */
+    assert(ScreenFont_LabelLeft(0, 24, 64) == -20);     /* never wraps below zero */
+    assert(ScreenFont_LabelLeft(100, 48, 48) == 100);
+}
+
+/* One switch (Display > Modern Icons, State bit APP_MODERN_ICONS) picks the icon
+ * set for the own screen and the Workbench alike. */
+static void test_icon_drawer_follows_the_switch_and_the_pixels(void) {
+    ULONG zero = 0, modern = APP_MODERN_ICONS;
+
+    assert(strcmp(ScreenFont_ToolIconDir(FALSE, FALSE), "PROGDIR:SCIcons/") == 0);
+    assert(strcmp(ScreenFont_ToolIconDir(FALSE, TRUE),  "PROGDIR:SCIcons/") == 0);
+    assert(strcmp(ScreenFont_ToolIconDir(TRUE,  FALSE), "PROGDIR:ToolBar/Square/") == 0);
+    assert(strcmp(ScreenFont_ToolIconDir(TRUE,  TRUE),  "PROGDIR:ToolBar/Wide/") == 0);
+    /* fresh and every existing saved prefs file have the bit clear: the original set */
+    assert(strcmp(ScreenFont_ToolIconDir((zero & APP_MODERN_ICONS) != 0, TRUE), "PROGDIR:SCIcons/") == 0);
+    assert(strcmp(ScreenFont_ToolIconDir((modern & APP_MODERN_ICONS) != 0, TRUE), "PROGDIR:ToolBar/Wide/") == 0);
+    /* the choice is saved in the prefs file */
+    assert(APP_MODERN_ICONS & STATE_PERSISTENT_MASK);
+}
+
+/* Two 24x24 buttons, 5 px apart, 1 px below the window top. */
+static void test_pointer_finds_the_tool_under_it(void) {
+    static const struct ScreenFontToolRect r[2] = { { 10, 1, 24, 24 }, { 39, 1, 24, 24 } };
+
+    assert(ScreenFont_ToolAt(r, 2, 20, 10) == 0);     /* inside */
+    assert(ScreenFont_ToolAt(r, 2, 50, 10) == 1);
+    assert(ScreenFont_ToolAt(r, 2, 10, 1) == 0);      /* left and top edges belong to it */
+    assert(ScreenFont_ToolAt(r, 2, 33, 24) == 0);     /* last pixel */
+    assert(ScreenFont_ToolAt(r, 2, 34, 10) == -1);    /* right edge is outside */
+    assert(ScreenFont_ToolAt(r, 2, 20, 25) == -1);    /* bottom edge is outside */
+    assert(ScreenFont_ToolAt(r, 2, 36, 10) == -1);    /* the gap between */
+    assert(ScreenFont_ToolAt(r, 2, 9, 10) == -1);     /* left of the bar's first */
+    assert(ScreenFont_ToolAt(r, 2, 20, 0) == -1);     /* above */
+    assert(ScreenFont_ToolAt(r, 0, 20, 10) == -1);    /* no tools */
+}
+
 int main(void) {
+    test_tool_slot_is_as_wide_as_its_label();
+    test_label_is_centred_under_its_icon();
+    test_pointer_finds_the_tool_under_it();
+    test_icon_drawer_follows_the_switch_and_the_pixels();
+    test_hires_without_interlace_has_tall_pixels();
     test_window_stops_at_80_columns();
     test_window_may_be_132_columns_wide();
     test_topaz_on_square_pixels_becomes_topaz_pro();

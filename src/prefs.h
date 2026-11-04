@@ -157,6 +157,8 @@ struct PrefsStruct
                                                   // clear: ANSI-BBS (ESC[H ...)
 #define APP_132_COLUMNS              (1UL << 18)  // the terminal is 132 columns wide, not 80
                                                   // (ibmcon.device renderer only)
+#define APP_MODERN_ICONS             (1UL << 19)  // the tool bar shows the modern (Lucide) icons, on the own
+                                                  // screen and the Workbench; clear: DCTelnet 1.6's SCIcons
 
 #define APP_CUSTOM_SCREEN_OPENED     (1UL << 23)  // Rarely accessed (during display initalization)
 
