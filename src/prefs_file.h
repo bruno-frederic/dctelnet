@@ -48,16 +48,22 @@ BOOL Prefs_FromLegacy(const UBYTE *old, size_t len, struct PrefsStruct *out);
 
 /*
  * TRUE when p's full-screen mode suits p's renderer: the built-in renderer
- * (retro32-term) draws 4 bitplanes of a 640-pixel wide, 200-256 line screen;
- * ibmcon.device at most 1920x1080; the others any size. Checked on load and
- * whenever the renderer changes -- a mode chosen for another renderer (a
- * 256-colour ibmcon screen) is not one the built-in renderer can use.
+ * (retro32-term) needs 80 columns and 25 rows of 8x8 cells, at least
+ * 640x200 (it draws 16 colours straight into the bitplanes of a 4-plane
+ * screen, through the RastPort on any other); ibmcon.device at most
+ * 1920x1080; the others any size. Checked on load and whenever the
+ * renderer changes.
  */
+/*
+ * PETSCII Mode used to be State bit 15 (APP_OLD_PETSCII_MODE); it is the Terminal
+ * Type PETSCII now. A p with the old flag gets TermType PETSCII and the flag
+ * cleared; the one place that reads the flag. Prefs_Decode and the Address Book
+ * entry decoder call it, so what they hand out never carries the flag.
+ */
+void Prefs_MigratePetscii(struct PrefsStruct *p);
+
 BOOL Prefs_ScreenFits(const struct PrefsStruct *p);
 
-/* The most bitplanes a screen mode may have for p's renderer (the screen
- * mode requester's limit): 4 for the built-in renderer, else 32. */
-UWORD Prefs_MaxDepth(const struct PrefsStruct *p);
 
 /*
  * The palette settings p's renderer shows: AnsiColors (ANSI order) for the
@@ -65,5 +71,13 @@ UWORD Prefs_MaxDepth(const struct PrefsStruct *p);
  * console.device and ibmcon.device.
  */
 UWORD *Prefs_Palette(struct PrefsStruct *p);
+
+/*
+ * The State of a first run (no prefs file, or an invalid State in it):
+ * full screen, scrollback history on (as DCTelnet 1.x had it, so
+ * Shift+Page Up scrolls back from the start), and rendererBits, the
+ * renderer for this CPU (Renderer_DefaultForCpu()).
+ */
+ULONG Prefs_FirstRunState(ULONG rendererBits);
 
 #endif /* PREFS_FILE_H */
