@@ -293,9 +293,10 @@ $(INSTALLDIR):
 	$(MKDIR) $@
 
 # Slow; for regular development on DCTelnet, "make DEBUG=yes docker-debug ibmcon install" is much faster.
-install: $(TARGET_EXE) ibmcon | $(INSTALLDIR)
+install: $(TARGET_EXE) ibmcon sshlib | $(INSTALLDIR)
 	@echo "------------- $@ $^ --------------------"
 	cp $(TARGET_EXE) $(INSTALLDIR)
+	cp sshlib/build/68000/ssh.library  $(INSTALLDIR)/Libs/ssh.library
 	cp ../ibmcon/ibmcon.device $(INSTALLDIR)/Devs
 
 clean: 68000_clean 68020_clean
