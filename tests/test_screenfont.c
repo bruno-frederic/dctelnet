@@ -74,7 +74,26 @@ static void test_window_may_be_132_columns_wide(void) {
     assert(cols == 132);
 }
 
+/* The font probe: glyph 0xC4 is a line in an IBM font, a letter in Latin-1. */
+static void test_glyph_probe_tells_a_line_from_a_letter(void) {
+    static const UWORD line1[8] = { 0, 0, 0, 0, 0xFF00, 0, 0, 0 };
+    static const UWORD line2[8] = { 0, 0, 0, 0xFF00, 0xFF00, 0, 0, 0 };
+    static const UWORD aumlaut[8] = { 0x6600, 0, 0x3C00, 0x6600, 0x7E00, 0x6600, 0x6600, 0 };
+    static const UWORD blank[8] = { 0, 0, 0, 0, 0, 0, 0, 0 };
+    static const UWORD block[8] = { 0xFF00, 0xFF00, 0xFF00, 0xFF00, 0xFF00, 0xFF00, 0xFF00, 0xFF00 };
+    static const UWORD wide[8] = { 0, 0, 0, 0, 0xFFFF, 0, 0, 0 };
+
+    assert(ScreenFont_GlyphIsHLine(line1, 8, 8));
+    assert(ScreenFont_GlyphIsHLine(line2, 8, 8));
+    assert(!ScreenFont_GlyphIsHLine(aumlaut, 8, 8));
+    assert(!ScreenFont_GlyphIsHLine(blank, 8, 8));
+    assert(!ScreenFont_GlyphIsHLine(block, 8, 8));
+    assert(ScreenFont_GlyphIsHLine(wide, 8, 16));
+    assert(!ScreenFont_GlyphIsHLine(line1, 8, 16));    /* half a row is not a line */
+}
+
 int main(void) {
+    test_glyph_probe_tells_a_line_from_a_letter();
     test_window_stops_at_80_columns();
     test_window_may_be_132_columns_wide();
     test_topaz_on_square_pixels_becomes_topaz_pro();
