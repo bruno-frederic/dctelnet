@@ -22,7 +22,8 @@ void Clip_Order(UWORD downRow, UWORD downCol, UWORD row, UWORD col, struct ClipR
 BOOL Clip_RowSpan(const struct ClipRange *r, UWORD row, UWORD cols, UWORD *from, UWORD *to);
 
 /* What the screen's characters are: CP437 (IBM PC BBSes, and UTF-8 text,
- * which is shown in CP437), ISO-8859-1 (Amiga BBSes), or PETSCII in the
+ * which the other renderers show in CP437; the built-in one
+ * shows it in the font's own encoding), ISO-8859-1 (Amiga BBSes), or PETSCII in the
  * C64's upper-case or lower-case set. */
 enum { CLIP_CP437, CLIP_LATIN1, CLIP_PETSCII_UPPER, CLIP_PETSCII_LOWER };
 

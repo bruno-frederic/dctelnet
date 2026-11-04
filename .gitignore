@@ -30,3 +30,4 @@ build/DCTelnet*.lha
 tests/test_petscii_*
 !tests/test_petscii_*.c
 tools/rtgprobe/rtgprobe
+/src/sshlib/build/
