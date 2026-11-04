@@ -12,6 +12,15 @@ STACKCHK := $(shell $(CC) -Werror -Wstack-usage=$(STACK_MAX) -c -x c /dev/null -
 
 TESTS := test_petscii_modules test_petscii_dispatch test_prefs_file test_site_prefs test_palette test_screenfont test_progdir test_listsel test_textedit test_dsr test_keys test_clip test_ansiscan test_ticks test_rexx test_rlogin test_ansimusic test_booklist test_crypto test_ssh test_knownhosts test_term_engine test_connectaddr
 
+# The test programs are host executables, but make only compares
+# timestamps. Docker "make ci" (Linux) and "make host-ci" (macOS) share this
+# directory, so a binary built by one would be run by the other ("Exec
+# format error"). Remove them whenever the host changes.
+HOST_ID := $(shell uname -s -m)
+ifneq ($(HOST_ID),$(shell cat .host-id 2>/dev/null))
+$(shell rm -f $(TESTS) ansimusic_dump; echo '$(HOST_ID)' > .host-id)
+endif
+
 .PHONY: all clean check-encoding check-fonts check-currenttime-null check-stack check-statics check-petscii-reopen
 all: $(TESTS) check-encoding check-fonts check-currenttime-null check-stack check-statics check-petscii-reopen
 	@for t in $(TESTS); do echo "--- $$t ---"; ./$$t || exit 1; done
@@ -143,7 +152,7 @@ test_connectaddr: test_connectaddr.c ../src/connectaddr.c ../src/connectaddr.h
 	$(CC) $(CFLAGS) -Ishim -o $@ $(filter %.c,$^)
 
 clean:
-	rm -f $(TESTS)
+	rm -f $(TESTS) ansimusic_dump .host-id
 
 CRYPTO_SRC := ../src/crypto/sha256.c ../src/crypto/aes.c ../src/crypto/bignum.c ../src/crypto/rsa.c ../src/crypto/x25519.c ../src/crypto/random.c
 test_crypto: test_crypto.c crypto_vectors.h bignum_vectors.h $(CRYPTO_SRC) $(wildcard ../src/crypto/*.h)

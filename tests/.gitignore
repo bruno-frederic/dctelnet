@@ -1,2 +1,4 @@
 test_*
 !test_*.c
+ansimusic_dump
+.host-id
