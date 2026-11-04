@@ -31,6 +31,7 @@ DELETE LIBS:xemvt340.library
 DELETE LIBS:xprftp.library
 DELETE LIBS:xprzmodem.library
 DELETE LIBS:reqtools.library
+DELETE LIBS:ssh.library
 
 echo "------------RAM:DCTelnet drawer:"
 DELETE RAM:DCTelnet.info       RAM:DCTelnet   RAM:FILE_ID.DIZ   ALL
@@ -58,6 +59,7 @@ VERSION reqtools.library   FULL
 VERSION xprzmodem.library  FULL
 VERSION xemvt340.library   FULL
 VERSION xprftp.library     FULL
+VERSION ssh.library        FULL
 
 CD SYS:DCTelnet
 VERSION DCTelnet   FULL
