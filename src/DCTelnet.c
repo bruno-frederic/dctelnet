@@ -66,6 +66,7 @@ extern struct Library *CyberGfxBase;
 #include "rexxcmd.h"
 #include "rlogin.h"
 #include "sshconn.h"
+#include "connectaddr.h"
 #include "charset.h"
 #include "ansimusic.h"
 #include "sound.h"
@@ -3268,7 +3269,7 @@ static void SaveScrollBack(char *fname)
  * @brief Handles the user "Connect" action from the UI.
  *
  * This function is triggered when the user clicks the Connect button.
- * It prompts for a "host:port" string, parses the input, and determines the target server and TCP
+ * It prompts for a "[user@]host[:port]" string, parses the input, and determines the target server and TCP
  * port (defaulting to port 23 if not specified).
  *
  * Depending on the execution mode:
@@ -3281,43 +3282,40 @@ static void SaveScrollBack(char *fname)
 static void OnConnectClicked(char spawnInstance)
 {
     char tbuf[64];
-    UWORD port = 0;
 
     if(!spawnInstance)  strlcpy(tbuf, server, sizeof(tbuf));
     else                tbuf[0] = '\0';
 
 
     if (GetStringRequester(win, "Connect",
-                           "Enter host:port",  tbuf, sizeof(tbuf))
+                           "Enter [user@]host[:port]",  tbuf, sizeof(tbuf))
        )
     {
         if(tbuf[0] != 0)
         {
-            register char *po;
+            char user[42], host[52];
+            UWORD port;
 
-            po = strchr(tbuf, ',');
-
-            if(po == NULL) // No ',' found. Check whether the input uses the "host:port" syntax
+            // "[user@]host[:port]"; the user name goes to the login macro / rlogin, as for an
+            // Address Book entry.
+            switch(ConnectAddr_Parse(tbuf, user, sizeof(user), host, sizeof(host), &port, 23))
             {
-                char *p = strchr(tbuf, ':');
-
-                // A ':' is treated as a port separator only if it is the only one in the string.
-                // This avoids confusing IPv6 addresses with "hostname:port" syntax.
-                if(p && strchr(p + 1, ':') == NULL)
-                    po = p;
+            case CONNECTADDR_OK:
+                break;
+            case CONNECTADDR_BAD_PORT:
+                SimpleReq("The port must be a number from 1 to 65535.");
+                return;
+            case CONNECTADDR_TOO_LONG:
+                SimpleReq("The user name or host name is too long.");
+                return;
+            default:
+                SimpleReq("Enter a host name, as [user@]host[:port].");
+                return;
             }
-
-            if(po)
-            {
-                *po++ = '\0';
-                port = (UWORD)atoi(po);
-            }
-
-            if(!port) port = 23;
 
             if(spawnInstance)
             {
-                mysprintf(buf, "run %s %s %ld <>NIL:", programName, tbuf, port);
+                mysprintf(buf, "run %s %s %ld <>NIL:", programName, host, port);
                 #ifdef _DEBUG
                     PutStr("--> Execute(");
                     PutStr(buf);
@@ -3329,7 +3327,7 @@ static void OnConnectClicked(char spawnInstance)
                 // Every connect runs from the main loop (RunPendingConnect):
                 // after a display reopen, and again on a redial.
                 BeginEntrySession(0, NULL);
-                DeferConnect("", tbuf, port, 0, "", "", "");
+                DeferConnect("", host, port, 0, user, "", "");
             }
         }
     }
