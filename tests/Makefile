@@ -3,10 +3,10 @@
 CC := cc
 CFLAGS := -std=c99 -Wall -Wextra -Werror -I../src
 
-TESTS := test_petscii_modules test_petscii_dispatch test_prefs_file test_site_prefs test_palette test_screenfont test_progdir test_listsel test_textedit test_dsr test_keys test_clip test_ansiscan test_ticks test_rexx test_rlogin test_ansimusic test_booklist
+TESTS := test_petscii_modules test_petscii_dispatch test_prefs_file test_site_prefs test_menu_checks test_palette test_screenfont test_progdir test_listsel test_textedit test_dsr test_keys test_clip test_ansiscan test_ticks test_rexx test_rlogin test_ansimusic test_booklist
 
-.PHONY: all clean check-encoding check-fonts
-all: $(TESTS) check-encoding check-fonts
+.PHONY: all clean check-encoding check-fonts check-local-echo-menu
+all: $(TESTS) check-encoding check-fonts check-local-echo-menu
 	@for t in $(TESTS); do echo "--- $$t ---"; ./$$t || exit 1; done
 
 # Check the file are standard printable ASCII or ISO-8859
@@ -38,6 +38,17 @@ check-encoding:
 		exit 1 ; \
 	fi
 
+# SetLocalEchoBack() runs on SSH connect and telnet ECHO negotiation, while
+# the tool bar, packet and scrollback windows may share the main menu strip.
+# It must update the menu through SyncMenuChecks(), which clears and resets
+# the strip on every window that holds it, never through the main window alone.
+check-local-echo-menu:
+	@cd ../src && if LC_ALL=C grep --text --after-context=12 '^static void SetLocalEchoBack(BOOL wantedState)$$' DCTelnet.c | LC_ALL=C grep --text --quiet 'MenuStrip(win' \
+		|| ! LC_ALL=C grep --text --after-context=12 '^static void SetLocalEchoBack(BOOL wantedState)$$' DCTelnet.c | LC_ALL=C grep --text --quiet 'SyncMenuChecks()'; then \
+		echo "ERROR: SetLocalEchoBack must update the menu through SyncMenuChecks(), not ClearMenuStrip/ResetMenuStrip on the main window."; \
+		exit 1; \
+	fi
+
 # Parse the shipped PETSCII fonts the way diskfont.library loads them. The
 # first build put the DiskFontHeader 4 bytes late and every OpenDiskFont()
 # failed silently.
@@ -58,6 +69,9 @@ test_prefs_file: test_prefs_file.c ../src/prefs_file.c ../src/prefs_file.h ../sr
 	$(CC) $(CFLAGS) -Ishim -o $@ $(filter %.c,$^)
 
 test_site_prefs: test_site_prefs.c ../src/site_prefs.c ../src/site_prefs.h ../src/prefs.h ../src/prefs_file.c ../src/prefs_file.h
+	$(CC) $(CFLAGS) -Ishim -o $@ $(filter %.c,$^)
+
+test_menu_checks: test_menu_checks.c ../src/menu_checks.c ../src/menu_checks.h ../src/prefs.h ../src/DCTelnet.h ../src/charset.h
 	$(CC) $(CFLAGS) -Ishim -o $@ $(filter %.c,$^)
 
 test_palette: test_palette.c ../src/palette.c ../src/palette.h ../src/prefs.h ../src/prefs_file.c ../src/prefs_file.h
