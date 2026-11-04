@@ -22,9 +22,14 @@ echo "------------ Purging device:"
 DELETE DEVS:ibmcon.device
 
 echo "------------ Purging fonts:"
+DELETE FONTS:ANSEY.font        FONTS:ANSEY        ALL
 DELETE FONTS:HyperANSI.font    FONTS:HyperANSI    ALL
+DELETE FONTS:IBM.font          FONTS:IBM          ALL
 DELETE FONTS:MicroKnight.font  FONTS:MicroKnight  ALL
-DELETE FONTS:P0T-NOoDLE.font   FONTS:P0T-NOoDLE   ALL
+DELETE FONTS:P0T-IBM.font      FONTS:P0T-IBM      ALL
+DELETE FONTS:Petscii.font      FONTS:Petscii      ALL
+DELETE FONTS:PetsciiLower.font FONTS:PetsciiLower ALL
+DELETE FONTS:TopazPro.font     FONTS:TopazPro     ALL
 
 echo "------------ Purging libraries:"
 DELETE LIBS:xemvt340.library
