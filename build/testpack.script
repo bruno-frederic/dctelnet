@@ -15,25 +15,30 @@ SET LatestPackagePath      ${InitialDir}/DCTelnet.lha
 SET InstallerPackagePath   WIN:/Installer-43_3.lha
 
 
-echo "------------SYS:DCTelnet drawer:"
+echo "------------ Purging SYS:DCTelnet drawer:"
 DELETE SYS:DCTelnet.info       SYS:DCTelnet       ALL
 
-echo "------------device:"
+echo "------------ Purging device:"
 DELETE DEVS:ibmcon.device
 
-echo "------------fonts:"
+echo "------------ Purging fonts:"
+DELETE FONTS:ANSEY.font        FONTS:ANSEY        ALL
 DELETE FONTS:HyperANSI.font    FONTS:HyperANSI    ALL
+DELETE FONTS:IBM.font          FONTS:IBM          ALL
 DELETE FONTS:MicroKnight.font  FONTS:MicroKnight  ALL
-DELETE FONTS:P0T-NOoDLE.font   FONTS:P0T-NOoDLE   ALL
+DELETE FONTS:P0T-IBM.font      FONTS:P0T-IBM      ALL
+DELETE FONTS:Petscii.font      FONTS:Petscii      ALL
+DELETE FONTS:PetsciiLower.font FONTS:PetsciiLower ALL
+DELETE FONTS:TopazPro.font     FONTS:TopazPro     ALL
 
-echo "------------libraries:"
+echo "------------ Purging libraries:"
 DELETE LIBS:xemvt340.library
 DELETE LIBS:xprftp.library
 DELETE LIBS:xprzmodem.library
 DELETE LIBS:reqtools.library
 
-echo "------------RAM:DCTelnet drawer:"
-DELETE RAM:DCTelnet.info       RAM:DCTelnet   RAM:FILE_ID.DIZ   ALL
+echo "------------ Purging RAM:DCTelnet drawer:"
+DELETE RAM:DCTelnet.info       RAM:DCTelnet   RAM:FILE_ID.DIZ   ALL QUIET
 
 echo "------------Unarchive latest package:"
 lha -Qa x "$LatestPackagePath"   RAM:
@@ -49,20 +54,23 @@ ELSE
   Installer Install_DCTelnet APPNAME DCTelnet MINUSER NOVICE
 ENDIF
 
-
-VERSION exec.library   FULL
-VERSION version.library   FULL
-VERSION icon.library   FULL
-VERSION workbench.library   FULL
+VERSION exec.library       FULL
+VERSION version.library    FULL
+VERSION icon.library       FULL
+VERSION workbench.library  FULL
 VERSION reqtools.library   FULL
 VERSION xprzmodem.library  FULL
 VERSION xemvt340.library   FULL
 VERSION xprftp.library     FULL
+VERSION ibmcon.device      FULL
 
 CD SYS:DCTelnet
 VERSION DCTelnet   FULL
 VERSION Docs/DCTelnet.guide FULL
 VERSION RAM:DCTelnet/Install_DCTelnet FULL
+
+echo "------------ Purging RAM:DCTelnet drawer:"
+DELETE RAM:DCTelnet.info       RAM:DCTelnet   RAM:FILE_ID.DIZ   ALL QUIET
 
 echo "------------Launching DCTelnet:"
 DCTelnet telehack.com
