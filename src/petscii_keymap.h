@@ -27,8 +27,8 @@ enum PetsciiSpecialKey {
 
 /*
  * is_special == 0: ascii_or_special is a plain ASCII char, returns the
- * case-swapped PETSCII byte to transmit (digits/punctuation pass through
- * unchanged).
+ * PETSCII byte a C64 keyboard sends: a-z as 0x41-0x5A, A-Z as 0xC1-0xDA
+ * (digits/punctuation pass through unchanged).
  * is_special == 1: ascii_or_special is a PetsciiSpecialKey value, returns
  * the PETSCII control byte for that key.
  */
@@ -39,5 +39,15 @@ int petscii_translate_key(int ascii_or_special, int is_special);
  * (F1 = '0'). Returns the C64 function-key byte for F1-F8, -1 otherwise.
  */
 int petscii_fkey_from_console_digit(char digit);
+
+/*
+ * The C64's number-row control keys (CGTerm 1.7b2 sends the same): with
+ * CTRL, 1-8 are the first eight colours (black, white, red, cyan, purple,
+ * green, blue, yellow), 9 RVS ON and 0 RVS OFF; with the Commodore key
+ * (C=), 1-8 the other eight (orange, brown, light red, dark grey, grey,
+ * light green, light blue, light grey). digit is '0'-'9'. Returns the
+ * PETSCII byte, -1 for any other combination (CTRL wins over C=).
+ */
+int petscii_key_from_digit(char digit, int ctrl, int commodore);
 
 #endif /* PETSCII_KEYMAP_H */

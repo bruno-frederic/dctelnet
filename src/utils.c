@@ -44,9 +44,11 @@
  */
 ULONG mytime(void)
 {
-    ULONG seconds;
+    ULONG seconds, micros;
 
-    CurrentTime(&seconds, NULL); // works on OS 3.2 with 2nd arg = NULL
+    // Kickstart 3.1 writes the microseconds through the 2nd argument even though the autodoc
+    // allows NULL there (MuForce: LONG WRITE to address 0), so it must point somewhere.
+    CurrentTime(&seconds, &micros);
 
     return seconds + UNIX_TO_AMIGA_EPOCH;
 }
