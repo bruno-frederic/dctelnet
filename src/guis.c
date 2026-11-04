@@ -26,12 +26,14 @@
 #include "prefs.h"
 #include "site_prefs.h"
 #include "charset.h"               // CHARSET_*
+#include "vtpersonality.h"          // Vt_CharsetAfterTermType()
 #include "prefs_file.h"             // Prefs_Palette()
 #include "Xem_wrapper.h"                 // SaveXemOptions()
 #include "listsel.h"
 #include "textedit.h"
 #include "ansiscan.h"
 #include "booklist.h"
+#include "renderer.h"
 #include <intuition/sghooks.h>
 
 struct BookStruct
@@ -805,7 +807,7 @@ static struct Window         *editProfileWnd;           // "Edit Address Book Pr
 static struct Gadget         *editProfileGList;         // "Edit Address Book Profile" window GList
 static struct Gadget         *editProfileGadgets[editProfile_CNT]; // "Edit Address Book Profile" window gadgets
 #define editProfileWidth 450
-#define editProfileHeight 185
+#define editProfileHeight 197
 
 static UBYTE editProfileGTypes[] = {
     STRING_KIND,
@@ -821,6 +823,7 @@ static UBYTE editProfileGTypes[] = {
     BUTTON_KIND,
     STRING_KIND,
     STRING_KIND,
+    TEXT_KIND,
     TEXT_KIND
 };
 
@@ -828,17 +831,18 @@ static struct MyNewGadget editProfileNGad[] = {
     120, 5, 317, 13, (UBYTE *)"_Site Name:",
     120, 21, 317, 13, (UBYTE *)"_Address:",
     121, 37, 177, 13, (UBYTE *)"Last Called:",
-    3, 170, 101, 13, (UBYTE *)"_Ok",
-    345, 170, 101, 13, (UBYTE *)"_Cancel",
+    3, 182, 101, 13, (UBYTE *)"_Ok",
+    345, 182, 101, 13, (UBYTE *)"_Cancel",
     365, 37, 72, 13, (UBYTE *)"_Port:",
     120, 53, 317, 13, (UBYTE *)"_Username:",
     120, 68, 317, 13, (UBYTE *)"Pass_word:",
-    120, 134, 317, 13, (UBYTE *)"Settings:",
-    3, 150, 218, 13, (UBYTE *)"Se_ttings...",
-    228, 150, 218, 13, (UBYTE *)"Use _Global Settings",
+    120, 146, 317, 13, (UBYTE *)"Settings:",
+    3, 162, 218, 13, (UBYTE *)"Se_ttings...",
+    228, 162, 218, 13, (UBYTE *)"Use _Global Settings",
     120, 84, 317, 13, (UBYTE *)"Co_mment:",
     120, 100, 317, 13, (UBYTE *)"_Login Macro:",
-    3, 114, 443, 12, NULL,
+    3, 115, 434, 10, NULL,              // the macro codes, two lines ending
+    3, 125, 434, 10, NULL,              //   under the field's right edge
 };
 
 static ULONG editProfileGTags[] = {
@@ -855,7 +859,8 @@ static ULONG editProfileGTags[] = {
     (GT_Underscore), '_', (TAG_DONE),
     GTST_String, 0, (GTST_MaxChars), 63, (GT_Underscore), '_', (TAG_DONE),
     GTST_String, 0, (GTST_MaxChars), 127, (GT_Underscore), '_', (TAG_DONE),
-    GTTX_Text, 0, (TAG_DONE)
+    GTTX_Text, 0, (GTTX_Justification), GTJ_RIGHT, (TAG_DONE),    // (V39; left on OS 2.x)
+    GTTX_Text, 0, (GTTX_Justification), GTJ_RIGHT, (TAG_DONE)
 };
 
 // Where each gadget's initial value sits in editProfileGTags[] above (the
@@ -871,6 +876,7 @@ static ULONG editProfileGTags[] = {
 #define EP_TAG_COMMENT  58
 #define EP_TAG_LOGIN_MACRO 65
 #define EP_TAG_MACRO_HELP  72
+#define EP_TAG_MACRO_HELP2 77
 
 /*
  * A field entered with Tab is replaced by what is typed (string edit hook):
@@ -982,7 +988,7 @@ static int OpenEditProfileWindow( void )
     DrawBevelBox( editProfileWnd->RPort, OffX + ComputeX( 3 ),
                     OffY + ComputeY( 1 ),
                     ComputeX( 444 ),
-                    ComputeY( 128 ),   /* every field down to the macro help line */
+                    ComputeY( 140 ),   /* every field down to the macro help lines */
                     GT_VisualInfo, visualInfos, TAG_DONE );
     return( 0L );
 }
@@ -999,8 +1005,9 @@ return TRUE  if the user validated the changes (OK)
 /*
  * Connection > Import Address Book...: a SyncTERM phone book (syncterm.lst)
  * added to DCTelnet.Book. An entry already there (the same host and port) is
- * skipped, and so is one DCTelnet cannot connect to (SSH, modem ...); RLogin
- * and Raw entries get their own Terminal settings (Rlogin, Raw Connection).
+ * skipped, and so is one DCTelnet cannot connect to (modem, TLS ...); RLogin,
+ * Raw and SSH entries get their own Terminal settings (Rlogin, Raw
+ * Connection, SSH).
  */
 #define IMPORT_MAX (256 * 1024)
 
@@ -1063,8 +1070,9 @@ void ImportBookList(const char *path)
             memset(&entry, 0, sizeof(entry));
             entry.groups = SITE_GROUP_TERMINAL;
             entry.prefs = *GlobalSettings();
-            entry.prefs.State &= ~(APP_RLOGIN | APP_RAW_CONNECTION);
-            entry.prefs.State |= b.type == BBS_RLOGIN ? APP_RLOGIN : APP_RAW_CONNECTION;
+            entry.prefs.State &= ~(APP_RLOGIN | APP_RAW_CONNECTION | APP_SSH);
+            entry.prefs.State |= b.type == BBS_RLOGIN ? APP_RLOGIN
+                               : b.type == BBS_SSH ? APP_SSH : APP_RAW_CONNECTION;
             memcpy(entry.fKeys, fKeys, sizeof(entry.fKeys));
             if (SaveEntrySettings(maxId + 1, &entry))
                 rec.settingsId = ++maxId;
@@ -1077,7 +1085,7 @@ void ImportBookList(const char *path)
     if (old) FreeVec(old);
     InfoReq(NULL, "%ld entries added to the Address Book.\n"
                   "%ld were there already, %ld use a connection DCTelnet does not have\n"
-                  "(SSH, modem, serial).", (LONG)added, (LONG)known, (LONG)other);
+                  "(modem, serial, TLS).", (LONG)added, (LONG)known, (LONG)other);
 }
 
 // Next free settings id: one above the highest id in the Address Book list.
@@ -1106,7 +1114,7 @@ enum
 {
     SG_SCREEN_OVR, SG_SCREEN_SUM, SG_SCREEN_CUR, SG_SCREEN_FONT, SG_SCREEN_PALETTE,
     SG_TERM_OVR, SG_TERM_SUM, SG_TERM_CUR, SG_TERM_PETSCII, SG_TERM_XEMLIB, SG_TERM_DISPID,
-    SG_TERM_RAW, SG_TERM_ECHO, SG_TERM_RENDERER, SG_TERM_RLOGIN, SG_TERM_CHARSET,
+    SG_TERM_RAW, SG_TERM_ECHO, SG_TERM_RENDERER, SG_TERM_RLOGIN, SG_TERM_CHARSET, SG_TERM_SSH, SG_TERM_TERMTYPE,
     SG_KEY_OVR, SG_KEY_SUM, SG_KEY_CUR, SG_KEY_BSDEL, SG_KEY_CRLF, SG_KEY_FKEYS, SG_KEY_VT,
     SG_XFER_OVR, SG_XFER_SUM, SG_XFER_CUR, SG_XFER_PROTO, SG_XFER_OPTS,
     SG_OK, SG_CANCEL,
@@ -1142,9 +1150,11 @@ static const struct SettingsGadgetDef settingsDefs[SG_COUNT] =
     { 456,  58, 120, 13, "Display ID...",        PLACETEXT_IN,    BUTTON_KIND   },
     {  80,  75,  26, 11, "Raw Connection",       PLACETEXT_RIGHT, CHECKBOX_KIND },
     { 256,  75,  26, 11, "Local Echoback",       PLACETEXT_RIGHT, CHECKBOX_KIND },
-    {  80,  91, 176, 13, "Renderer",             PLACETEXT_LEFT,  CYCLE_KIND    },
+    {  80,  91, 136, 13, "Renderer",             PLACETEXT_LEFT,  CYCLE_KIND    },
     { 432,  75,  26, 11, "Rlogin",               PLACETEXT_RIGHT, CHECKBOX_KIND },
-    { 344,  91, 176, 13, "Characters",           PLACETEXT_LEFT,  CYCLE_KIND    },
+    { 312,  91,  96, 13, "Characters",           PLACETEXT_LEFT,  CYCLE_KIND    },
+    { 536,  75,  26, 11, "SSH",                  PLACETEXT_RIGHT, CHECKBOX_KIND },
+    { 516,  91,  96, 13, "Terminal Type",        PLACETEXT_LEFT,  CYCLE_KIND    },
 
     {  80, 113, 112, 13, "Keyboard",             PLACETEXT_LEFT,  CYCLE_KIND    },
     { 196, 113, 300, 13, NULL,                   0,               TEXT_KIND     },
@@ -1168,21 +1178,12 @@ static const struct SettingsGadgetDef settingsDefs[SG_COUNT] =
 static STRPTR overrideLabels[] = { (STRPTR)"Global", (STRPTR)"This Entry", NULL };
 // The Character Set (charset.h: CHARSET_CP437, _LATIN1, _UTF8).
 static STRPTR charsetLabels[] = { (STRPTR)"IBM PC", (STRPTR)"Amiga", (STRPTR)"UTF-8", NULL };
+// The Terminal Type (prefs.h: TERMTYPE_AUTO, _BBS, _UNIX).
+static STRPTR termTypeLabels[] = { (STRPTR)"Automatic", (STRPTR)"BBS", (STRPTR)"Unix", NULL };
 // The Renderer cycle: APP_RENDERER_BUILTIN .. APP_RENDERER_IBMCON_DEVICE, in bit order.
 static STRPTR rendererLabels[] = { (STRPTR)"Built-in", (STRPTR)"console.device", (STRPTR)"XEM Library",
                                    (STRPTR)"ibmcon.device", NULL };
-#define RENDERER_FIRST_BIT 9    // APP_RENDERER_BUILTIN (prefs.h)
-typedef char RendererBitsInOrder[(APP_RENDERER_BUILTIN == 1UL << RENDERER_FIRST_BIT
-                                  && APP_RENDERER_IBMCON_DEVICE == 1UL << (RENDERER_FIRST_BIT + 3)) ? 1 : -1];
-
-// The Renderer cycle position for a State (its renderer bit).
-static UWORD RendererIndex(ULONG state)
-{
-    UWORD i;
-    for (i = 0; i < 4; i++)
-        if (state & (1UL << (RENDERER_FIRST_BIT + i))) return i;
-    return 0;
-}
+typedef char RendererLabelsMatch[sizeof rendererLabels / sizeof rendererLabels[0] == RENDERER_COUNT + 1 ? 1 : -1];
 
 static const ULONG groupOfOverride[4]  = { SITE_GROUP_SCREEN, SITE_GROUP_TERMINAL, SITE_GROUP_KEYBOARD, SITE_GROUP_TRANSFER };
 static const UWORD overrideGadget[4]   = { SG_SCREEN_OVR, SG_TERM_OVR, SG_KEY_OVR, SG_XFER_OVR };
@@ -1224,13 +1225,16 @@ static void RefreshSettingsWindow(const struct SiteSettings *work)
     SetChecked(SG_TERM_RAW,     (shown.State & APP_RAW_CONNECTION) != 0);
     SetChecked(SG_TERM_ECHO,    (shown.State & APP_LOCAL_ECHO) != 0);
     SetChecked(SG_TERM_RLOGIN,  (shown.State & APP_RLOGIN) != 0);
+    SetChecked(SG_TERM_SSH,     (shown.State & APP_SSH) != 0);
     GT_SetGadgetAttrs(settingsGadgets[SG_TERM_CHARSET], settingsWnd, NULL,
                       GTCY_Active, (ULONG)shown.Charset, TAG_DONE);
+    GT_SetGadgetAttrs(settingsGadgets[SG_TERM_TERMTYPE], settingsWnd, NULL,
+                      GTCY_Active, (ULONG)shown.TermType, TAG_DONE);
     SetChecked(SG_KEY_BSDEL,    (shown.State & APP_BACKSPACE_DEL_SWAPPED) != 0);
     SetChecked(SG_KEY_CRLF,     (shown.State & APP_RETURN_SENDING_CRLF) != 0);
     SetChecked(SG_KEY_VT,       (shown.State & APP_VT_KEYS) != 0);
     GT_SetGadgetAttrs(settingsGadgets[SG_TERM_RENDERER], settingsWnd, NULL,
-                      GTCY_Active, (ULONG)RendererIndex(shown.State), TAG_DONE);
+                      GTCY_Active, (ULONG)Renderer_Index(shown.State), TAG_DONE);
 }
 
 // A field of a group is about to change: the group becomes overridden, with
@@ -1438,7 +1442,8 @@ static BOOL EditEntrySettings(const char *entryName, struct SiteSettings *entry,
         if (d->kind == TEXT_KIND)  { tags[0] = GTTX_Border; tags[1] = TRUE; tags[2] = TAG_DONE; }
         if (d->kind == CYCLE_KIND) { tags[0] = GTCY_Labels;
                                      tags[1] = (ULONG)(i == SG_TERM_RENDERER ? rendererLabels
-                                                     : i == SG_TERM_CHARSET ? charsetLabels : overrideLabels);
+                                                     : i == SG_TERM_CHARSET ? charsetLabels
+                                                     : i == SG_TERM_TERMTYPE ? termTypeLabels : overrideLabels);
                                      tags[2] = TAG_DONE; }
         settingsGadgets[i] = g = CreateGadgetA(d->kind, g, &ng, (struct TagItem *)tags);
         if (!g) break;
@@ -1516,8 +1521,7 @@ static BOOL EditEntrySettings(const char *entryName, struct SiteSettings *entry,
                     break;
                 case SG_TERM_RENDERER:
                     OverrideGroup(&work, SITE_GROUP_TERMINAL);
-                    work.prefs.State = (work.prefs.State & ~APP_RENDERER_ALL)
-                                     | (1UL << (RENDERER_FIRST_BIT + (code & 3)));
+                    work.prefs.State = Renderer_Select(work.prefs.State, (UWORD)code);
                     break;
                 case SG_TERM_RAW:
                     SetFlagFromGadget(&work, SITE_GROUP_TERMINAL, SG_TERM_RAW, APP_RAW_CONNECTION, FALSE);
@@ -1525,9 +1529,17 @@ static BOOL EditEntrySettings(const char *entryName, struct SiteSettings *entry,
                 case SG_TERM_RLOGIN:
                     SetFlagFromGadget(&work, SITE_GROUP_TERMINAL, SG_TERM_RLOGIN, APP_RLOGIN, FALSE);
                     break;
+                case SG_TERM_SSH:
+                    SetFlagFromGadget(&work, SITE_GROUP_TERMINAL, SG_TERM_SSH, APP_SSH, FALSE);
+                    break;
                 case SG_TERM_CHARSET:
                     OverrideGroup(&work, SITE_GROUP_TERMINAL);
                     work.prefs.Charset = (UBYTE)code;
+                    break;
+                case SG_TERM_TERMTYPE:
+                    OverrideGroup(&work, SITE_GROUP_TERMINAL);
+                    work.prefs.TermType = (UBYTE)code;
+                    work.prefs.Charset = Vt_CharsetAfterTermType(work.prefs.TermType, work.prefs.Charset);   // MA2-13
                     break;
                 case SG_TERM_ECHO:
                     SetFlagFromGadget(&work, SITE_GROUP_TERMINAL, SG_TERM_ECHO, APP_LOCAL_ECHO, FALSE);
@@ -1625,7 +1637,9 @@ static BOOL EditProfile(struct BookStruct *book, struct List *list)
     editProfileGTags[EP_TAG_LOGIN_MACRO] = (unsigned long)snapshot.loginMacro;
     // Sent after connecting (SendLoginMacro); the codes it understands:
     editProfileGTags[EP_TAG_MACRO_HELP] =
-        (unsigned long)"\\u Username \\p Password \\r Return \\d Wait 1 s";
+        (unsigned long)"\\u User name   \\p Password   \\r Return";
+    editProfileGTags[EP_TAG_MACRO_HELP2] =
+        (unsigned long)"\\d Wait 1 s   \\w\"text\" Wait for the text";
 
     // Open the Edit Profile window
     if(OpenEditProfileWindow() == RETURN_OK)
