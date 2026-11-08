@@ -74,16 +74,28 @@ static ULONG GetBitMapAttr(struct BitMap *b, ULONG attr)
 #define OBP_Precision 1
 #define PRECISION_EXACT 0
 #define OBP_FailIfBad 2
-static int obtainCalls, releaseCalls, obtainFail;
+#define PRECISION_IMAGE 1
+static int obtainCalls, releaseCalls, obtainFail, obtainExactFail, obtainNearCalls;
 static ULONG obtainR, obtainG, obtainB;
 static LONG obtainTags[4];
 static LONG ObtainBestPen(struct ColorMap *cm, ULONG r, ULONG g, ULONG b, ...)
 {
+    va_list ap;
+    LONG exact;
+
     (void)cm;
     obtainR = r; obtainG = g; obtainB = b;
-    obtainTags[0] = OBP_Precision; obtainTags[1] = PRECISION_EXACT; obtainTags[2] = OBP_FailIfBad; obtainTags[3] = 1;
+    va_start(ap, b);                    /* the tags the caller passed: OBP_Precision p, OBP_FailIfBad f */
+    obtainTags[0] = va_arg(ap, LONG); obtainTags[1] = va_arg(ap, LONG);
+    obtainTags[2] = va_arg(ap, LONG); obtainTags[3] = va_arg(ap, LONG);
+    va_end(ap);
+    exact = obtainTags[1] == PRECISION_EXACT;
     obtainCalls++;
-    return obtainFail ? -1 : 50 + (obtainCalls - 1) % 200;
+    if (!exact)
+        obtainNearCalls++;
+    if (obtainFail || (exact && obtainExactFail))
+        return -1;
+    return 50 + (obtainCalls - 1) % 200;
 }
 static void ReleasePen(struct ColorMap *cm, ULONG pen) { (void)cm; (void)pen; releaseCalls++; }
 static void SetFont(struct RastPort *rp, struct TextFont *tf) { rp->Font = tf; }
@@ -877,7 +889,7 @@ static void xterm_begin_on(UBYTE depth, ULONG flags)
     bm.Depth = depth;
     bitmapFlags = flags;
     assert(term_init_area(&screen, &winRp, 0, TOP, 0, TOP, W, H - TOP, &font) == 0);
-    obtainCalls = releaseCalls = obtainFail = 0;
+    obtainCalls = releaseCalls = obtainFail = obtainExactFail = obtainNearCalls = 0;
     memset(&prefs, 0, sizeof(prefs));
     prefs.State = APP_RENDERER_BUILTIN;
     prefs.TermType = TERMTYPE_UNIX;
@@ -1160,10 +1172,57 @@ static void test_ma2_9_a_failed_obtain_falls_back_to_the_16_pen_answer(void)
     xterm_begin_on(24, 0);
     obtainFail = 1;
     vt_put("\x1b[38;2;255;0;0mX");
-    assert(obtainCalls == 1 && probes == 1);
+    assert(obtainCalls == 2 && obtainNearCalls == 1 && probes == 1);   /* exact, then the nearest */
     assert(probe[0].fg == Vt_PenFor(VT_COLOR_RGB | 0xFF0000UL, prefs.AnsiColors));
     tc_end();
     assert(releaseCalls == 0);
+}
+
+/* AGA / RTG palette screens (8 planes): the same pens as true colour; a full
+ * colour map answers the nearest pen (vtcon pen_rule.h), still one release. */
+static void test_aga_pens_text_and_picture_on_an_8_plane_screen(void)
+{
+    char want[64];
+    UBYTE pen;
+
+    xterm_begin_on(8, 0);
+    assert(vtTrueColour);
+    vt_put("\x1b[38;5;196mA");
+    assert(obtainCalls == 1 && probe[0].fg == 16 && term_pen_map[16] == 50);
+    /* the picture: the engine's palette colour gets a pen of its own through VtPenFor */
+    chunkyCalls = 0;
+    vtImgRuns = 0;
+    vt_put("\x1b[H");                    /* the picture goes at the cursor: home */
+    vt_put("\033_Gf=24,s=2,v=2,a=T;/wAA/wAA/wAA/wAA\033\\");
+    assert(vtImgRuns == 2 && chunkyCalls == 2);
+    pen = term_pen_map[VtPenFor((vt_color)(VT_COLOR_RGB | 0xFF0000UL))];
+    assert(pen == 50);                  /* FF0000 is the cell's pen from the text above, cached */
+    snprintf(want, sizeof(want), "Chunky(%d,%d,%d,%d pen%d)", TERM_PX(0), TERM_PY(0), TERM_PX(0) + 1, TERM_PY(0), pen);
+    assert(strstr(calls, want));
+    tc_end();
+    assert(releaseCalls == obtainCalls);        /* no pen leak on close */
+    assert(vtTcN == 0);
+}
+
+static void test_aga_full_colour_map_takes_the_nearest_pen(void)
+{
+    xterm_begin_on(8, 0);
+    obtainExactFail = 1;
+    vt_put("\x1b[38;5;196mA");
+    assert(obtainCalls == 2 && obtainNearCalls == 1);
+    assert(probe[0].fg == 16 && term_pen_map[16] == 51);
+    tc_end();
+    assert(releaseCalls == 1);
+}
+
+static void test_aga_7_planes_and_less_never_ask_for_a_pen(void)
+{
+    assert(!Vt_ObtainsPens(4) && !Vt_ObtainsPens(7));
+    assert(Vt_ObtainsPens(8) && Vt_ObtainsPens(24));
+    xterm_begin_on(7, 0);
+    vt_put("\x1b[38;5;196mA");
+    assert(obtainCalls == 0);
+    tc_end();
 }
 
 /* ---- MA3: mouse, title, bracketed paste through the real entry points ---- */
@@ -1548,6 +1607,9 @@ int main(void)
     test_ma4_4_the_alt_screen_leaves_the_scrollback_alone();
     test_kg8_a_kitty_picture_through_vtwrite_is_drawn_and_a_query_answered();
     test_kg10_the_screens_pixel_aspect_reaches_the_engine();
+    test_aga_pens_text_and_picture_on_an_8_plane_screen();
+    test_aga_full_colour_map_takes_the_nearest_pen();
+    test_aga_7_planes_and_less_never_ask_for_a_pen();
     printf("term_engine: all assertions passed\n");
     return 0;
 }

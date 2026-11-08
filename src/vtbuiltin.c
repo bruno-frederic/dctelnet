@@ -24,6 +24,7 @@
 #include "glyphmap.h"
 #include "vtpersonality.h"
 #include "vtpens.h"
+#include "pen_rule.h"
 #include "vtinput.h"
 #include "glyphraster.h"
 #include "screenfont.h"
@@ -51,15 +52,30 @@ static int VtScrollbackCap(void)
     return prefs.nScrollbackLines > 32767UL ? 32767 : (int)prefs.nScrollbackLines;
 }
 
-/* MA2-9: on a screen whose bitmap is deeper than 8 bits (RTG true or high
- * colour) a 256-colour or RGB cell gets a pen of its own colour from
- * ObtainBestPen(), cached per RGB in slots 16-255 of the engine's pen map.
- * Every other screen, the default colours and c < 16 keep Vt_PenFor() and
- * never call it (the 68000 path). */
+/* MA2-9: on a screen whose bitmap is 8 bits or deeper (AGA or RTG palette
+ * screens, RTG true or high colour: Vt_ObtainsPens()) a 256-colour or RGB cell
+ * gets a pen of its own colour from ObtainBestPen(), cached per RGB in slots
+ * 16-255 of the engine's pen map. The rule is vtcon's pen_rule.h, the one
+ * UP-Term uses for its palette screens: an exact entry while the colour map
+ * has a free one, else the nearest pen it has. Every other screen, the
+ * default colours and c < 16 keep Vt_PenFor() and never call it (the 68000
+ * path). */
 #define VT_TC_MAX 240
 static struct { ULONG rgb; LONG pen; } vtTc[VT_TC_MAX];
 static int vtTcN, vtTcLast;
 static BOOL vtTrueColour;
+
+/* pen_rule.h's best(): the screen's ObtainBestPen, exact (OBP_FailIfBad) or
+ * the nearest pen. Same call as vtcon's render/pens_amiga.c vr_pen_best. */
+static long VtPenBest(void *u, unsigned long rgb, int exact)
+{
+    return (long)ObtainBestPen(scr->ViewPort.ColorMap,
+                               ((rgb >> 16) & 0xFF) * 0x01010101UL,
+                               ((rgb >> 8) & 0xFF) * 0x01010101UL,
+                               (rgb & 0xFF) * 0x01010101UL,
+                               OBP_Precision, exact ? PRECISION_EXACT : PRECISION_IMAGE,
+                               OBP_FailIfBad, exact ? TRUE : FALSE, TAG_END);
+}
 
 /* The pen to draw colour c with. */
 static UBYTE VtPenFor(vt_color c)
@@ -81,11 +97,7 @@ static UBYTE VtPenFor(vt_color c)
     }
     if (vtTcN >= VT_TC_MAX)
         return Vt_PenFor(c, prefs.AnsiColors);
-    pen = ObtainBestPen(scr->ViewPort.ColorMap,
-                        ((rgb >> 16) & 0xFF) * 0x01010101UL,
-                        ((rgb >> 8) & 0xFF) * 0x01010101UL,
-                        (rgb & 0xFF) * 0x01010101UL,
-                        OBP_Precision, PRECISION_EXACT, OBP_FailIfBad, TRUE, TAG_END);
+    pen = vr_obtain_rule(VtPenBest, NULL, rgb);
     if (pen < 0)
         return Vt_PenFor(c, prefs.AnsiColors);
     vtTc[vtTcN].rgb = rgb;
@@ -640,7 +652,7 @@ static int VtOpen(void)
         struct BitMap *bm = scr->RastPort.BitMap;
         ULONG depth = ((struct Library *)GfxBase)->lib_Version >= 39 ? GetBitMapAttr(bm, BMA_DEPTH) : bm->Depth;
 
-        vtTrueColour = depth > 8;
+        vtTrueColour = Vt_ObtainsPens(depth);
     }
     if (vtTerm && vtTermSb == VtScrollbackCap()) {
         VtReleasePens();    /* the pens were the old display's */

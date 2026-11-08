@@ -43,3 +43,8 @@ UBYTE Vt_PenFor(vt_color c, const UWORD ansi[16])
     }
     return (UBYTE)bestPen;
 }
+
+BOOL Vt_ObtainsPens(ULONG depth)
+{
+    return depth >= 8;
+}

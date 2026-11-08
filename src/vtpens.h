@@ -14,6 +14,12 @@
  * wins a tie). ansi: the 16 pens as RGB4, pen n holds ANSI colour n. */
 UBYTE Vt_PenFor(vt_color c, const UWORD ansi[16]);
 
+/* Does a screen bitmap of this depth (planes) get obtained pens for the 256
+ * colours and direct colours? 8 planes or more: AGA and RTG palette screens
+ * (256 entries) and RTG true/high colour. Under 8 planes the 16 ANSI pens
+ * stand in, as before. */
+BOOL Vt_ObtainsPens(ULONG depth);
+
 /* 0xRRGGBB of xterm 256-colour index 16..255 (the 6x6x6 cube, the greys). */
 ULONG Vt_Xterm256Rgb(int index);
 
