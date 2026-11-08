@@ -17,7 +17,7 @@ struct Library { UWORD lib_Version; };
 struct GfxBase { struct Library LibNode; };
 struct BitMap { UWORD BytesPerRow, Rows; UBYTE Flags, Depth; UWORD pad; UBYTE *Planes[8]; };
 struct TextFont { UWORD tf_YSize, tf_XSize, tf_Baseline; UBYTE tf_LoChar, tf_HiChar; void *tf_CharData; UWORD tf_Modulo; void *tf_CharLoc; };
-struct RastPort { struct BitMap *BitMap; UBYTE Mask, FgPen, BgPen, DrawMode; WORD cx, cy; struct TextFont *Font; };
+struct RastPort { struct BitMap *BitMap; UBYTE Mask, FgPen, BgPen, DrawMode; WORD cx, cy; struct TextFont *Font; struct Layer *Layer; };
 struct Rectangle { WORD MinX, MinY, MaxX, MaxY; };
 struct Layer { struct Layer *back; struct Rectangle bounds; };
 struct Layer_Info { struct Layer *top_layer; };
@@ -104,6 +104,27 @@ static void RectFill(struct RastPort *rp, LONG x0, LONG y0, LONG x1, LONG y1)
     else
         call("RectFill(%ld,%ld,%ld,%ld pen%ld)\n", (long)x0, (long)y0, (long)x1, (long)y1, (long)rp->FgPen);
 }
+/* Pictures (kitty graphics): the chunky writes, one line each with the
+ * first pixel's pen. */
+static int chunkyCalls;
+static void WriteChunkyPixels(struct RastPort *rp, LONG x0, LONG y0, LONG x1, LONG y1, UBYTE *a, LONG mod)
+{
+    (void)rp; (void)mod;
+    chunkyCalls++;
+    call("Chunky(%ld,%ld,%ld,%ld pen%ld)\n", (long)x0, (long)y0, (long)x1, (long)y1, (long)a[0]);
+}
+static LONG WritePixelArray8(struct RastPort *rp, ULONG x0, ULONG y0, ULONG x1, ULONG y1, UBYTE *a, struct RastPort *tmp)
+{
+    (void)tmp;
+    WriteChunkyPixels(rp, (LONG)x0, (LONG)y0, (LONG)x1, (LONG)y1, a, 0);
+    return 0;
+}
+static struct BitMap *AllocBitMap(ULONG w, ULONG h, ULONG d, ULONG f, struct BitMap *friendBm)
+{
+    (void)w; (void)h; (void)d; (void)f;
+    return friendBm;
+}
+static void FreeBitMap(struct BitMap *b) { (void)b; }
 static void ScrollRaster(struct RastPort *rp, LONG dx, LONG dy, LONG x0, LONG y0, LONG x1, LONG y1)
 {
     char line[160];
@@ -204,6 +225,28 @@ static void probe_glyph(WORD x, UBYTE ch)
 }
 #define term_glyph(x, c) probe_glyph((x), (c))
 #include "vtengine.h"
+/* KG-10: the screen's display mode and its pixel aspect. modeRes is what
+ * GetDisplayInfoData reports (0: the mode is unknown); aspectCalls and
+ * aspectRx/Ry record what VtSetAspect handed the engine. */
+struct DisplayInfo { struct { UWORD x, y; } Resolution; };
+#define DTAG_DISP 0x80001000UL
+#define INVALID_ID (~0UL)
+static int modeRx, modeRy;
+static int aspectCalls, aspectRx, aspectRy;
+static ULONG GetVPModeID(struct ViewPort *vp) { (void)vp; return 0x29000UL; }
+static long GetDisplayInfoData(void *h, UBYTE *buf, ULONG size, ULONG tag, ULONG id)
+{
+    struct DisplayInfo *di = (struct DisplayInfo *)buf;
+    (void)h; (void)size; (void)id;
+    assert(tag == DTAG_DISP);
+    if (!modeRx)
+        return 0;
+    di->Resolution.x = (UWORD)modeRx;
+    di->Resolution.y = (UWORD)modeRy;
+    return 1;
+}
+static void probe_aspect(vt_term *t, int rx, int ry);
+#define vt_set_pixel_aspect(t, rx, ry) probe_aspect((t), (rx), (ry))
 /* The sentinel for VtOpen: what the global vtTerm is while vt_new() draws. */
 static int newCalls;
 static int newSawTerm;
@@ -213,6 +256,14 @@ static vt_term *probe_new(int cols, int rows, int sb, const vt_callbacks *cb, vo
 #include "../src/vtbuiltin.c"
 #undef term_glyph
 #undef vt_new
+#undef vt_set_pixel_aspect
+static void probe_aspect(vt_term *t, int rx, int ry)
+{
+    aspectCalls++;
+    aspectRx = rx;
+    aspectRy = ry;
+    vt_set_pixel_aspect(t, rx, ry);
+}
 static vt_term *probe_new(int cols, int rows, int sb, const vt_callbacks *cb, void *user)
 {
     newCalls++;
@@ -1399,6 +1450,58 @@ static void test_ma4_4_the_alt_screen_leaves_the_scrollback_alone(void)
     VtClose();
 }
 
+/* KG-8: a kitty picture that reaches DCTelnet's receive path (VtWrite,
+ * what ConWrite calls for the built-in renderer) is parsed and placed by
+ * the engine and drawn by VtDrawImages: the sentinel counts its runs, the
+ * chunky write gets the pen VtPenFor gives the picture's colour, and the
+ * a=q query is answered OK through send_data. */
+static void test_kg8_a_kitty_picture_through_vtwrite_is_drawn_and_a_query_answered(void)
+{
+    char want[64];
+    UBYTE pen;
+
+    xterm_begin();
+    chunkyCalls = 0;
+    vtImgRuns = 0;
+    sentLen = 0;
+    /* 2 x 2 red pixels, 24-bit RGB, transmitted and shown at the cursor */
+    vt_put("\033_Gf=24,s=2,v=2,a=T;/wAA/wAA/wAA/wAA\033\\");
+    assert(vt_kitty_placed(vtTerm) == 1);
+    assert(vtImgRuns == 2);             /* kitty: one run per pixel row */
+    assert(chunkyCalls == 2);
+    pen = term_pen_map[VtPenFor((vt_color)(VT_COLOR_RGB | 0xFF0000UL))];
+    snprintf(want, sizeof(want), "Chunky(%d,%d,%d,%d pen%d)", TERM_PX(0), TERM_PY(0), TERM_PX(0) + 1, TERM_PY(0), pen);
+    assert(strstr(calls, want));
+    snprintf(want, sizeof(want), "Chunky(%d,%d,%d,%d pen%d)", TERM_PX(0), TERM_PY(0) + 1, TERM_PX(0) + 1, TERM_PY(0) + 1, pen);
+    assert(strstr(calls, want));
+    /* the support query: answered, nothing placed */
+    vt_put("\033_Gi=31,s=1,v=1,a=q,t=d,f=24;AAAA\033\\");
+    assert(sentLen > 0 && sentLen < (int)sizeof(sentBuf));
+    assert(sentLen == 12 && memcmp(sentBuf, "\033_Gi=31;OK\033\\", 12) == 0);
+    assert(vt_kitty_placed(vtTerm) == 1);
+}
+
+/* KG-10: VtOpen hands the engine the screen mode's Resolution as the pixel
+ * aspect (PAL hires 22:44 style), and square when the mode is unknown; a
+ * display reopen on another mode updates it. */
+static void test_kg10_the_screens_pixel_aspect_reaches_the_engine(void)
+{
+    modeRx = 22; modeRy = 44;
+    aspectCalls = 0;
+    xterm_begin();
+    assert(aspectCalls >= 1 && aspectRx == 22 && aspectRy == 44);
+    /* reopen on a square-pixel mode: the surviving engine is told again */
+    modeRx = 44; modeRy = 44;
+    aspectCalls = 0;
+    xterm_begin();
+    assert(aspectCalls >= 1 && aspectRx == 44 && aspectRy == 44);
+    /* unknown mode: square (0) */
+    modeRx = 0;
+    aspectCalls = 0;
+    xterm_begin();
+    assert(aspectCalls >= 1 && aspectRx == 0 && aspectRy == 0);
+}
+
 int main(void)
 {
     test_the_terminal_starts_below_the_title_bar_and_matches_the_window_rows();
@@ -1443,6 +1546,8 @@ int main(void)
     test_ma4_3_shift_page_up_draws_the_previous_page_and_page_down_returns();
     test_ma4_3_a_scrollback_line_narrower_than_the_grid_is_blank_filled();
     test_ma4_4_the_alt_screen_leaves_the_scrollback_alone();
+    test_kg8_a_kitty_picture_through_vtwrite_is_drawn_and_a_query_answered();
+    test_kg10_the_screens_pixel_aspect_reaches_the_engine();
     printf("term_engine: all assertions passed\n");
     return 0;
 }

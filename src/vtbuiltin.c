@@ -95,6 +95,206 @@ static UBYTE VtPenFor(vt_color c)
     return (UBYTE)(16 + vtTcN++);
 }
 
+/* KG: pictures (kitty graphics, APC G; sixel uses the same store). The
+ * engine parses, decodes (its own inflate and PNG) and places them; this
+ * draws their tiles over the cells VtDraw drew. Ported from vtcon's
+ * render/amiga_render.c (draw_images, img_run, img_cell, img_write_idx,
+ * img_write_idx_keep, under_text) onto retro32-term's coordinates and
+ * DCTelnet's pens: a picture colour gets the pen VtPenFor gives the same
+ * RGB text colour (an obtained pen above 8 bits, else the nearest of the
+ * sixteen ANSI pens). */
+#define VT_IMG_W 1280                   /* the widest run, in pixels */
+static UBYTE vtImgBuf[8 * VT_IMG_W];    /* one cell row of a run: 8 pixels high */
+static UBYTE vtImgMap[256];             /* the picture's palette index -> screen pen */
+static long vtImgSerial = -1;           /* the picture vtImgMap was made for */
+static unsigned long vtImgRuns;         /* sentinel: picture runs written */
+
+/* Pictures always go through the window's RastPort: the direct planar path
+ * writes 4-bit colour numbers only. Uncovered, retro32-term draws glyphs
+ * straight into the planes (term_rp NULL) but its window RastPort and the
+ * TERM_PX / TERM_PY offsets stay valid for it. */
+static struct RastPort *VtImgRp(void)
+{
+    return term_rp ? term_rp : term_win_rp;
+}
+
+static void VtImgColours(const vt_image_view *v)
+{
+    int i;
+
+    if (vtImgSerial == v->serial)
+        return;
+    vtImgSerial = v->serial;
+    vtImgMap[0] = term_pen_map[VtPenFor(VT_COLOR_DEFAULT_BG)];  /* a sixel's unset pixels */
+    for (i = 1; i < v->npal && i < 256; i++)
+        vtImgMap[i] = term_pen_map[VtPenFor((vt_color)(VT_COLOR_RGB | (v->pal[i] & 0xFFFFFFUL)))];
+}
+
+/* w x h pixels of v from (sx, sy) to RastPort pixel (dx, dy). */
+static void VtImgWrite(const vt_image_view *v, LONG sx, LONG sy, LONG w, LONG h, WORD dx, WORD dy)
+{
+    LONG stride = (w + 15) & ~15L;      /* WritePixelArray8 wants rows of 16 */
+    LONG k, j;
+
+    struct RastPort *rp = VtImgRp();
+
+    if (stride > VT_IMG_W || h > 8 || !rp)
+        return;
+    VtImgColours(v);
+    for (k = 0; k < h; k++) {
+        const vt_u8 *src = v->pix + (sy + k) * v->w + sx;
+        UBYTE *d = vtImgBuf + k * stride;
+        for (j = 0; j < w; j++)
+            d[j] = vtImgMap[src[j]];
+    }
+    vtImgRuns++;
+    term_blit_sync();                   /* the glyph blits are done with the planes */
+    if (((struct Library *)GfxBase)->lib_Version >= 40) {
+        WriteChunkyPixels(rp, dx, dy, dx + w - 1, dy + h - 1, vtImgBuf, stride);
+    } else if (((struct Library *)GfxBase)->lib_Version >= 39) {
+        /* Kickstart 3.0: WritePixelArray8 and its one-row scratch rastport */
+        struct RastPort tmp = *rp;
+
+        tmp.Layer = NULL;
+        tmp.BitMap = AllocBitMap((ULONG)stride, 1, GetBitMapAttr(rp->BitMap, BMA_DEPTH), 0, rp->BitMap);
+        if (tmp.BitMap) {
+            WritePixelArray8(rp, dx, dy, dx + w - 1, dy + h - 1, vtImgBuf, &tmp);
+            FreeBitMap(tmp.BitMap);
+        }
+    }
+}
+
+/* Cells [a, b) of screen row y show picture v. A kitty picture's index 0
+ * is transparent: only the runs of the pixels that paint go out. */
+static void VtImgRun(const vt_image_view *v, int a, int b, int y)
+{
+    int cw = 1 << term_xs;
+    LONG sx = (LONG)(a - v->col0) * v->cw - v->px0, sy = v->py, w = (LONG)(b - a) * cw, h = 8, k, j, j0;
+    WORD dx = TERM_PX(a), dy = TERM_PY(y);
+
+    if (sx < 0) {                       /* the first cell: the picture starts px0 pixels in */
+        dx = (WORD)(dx - sx);
+        w += sx;
+        sx = 0;
+    }
+    if (sy < 0) {                       /* the first row: py0 pixels down */
+        dy = (WORD)(dy - sy);
+        h += sy;
+        sy = 0;
+    }
+    if (v->fmt != 0 || sx >= v->w || sy >= v->h)
+        return;                         /* fmt 1 (RGBA) is made only when asked (vt_set_image_rgb) */
+    if (w > v->w - sx)
+        w = v->w - sx;
+    if (h > v->h - sy)
+        h = v->h - sy;
+    if (w <= 0 || h <= 0)
+        return;
+    if (!v->kitty) {
+        VtImgWrite(v, sx, sy, w, h, dx, dy);
+        return;
+    }
+    for (k = 0; k < h; k++) {
+        const vt_u8 *row = v->pix + (sy + k) * v->w + sx;
+        for (j = 0; j < w;) {
+            while (j < w && !row[j])
+                j++;
+            j0 = j;
+            while (j < w && row[j])
+                j++;
+            if (j > j0)
+                VtImgWrite(v, sx + j0, sy + k, j - j0, 1, (WORD)(dx + j0), (WORD)(dy + k));
+        }
+    }
+}
+
+/* May cell c take a tile of v: over the text in a VT_CELL_IMAGE cell, under
+ * it (z < 0) in a VT_CELL_UNDER cell, and with z <= -1073741824 only where
+ * the background is the default. */
+static BOOL VtImgCell(const vt_image_view *v, const vt_cell *c)
+{
+    vt_color f, b;
+
+    if (v->z >= 0)
+        return (c->pad & VT_CELL_IMAGE) != 0;
+    if (!(c->pad & VT_CELL_UNDER))
+        return FALSE;
+    if (v->z > -1073741824L)
+        return TRUE;
+    vt_resolve_colors(vtTerm, c, &f, &b);
+    return b == VT_COLOR_DEFAULT_BG;
+}
+
+/* The glyphs of cells [a, b) of row y again over a picture under them, in
+ * JAM1 (printable ASCII; the background is the picture's). */
+static void VtImgUnderText(const vt_cell *c, int a, int b, int y)
+{
+    struct RastPort *rp = VtImgRp();
+    int x;
+
+    for (x = a; x < b; x++) {
+        vt_color f, bg;
+        UBYTE ch;
+
+        if (!(c[x].pad & VT_CELL_UNDER) || c[x].ch <= ' ' || c[x].ch >= 0x7F || c[x].width != 1)
+            continue;
+        vt_resolve_colors(vtTerm, &c[x], &f, &bg);
+        ch = (UBYTE)c[x].ch;
+        SetAPen(rp, term_pen_map[VtPenFor(f)]);
+        SetDrMd(rp, JAM1);
+        Move(rp, TERM_PX(x), (WORD)(TERM_PY(y) + term_baseline));
+        Text(rp, (STRPTR)&ch, 1);
+    }
+    SetDrMd(rp, JAM2);
+}
+
+/* The pictures on grid rows [y0, y1), cells [x0, x1), in vt_row_image's
+ * order: those under the text first, the row's glyphs over them, then
+ * those over the text. */
+static void VtDrawImages(int x0, int y0, int x1, int y1)
+{
+    vt_image_view v;
+    const vt_cell *c;
+    int y, i, x, a, xe, n, gy;
+    BOOL under;
+
+    if (!VtImgRp())
+        return;
+    term_flush();                       /* the text runs land first */
+    for (y = y0; y < y1; y++) {
+        gy = y - vtScrollOff;
+        c = vt_row(vtTerm, gy, &n);
+        if (!c || (!vtScrollOff && vt_row_size(vtTerm, gy)))
+            continue;                   /* a double-size row shows no pictures */
+        under = FALSE;
+        for (i = 0;; i++) {
+            int more = vt_row_image(vtTerm, gy, i, &v);
+            if (under && (!more || v.z >= 0)) {
+                VtImgUnderText(c, x0, x1 < n ? x1 : n, y);
+                under = FALSE;
+            }
+            if (!more)
+                break;
+            xe = v.col0 + (v.px0 + v.w + v.cw - 1) / v.cw;
+            if (xe > x1)
+                xe = x1;
+            if (xe > n)
+                xe = n;
+            for (x = v.col0 > x0 ? v.col0 : x0; x < xe;) {
+                if (!VtImgCell(&v, &c[x])) {
+                    x++;
+                    continue;
+                }
+                for (a = x; x < xe && VtImgCell(&v, &c[x]); x++)
+                    ;
+                VtImgRun(&v, a, x, y);
+                if (v.z < 0)
+                    under = TRUE;
+            }
+        }
+    }
+}
+
 /* Draw cells x0 <= x < x1 of rows y0 <= y < y1 from the grid. */
 static void VtDraw(void *user, int x0, int y0, int x1, int y1)
 {
@@ -168,6 +368,8 @@ static void VtDraw(void *user, int x0, int y0, int x1, int y1)
         }
     }
     atr_under = 0;
+    if (vt_images(vtTerm))
+        VtDrawImages(x0, y0, x1, y1);
 }
 
 static void VtScroll(void *user, int top, int bottom, int n)
@@ -395,6 +597,29 @@ static int vtTermSb;
 
 static void VtRedraw(void);
 
+/* Pictures keep their look on a screen whose pixels are not square (PAL
+ * hires 1:2): the engine scales them by the display mode's Resolution. An
+ * unknown mode, or none, tells it square. Same source as vtcon's
+ * vtwin_set_screen(). */
+static void VtSetAspect(void)
+{
+    struct DisplayInfo di;
+    ULONG mode;
+    int rx = 0, ry = 0;
+
+    if (!vtTerm)
+        return;
+    if (scr && ((struct Library *)GfxBase)->lib_Version >= 39) {
+        mode = GetVPModeID(&scr->ViewPort);
+        if (mode != (ULONG)INVALID_ID &&
+            GetDisplayInfoData(0, (UBYTE *)&di, sizeof(di), DTAG_DISP, mode)) {
+            rx = di.Resolution.x;
+            ry = di.Resolution.y;
+        }
+    }
+    vt_set_pixel_aspect(vtTerm, rx, ry);
+}
+
 /* The terminal for the grid term_init_area() has just laid out (and
  * cleared). 0 when it is ready.
  *
@@ -420,6 +645,8 @@ static int VtOpen(void)
     if (vtTerm && vtTermSb == VtScrollbackCap()) {
         VtReleasePens();    /* the pens were the old display's */
         vt_resize(vtTerm, term_cols, term_rows);
+        vt_set_cell_pixels(vtTerm, 1 << term_xs, 8);   /* pictures: the new font's cells */
+        VtSetAspect();      /* the new display may be another mode */
         Vt_MouseReset(&vtMouse);
         vtTitleSeen[0] = vtTitleShown[0] = 0;
         VtSyncMouseIdcmp();
@@ -431,6 +658,8 @@ static int VtOpen(void)
     vtTerm = vt_new(term_cols, term_rows, vtTermSb, &cb, NULL);
     if (!vtTerm)
         return 1;
+    vt_set_cell_pixels(vtTerm, 1 << term_xs, 8);       /* pictures are placed on these cells */
+    VtSetAspect();
     VtApplyPersonality();
     Vt_MouseReset(&vtMouse);
     vtTitleSeen[0] = vtTitleShown[0] = 0;
@@ -461,6 +690,7 @@ static void VtReleasePens(void)
     while (vtTcN > 0)
         ReleasePen(scr->ViewPort.ColorMap, (ULONG)vtTc[--vtTcN].pen);
     vtTcLast = 0;
+    vtImgSerial = -1;   /* the picture pens came from VtPenFor's cache */
 }
 
 /* The engine and its cells go: quitting, or another renderer. */
