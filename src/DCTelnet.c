@@ -3667,7 +3667,7 @@ static void RexxCommand(struct RexxMsg *msg)
             text[n++] = '\r';
             if (STATE_IS(APP_RETURN_SENDING_CRLF)) text[n++] = '\n';
         }
-        SendMisc(text, (long)n);
+        SendTyped(text, (long)n);               // in PETSCII, letters as the C64 keyboard sends them
         RexxReply(msg, 0, NULL);
         return;
     case REXX_WAITFOR:
