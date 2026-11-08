@@ -79,6 +79,7 @@ extern struct Library *CyberGfxBase;
 #ifdef __VBCC__
     #pragma popwarn
 #endif
+#include "mainstack.h"
 #include "DCTelnet.h"
 #include "guis.h"
 #include "connect.h"
@@ -378,6 +379,10 @@ static BOOL isFingerRequest;        // isFingerRequest?
 
 static char *programName = NULL;   // Name provided by argv[0] or task::tc_Node.ln_Name
 struct Task *mainTask = NULL;
+
+/* vbcc startup: run main() on a stack of at least this size, whatever the icon or Shell gives (4096).
+ * Why: PNG inflate inside VtWrite; see mainstack.h. */
+long __stack = DCT_MAIN_STACK;
 BYTE dontUseSig31 = -1; // don't use it, ibmcon.device will destroy it.
 
 #include "DCTelnet-debug.h"
