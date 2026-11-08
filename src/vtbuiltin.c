@@ -52,8 +52,9 @@ static int VtScrollbackCap(void)
     return prefs.nScrollbackLines > 32767UL ? 32767 : (int)prefs.nScrollbackLines;
 }
 
-/* MA2-9: on a screen whose bitmap is 8 bits or deeper (AGA or RTG palette
- * screens, RTG true or high colour: Vt_ObtainsPens()) a 256-colour or RGB cell
+/* MA2-9: on a screen with more than 4 planes (32 to 256 colour palette
+ * screens, RTG true or high colour; not HAM, not Extra Half-Brite, graphics
+ * V39 or later: Vt_ObtainsPens()) a 256-colour or RGB cell
  * gets a pen of its own colour from ObtainBestPen(), cached per RGB in slots
  * 16-255 of the engine's pen map. The rule is vtcon's pen_rule.h, the one
  * UP-Term uses for its palette screens: an exact entry while the colour map
@@ -113,7 +114,7 @@ static UBYTE VtPenFor(vt_color c)
  * render/amiga_render.c (draw_images, img_run, img_cell, img_write_idx,
  * img_write_idx_keep, under_text) onto retro32-term's coordinates and
  * DCTelnet's pens: a picture colour gets the pen VtPenFor gives the same
- * RGB text colour (an obtained pen above 8 bits, else the nearest of the
+ * RGB text colour (an obtained pen on a screen over 4 planes, else the nearest of the
  * sixteen ANSI pens). */
 #define VT_IMG_W 1280                   /* the widest run, in pixels */
 static UBYTE vtImgBuf[8 * VT_IMG_W];    /* one cell row of a run: 8 pixels high */
@@ -652,7 +653,10 @@ static int VtOpen(void)
         struct BitMap *bm = scr->RastPort.BitMap;
         ULONG depth = ((struct Library *)GfxBase)->lib_Version >= 39 ? GetBitMapAttr(bm, BMA_DEPTH) : bm->Depth;
 
-        vtTrueColour = Vt_ObtainsPens(depth);
+        UWORD gfxVer = ((struct Library *)GfxBase)->lib_Version;
+        ULONG modeId = gfxVer >= 39 ? GetVPModeID(&scr->ViewPort) : 0;
+
+        vtTrueColour = Vt_ObtainsPens(depth, modeId, gfxVer);
     }
     if (vtTerm && vtTermSb == VtScrollbackCap()) {
         VtReleasePens();    /* the pens were the old display's */

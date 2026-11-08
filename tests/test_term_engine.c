@@ -245,7 +245,8 @@ struct DisplayInfo { struct { UWORD x, y; } Resolution; };
 #define INVALID_ID (~0UL)
 static int modeRx, modeRy;
 static int aspectCalls, aspectRx, aspectRy;
-static ULONG GetVPModeID(struct ViewPort *vp) { (void)vp; return 0x29000UL; }
+static ULONG testModeId = 0x29000UL;
+static ULONG GetVPModeID(struct ViewPort *vp) { (void)vp; return testModeId; }
 static long GetDisplayInfoData(void *h, UBYTE *buf, ULONG size, ULONG tag, ULONG id)
 {
     struct DisplayInfo *di = (struct DisplayInfo *)buf;
@@ -1215,14 +1216,72 @@ static void test_aga_full_colour_map_takes_the_nearest_pen(void)
     assert(releaseCalls == 1);
 }
 
-static void test_aga_7_planes_and_less_never_ask_for_a_pen(void)
+static void test_aga_5_to_7_planes_get_pens_of_their_own(void)
 {
-    assert(!Vt_ObtainsPens(4) && !Vt_ObtainsPens(7));
-    assert(Vt_ObtainsPens(8) && Vt_ObtainsPens(24));
+    UBYTE d;
+
+    /* the pure rule: depth, display mode, graphics.library version */
+    assert(!Vt_ObtainsPens(4, 0x29000UL, 40));
+    assert(Vt_ObtainsPens(5, 0x29000UL, 40) && Vt_ObtainsPens(7, 0x29000UL, 40));
+    assert(Vt_ObtainsPens(8, 0x29000UL, 40) && Vt_ObtainsPens(24, 0x29000UL, 40));
+    assert(!Vt_ObtainsPens(7, 0x29000UL, 39 - 1));          /* pre-V39: no ObtainBestPen */
+    assert(!Vt_ObtainsPens(6, 0x800UL, 40));                /* HAM */
+    assert(!Vt_ObtainsPens(6, 0x80UL, 40));                 /* Extra Half-Brite */
+    for (d = 5; d <= 7; d++) {
+        xterm_begin_on(d, 0);
+        assert(vtTrueColour);
+        vt_put("\x1b[38;5;196mA");
+        assert(obtainCalls >= 1);
+        assert(probe[0].fg >= 16);
+        tc_end();
+        assert(releaseCalls == obtainCalls);
+    }
+}
+
+static void test_aga_7_plane_picture_colour_maps_to_a_pen_and_survives_a_switch(void)
+{
+    xterm_begin_on(7, 0);
+    chunkyCalls = 0;
+    vtImgRuns = 0;
+    vt_put("\x1b[H");
+    vt_put("\033_Gf=24,s=2,v=2,a=T;/wAA/wAA/wAA/wAA\033\\");
+    assert(vtImgRuns == 2);
+    assert(term_pen_map[VtPenFor((vt_color)(VT_COLOR_RGB | 0xFF0000UL))] >= 16);
+    assert(obtainCalls >= 1);
+    /* 8 -> 7 planes: the new screen keeps pens of its own */
+    xterm_begin_on(8, 0);
+    vt_put("\x1b[38;5;196mA");
+    assert(vtTrueColour && probe[0].fg >= 16);
+    VtReleasePens();
+    bm.Depth = 7;
+    assert(VtOpen() == 0);
+    assert(vtTrueColour);
+    tc_end();
+}
+
+static void test_aga_4_planes_ham_ehb_and_old_graphics_never_ask_for_a_pen(void)
+{
+    xterm_begin_on(4, 0);
+    vt_put("\x1b[38;5;196mA");
+    assert(!vtTrueColour && obtainCalls == 0);
+    tc_end();
+    testModeId = 0x800UL;                                   /* HAM */
+    xterm_begin_on(6, 0);
+    vt_put("\x1b[38;5;196mA");
+    assert(!vtTrueColour && obtainCalls == 0);
+    tc_end();
+    testModeId = 0x80UL;                                    /* Extra Half-Brite */
+    xterm_begin_on(6, 0);
+    vt_put("\x1b[38;5;196mA");
+    assert(!vtTrueColour && obtainCalls == 0);
+    tc_end();
+    testModeId = 0x29000UL;
+    gfx.LibNode.lib_Version = 38;
     xterm_begin_on(7, 0);
     vt_put("\x1b[38;5;196mA");
-    assert(obtainCalls == 0);
+    assert(!vtTrueColour && obtainCalls == 0);
     tc_end();
+    gfx.LibNode.lib_Version = 40;
 }
 
 /* ---- MA3: mouse, title, bracketed paste through the real entry points ---- */
@@ -1609,7 +1668,9 @@ int main(void)
     test_kg10_the_screens_pixel_aspect_reaches_the_engine();
     test_aga_pens_text_and_picture_on_an_8_plane_screen();
     test_aga_full_colour_map_takes_the_nearest_pen();
-    test_aga_7_planes_and_less_never_ask_for_a_pen();
+    test_aga_5_to_7_planes_get_pens_of_their_own();
+    test_aga_7_plane_picture_colour_maps_to_a_pen_and_survives_a_switch();
+    test_aga_4_planes_ham_ehb_and_old_graphics_never_ask_for_a_pen();
     printf("term_engine: all assertions passed\n");
     return 0;
 }
