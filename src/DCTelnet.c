@@ -230,6 +230,7 @@ static void CaptureWrite(const UBYTE *data, long len);
 static void CaptureStop(void);
 static BOOL SelectionAvailable(void);
 static void SendMisc(char *str, long len);
+static void SendTyped(const char *str, long len);
 static void TerminalSize(UWORD *columns, UWORD *lines);
 static void ReopenTerminal(void);
 static void OpenAnsiFont(void);
@@ -1256,7 +1257,7 @@ static void SendLoginMacroStep(void)
     {
         n = SitePrefs_NextMacroSegment(&macroCursor, username, password, segment, sizeof(segment), &wait,
                                        waitText, sizeof(waitText));
-        if (n) SendMisc(segment, (long)n);
+        if (n) SendTyped(segment, (long)n);
         if (waitText[0])
         {
             WaitForStart(WAIT_MACRO, waitText, MACRO_WAIT_SECONDS);
@@ -2361,6 +2362,32 @@ static void SendMisc(char *str, long len)
         TCPSend(str, len);
     else
         ConWrite(str, len);
+}
+
+// Sends text DCTelnet types for the user (Send User Name, Send Password, the
+// login macro). In a PETSCII session it goes out as the C64 keyboard would
+// send it (petscii_translate_text): raw ASCII capitals are lower case there,
+// so a mixed-case password failed. The caller's text is not changed.
+static void SendTyped(const char *str, long len)
+{
+    char chunk[128];
+    long n;
+
+    if (len == -1) len = (long)strlen(str);
+    if (!PETSCII_SESSION())
+    {
+        SendMisc((char *)str, len);
+        return;
+    }
+    while (len > 0)
+    {
+        n = len < (long)sizeof(chunk) ? len : (long)sizeof(chunk);
+        memcpy(chunk, str, (size_t)n);
+        petscii_translate_text(chunk, (unsigned long)n);
+        SendMisc(chunk, n);
+        str += n;
+        len -= n;
+    }
 }
 
 static void SendMacro(char *str)
@@ -4698,12 +4725,12 @@ static void GetWindowMsg(struct Window *wwin)
                         break;
 
                     case MENU_SEND_USERNAME:
-                        SendMisc(username, -1);
+                        SendTyped(username, -1);
                         SendMisc("\r", 1);
                         break;
 
                     case MENU_SEND_PASSWORD:
-                        SendMisc(password, -1);
+                        SendTyped(password, -1);
                         SendMisc("\r", 1);
                         break;
 

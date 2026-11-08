@@ -41,6 +41,21 @@ static void test_keymap(void) {
     assert(petscii_translate_key(PETSCII_KEY_F8, 1) == 140);
 }
 
+/* Send Password (Amiga+P) and the login macro sent the stored text as raw
+ * ASCII: in PETSCII "Pass1" reached the BBS as "pASS1", so UPTown rejected
+ * a password that worked in ANSI mode. Typed text must match the keyboard. */
+static void test_typed_text_matches_keyboard(void) {
+    char text[] = "Pass1!\r";
+    const unsigned char want[] = { 0xD0, 0x41, 0x53, 0x53, '1', '!', '\r' };
+    unsigned long i;
+
+    petscii_translate_text(text, sizeof(text) - 1);
+    for (i = 0; i < sizeof(want); i++)
+        assert((unsigned char)text[i] == want[i]);
+    for (i = 0; i < sizeof(want); i++)
+        assert((unsigned char)text[i] == (unsigned char)petscii_translate_key("Pass1!\r"[i], 0));
+}
+
 /* The Amiga console reports F1-F10 as CSI <digit> ~ with digit 0-9, F1 = 0.
  * The mapping started at 1: F1 sent nothing and F2-F8 sent the key below. */
 static void test_console_fkey_digit_0_is_c64_f1(void) {
@@ -75,6 +90,7 @@ int main(void) {
     test_screencode_ranges();
     test_fallback_letters_swap_case();
     test_keymap();
+    test_typed_text_matches_keyboard();
     printf("petscii modules: all assertions passed\n");
     return 0;
 }

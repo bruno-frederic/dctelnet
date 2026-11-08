@@ -31,6 +31,12 @@ int petscii_translate_key(int ascii_or_special, int is_special) {
     return ascii_or_special; /* digits, punctuation: unchanged */
 }
 
+void petscii_translate_text(char *text, unsigned long len) {
+    unsigned long i;
+    for (i = 0; i < len; i++)
+        text[i] = (char)petscii_translate_key((unsigned char)text[i], 0);
+}
+
 int petscii_fkey_from_console_digit(char digit) {
     static const int fkeys[8] = {
         PETSCII_KEY_F1, PETSCII_KEY_F2, PETSCII_KEY_F3, PETSCII_KEY_F4,

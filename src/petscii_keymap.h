@@ -35,6 +35,14 @@ enum PetsciiSpecialKey {
 int petscii_translate_key(int ascii_or_special, int is_special);
 
 /*
+ * Translates len bytes of typed text in place, as petscii_translate_key()
+ * does one plain key. For text DCTelnet types for the user (Send User Name,
+ * Send Password, the login macro, keyboard macros): a BBS must get the same
+ * bytes as when the user types it on the keyboard.
+ */
+void petscii_translate_text(char *text, unsigned long len);
+
+/*
  * The Amiga console reports F1-F10 as CSI <digit> ~ with digit '0'-'9'
  * (F1 = '0'). Returns the C64 function-key byte for F1-F8, -1 otherwise.
  */
