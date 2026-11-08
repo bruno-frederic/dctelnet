@@ -19,6 +19,11 @@
  * at the end of such a string and reports in *used how much input it took;
  * the caller shows the text so far, plays the notes, waits for the sound to
  * end, then filters the rest.
+ * No note is ever dropped: one input byte adds at most 2 entries (a note's
+ * sound and its gap), so in a tune the filter stops before a byte when fewer
+ * than 2 are free in notes[] (m->full and m->stopped set, *used the bytes
+ * taken). The parser is then exactly where it was; the caller plays the
+ * notes, waits until the queue has room, and filters the rest again.
  * The filter takes these sequences out of the text -- the console must not
  * see them: ESC[M alone is Delete Line -- and turns them into notes. ESC[M
  * is music only when the next byte that is not a space starts music;
@@ -49,6 +54,8 @@ struct AnsiMusic
     UBYTE heldFore;     /* this string queued a note while foreground */
     UBYTE stopped;      /* the last Filter call ended on a foreground tune, also when
                          * that was its last input byte: the text after it must wait */
+    UBYTE full;         /* the last Filter call stopped inside a tune because notes[]
+                         * had no room for the next byte (also sets stopped) */
 };
 
 void AnsiMusic_Init(struct AnsiMusic *m);
@@ -62,7 +69,8 @@ void AnsiMusic_Init(struct AnsiMusic *m);
  * come first); notes
  * found go to notes[] (at most maxNotes, the count in *nNotes). Returns the
  * length written to out. *used is the input taken: len, or less when a
- * foreground tune ended (the rest is not filtered yet; call again with it). */
+ * foreground tune ended or notes[] filled (the rest is not filtered yet; call
+ * again with it). maxNotes should be at least 2, or a tune never gets on. */
 size_t AnsiMusic_Filter(struct AnsiMusic *m, const UBYTE *in, size_t len, UBYTE *out,
                         struct Note *notes, int maxNotes, int *nNotes, size_t *used);
 

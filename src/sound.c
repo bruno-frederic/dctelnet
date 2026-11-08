@@ -100,6 +100,17 @@ BOOL Sound_Busy(void)
     return FALSE;
 }
 
+int Sound_Room(void)
+{
+    int i, free = 0;
+
+    if (!opened) return failed ? 0 : REQUESTS;  /* not opened yet: Sound_Play opens it */
+    Reclaim();
+    for (i = 0; i < REQUESTS; i++)
+        if (!busy[i]) free++;
+    return free;
+}
+
 ULONG Sound_Signal(void)
 {
     return port ? 1UL << port->mp_SigBit : 0;

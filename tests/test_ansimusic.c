@@ -228,6 +228,61 @@ static void test_early_end_by_esc_waits(void)
     assert(filter1("[1mX") == 5 && memcmp(out, "\x1b[1mX", 5) == 0 && used == 4);
 }
 
+/* A long tune must not lose notes when notes[] is smaller than the tune
+ * (the real sound queue holds 48 entries): the filter stops when the next
+ * byte might not fit, the caller feeds the rest again. The whole sequence
+ * and the text must equal a run with room for everything. */
+static size_t feed(const char *in, int maxNotes, UBYTE *outAll, struct Note *all, int *total, int *calls)
+{
+    static UBYTE part[8192 + ANSIMUSIC_HELD];
+    static struct Note chunk[1024];
+    size_t len = strlen(in), p = 0, o = 0, w, u;
+    int cnt, i;
+
+    AnsiMusic_Init(&m);
+    *total = *calls = 0;
+    while (p < len)
+    {
+        w = AnsiMusic_Filter(&m, (const UBYTE *)in + p, len - p, part, chunk, maxNotes, &cnt, &u);
+        assert(cnt <= maxNotes);
+        memcpy(outAll + o, part, w);
+        o += w;
+        for (i = 0; i < cnt; i++) all[(*total)++] = chunk[i];
+        p += u;
+        assert(++*calls < 1000);
+    }
+    return o;
+}
+
+static void run_long_tune(const char *mode)
+{
+    static char in[4096];
+    static UBYTE refOut[8192], gotOut[8192];
+    static struct Note ref[1024], got[1024];
+    size_t refLen, gotLen;
+    int i, nref, ngot, c1, c2;
+
+    strcpy(in, "head\x1b[N");
+    strcat(in, mode);
+    for (i = 0; i < 200; i++) strcat(in, i % 2 ? "O3C#8" : "O2E.16");
+    strcat(in, "\x0e" "tail");
+
+    refLen = feed(in, 1024, refOut, ref, &nref, &c1);
+    gotLen = feed(in, 48, gotOut, got, &ngot, &c2);
+    assert(nref == 400);
+    assert(ngot == nref);
+    assert(memcmp(got, ref, sizeof(struct Note) * (size_t)nref) == 0);
+    assert(gotLen == refLen && memcmp(gotOut, refOut, refLen) == 0);
+    assert(refLen == 8 && memcmp(gotOut, "headtail", 8) == 0);
+    assert(c2 > 8);                             /* it did stop for room */
+}
+
+static void test_long_tune_loses_no_note(void)
+{
+    run_long_tune("MB");
+    run_long_tune("MF");
+}
+
 int main(void)
 {
     test_pitch();
@@ -248,6 +303,7 @@ int main(void)
     test_background_persists_and_mid_string_mf();
     test_smile_never_waits();
     test_early_end_by_esc_waits();
+    test_long_tune_loses_no_note();
     printf("ansimusic: all assertions passed\n");
     return 0;
 }

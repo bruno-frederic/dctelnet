@@ -3162,12 +3162,19 @@ static UBYTE *SoundFilter(UBYTE *text, long *len, long *used, BOOL *stopped)
     static struct Note notes[48];
     size_t n = (size_t)*len;
     size_t taken = n;
-    int count;
+    int count, room;
 
     *stopped = FALSE;
     if (prefs.AnsiMusic && !PETSCII_SESSION() && n <= 4096)
     {
-        n = AnsiMusic_Filter(&ansiMusic, text, n, played, notes, 48, &count, &taken);
+        // Only as many notes as the sound queue can take now; the filter stops
+        // there and ShowText holds the rest, so no note is dropped. Room 0 with
+        // nothing playing means there is no audio at all: the tune is filtered
+        // out of the text and its notes are discarded (nothing to wait for).
+        room = Sound_Room();
+        if (room == 0 && !Sound_Busy()) room = 48;
+        if (room > 48) room = 48;
+        n = AnsiMusic_Filter(&ansiMusic, text, n, played, notes, room, &count, &taken);
         text = played;
         if (count) Sound_Play(notes, count);
         *stopped = ansiMusic.stopped;
@@ -3186,6 +3193,8 @@ static UBYTE *SoundFilter(UBYTE *text, long *len, long *used, BOOL *stopped)
 // that the notes are done. The window, menus and timers run on.
 static UBYTE musicHoldBuf[4096 + ANSIMUSIC_HELD];
 static long  musicHoldLen;
+static BOOL  musicHoldRoom;             // held for queue room, not for the tune's end
+#define MUSIC_ROOM_MIN 16               // free sound requests that end a room hold: the queue never runs dry
 
 // The text to the screen and the scrollback; a foreground tune in it holds
 // back what follows (while there is sound to wait for).
@@ -3206,7 +3215,11 @@ static void ShowText(UBYTE *text, long len)
             return;
         text += used;
         len -= used;
-        if (Sound_Busy())
+        // Stopped for room: wait only until MUSIC_ROOM_MIN requests are free, so
+        // the notes still queued play on meanwhile. Stopped at a foreground tune's
+        // end: wait until all of it has played.
+        musicHoldRoom = ansiMusic.full;
+        if (musicHoldRoom ? (Sound_Busy() && Sound_Room() < MUSIC_ROOM_MIN) : Sound_Busy())
         {
             memmove(musicHoldBuf, text, (size_t)len);   // text may be musicHoldBuf itself
             musicHoldLen = len;
@@ -3222,7 +3235,8 @@ static void ShowText(UBYTE *text, long len)
 // the held text goes on.
 static void MusicHoldPoll(void)
 {
-    if (musicHold && (!prefs.AnsiMusic || !Sound_Busy()))
+    if (musicHold && (!prefs.AnsiMusic || !Sound_Busy()
+                      || (musicHoldRoom && Sound_Room() >= MUSIC_ROOM_MIN)))
     {
         long len = musicHoldLen;
 
@@ -3236,6 +3250,7 @@ static void MusicHoldDrop(void)
 {
     musicHold = FALSE;
     musicHoldLen = 0;
+    musicHoldRoom = FALSE;
 }
 
 // DC Telnet > Capture to File: everything the BBS sends -- after the telnet

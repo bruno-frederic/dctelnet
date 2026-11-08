@@ -42,7 +42,7 @@ static void add(struct AnsiMusic *m, struct Note *notes, int maxNotes, int *n, U
     if (m->foreground)
         m->heldFore = TRUE;                     /* queued in the foreground, even if notes[] is full */
     if (*n >= maxNotes)
-        return;
+        return;                                 /* unreachable: Filter stops first */
     notes[*n].hz = hz;
     notes[*n].ms = (UWORD)(ms > 60000 ? 60000 : ms);
     (*n)++;
@@ -132,9 +132,22 @@ size_t AnsiMusic_Filter(struct AnsiMusic *m, const UBYTE *in, size_t len, UBYTE 
     *nNotes = 0;
     *used = len;
     m->stopped = FALSE;
+    m->full = FALSE;
     for (i = 0; i < len; i++)
     {
         UBYTE c = in[i];
+
+        /* A byte makes at most one note or rest (finish() runs once a byte
+         * that plays, or EndString does): 2 entries. Stop before it when they
+         * would not fit; nothing of it is parsed yet, so the next call
+         * resumes exactly here. */
+        if (m->state == ST_MUSIC && *nNotes > maxNotes - 2)
+        {
+            m->full = TRUE;
+            m->stopped = TRUE;
+            *used = i;
+            return o;
+        }
 
         switch (m->state)
         {
