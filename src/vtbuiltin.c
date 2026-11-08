@@ -405,7 +405,8 @@ static void VtRedraw(void);
  * again; only a new scrollback size (made at vt_new) needs a new engine. */
 static int VtOpen(void)
 {
-    static const vt_callbacks cb = { VtDraw, VtScroll, VtReply, NULL, VtTitle, NULL, NULL };
+    static const vt_callbacks cb = { VtDraw, VtScroll, VtReply, NULL, VtTitle, NULL, NULL,
+                                     NULL, NULL, NULL, NULL, NULL };
 
     vtScrollOff = 0;
     VtProbeFont();
