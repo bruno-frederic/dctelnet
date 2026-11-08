@@ -2,7 +2,7 @@ Short:        DCTelnet - Telnet/BBS client with Zmodem
 Author:       Bruno FREDERIC
 Uploader:     bruno.frederic+aminet@gm...
 Type:         comm/tcp
-Version:      1.10
+Version:      2.0-dev
 Architecture: m68k-amigaos >= 2.0
 Distribution: Aminet
 
@@ -39,24 +39,9 @@ https://eab.abime.net/showthread.php?t=121939
 
 ---
 
-v1.10 Changelog
+v2.0 Changelog
 
-The ANSI renderer 'ibmcon.device' has received a major update. Version
-1.11 is now included with DCTelnet. The device's changelog is as follows:
-- 1.5: pens for the ANSI colours (IBMCMD_SETPENS)
-- 1.6: deferred wrap at the last column; CTerm 24-bit colour ignored
-- 1.7: Insert Lines fixed (issue #9)
-- 1.8: closing the console no longer frees the opener's signal (issue #3)
-- 1.9: cursor position for DSR answers; Cursor Backward/Forward stop at
-  the margins (issue #11)
-- 1.10: iCE colours (bright backgrounds), erase characters (CSI X),
-  ESC 7 / ESC 8, application cursor key mode reported to DCTelnet
-- 1.11: blinking text; a copy of the screen DCTelnet can read back
-
-Build & Packaging
-- Switched to VBCC Docker builder image: walkero/docker4amigavbcc
-  (simplify reproducibility, help automate builds workflows)
-- Alternative build toolchain added: Bebbo's Amiga-GCC 6.5.0b
+TODO
 
 ---
 
@@ -150,7 +135,8 @@ Rendering issues occur on multiple BBSes, whether using ibmcon.device or
 XemVT340.library for display. Some screens freeze, misalign the UI, or fail
 to display animations.
 
-Improved with ibmcon.device 1.9: Cursor Backward and Forward stop
+Improved with ibmcon.device 1.9: DCTelnet now answers the BBS's cursor
+position requests (Device Status Report), Cursor Backward and Forward stop
 at the edge of the line, and CTerm 24-bit colour sequences are ignored
 instead of moving the cursor. Not yet confirmed on every BBS in the report.
 
@@ -210,7 +196,7 @@ As of September 2026:
 - Build instructions: See CONTRIBUTING.md on the github repository
 - Alternative build toolchains (outside the official CI build):
   - VBCC on Windows, using my custom toolchain:
-  https://github.com/bruno-frederic/vbcc-bin/tree/Bruno_toolchain
+    https://github.com/bruno-frederic/vbcc-bin/tree/Bruno_toolchain
   - Bebbo's Amiga-GCC 6.5.0b
   - SAS/C v6.58 on AmigaOS 3.2 can build all DCTelnet 1.x versions, but not 2.0,
     which uses C99 features unsupported by SAS/C.

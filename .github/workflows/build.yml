@@ -27,6 +27,9 @@ jobs:
       - name: Build ibmcon.device with VASM
         run: make -C src  ibmcon
 
+      - name: Build ssh.library for every CPU
+        run: make -C src  sshlib
+
       - name: Tests
         run: make -C src  tests
 

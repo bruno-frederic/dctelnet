@@ -17,9 +17,10 @@
     #pragma popwarn
 #endif
 #include "Xem_wrapper.h"
-#include "DCTelnet.h"                 // win, scr, ansiFont, prefs.displaydriver, buf
+#include "DCTelnet.h"                 // win, scr, ansiFont, prefs.XemLibrary, buf
 #include "Xfer.h"                     // xpr_sread(), xpr_swrite(), xpr_sflush(), xpr_options()
 #include "requesters.h"
+#include "shipped.h"
 
 struct Library *XEmulatorBase;
 struct XEM_IO *xemIO;
@@ -33,13 +34,13 @@ struct XEM_IO *xemIO;
     */
     LONG __SAVE_DS__ xem_sbreak(VOID)
     {
-        InfoReq(isRunningOnWB ? NULL : win, "xem_sbreak() is not implemented.");
+        InfoReq(win, "xem_sbreak() is not implemented.");
         return RETURN_OK;
     }
 
     LONG __SAVE_DS__ xem_squery(VOID)
     {
-        InfoReq(isRunningOnWB ? NULL : win, "xem_squery() is not implemented. when is it called ?");
+        InfoReq(win, "xem_squery() is not implemented. when is it called ?");
         return -1L; // error
     }
 
@@ -49,7 +50,7 @@ struct XEM_IO *xemIO;
     */
     VOID __SAVE_DS__ xem_sstart(VOID)
     {
-        InfoReq(isRunningOnWB ? NULL : win, "xem_sstart() is not implemented.");
+        InfoReq(win, "xem_sstart() is not implemented.");
     }
 
     /* This function tells the comm program to stop the serial read activity. After this call, the
@@ -59,7 +60,7 @@ struct XEM_IO *xemIO;
     */
     LONG __SAVE_DS__ xem_sstop(VOID)
     {
-        InfoReq(isRunningOnWB ? NULL : win, "xem_sstop() is not implemented.");
+        InfoReq(win, "xem_sstop() is not implemented.");
         return RETURN_OK;
     }
 
@@ -68,7 +69,7 @@ struct XEM_IO *xemIO;
     */
     LONG __SAVE_DS__ __ASM__ xem_process_macrokeys(__REG__(a0, struct XEmulatorMacroKey *key))
     {
-        InfoReq(isRunningOnWB ? NULL : win,
+        InfoReq(win,
                 "xem_process_macrokeys() is not implemented.\nmk_Code=%ld",
                 (LONG) ((key == NULL) ? 0 : key->xmk_Code));
 
@@ -99,14 +100,14 @@ VOID __SAVE_DS__ __ASM__ xem_tbeep(__REG__(d0, ULONG ntimes), __REG__(d1, ULONG 
 LONG __SAVE_DS__ __ASM__ xem_tgets(__REG__(a0, UBYTE *prompt),
                                 __REG__(a1, UBYTE *buffer), __REG__(d0, ULONG buflen))
 {
-    return GetStringRequester(isRunningOnWB ? NULL : win,
+    return GetStringRequester(win,
                                  "XEM library request",
                                  prompt,
                                  buffer, buflen);
 }
 
 
-BOOL InitializeXemLibrary(void)
+BOOL InitializeXemLibrary(CONST_STRPTR libName)
 {
     xemIO = AllocMem(sizeof(struct XEM_IO), MEMF_PUBLIC|MEMF_CLEAR);
     if (xemIO == NULL)
@@ -115,10 +116,10 @@ BOOL InitializeXemLibrary(void)
         goto clean_and_return;
     }
 
-    XEmulatorBase = OpenLibrary(prefs.displaydriver, 0);
+    XEmulatorBase = OpenNewestLibrary(libName, 0);
     if (XEmulatorBase == NULL)
     {
-        InfoReq(isRunningOnWB ? NULL : win, "Failed to open XEM library: %s", prefs.displaydriver);
+        InfoReq(win, "Failed to open XEM library: %s", libName);
 
         goto clean_and_return;
     }
@@ -127,7 +128,7 @@ BOOL InitializeXemLibrary(void)
     xemIO->xem_font        = ansiFont;
     //xemIO->xem_console   = NULL;
     //xemIO->xem_signal    = 0;
-    xemIO->xem_screendepth = scr->BitMap.Depth;
+    xemIO->xem_screendepth = AppScreenDepth(scr);   // RTG: struct BitMap is not to be read
 
     xemIO->xem_sread             = xpr_sread;
     xemIO->xem_swrite            = xpr_swrite;
@@ -153,9 +154,13 @@ BOOL InitializeXemLibrary(void)
     // allocates and initializes emulator-private data :
     if ( ! XEmulatorSetup(xemIO) )
     {
-        InfoReq(isRunningOnWB ? NULL : win, "XEmulatorSetup() failed!");
+        InfoReq(win, "XEmulatorSetup() failed!");
         goto clean_and_return;
     }
+
+    // The options the user chose for this connection (an Address Book entry's own,
+    // or the global ones); no file yet = the library's defaults.
+    XEmulatorPreferences(xemIO, (STRPTR)CurrentXemOptionsPath(), XEM_PREFS_LOAD);
 
     // XEmulatorOpenConsole has to be called after a comm-proggy has opened (or changed) its screen
     // and/or window. XEmulatorOpenConsole resets its internal data structure and sets custom-fonts,
@@ -163,7 +168,7 @@ BOOL InitializeXemLibrary(void)
     if ( ! XEmulatorOpenConsole(xemIO) )
     {
         XEmulatorCleanup(xemIO);
-        InfoReq(isRunningOnWB ? NULL : win, "XEmulatorOpenConsole() failed!");
+        InfoReq(win, "XEmulatorOpenConsole() failed!");
         goto clean_and_return;
     }
 
@@ -188,6 +193,19 @@ clean_and_return:
     }
 
     return FALSE;
+}
+
+// Load the options file for the current connection into a running XEM library.
+void ReloadXemOptions(void)
+{
+    if (xemIO)
+        XEmulatorPreferences(xemIO, (STRPTR)CurrentXemOptionsPath(), XEM_PREFS_LOAD);
+}
+
+// Save the running XEM library's options to a file; FALSE when XEM is not in use.
+BOOL SaveXemOptions(const char *path)
+{
+    return xemIO && XEmulatorPreferences(xemIO, (STRPTR)path, XEM_PREFS_SAVE);
 }
 
 // Unitilize XEM library if it was initialized (does nothing if it was not initialized)

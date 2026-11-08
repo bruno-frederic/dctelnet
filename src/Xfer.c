@@ -23,6 +23,9 @@
 #include "guis.h"
 #include "requesters.h"
 #include "utils.h"
+#include "prefs.h"
+#include "shipped.h"
+#include "sshconn.h"
 
 #define PATHLEN 256     // From third_party\Xpr\XprZmodem.h
 
@@ -33,7 +36,6 @@ static struct Window *xferwin;
 // An array of files to upload in batch when user select multiple file to upload:
 static struct WBArg *uploadArray = NULL;
 static LONG uploadArraySize = 0;
-//static struct rtFileList *uplist, *upfirst;
 static struct XPR_IO xio;
 
 static UWORD xfer_gauge_width;
@@ -59,6 +61,13 @@ static int posY(WORD n)
 }
 
 
+/* The session's bytes: from the socket, or decrypted from an SSH session
+ * (SSHCONN_AGAIN when only protocol arrived). */
+static long NetRecv(UBYTE *buffer, long size)
+{
+    return SshConn_Active() ? SshConn_Read(buffer, size) : recv(tcpSocket, buffer, size, 0);
+}
+
 /**
  * @brief Remove Telnet escaped IAC bytes from a received data buffer.
  *
@@ -68,7 +77,7 @@ static int posY(WORD n)
  * The global @c ff_escape_pending flag is preserved across calls so that escape sequences split
  * across multiple TCP receive buffers are handled correctly.
  *
- * Raw connections (@c FLAG_RAW_CONNECTION) bypass this processing and the original buffer length is
+ * Raw connections (@c APP_RAW_CONNECTION) bypass this processing and the original buffer length is
  * returned unchanged.
  *
  * @param buff
@@ -98,7 +107,7 @@ static long instrip(unsigned char *buff, long length)
 {
     register long i = 0, j = 0;
     unsigned char *tb = NULL;
-    if (prefs.flags & FLAG_RAW_CONNECTION)
+    if (!TELNET_DATA())
         return length; // No stripping for raw connections
 
     tb = AllocMem(length+2, MEMF_PUBLIC);
@@ -124,7 +133,7 @@ static long instrip(unsigned char *buff, long length)
 
 static void ProtoClean(void)
 {
-    if(!isAppIconified)
+    if(STATE_IS_NOT(APP_ICONIFIED))
     {
         WORD menuNumber;
 
@@ -153,11 +162,11 @@ static void ProtoClean(void)
         if (menuNumber >= 0)
             OnMenu(xferwin, FULLMENUNUM(menuNumber, NOITEM, NOSUB));
 
-        menuNumber = GetMenuNumberFromID(MENU_OPTIONS);
+        menuNumber = GetMenuNumberFromID(MENU_TERMINAL);
         if (menuNumber >= 0)
             OnMenu(xferwin, FULLMENUNUM(menuNumber, NOITEM, NOSUB));
 
-        menuNumber = GetMenuNumberFromID(MENU_SETTINGS);
+        menuNumber = GetMenuNumberFromID(MENU_DISPLAY);
         if (menuNumber >= 0)
             OnMenu(xferwin, FULLMENUNUM(menuNumber, NOITEM, NOSUB));
 
@@ -213,7 +222,16 @@ long __SAVE_DS__ __ASM__ xpr_swrite(__REG__(a0, char *buffer),
 {
     long ret = -1;
     register ULONG i = 0, j = 0;
-    UBYTE *tb = AllocMem(size+size, MEMF_PUBLIC);
+    UBYTE *tb;
+
+    // XEM libraries answer the BBS (Device Status Reports...) with size -1:
+    // a NUL-terminated string. Taken as a length it was AllocMem(-2), which
+    // failed, and the answer was never sent.
+    if (size < 0)
+        size = (long)strlen(buffer);
+    if (size == 0)
+        return 0;
+    tb = AllocMem(size+size, MEMF_PUBLIC);
     if(tb)
     {
         while(i < size)
@@ -222,7 +240,7 @@ long __SAVE_DS__ __ASM__ xpr_swrite(__REG__(a0, char *buffer),
             // 0xff then you must send it twice to tell telnet that you don't intend to send a
             // command. This escaping is only required for Telnet connections and must not be
             // applied to raw TCP connections.
-            if((unsigned char) buffer[i] == 255 && !(prefs.flags & FLAG_RAW_CONNECTION))
+            if((unsigned char) buffer[i] == 255 && TELNET_DATA())
             {
                 tb[j] = buffer[i];
                 j++;
@@ -248,7 +266,7 @@ long __SAVE_DS__ __ASM__ xpr_sread(__REG__(a0, char *buffer),
     long insize;
     struct timeval timer;
 
-    if(!isAppIconified) winsig = 1L << xferwin->UserPort->mp_SigBit; else winsig = 0;
+    if(STATE_IS_NOT(APP_ICONIFIED)) winsig = 1L << xferwin->UserPort->mp_SigBit; else winsig = 0;
 
     if(timeout)
     {
@@ -268,14 +286,17 @@ long __SAVE_DS__ __ASM__ xpr_sread(__REG__(a0, char *buffer),
             FD_ZERO(&rd);
             FD_SET(tcpSocket, &rd);
 
-            if(WaitSelect(tcpSocket + 1, &rd, 0L, 0L, &timer, &sig) < 0) return(-1);
+            if (SshConn_Buffered())         // decrypted already: no waiting
+                sig = 0;
+            else if(WaitSelect(tcpSocket + 1, &rd, 0L, 0L, &timer, &sig) < 0) return(-1);
 
             // TODO: check if this the responsability of the XPR library ?
             if(xpr_chkabort() == -1) return(-1);
 
             if(FD_ISSET(tcpSocket, &rd))
             {
-                insize = recv(tcpSocket, buffer, size, 0);
+                insize = NetRecv(buffer, size);
+                if(insize == SSHCONN_AGAIN) continue;       // SSH protocol only
                 if(insize == -1) return(-1);
                 if(insize > 0)
                 {
@@ -294,7 +315,8 @@ long __SAVE_DS__ __ASM__ xpr_sread(__REG__(a0, char *buffer),
     // recv() return the length (as a long integer) of the message on successful completion.
     // If no messages are available at the socket, the receive call waits for a message to arrive,
     // unless the socket is nonblocking (see IoctlSocket()) in which case the value -1 is returned
-    insize = recv(tcpSocket, buffer, size, 0);
+    insize = NetRecv(buffer, size);
+    if(insize == SSHCONN_AGAIN) insize = 0;
     if(insize == -1)
     {
         er = Errno();
@@ -303,35 +325,14 @@ long __SAVE_DS__ __ASM__ xpr_sread(__REG__(a0, char *buffer),
         if(er == EWOULDBLOCK) return 0;
         return -1; // XPR interpret -1 as an error
     }
+
     set = 0;
     IoctlSocket(tcpSocket, FIONBIO, (char *)&set);
+
     insize = instrip(buffer, insize);
     nBytesReceived += insize;
-    return(insize);
 
-/*    FD_ZERO(&rd);
-    FD_SET(tcpSocket, &rd);
-
-    sig = winsig;
-
-    timer.tv_sec = 0;
-    timer.tv_usec = 1;
-
-    if(WaitSelect(tcpSocket + 1, &rd, 0L, 0L, &timer, &sig) < 0) return(-1);
-
-    if(xpr_chkabort() == -1) return(-1);
-
-    if(FD_ISSET(stcpSocketok, &rd))
-    {
-        insize = recv(tcpSocket, buffer, size, 0);
-        if(insize > 0)
-        {
-            insize = instrip(buffer, insize);
-            bytes += insize;
-            return(insize);
-        }
-    }
-    return(0);*/
+    return insize ;
 }
 
 /* Flush socket/serial input buffer
@@ -359,10 +360,10 @@ long __SAVE_DS__ xpr_sflush(void)
          and the external variable errno set to EAGAIN.
         */
         // TODO: Consider calling Receive() to continue processing pending Telnet IAC sequences.
-        len = recv(tcpSocket, recvBuffer, sizeof(recvBuffer), 0);
+        len = NetRecv(recvBuffer, sizeof(recvBuffer));
 
         i++;
-    } while (len > 0 && i < MAX_FLUSH_ITERATIONS);
+    } while ((len > 0 || len == SSHCONN_AGAIN) && i < MAX_FLUSH_ITERATIONS);
 
     // Set socket back to standard blocking mode:
     mode = 0;
@@ -388,7 +389,7 @@ long __SAVE_DS__ __ASM__ xpr_ffirst(__REG__(a0, char *buffer),
     if (uploadArray == NULL || uploadArraySize < 1)
         return 0L;
 
-    strlcpy(buffer, prefs.uploadpath, PATHLEN);
+    strlcpy(buffer, prefs.UploadPath, PATHLEN);
     AddPart(buffer, uploadArray[0].wa_Name, PATHLEN);
 
     // Return index number of the next element:
@@ -407,7 +408,7 @@ long __SAVE_DS__ __ASM__ xpr_fnext(__REG__(d0, long oldstate),
 
     if (oldstate < uploadArraySize && uploadArray != NULL)
     {
-        strlcpy(buffer, prefs.uploadpath, PATHLEN);
+        strlcpy(buffer, prefs.UploadPath, PATHLEN);
         AddPart(buffer, uploadArray[oldstate].wa_Name, PATHLEN);
 
         // Return index number of the next element:
@@ -429,7 +430,7 @@ long __SAVE_DS__ __ASM__ xpr_gets(__REG__(a0, char *prompt),
     The function returns 0L on failure or user cancellation, non-zero on success.
     */
     #ifdef _DEBUG
-        InfoReq(isRunningOnWB ? NULL : win,
+        InfoReq(win,
                 "TODO : xpr_gets() is not implemented yet.\r\nprompt=%s\r\nbuffer=%lx",
                 prompt, buffer);
     #endif
@@ -447,7 +448,7 @@ long __SAVE_DS__ __ASM__ xpr_fopen(__REG__(a0, char *filename),
 {
     register long fh;
 
-    if(!isAppIconified) EraseRect(xrp, 21, posY(9), xferwin->Width-21, posY(9)+9);
+    if(STATE_IS_NOT(APP_ICONIFIED)) EraseRect(xrp, 21, posY(9), xferwin->Width-21, posY(9)+9);
     xfer_gauge_width = 0;
 
     switch(*accessmode)
@@ -538,7 +539,7 @@ long __SAVE_DS__ __ASM__ xpr_update(__REG__(a0,
     register long ud = updatestruct->xpru_updatemask;
     register UWORD new_xfer_gauge_width=0;
 
-    if(isAppIconified) return(0);
+    if(STATE_IS(APP_ICONIFIED)) return(0);
 
     // xpru_protocol    -- a string that indicates the name of the protocol used
     if(ud&XPRU_PROTOCOL)
@@ -552,9 +553,9 @@ long __SAVE_DS__ __ASM__ xpr_update(__REG__(a0,
     {
         Move(xrp, posX(12), posY(2));
         if(xfertype == XFER_DOWNLOAD)
-            Text(xrp, prefs.downloadpath, strlen(prefs.downloadpath));
+            Text(xrp, prefs.DownloadPath, strlen(prefs.DownloadPath));
         else        // XFER_UPLOAD
-            Text(xrp, prefs.uploadpath, strlen(prefs.uploadpath));
+            Text(xrp, prefs.UploadPath, strlen(prefs.UploadPath));
 
         Move(xrp, posX(12), posY(3));
         TextFmt(xrp, "%-30s", FilePart(updatestruct->xpru_filename));
@@ -781,7 +782,7 @@ static long Checkwinmsg(struct Window *wwin)
 long __SAVE_DS__ xpr_chkabort(void)
 {
     // If the application is iconified on the Workbench
-    if(isAppIconified)
+    if(STATE_IS(APP_ICONIFIED))
     {
         // Process pending AppMessages from Workbench to detect a "shouldUniconifyify" request
         if(iconPort)
@@ -818,10 +819,10 @@ long __SAVE_DS__ xpr_chkabort(void)
     if(Checkwinmsg(xferwin) == -1) return( -1L );
 
     // If not iconified, also check messages from the main window (win) and tool bar window (toolBarWin)
-    if(!isAppIconified)
+    if(STATE_IS_NOT(APP_ICONIFIED))
     {
         if(Checkwinmsg(win) == -1) return( -1L );
-        if(!isAppIconified && toolBarWin)
+        if(STATE_IS_NOT(APP_ICONIFIED) && toolBarWin)
         {
             return(Checkwinmsg(toolBarWin));
         }
@@ -858,6 +859,16 @@ long __SAVE_DS__ xpr_squery(void)
     timer.tv_sec = 0;
     timer.tv_usec = 1;
 
+    if (SshConn_Active())               // SSH: what the engine holds or can decrypt now
+    {
+        if (!SshConn_Buffered())
+        {
+            if(WaitSelect(tcpSocket + 1, &rd, 0L, 0L, &timer, 0L) < 0) return(-1);
+            if(!FD_ISSET(tcpSocket, &rd)) return(0);
+        }
+        return SshConn_Peek();
+    }
+
     if(WaitSelect(tcpSocket + 1, &rd, 0L, 0L, &timer, 0L) < 0) return(-1);
 
     if(FD_ISSET(tcpSocket, &rd))
@@ -873,7 +884,7 @@ long __SAVE_DS__ xpr_squery(void)
 
 static char ProtoStart(char *library, char *firstfile)
 {
-    XProtocolBase = OpenLibrary(library, 0);
+    XProtocolBase = OpenNewestLibrary(library, 0);
     if(!XProtocolBase)
     {
         LocalFmt("\r\n›0;31mERROR: ›mCould not open transfer library: %s\r\n", library);
@@ -899,17 +910,17 @@ static char ProtoStart(char *library, char *firstfile)
     xio.xpr_squery    = xpr_squery;
     xio.xpr_extension = 1L;
 
-    xio.xpr_filename = prefs.xferinit;//"TC,OR,B32,FO,AN,DN,KY,SN,RN";
+    xio.xpr_filename = prefs.XferOptions;//"TC,OR,B32,FO,AN,DN,KY,SN,RN";
     XProtocolSetup(&xio);
     xio.xpr_filename = firstfile;
 
-    if(isAppIconified) return(TRUE); else return(XferWindow());
+    if(STATE_IS(APP_ICONIFIED)) return(TRUE); else return(XferWindow());
 }
 
 /* TODO MAKE A CLEAN FUNCTION NOT REDUNDANT WITH ProtoStart() */
 void XferOptions(char *library)
 {
-    XProtocolBase = OpenLibrary(library, 0);
+    XProtocolBase = OpenNewestLibrary(library, 0);
     if(!XProtocolBase)
     {
         LocalFmt("\r\n›0;31mERROR: ›mCould not open transfer library: %s\r\n", library);
@@ -946,28 +957,22 @@ static char XferWindow(void)
     x = 64 * win->RPort->Font->tf_XSize;
     y = (10 * (win->RPort->Font->tf_YSize+1)) + 12;
 
-    newWin.LeftEdge = (scr->Width - x) / 2;
-    newWin.TopEdge = (scr->Height - y) / 2;
-    newWin.Width = x;
-    newWin.Height = y + winTop;
-    newWin.IDCMPFlags = IDCMP_CLOSEWINDOW|IDCMP_MENUPICK;
-    newWin.Flags = WFLG_NEWLOOKMENUS|WFLG_ACTIVATE|WFLG_CLOSEGADGET|WFLG_DRAGBAR|WFLG_DEPTHGADGET;
+    newWin.LeftEdge    = (scr->Width - x) / 2;
+    newWin.TopEdge     = (scr->Height - y) / 2;
+    newWin.Width       = x;
+    newWin.Height      = y + winTop;
+    newWin.IDCMPFlags  = IDCMP_CLOSEWINDOW
+                       | IDCMP_MENUPICK;
+    newWin.Flags       = WFLG_NEWLOOKMENUS
+                       | WFLG_ACTIVATE
+                       | WFLG_CLOSEGADGET
+                       | WFLG_DRAGBAR
+                       | WFLG_DEPTHGADGET;
     newWin.FirstGadget = 0;
-    newWin.Title = "Transfer in Progress...";
+    newWin.Title       = "Transfer in Progress...";
 
     CheckDimensions(&newWin);
     xferwin = OpenWindow(&newWin);
-
-/*    xferwin = OpenWindowTags(NULL,
-        WA_Title,        "Transfer in Progress...",
-        WA_Left,        (scr->Width - x) / 2,
-        WA_Top,            (scr->Height - y) / 2,
-        WA_Width,        x,
-        WA_InnerHeight,        y,
-        WA_CustomScreen,    scr,
-        WA_IDCMP,        IDCMP_CLOSEWINDOW|IDCMP_MENUPICK,
-        WA_Flags,        WFLG_NEWLOOKMENUS|WFLG_ACTIVATE|WFLG_CLOSEGADGET|WFLG_DRAGBAR|WFLG_DEPTHGADGET,//|WFLG_RMBTRAP,
-        TAG_END);*/
 
     if(!xferwin)
     {
@@ -1003,11 +1008,11 @@ static char XferWindow(void)
     if (menuNumber >= 0)
         OffMenu(xferwin, FULLMENUNUM(menuNumber, NOITEM, NOSUB));
 
-    menuNumber = GetMenuNumberFromID(MENU_OPTIONS);
+    menuNumber = GetMenuNumberFromID(MENU_TERMINAL);
     if (menuNumber >= 0)
         OffMenu(xferwin, FULLMENUNUM(menuNumber, NOITEM, NOSUB));
 
-    menuNumber = GetMenuNumberFromID(MENU_SETTINGS);
+    menuNumber = GetMenuNumberFromID(MENU_DISPLAY);
     if (menuNumber >= 0)
         OffMenu(xferwin, FULLMENUNUM(menuNumber, NOITEM, NOSUB));
 
@@ -1076,17 +1081,17 @@ void Upload(char *library)
 {
     struct FileRequester *fr;
 
-    if(isAppIconified) return;
+    if(STATE_IS(APP_ICONIFIED)) return;
 
     ff_escape_pending = FALSE;
     xfertype = XFER_UPLOAD;
 
     fr = (struct FileRequester *) AllocAslRequestTags(ASL_FileRequest,    // type of requester
-                                        ASL_Window, isRunningOnWB ? NULL : win,
+                                        ASL_Window, win,
                                         ASL_Hail,  "Select one or more files",
 
                                         // Supply initial values for requester:
-                                        ASL_Dir,     prefs.uploadpath,
+                                        ASL_Dir,     prefs.UploadPath,
                                         ASL_Pattern, "#?",
 
                                         ASL_FuncFlags, FILF_PATGAD  // Enable pattern match gadget
@@ -1095,7 +1100,7 @@ void Upload(char *library)
 
     if (fr == NULL)
     {
-        InfoReq(isRunningOnWB ? NULL : win, "AllocAslRequestTags() => NULL (failed)");
+        InfoReq(win, "AllocAslRequestTags() => NULL (failed)");
         goto clean_and_return;
     }
 
@@ -1107,7 +1112,7 @@ void Upload(char *library)
     }
 
     // Save the directory in which files where selected to be uploaded:
-    strlcpy(prefs.uploadpath, fr->rf_Dir, sizeof(prefs.uploadpath));
+    strlcpy(prefs.UploadPath, fr->rf_Dir, sizeof(prefs.UploadPath));
     SavePrefs();
 
     strlcpy(buf, fr->rf_Dir,  sizeof(buf));
@@ -1159,7 +1164,7 @@ void Download(char *library)
 
     ff_escape_pending = FALSE;
 
-    lck = Lock(prefs.downloadpath, SHARED_LOCK);
+    lck = Lock(prefs.DownloadPath, SHARED_LOCK);
     if(lck)
     {
         old = CurrentDir(lck);

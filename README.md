@@ -120,7 +120,8 @@ Rendering issues occur on multiple BBSes, whether using ibmcon.device or
 XemVT340.library for display. Some screens freeze, misalign the UI, or fail
 to display animations.
 
-Improved with ibmcon.device 1.9: Cursor Backward and Forward stop
+Improved with ibmcon.device 1.9: DCTelnet now answers the BBS's cursor
+position requests (Device Status Report), Cursor Backward and Forward stop
 at the edge of the line, and CTerm 24-bit colour sequences are ignored
 instead of moving the cursor. Not yet confirmed on every BBS in the report.
 

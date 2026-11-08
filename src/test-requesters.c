@@ -159,7 +159,7 @@ int main(void)
     displayWidth = 640;
     displayHeight = 256;
     displayDepth = 4;
-    result = ScreenModeRequester(NULL, &displayID, &displayWidth, &displayHeight, &displayDepth);
+    result = ScreenModeRequester(NULL, &displayID, &displayWidth, &displayHeight, &displayDepth, 32);
     if (result)
     {
         argArray[0] = (LONG) displayID;

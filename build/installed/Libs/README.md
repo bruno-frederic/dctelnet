@@ -7,7 +7,4 @@ From a Workbench 2.1+ installation:
 - diskfont.library
 
 From the DCtelnet binary package:
-- reqtools.library
-- xemvt340.library
-- xprftp.library
-- xprzmodem.library
+- ssh.library (only for SSH connections)

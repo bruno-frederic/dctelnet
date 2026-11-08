@@ -69,8 +69,10 @@ endif
 INCLUDES := \
 	-I$(NDK32_INC) \
 	-I$(NET_INC) \
+	-Ithird_party/retro32-term \
 	-Ithird_party/Xem/INCLUDE \
-	-Ithird_party/Xpr/include
+	-Ithird_party/Xpr/include \
+	-Isshlib/include
 
 ifeq ($(MAKECMDGOALS),build)
   ifeq ($(strip $(NDK32_INC)),)
@@ -127,7 +129,8 @@ ifeq ($(TOOLCHAIN),vbcc)
 	WARN            := -warn=-1 "-dontwarn=163,166,167,168,170,307,65" -warnings-as-errors	# TODO re-enable warning #65
 	CFLAGS          := +aos68k $(WARN) -cpu=$(CPU)
 		DEBUG_CFLAGS    := -g -D_DEBUG -stack-check
-		RELEASE_CFLAGS  := -O3 -size # v2.0 switch from -size to -speed
+		RELEASE_CFLAGS  := -O3 -speed
+	ASRCS           :=
 else ifeq ($(TOOLCHAIN),gcc)
 	BUILDER_IMAGE := amigadev/crosstools:m68k-amigaos-gcc10
 
@@ -146,6 +149,7 @@ else ifeq ($(TOOLCHAIN),gcc)
 	CFLAGS          := -mcrt=nix20 $(WARN) -m$(CPU)
 		DEBUG_CFLAGS    := -g -D_DEBUG -fstack-check
 		RELEASE_CFLAGS  := -O3
+	ASRCS           :=
 else
 	$(error Invalid TOOLCHAIN value '$(TOOLCHAIN)'; choose 'vbcc' or 'gcc')
 endif
@@ -156,8 +160,10 @@ CFLAGS += -D"COMPILER_STRING=$(COMPILER_STRING)" -DBUILD_HASH=$(BUILD_HASH) -D"A
 
 
 TARGET     := DCTelnet
-SRCS       := DCTelnet.c connect.c guis.c Xfer.c Xem_wrapper.c requesters.c utils.c
-DEPS       := abook.h connect.h DCTelnet.h DCTelnet-debug.h DCTelnet-protocol.h edit.h fkey.h guis.h Xfer.h Xem_wrapper.h requesters.h utils.h
+SRCS       := DCTelnet.c connect.c guis.c Xfer.c Xem_wrapper.c requesters.c utils.c prefs.c prefs_file.c \
+              petscii_screencode.c petscii_fallback.c petscii_keymap.c petscii_dispatch.c site_prefs.c palette.c \
+              screenfont.c progdir.c shipped.c listsel.c textedit.c dsr.c keys.c clip.c charset.c ansiscan.c ticks.c waitfor.c rexxcmd.c rlogin.c ansimusic.c sound.c booklist.c sshconn.c knownhosts.c connectaddr.c
+DEPS       := abook.h connect.h DCTelnet.h DCTelnet-debug.h DCTelnet-protocol.h third_party/retro32-term/term-engine.c edit.h fkey.h guis.h Xfer.h Xem_wrapper.h requesters.h utils.h prefs.h prefs_file.h site_prefs.h palette.h screenfont.h progdir.h shipped.h listsel.h textedit.h dsr.h keys.h clip.h charset.h ansiscan.h ticks.h waitfor.h rexxcmd.h rlogin.h ansimusic.h sound.h booklist.h sshconn.h knownhosts.h sshlib/include/libraries/ssh.h connectaddr.h recvgate.h
 INSTALLDIR := ../build/installed/DCTelnet
 
 # OBJ subdir depends on TOOLCHAIN and DEBUG flag (use DEBUG=yes to enable)
@@ -172,13 +178,13 @@ endif
 
 # final OBJDIR depends on TOOLCHAIN, CPU and OBJ_SUFFIX
 OBJDIR     := ../build/$(TOOLCHAIN)-$(CPU)-$(OBJ_SUFFIX)
-OBJS       := $(SRCS:%.c=$(OBJDIR)/%.o)
+OBJS       := $(SRCS:%.c=$(OBJDIR)/%.o) $(ASRCS:%.s=$(OBJDIR)/%.o)
 TARGET_EXE := $(OBJDIR)/$(TARGET).$(CPU)
 MAKEFILE_UPTODATE=$(OBJDIR)/Makefile.uptodate
 
 
 # make treats a phony target as always out-of-date and runs its recipe when requested.
-.PHONY: all clean allclean debug release ci docker-debug docker-release ibmcon tests package
+.PHONY: all clean allclean debug release ci docker-debug docker-release ibmcon sshlib tests package
 
 all: $(MAKEFILE_UPTODATE) 68000 68020
 
@@ -205,7 +211,7 @@ DOCKER_RUN = $(DOCKER) run $(INTERACTIVE) --user $(DOCKER_USER) -q --rm --volume
 
 # "ci" target matches the behavior implemented in the GitHub Actions workflow.
 # Keep in sync with `.github/workflows/build.yml`.
-ci: docker-debug  docker-release  ibmcon  tests  package
+ci: docker-debug  docker-release  ibmcon  sshlib  tests  package
 
 docker-debug:
 	$(DOCKER_RUN) make TOOLCHAIN=$(TOOLCHAIN) BUILD_HASH=$(BUILD_HASH) DEBUG=yes 68000
@@ -223,6 +229,17 @@ ibmcon:
 	$(info =========================== make ibmcon ==================================)
 	$(DOCKER_RUN) make -C ../ibmcon
 
+# Where the builder keeps vbcc and the SDKs: the Docker image paths by default.
+# "make host-ci" points them at a host copy of the same toolchain.
+CI_VBCC := /opt/vbcc
+CI_SDK  := /opt/sdk
+
+# ssh.library for every CPU (src/sshlib). The builder's vbcc and NDK replace
+# the Homebrew defaults; clean first because build/aos68k.cfg holds the NDK path.
+sshlib:
+	$(info =========================== make sshlib ==================================)
+	$(DOCKER_RUN) make -C sshlib clean all VBCC=$(CI_VBCC) NDK=$(CI_SDK)/NDK3.2/Include_H
+
 tests:
 	$(info =========================== make tests ==================================)
 	$(DOCKER_RUN) make -C ../tests
@@ -230,6 +247,23 @@ tests:
 package:
 	$(info =========================== make package ==================================)
 	$(DOCKER_RUN) env TOOLCHAIN=$(TOOLCHAIN) sh ../build/package.sh
+
+# "make ci" without Docker: the same steps, run on the host with a copy of the
+# builder's toolchain (vbcc 0.9hP3, vasm 2.0f, vlink 0.18a, NDK 3.2, Roadshow
+# netinclude) that ../build/host-toolchain.sh installs in HOST_TOOLCHAIN.
+# The Docker "make ci" stays the reference build (AGENTS.md).
+ifeq ($(shell uname -s),Darwin)
+HOST_TOOLCHAIN ?= $(HOME)/Library/Caches/dctelnet-toolchain
+else
+HOST_TOOLCHAIN ?= $(HOME)/.cache/dctelnet-toolchain
+endif
+host-ci: CI_VBCC := $(HOST_TOOLCHAIN)/opt/vbcc
+host-ci: CI_SDK  := $(HOST_TOOLCHAIN)/opt/sdk
+host-ci: DOCKER_RUN = env VBCC=$(CI_VBCC) PATH="$(CI_VBCC)/bin:$$PATH" NDK32_INC=$(CI_SDK)/NDK3.2/Include_H NET_INC=$(CI_SDK)/Roadshow-SDK/netinclude
+host-ci: host-toolchain-check ci
+
+host-toolchain-check:
+	@test -x $(HOST_TOOLCHAIN)/opt/vbcc/bin/vbccm68k || { echo "No host toolchain in $(HOST_TOOLCHAIN): run sh ../build/host-toolchain.sh"; exit 1; }
 
 # for debugging builder container
 enter-builder: INTERACTIVE := --interactive --tty
@@ -267,19 +301,24 @@ $(OBJDIR)/%.o: %.c $(DEPS) | $(OBJDIR)
 	$(CC) $(CFLAGS) -o $@  -c $<
 
 
+$(OBJDIR)/%.o: %.s | $(OBJDIR)
+	@echo "------------- $@ --------------------"
+	$(CC) $(CFLAGS) -o $@  -c $<
+
+
 $(OBJDIR):
 	@echo "------------- mkdir $@ --------------------"
 	$(MKDIR) $@
-
 
 $(INSTALLDIR):
 	@echo "------------- mkdir $@ --------------------"
 	$(MKDIR) $@
 
 # Slow; for regular development on DCTelnet, "make DEBUG=yes docker-debug ibmcon install" is much faster.
-install: $(TARGET_EXE) ibmcon | $(INSTALLDIR)
+install: $(TARGET_EXE) ibmcon sshlib | $(INSTALLDIR)
 	@echo "------------- $@ $^ --------------------"
 	cp $(TARGET_EXE) $(INSTALLDIR)
+	cp sshlib/build/68000/ssh.library  $(INSTALLDIR)/Libs/ssh.library
 	cp ../ibmcon/ibmcon.device $(INSTALLDIR)/Devs
 
 clean: 68000_clean 68020_clean
