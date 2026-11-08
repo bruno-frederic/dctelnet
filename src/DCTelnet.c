@@ -2142,6 +2142,7 @@ add:
 
 
 #include "DCTelnet-protocol.h"
+#include "recvgate.h"
 
 static void Receive(void)
 {
@@ -2342,6 +2343,30 @@ static void Receive(void)
         if (zmodemCtx.state == ZMODEM_UPLOAD)     Upload(prefs.XferLibrary);
 
         ResetZmodemContext();
+    }
+}
+
+// After WaitSelect(): Receive() only when the socket is readable (or SSH holds
+// decrypted bytes); its recv() blocks. A real WaitSelect() error is a connection
+// error, handled like a failed recv() in Receive().
+static void RecvGateRun(LONG i, fd_set *readSet, BOOL drawLed)
+{
+    switch (RecvGate(i, FD_ISSET(tcpSocket, readSet) != 0, SshConn_Buffered(), Errno() == EINTR))
+    {
+        case RECV_RECEIVE:
+            // Draw when Title bar AND LEDs are enabled:
+            if (drawLed && STATE_ARE_ALL(APP_TITLE_BAR_ENABLED | APP_LEDS_ENABLED))
+            {
+                SetAPen(&scr->RastPort, LegacyPen(10));
+                RectFill(&scr->RastPort, scr->Width-70, 3, scr->Width-62, BAR_TEXT_HEIGHT-2);
+            }
+            Receive();
+            if (drawLed && STATE_ARE_ALL(APP_TITLE_BAR_ENABLED | APP_LEDS_ENABLED))
+                EraseRect(&scr->RastPort, scr->Width-72, 2, scr->Width-60, BAR_TEXT_HEIGHT-1);
+            break;
+        case RECV_DISCONNECT:
+            DisConnect(!SshConn_Active() || SshConn_ClosedByServer(), FALSE);
+            break;
     }
 }
 
@@ -2911,7 +2936,7 @@ int main(int argc, char *argv[])
                 }
             }
 
-            if(i != 0 || SshConn_Buffered()) Receive();
+            if (isConnected) RecvGateRun(i, &rd, FALSE);
 
         } else { // app is not iconified
 
@@ -2965,18 +2990,7 @@ int main(int argc, char *argv[])
                 if(packetWin) GetWindowMsg(packetWin);
                 if (toolBarWin) GetWindowMsg(toolBarWin);
 
-                if(i != 0 || SshConn_Buffered())
-                {
-                    // Draw when Title bar AND LEDs are enabled :
-                    if (STATE_ARE_ALL(APP_TITLE_BAR_ENABLED | APP_LEDS_ENABLED))
-                    {
-                        SetAPen(&scr->RastPort, LegacyPen(10));
-                        RectFill(&scr->RastPort, scr->Width-70, 3, scr->Width-62, BAR_TEXT_HEIGHT-2);
-                    }
-                    Receive();
-                    if (STATE_ARE_ALL(APP_TITLE_BAR_ENABLED | APP_LEDS_ENABLED))
-                        EraseRect(&scr->RastPort, scr->Width-72, 2, scr->Width-60, BAR_TEXT_HEIGHT-1);
-                }
+                RecvGateRun(i, &rd, TRUE);
 
             } else {  // not connected
                 ULONG sig;
