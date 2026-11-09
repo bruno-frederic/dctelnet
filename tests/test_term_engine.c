@@ -78,10 +78,17 @@ static ULONG GetBitMapAttr(struct BitMap *b, ULONG attr)
 static int obtainCalls, releaseCalls, obtainFail, obtainExactFail, obtainNearCalls;
 static ULONG obtainR, obtainG, obtainB;
 static LONG obtainTags[4];
+/* A colour map with a limited number of free pens: obtainBudget (-1: unlimited) exact pens may be held at once;
+ * past it an exact request fails and a nearest one answers the closest pen held (never an exclusive one). The RGB
+ * of every pen handed out is kept (obtainRgb) so a test can read a picture back as colours. */
+static int obtainBudget = -1, obtainHeld;
+static unsigned long obtainRgb[256];
+static unsigned char obtainLive[256];
 static LONG ObtainBestPen(struct ColorMap *cm, ULONG r, ULONG g, ULONG b, ...)
 {
     va_list ap;
-    LONG exact;
+    LONG exact, pen;
+    unsigned long want = ((r >> 24) << 16) | ((g >> 24) << 8) | (b >> 24);
 
     (void)cm;
     obtainR = r; obtainG = g; obtainB = b;
@@ -95,9 +102,37 @@ static LONG ObtainBestPen(struct ColorMap *cm, ULONG r, ULONG g, ULONG b, ...)
         obtainNearCalls++;
     if (obtainFail || (exact && obtainExactFail))
         return -1;
-    return 50 + (obtainCalls - 1) % 200;
+    if (obtainBudget >= 0 && obtainHeld >= obtainBudget) {
+        long best = -1, bd = 0;
+        int i;
+
+        if (exact)
+            return -1;
+        for (i = 0; i < 256; i++)
+            if (obtainLive[i]) {
+                long dr = (long)((want >> 16) & 255) - (long)((obtainRgb[i] >> 16) & 255);
+                long dg = (long)((want >> 8) & 255) - (long)((obtainRgb[i] >> 8) & 255);
+                long db = (long)(want & 255) - (long)(obtainRgb[i] & 255);
+                long d = dr * dr + dg * dg + db * db;
+                if (best < 0 || d < bd) { best = i; bd = d; }
+            }
+        return best < 0 ? 0 : best;
+    }
+    pen = 50 + (obtainCalls - 1) % 200;
+    obtainRgb[pen] = want;
+    obtainLive[pen] = 1;
+    obtainHeld++;
+    return pen;
 }
-static void ReleasePen(struct ColorMap *cm, ULONG pen) { (void)cm; (void)pen; releaseCalls++; }
+static void ReleasePen(struct ColorMap *cm, ULONG pen)
+{
+    (void)cm;
+    releaseCalls++;
+    if (pen < 256 && obtainLive[pen]) {
+        obtainLive[pen] = 0;
+        obtainHeld--;
+    }
+}
 static void SetFont(struct RastPort *rp, struct TextFont *tf) { rp->Font = tf; }
 static void SetAPen(struct RastPort *rp, ULONG pen) { rp->FgPen = (UBYTE)pen; }
 static void SetBPen(struct RastPort *rp, ULONG pen) { rp->BgPen = (UBYTE)pen; }
@@ -119,9 +154,16 @@ static void RectFill(struct RastPort *rp, LONG x0, LONG y0, LONG x1, LONG y1)
 /* Pictures (kitty graphics): the chunky writes, one line each with the
  * first pixel's pen. */
 static int chunkyCalls;
+static UBYTE chunkyFb[128][512];        /* every pen written, by screen pixel (y, x) */
 static void WriteChunkyPixels(struct RastPort *rp, LONG x0, LONG y0, LONG x1, LONG y1, UBYTE *a, LONG mod)
 {
-    (void)rp; (void)mod;
+    LONG x, y;
+
+    (void)rp;
+    for (y = y0; y <= y1; y++)
+        for (x = x0; x <= x1; x++)
+            if (y >= 0 && y < 128 && x >= 0 && x < 512)
+                chunkyFb[y][x] = a[(y - y0) * mod + (x - x0)];
     chunkyCalls++;
     call("Chunky(%ld,%ld,%ld,%ld pen%ld)\n", (long)x0, (long)y0, (long)x1, (long)y1, (long)a[0]);
 }
@@ -266,6 +308,17 @@ static int newSawTerm;
 static int newSb;                   /* the scrollback line count VtOpen handed vt_new */
 static vt_term *probe_new(int cols, int rows, int sb, const vt_callbacks *cb, void *user);
 #define vt_new(c, r, sb, cb, u) probe_new((c), (r), (sb), (cb), (u))
+/* exec.library memory for the picture pens (AllocVec / FreeVec) */
+#include <stdlib.h>
+#define MEMF_ANY 0
+#define MEMF_CLEAR 1
+static int vecLive;
+static void *AllocVec(unsigned long n, unsigned long f)
+{
+    vecLive++;
+    return (f & MEMF_CLEAR) ? calloc(1, n) : malloc(n);
+}
+static void FreeVec(void *p) { vecLive--; free(p); }
 #include "../src/vtbuiltin.c"
 #undef term_glyph
 #undef vt_new
@@ -891,6 +944,9 @@ static void xterm_begin_on(UBYTE depth, ULONG flags)
     bitmapFlags = flags;
     assert(term_init_area(&screen, &winRp, 0, TOP, 0, TOP, W, H - TOP, &font) == 0);
     obtainCalls = releaseCalls = obtainFail = obtainExactFail = obtainNearCalls = 0;
+    obtainBudget = -1;
+    obtainHeld = 0;
+    memset(obtainLive, 0, sizeof(obtainLive));
     memset(&prefs, 0, sizeof(prefs));
     prefs.State = APP_RENDERER_BUILTIN;
     prefs.TermType = TERMTYPE_UNIX;
@@ -1599,6 +1655,146 @@ static void test_kg8_a_kitty_picture_through_vtwrite_is_drawn_and_a_query_answer
     assert(vt_kitty_placed(vtTerm) == 1);
 }
 
+/* KG-32: a kitty picture on a 5-plane palette screen with 12 free pens (pens 0-19 are DCTelnet's, PEN_EXCLUSIVE).
+ * Handing the picture's palette out first-come showed the colours of its top rows only; the shared picker
+ * (pic_pens.h) gives the 12 pens to the colours covering most of the picture and dithers every pixel onto
+ * {the 16 ANSI pens + those 12}. Driven through VtWrite. Sentinels: vtPicPicks (pp_pick ran for the picture),
+ * vtImgRuns (the chunky writes). SMPTE 75% bars, 16 x 16 pixels a bar: the mean colour of each bar, read back from
+ * the pens written, is within BAR_ERR (per channel, 0-255) of the bar's colour. */
+#define KG32_W 128
+#define KG32_H 16
+#define KG32_BAR_ERR 8
+static void kg32_b64(char *out, const unsigned char *in, int n)
+{
+    static const char t[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    int i;
+
+    for (i = 0; i < n; i += 3) {
+        unsigned long v = (unsigned long)in[i] << 16 | (i + 1 < n ? (unsigned long)in[i + 1] << 8 : 0) |
+                          (i + 2 < n ? in[i + 2] : 0);
+        *out++ = t[(v >> 18) & 63];
+        *out++ = t[(v >> 12) & 63];
+        *out++ = i + 1 < n ? t[(v >> 6) & 63] : '=';
+        *out++ = i + 2 < n ? t[v & 63] : '=';
+    }
+    *out = 0;
+}
+
+static const unsigned char kg32_bars[8][3] = {
+    {191, 191, 191}, {191, 191, 0}, {0, 191, 191}, {0, 191, 0}, {191, 0, 191}, {191, 0, 0}, {0, 0, 191}, {0, 0, 0}
+};
+
+/* send the bars as picture id (24-bit RGB, transmitted and shown at the cursor, chunked) */
+static void kg32_send(int id)
+{
+    static unsigned char raw[KG32_W * KG32_H * 3];
+    static char b64[KG32_W * KG32_H * 4 + 16], msg[4200];
+    int x, y, off, len;
+
+    for (y = 0; y < KG32_H; y++)
+        for (x = 0; x < KG32_W; x++)
+            memcpy(raw + (y * KG32_W + x) * 3, kg32_bars[x / 16], 3);
+    kg32_b64(b64, raw, (int)sizeof(raw));
+    len = (int)strlen(b64);
+    for (off = 0; off < len; off += 4000) {
+        int n = len - off < 4000 ? len - off : 4000, more = off + n < len;
+        if (off == 0)
+            snprintf(msg, sizeof(msg), "\033_Gf=24,s=%d,v=%d,i=%d,a=T,m=%d;", KG32_W, KG32_H, id, more);
+        else
+            snprintf(msg, sizeof(msg), "\033_Gm=%d;", more);
+        {
+            size_t h = strlen(msg);
+
+            memcpy(msg + h, b64 + off, (size_t)n);
+            memcpy(msg + h + n, "\033\\", 3);
+            VtWrite((const UBYTE *)msg, (long)(h + (size_t)n + 2));
+        }
+    }
+}
+
+static unsigned long kg32_pen_rgb(UBYTE pen)
+{
+    UWORD c;
+
+    if (pen < 16) {
+        c = prefs.AnsiColors[pen];
+        return ((unsigned long)((c >> 8) & 15) * 17UL << 16) | ((unsigned long)((c >> 4) & 15) * 17UL << 8) |
+               (unsigned long)(c & 15) * 17UL;
+    }
+    assert(obtainLive[pen]);            /* a pen the picture shows is one the screen still holds */
+    return obtainRgb[pen];
+}
+
+static int kg32_worst_bar_error(void)
+{
+    int bar, x, y, c, worst = 0;
+
+    for (bar = 0; bar < 8; bar++) {
+        long sum[3] = {0, 0, 0};
+
+        for (y = 0; y < KG32_H; y++)
+            for (x = bar * 16; x < bar * 16 + 16; x++) {
+                unsigned long rgb = kg32_pen_rgb(chunkyFb[TERM_PY(0) + y][TERM_PX(0) + x]);
+                sum[0] += (rgb >> 16) & 255;
+                sum[1] += (rgb >> 8) & 255;
+                sum[2] += rgb & 255;
+            }
+        for (c = 0; c < 3; c++) {
+            int e = (int)(sum[c] / 256) - kg32_bars[bar][c];
+            if (e < 0)
+                e = -e;
+            if (e > worst)
+                worst = e;
+        }
+    }
+    return worst;
+}
+
+static void test_kg32_a_picture_on_a_5_plane_screen_with_12_free_pens_keeps_its_colours(void)
+{
+    int err;
+    unsigned placed0;
+
+    xterm_begin_on(5, 0);
+    placed0 = (unsigned)vt_kitty_placed(vtTerm);
+    assert(vtTrueColour && vtPicPens);
+    obtainBudget = 12;                          /* the colour map's free pens */
+    memset(chunkyFb, 0, sizeof(chunkyFb));
+    chunkyCalls = 0;
+    vtImgRuns = 0;
+    vtPicPicks = 0;
+    vt_put("\x1b[H");
+    kg32_send(1);
+    assert(vt_kitty_placed(vtTerm) == placed0 + 1);
+    assert(vtPicPicks == 1);                    /* the shared picker ran for it */
+    assert(vtImgRuns > 0 && chunkyCalls > 0);
+    assert(obtainHeld <= 12 + vtTcN);
+    err = kg32_worst_bar_error();
+    printf("kg32: worst bar mean error %d of 255 (bound %d), pens held %d\n", err, KG32_BAR_ERR, obtainHeld);
+    assert(err <= KG32_BAR_ERR);
+
+    /* the same id again replaces the picture: the old pens go back, new ones are taken */
+    vt_put("\x1b[H");
+    kg32_send(1);
+    assert(vtPicPicks == 2);
+    assert(obtainHeld <= 12 + vtTcN);
+    assert(kg32_worst_bar_error() <= KG32_BAR_ERR);
+
+    /* delete all pictures: every pen of the set goes back (text pens: none in this test) */
+    vt_put("\033_Ga=d,d=A\033\\");
+    VtRedraw();
+    assert(obtainHeld == vtTcN);                /* only the text cache holds pens now */
+    assert(vecLive == 0);
+
+    /* the next picture gets the pens again */
+    vt_put("\x1b[H");
+    kg32_send(2);
+    assert(vtPicPicks == 3 && obtainHeld > vtTcN && obtainHeld <= 12 + vtTcN);
+    assert(kg32_worst_bar_error() <= KG32_BAR_ERR);
+    tc_end();
+    assert(obtainHeld == 0 && vecLive == 0);    /* closing the screen gives them back */
+}
+
 /* KG-10: VtOpen hands the engine the screen mode's Resolution as the pixel
  * aspect (PAL hires 22:44 style), and square when the mode is unknown; a
  * display reopen on another mode updates it. */
@@ -1665,6 +1861,7 @@ int main(void)
     test_ma4_3_a_scrollback_line_narrower_than_the_grid_is_blank_filled();
     test_ma4_4_the_alt_screen_leaves_the_scrollback_alone();
     test_kg8_a_kitty_picture_through_vtwrite_is_drawn_and_a_query_answered();
+    test_kg32_a_picture_on_a_5_plane_screen_with_12_free_pens_keeps_its_colours();
     test_kg10_the_screens_pixel_aspect_reaches_the_engine();
     test_aga_pens_text_and_picture_on_an_8_plane_screen();
     test_aga_full_colour_map_takes_the_nearest_pen();
