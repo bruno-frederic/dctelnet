@@ -1866,15 +1866,15 @@ static void test_kg32_a_many_colour_picture_with_few_colours_on_top_keeps_its_lo
     tc_end();
 }
 
-/* The same on a SIXEL picture (own palette registers, no RGB copy): 30 rows in 5 bands of 6. The top band holds
+/* The same on a SIXEL picture (own palette registers, no RGB copy): 36 rows in 6 bands of 6. The top two bands hold
  * 16 registers in 8-pixel stripes, the lower four a muted ramp with every column its own register (128 registers,
  * far more than the 12 free pens). Handing the registers out first-come left the ramp on the nearest ANSI pens; the
  * shared picker (VtSixNeedsPicker, VtPicMake indexed) gives the 12 pens to the registers covering most of the
  * picture and dithers every register onto {ANSI + those pens}. The colour assertion comes before the sentinels, so
  * a reverted mapping fails on colour. */
-#define SXL_H 30
-#define SXL_TOP 6
-#define SXL_ERR 35
+#define SXL_TOP 12                      /* two 6-row bands of the 16 top colours */
+#define SXL_H (SXL_TOP + 24)            /* then four 6-row bands of the ramp */
+#define SXL_ERR 25
 static void sxl_want(int x, unsigned char *c)
 {
     unsigned char raw[3];
@@ -1904,7 +1904,7 @@ static void test_sixel_32_a_many_register_picture_with_few_colours_on_top_keeps_
     int x, y, c, n, b, err;
     long sum = 0;
 
-    n = sprintf(sx, "\033Pq");
+    n = sprintf(sx, "\033P9q");      /* P1 9: 1:1 aspect, one sixel row is one pixel row (the default 2:1 doubles) */
     for (x = 0; x < 16; x++)
         n += sprintf(sx + n, "#%d;2;%d;%d;%d", x + 1, top[x][0] * 100 / 255, top[x][1] * 100 / 255, top[x][2] * 100 / 255);
     for (x = 0; x < KG32_W; x++) {
@@ -1913,7 +1913,7 @@ static void test_sixel_32_a_many_register_picture_with_few_colours_on_top_keeps_
         kg32m_rgb(x, raw);
         n += sprintf(sx + n, "#%d;2;%d;%d;%d", 17 + x, raw[0] * 100 / 255, raw[1] * 100 / 255, raw[2] * 100 / 255);
     }
-    for (b = 0; b < 1; b++) {
+    for (b = 0; b < 2; b++) {
         for (x = 0; x < 16; x++)
             n += sxl_run(sx + n, x + 1, x * 8, 8);
         n += sprintf(sx + n, "-");
