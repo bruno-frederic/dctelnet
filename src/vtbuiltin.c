@@ -147,13 +147,17 @@ struct VtPic {
     int nheld;
     UBYTE cpen[PM_MAXPENS];             /* candidate -> screen pen: the ANSI pens, then held */
     unsigned long usable;               /* candidate bit mask for pm_match */
-    UBYTE *mem;                         /* pm_palette, then PP_BINS * 3 plan bytes, then PP_BINS * 3 bin colours */
+    UBYTE *mem;                         /* pm_palette, then PP_BINS * 3 plan bytes, then PP_BINS * 3 bin colours; an
+                                         * indexed (sixel) picture: the pm_palette, then a pp_plan whose a, b are screen pens */
+    BOOL indexed;                       /* made from the picture's palette (sixel), not from its RGB copy (kitty) */
 };
 static struct VtPic vtPic[VT_PIC_SLOTS];
 static struct VtPic *vtPicCur;          /* the slot of the picture being drawn; 0 the plain palette map */
 static unsigned long vtPicUse, vtPicFrees;
 static BOOL vtPicPens;                  /* this screen picks pens for pictures */
 static unsigned long vtPicPicks;        /* sentinel: pictures whose pens were picked (pp_pick) */
+static unsigned long vtPicFree;         /* pens a picture may hold on this screen: 2^depth less DCTelnet's 20 */
+static unsigned long vtPicWt[PP_MAXCOL]; /* pixels per palette entry of the sixel picture being made (VtSixNeedsPicker) */
 
 static void VtPicRelease(struct VtPic *s)
 {
@@ -213,7 +217,7 @@ static unsigned long VtAnsiRgb(int n)
 
 static BOOL VtPicMake(struct VtPic *s, const vt_image_view *v)
 {
-    static unsigned long wt[PP_MAXCOL];
+    unsigned long *wt = vtPicWt;
     unsigned long cand[PM_MAXPENS], pick[PM_MAXPENS], pal[PP_MAXCOL];
     pp_hist_work *wk;
     pm_palette *cp;
@@ -222,9 +226,10 @@ static BOOL VtPicMake(struct VtPic *s, const vt_image_view *v)
     LONG p;
 
     s->nheld = 0;
+    s->indexed = v->rgb == NULL;
     s->mem = (UBYTE *)AllocVec(sizeof(pm_palette) + PP_BINS * 6, MEMF_ANY | MEMF_CLEAR);
-    wk = (pp_hist_work *)AllocVec(sizeof(pp_hist_work), MEMF_ANY);
-    if (!s->mem || !wk) {
+    wk = s->indexed ? NULL : (pp_hist_work *)AllocVec(sizeof(pp_hist_work), MEMF_ANY);
+    if (!s->mem || (!wk && !s->indexed)) {
         if (wk)
             FreeVec(wk);
         if (s->mem) {
@@ -233,8 +238,15 @@ static BOOL VtPicMake(struct VtPic *s, const vt_image_view *v)
         }
         return FALSE;
     }
-    np = pp_hist(v->pix, v->rgb, (long)v->w * v->h, wk, pal, wt, s->mem + sizeof(pm_palette) + PP_BINS * 3);
-    FreeVec(wk);
+    if (s->indexed) {                   /* a sixel: the palette is the colour list, vtPicWt (VtSixNeedsPicker) its weights */
+        np = v->npal < PP_MAXCOL ? v->npal : PP_MAXCOL;
+        wt[0] = 0;
+        for (i = 0; i < np; i++)
+            pal[i] = v->pal[i] & 0xFFFFFFUL;
+    } else {
+        np = pp_hist(v->pix, v->rgb, (long)v->w * v->h, wk, pal, wt, s->mem + sizeof(pm_palette) + PP_BINS * 3);
+        FreeVec(wk);
+    }
     vtPicPicks++;
     for (i = 0; i < 16 && nf < PM_MAXPENS; i++) {
         s->cpen[nf] = term_pen_map[i];
@@ -269,10 +281,20 @@ static BOOL VtPicMake(struct VtPic *s, const vt_image_view *v)
     }
     cp = (pm_palette *)s->mem;
     plan3 = s->mem + sizeof(pm_palette);
-    pm_palette_set(cp, cand, nc);
-    s->usable = nc >= 32 ? 0xFFFFFFFFUL : ((1UL << nc) - 1);
-    for (i = 0; i < PP_BINS; i++)
-        plan3[i * 3 + 2] = PP_UNSET;
+    if (s->indexed) {                   /* every palette entry's two pens, once: a, b as screen pens */
+        pp_plan *pl = (pp_plan *)plan3;
+
+        pp_plan_make(pl, cp, pal, np, cand, nc);
+        for (i = 1; i < np; i++) {
+            pl->a[i] = s->cpen[pl->a[i]];
+            pl->b[i] = s->cpen[pl->b[i]];
+        }
+    } else {
+        pm_palette_set(cp, cand, nc);
+        s->usable = nc >= 32 ? 0xFFFFFFFFUL : ((1UL << nc) - 1);
+        for (i = 0; i < PP_BINS; i++)
+            plan3[i * 3 + 2] = PP_UNSET;
+    }
     s->serial = v->serial;
     return TRUE;
 }
@@ -297,6 +319,18 @@ static struct VtPic *VtPicSlot(const vt_image_view *v)
     return &vtPic[old];
 }
 
+/* A sixel needs the picker when it uses more colours than the pens left free: below that the plain per-colour pens
+ * are exact. Leaves the palette weights in vtPicWt for VtPicMake. */
+static BOOL VtSixNeedsPicker(const vt_image_view *v)
+{
+    int i, used = 0, np = v->npal < PP_MAXCOL ? v->npal : PP_MAXCOL;
+
+    pp_weights(v->pix, (long)v->w * v->h, np, vtPicWt);
+    for (i = 1; i < np; i++)
+        used += vtPicWt[i] != 0;
+    return (unsigned long)used + vtTcN > vtPicFree;
+}
+
 static void VtImgColours(const vt_image_view *v)
 {
     int i;
@@ -308,6 +342,9 @@ static void VtImgColours(const vt_image_view *v)
     vtPicCur = NULL;
     if (vtPicPens && v->kitty && v->rgb && v->fmt == 0 && (vtPicCur = VtPicSlot(v)) != NULL)
         return;
+    if (vtPicPens && !v->kitty && !v->rgb && v->fmt == 0 && VtSixNeedsPicker(v) && (vtPicCur = VtPicSlot(v)) != NULL) {
+        return;
+    }
     for (i = 1; i < v->npal && i < 256; i++)
         vtImgMap[i] = term_pen_map[VtPenFor((vt_color)(VT_COLOR_RGB | (v->pal[i] & 0xFFFFFFUL)))];
 }
@@ -326,7 +363,12 @@ static void VtImgWrite(const vt_image_view *v, LONG sx, LONG sy, LONG w, LONG h,
     for (k = 0; k < h; k++) {
         const vt_u8 *src = v->pix + (sy + k) * v->w + sx;
         UBYTE *d = vtImgBuf + k * stride;
-        if (vtPicCur) {
+        if (vtPicCur && vtPicCur->indexed) {
+            const pp_plan *pl = (const pp_plan *)(vtPicCur->mem + sizeof(pm_palette));
+
+            for (j = 0; j < w; j++)
+                d[j] = src[j] ? (UBYTE)pp_pen_at(pl, src[j], (int)(sx + j), (int)(sy + k)) : vtImgMap[0];
+        } else if (vtPicCur) {
             UBYTE *plan3 = vtPicCur->mem + sizeof(pm_palette), *bc = plan3 + PP_BINS * 3;
             const UBYTE *px = v->rgb + ((sy + k) * v->w + sx) * 3;
 
@@ -840,6 +882,7 @@ static int VtOpen(void)
 
         vtTrueColour = Vt_ObtainsPens(depth, modeId, gfxVer);
         vtPicPens = vtTrueColour && depth > 4 && depth < 8;     /* a palette of 32 to 128 pens, shared with the text */
+        vtPicFree = vtPicPens ? (1UL << depth) - 20 : 0;
     }
     if (vtTerm && vtTermSb == VtScrollbackCap()) {
         vt_set_image_rgb_copy(vtTerm, vtPicPens);

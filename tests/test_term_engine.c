@@ -1866,6 +1866,91 @@ static void test_kg32_a_many_colour_picture_with_few_colours_on_top_keeps_its_lo
     tc_end();
 }
 
+/* The same on a SIXEL picture (own palette registers, no RGB copy): 30 rows in 5 bands of 6. The top band holds
+ * 16 registers in 8-pixel stripes, the lower four a muted ramp with every column its own register (128 registers,
+ * far more than the 12 free pens). Handing the registers out first-come left the ramp on the nearest ANSI pens; the
+ * shared picker (VtSixNeedsPicker, VtPicMake indexed) gives the 12 pens to the registers covering most of the
+ * picture and dithers every register onto {ANSI + those pens}. The colour assertion comes before the sentinels, so
+ * a reverted mapping fails on colour. */
+#define SXL_H 30
+#define SXL_TOP 6
+#define SXL_ERR 35
+static void sxl_want(int x, unsigned char *c)
+{
+    unsigned char raw[3];
+    int i;
+
+    kg32m_rgb(x, raw);
+    for (i = 0; i < 3; i++)
+        c[i] = (unsigned char)(((raw[i] * 100 / 255) * 255 + 50) / 100);   /* what the engine makes of 0-100 percent */
+}
+
+/* append a sixel run: x blank columns, then w columns of all six bits, register reg */
+static int sxl_run(char *o, int reg, int x, int w)
+{
+    int n = sprintf(o, "#%d", reg);
+
+    if (x > 0)
+        n += sprintf(o + n, "!%d?", x);
+    return n + sprintf(o + n, "!%d~$", w);
+}
+
+static void test_sixel_32_a_many_register_picture_with_few_colours_on_top_keeps_its_lower_colours(void)
+{
+    static const unsigned char top[16][3] = {
+        {255, 128, 0}, {128, 255, 0}, {0, 255, 128}, {0, 128, 255}, {128, 0, 255}, {255, 0, 128}, {90, 40, 20}, {20, 90, 40},
+        {40, 20, 90}, {200, 200, 100}, {100, 200, 200}, {200, 100, 200}, {240, 240, 240}, {60, 60, 60}, {160, 80, 80}, {80, 160, 80}};
+    static char sx[24000];
+    int x, y, c, n, b, err;
+    long sum = 0;
+
+    n = sprintf(sx, "\033Pq");
+    for (x = 0; x < 16; x++)
+        n += sprintf(sx + n, "#%d;2;%d;%d;%d", x + 1, top[x][0] * 100 / 255, top[x][1] * 100 / 255, top[x][2] * 100 / 255);
+    for (x = 0; x < KG32_W; x++) {
+        unsigned char raw[3];
+
+        kg32m_rgb(x, raw);
+        n += sprintf(sx + n, "#%d;2;%d;%d;%d", 17 + x, raw[0] * 100 / 255, raw[1] * 100 / 255, raw[2] * 100 / 255);
+    }
+    for (b = 0; b < 1; b++) {
+        for (x = 0; x < 16; x++)
+            n += sxl_run(sx + n, x + 1, x * 8, 8);
+        n += sprintf(sx + n, "-");
+    }
+    for (b = 0; b < 4; b++) {
+        for (x = 0; x < KG32_W; x++)
+            n += sxl_run(sx + n, 17 + x, x, 1);
+        n += sprintf(sx + n, b < 3 ? "-" : "");
+    }
+    n += sprintf(sx + n, "\033\\");
+    assert(n < (int)sizeof(sx));
+    xterm_begin_on(5, 0);
+    obtainBudget = 12;
+    memset(chunkyFb, 0, sizeof(chunkyFb));
+    vtPicPicks = 0;
+    vt_put("\x1b[H");
+    VtWrite((const UBYTE *)sx, (long)n);
+    for (y = SXL_TOP; y < SXL_H; y++)
+        for (x = 0; x < KG32_W; x++) {
+            unsigned long rgb = kg32_pen_rgb(chunkyFb[TERM_PY(0) + y][TERM_PX(0) + x]);
+            unsigned char want[3];
+
+            sxl_want(x, want);
+            for (c = 0; c < 3; c++) {
+                int e = (int)((rgb >> (16 - 8 * c)) & 255) - want[c];
+                sum += e < 0 ? -e : e;
+            }
+        }
+    err = (int)(sum / ((long)(SXL_H - SXL_TOP) * KG32_W * 3));
+    printf("sixel32: lower region mean error %d of 255 (bound %d), pens held %d\n", err, SXL_ERR, obtainHeld);
+    assert(err <= SXL_ERR);
+    assert(vtPicPens && vtPicPicks == 1);       /* the shared picker ran for it */
+    assert(obtainHeld <= 12 + vtTcN);
+    tc_end();
+    assert(obtainHeld == 0 && vecLive == 0);    /* the picture's pens go back with the screen */
+}
+
 /* KG-10: VtOpen hands the engine the screen mode's Resolution as the pixel
  * aspect (PAL hires 22:44 style), and square when the mode is unknown; a
  * display reopen on another mode updates it. */
@@ -1934,6 +2019,7 @@ int main(void)
     test_kg8_a_kitty_picture_through_vtwrite_is_drawn_and_a_query_answered();
     test_kg32_a_picture_on_a_5_plane_screen_with_12_free_pens_keeps_its_colours();
     test_kg32_a_many_colour_picture_with_few_colours_on_top_keeps_its_lower_colours();
+    test_sixel_32_a_many_register_picture_with_few_colours_on_top_keeps_its_lower_colours();
     test_kg10_the_screens_pixel_aspect_reaches_the_engine();
     test_aga_pens_text_and_picture_on_an_8_plane_screen();
     test_aga_full_colour_map_takes_the_nearest_pen();
