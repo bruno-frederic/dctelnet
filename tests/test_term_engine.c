@@ -1684,22 +1684,18 @@ static const unsigned char kg32_bars[8][3] = {
     {191, 191, 191}, {191, 191, 0}, {0, 191, 191}, {0, 191, 0}, {191, 0, 191}, {191, 0, 0}, {0, 0, 191}, {0, 0, 0}
 };
 
-/* send the bars as picture id (24-bit RGB, transmitted and shown at the cursor, chunked) */
-static void kg32_send(int id)
+/* send a KG32_W x h picture as id (24-bit RGB, transmitted and shown at the cursor, chunked) */
+static void kg32_send_rgb(int id, const unsigned char *raw, int h)
 {
-    static unsigned char raw[KG32_W * KG32_H * 3];
-    static char b64[KG32_W * KG32_H * 4 + 16], msg[4200];
-    int x, y, off, len;
+    static char b64[KG32_W * 32 * 4 + 16], msg[4200];
+    int off, len;
 
-    for (y = 0; y < KG32_H; y++)
-        for (x = 0; x < KG32_W; x++)
-            memcpy(raw + (y * KG32_W + x) * 3, kg32_bars[x / 16], 3);
-    kg32_b64(b64, raw, (int)sizeof(raw));
+    kg32_b64(b64, raw, KG32_W * h * 3);
     len = (int)strlen(b64);
     for (off = 0; off < len; off += 4000) {
         int n = len - off < 4000 ? len - off : 4000, more = off + n < len;
         if (off == 0)
-            snprintf(msg, sizeof(msg), "\033_Gf=24,s=%d,v=%d,i=%d,a=T,m=%d;", KG32_W, KG32_H, id, more);
+            snprintf(msg, sizeof(msg), "\033_Gf=24,s=%d,v=%d,i=%d,a=T,m=%d;", KG32_W, h, id, more);
         else
             snprintf(msg, sizeof(msg), "\033_Gm=%d;", more);
         {
@@ -1710,6 +1706,18 @@ static void kg32_send(int id)
             VtWrite((const UBYTE *)msg, (long)(h + (size_t)n + 2));
         }
     }
+}
+
+/* send the bars as picture id */
+static void kg32_send(int id)
+{
+    static unsigned char raw[KG32_W * KG32_H * 3];
+    int x, y;
+
+    for (y = 0; y < KG32_H; y++)
+        for (x = 0; x < KG32_W; x++)
+            memcpy(raw + (y * KG32_W + x) * 3, kg32_bars[x / 16], 3);
+    kg32_send_rgb(id, raw, KG32_H);
 }
 
 static unsigned long kg32_pen_rgb(UBYTE pen)
@@ -1795,6 +1803,69 @@ static void test_kg32_a_picture_on_a_5_plane_screen_with_12_free_pens_keeps_its_
     assert(obtainHeld == 0 && vecLive == 0);    /* closing the screen gives them back */
 }
 
+/* The owner's bug: a many-colour picture on a 5-plane screen looked like 16 colours because the pens went to the
+ * first palette colours met, i.e. those of the top rows. Here the top quarter holds 16 narrow bars of unrelated
+ * colours and the rest a smooth ramp of muted colours of more than 12 distinct colours; the ramp must keep its colours.
+ * The colour assertion comes before every sentinel so a reverted picker fails on the colours. */
+#define KG32M_H 32
+#define KG32M_TOP 8
+#define KG32M_ERR 25
+
+static void kg32m_rgb(int x, unsigned char *c)
+{
+    /* three phase-shifted waves: muted mid-tones, far from the 16 ANSI colours, every column its own colour */
+    static const unsigned char r[3] = {0, 85, 170};
+    int i;
+
+    for (i = 0; i < 3; i++) {
+        int ph = (x * 3 + r[i]) % 256, v = ph < 128 ? ph : 255 - ph;      /* triangle 0..127 */
+
+        c[i] = (unsigned char)(40 + v * 3 / 2);
+    }
+}
+
+static void test_kg32_a_many_colour_picture_with_few_colours_on_top_keeps_its_lower_colours(void)
+{
+    static unsigned char raw[KG32_W * KG32M_H * 3];
+    static const unsigned char top[16][3] = {
+        {255, 128, 0}, {128, 255, 0}, {0, 255, 128}, {0, 128, 255}, {128, 0, 255}, {255, 0, 128}, {90, 40, 20}, {20, 90, 40},
+        {40, 20, 90}, {200, 200, 100}, {100, 200, 200}, {200, 100, 200}, {240, 240, 240}, {60, 60, 60}, {160, 80, 80}, {80, 160, 80}};
+    int x, y, c;
+    long sum = 0;
+    int err;
+
+    for (y = 0; y < KG32M_H; y++)
+        for (x = 0; x < KG32_W; x++) {
+            if (y < KG32M_TOP)
+                memcpy(raw + (y * KG32_W + x) * 3, top[x / 8], 3);
+            else
+                kg32m_rgb(x, raw + (y * KG32_W + x) * 3);
+        }
+    xterm_begin_on(5, 0);
+    obtainBudget = 12;
+    memset(chunkyFb, 0, sizeof(chunkyFb));
+    vtPicPicks = 0;
+    vt_put("\x1b[H");
+    kg32_send_rgb(1, raw, KG32M_H);
+    for (y = KG32M_TOP; y < KG32M_H; y++)
+        for (x = 0; x < KG32_W; x++) {
+            unsigned long rgb = kg32_pen_rgb(chunkyFb[TERM_PY(0) + y][TERM_PX(0) + x]);
+            unsigned char want[3];
+
+            kg32m_rgb(x, want);
+            for (c = 0; c < 3; c++) {
+                int e = (int)((rgb >> (16 - 8 * c)) & 255) - want[c];
+                sum += e < 0 ? -e : e;
+            }
+        }
+    err = (int)(sum / ((long)(KG32M_H - KG32M_TOP) * KG32_W * 3));
+    printf("kg32m: lower region mean error %d of 255 (bound %d), pens held %d\n", err, KG32M_ERR, obtainHeld);
+    assert(err <= KG32M_ERR);
+    assert(vtPicPens && vtPicPicks == 1);       /* the shared picker ran for it */
+    assert(obtainHeld <= 12 + vtTcN);
+    tc_end();
+}
+
 /* KG-10: VtOpen hands the engine the screen mode's Resolution as the pixel
  * aspect (PAL hires 22:44 style), and square when the mode is unknown; a
  * display reopen on another mode updates it. */
@@ -1862,6 +1933,7 @@ int main(void)
     test_ma4_4_the_alt_screen_leaves_the_scrollback_alone();
     test_kg8_a_kitty_picture_through_vtwrite_is_drawn_and_a_query_answered();
     test_kg32_a_picture_on_a_5_plane_screen_with_12_free_pens_keeps_its_colours();
+    test_kg32_a_many_colour_picture_with_few_colours_on_top_keeps_its_lower_colours();
     test_kg10_the_screens_pixel_aspect_reaches_the_engine();
     test_aga_pens_text_and_picture_on_an_8_plane_screen();
     test_aga_full_colour_map_takes_the_nearest_pen();
