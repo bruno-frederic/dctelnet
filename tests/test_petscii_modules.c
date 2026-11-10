@@ -20,13 +20,40 @@ static void test_fallback_letters_swap_case(void) {
 }
 
 static void test_keymap(void) {
-    assert(petscii_translate_key('a', 0) == 'A');
-    assert(petscii_translate_key('A', 0) == 'a');
+    int c;
+
+    /* a C64 keyboard sends 0x41-0x5A unshifted and 0xC1-0xDA shifted; a
+     * capital sent as 0x61-0x7A broke mixed-case BBS passwords */
+    assert(petscii_translate_key('a', 0) == 0x41);
+    assert(petscii_translate_key('z', 0) == 0x5A);
+    assert(petscii_translate_key('A', 0) == 0xC1);
+    assert(petscii_translate_key('Z', 0) == 0xDA);
+    assert(petscii_translate_key('!', 0) == '!');
+    for (c = 'A'; c <= 'z'; c++)
+    {
+        int b = petscii_translate_key(c, 0);
+        assert(b < 0x61 || b > 0x7A || (c > 'Z' && c < 'a'));
+    }
     assert(petscii_translate_key('7', 0) == '7');
     assert(petscii_translate_key(PETSCII_KEY_UP, 1) == 145);
     assert(petscii_translate_key(PETSCII_KEY_DEL, 1) == 20);
     assert(petscii_translate_key(PETSCII_KEY_F1, 1) == 133);
     assert(petscii_translate_key(PETSCII_KEY_F8, 1) == 140);
+}
+
+/* Send Password (Amiga+P) and the login macro sent the stored text as raw
+ * ASCII: in PETSCII "Pass1" reached the BBS as "pASS1", so UPTown rejected
+ * a password that worked in ANSI mode. Typed text must match the keyboard. */
+static void test_typed_text_matches_keyboard(void) {
+    char text[] = "Pass1!\r";
+    const unsigned char want[] = { 0xD0, 0x41, 0x53, 0x53, '1', '!', '\r' };
+    unsigned long i;
+
+    petscii_translate_text(text, sizeof(text) - 1);
+    for (i = 0; i < sizeof(want); i++)
+        assert((unsigned char)text[i] == want[i]);
+    for (i = 0; i < sizeof(want); i++)
+        assert((unsigned char)text[i] == (unsigned char)petscii_translate_key("Pass1!\r"[i], 0));
 }
 
 /* The Amiga console reports F1-F10 as CSI <digit> ~ with digit 0-9, F1 = 0.
@@ -39,11 +66,31 @@ static void test_console_fkey_digit_0_is_c64_f1(void) {
     assert(petscii_fkey_from_console_digit('x') == -1);
 }
 
+
+/* CTRL/C= with the number row, as on a C64 and in CGTerm: colours and
+ * reverse video; anything else is not a C64 key. */
+static void test_number_row_sends_colours_and_reverse(void) {
+    assert(petscii_key_from_digit('1', 1, 0) == 0x90);   /* CTRL+1 black */
+    assert(petscii_key_from_digit('2', 1, 0) == 0x05);   /* CTRL+2 white */
+    assert(petscii_key_from_digit('8', 1, 0) == 0x9E);   /* CTRL+8 yellow */
+    assert(petscii_key_from_digit('9', 1, 0) == 0x12);   /* CTRL+9 RVS ON */
+    assert(petscii_key_from_digit('0', 1, 0) == 0x92);   /* CTRL+0 RVS OFF */
+    assert(petscii_key_from_digit('1', 0, 1) == 0x81);   /* C=+1 orange */
+    assert(petscii_key_from_digit('8', 0, 1) == 0x9B);   /* C=+8 light grey */
+    assert(petscii_key_from_digit('9', 0, 1) == -1);
+    assert(petscii_key_from_digit('0', 0, 1) == -1);
+    assert(petscii_key_from_digit('5', 0, 0) == -1);     /* plain digit: typed text */
+    assert(petscii_key_from_digit('a', 1, 1) == -1);
+    assert(petscii_key_from_digit('3', 1, 1) == 0x1C);   /* CTRL wins */
+}
+
 int main(void) {
+    test_number_row_sends_colours_and_reverse();
     test_console_fkey_digit_0_is_c64_f1();
     test_screencode_ranges();
     test_fallback_letters_swap_case();
     test_keymap();
+    test_typed_text_matches_keyboard();
     printf("petscii modules: all assertions passed\n");
     return 0;
 }

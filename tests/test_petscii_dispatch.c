@@ -222,7 +222,146 @@ static void test_a_packet_is_cut_after_each_charset_switch(void)
     assert(petscii_part_length(none, 0) == 0);
 }
 
+
+/* ---- Screen model and repaint: a C64 charset switch redraws the screen ---- */
+
+static void feed(struct PetsciiDispatchState *st, const uint8_t *in, size_t n) {
+    uint8_t out[4096];
+    petscii_stream_to_rawglyphs(st, in, n, out, sizeof(out));
+}
+
+/* What a console shows after the repaint output: CSI r;c H, SGR text
+ * (kept per cell as written since the last SGR 0) and printable bytes. */
+struct VScreen { uint8_t ch[25][40]; char sgr[25][40][24]; int row, col; char cur[24]; };
+
+static void vscreen_run(struct VScreen *v, const uint8_t *s, size_t n) {
+    size_t i = 0;
+    memset(v, 0, sizeof(*v));
+    while (i < n) {
+        if (s[i] == 27) {
+            size_t j = i + 2;
+            int p0 = 0, p1 = 0, second = 0;
+            assert(i + 1 < n && s[i + 1] == '[');
+            while (j < n && ((s[j] >= '0' && s[j] <= '9') || s[j] == ';')) {
+                if (s[j] == ';') second = 1;
+                else if (second) p1 = p1 * 10 + (s[j] - '0');
+                else p0 = p0 * 10 + (s[j] - '0');
+                j++;
+            }
+            assert(j < n);
+            if (s[j] == 'H') { v->row = p0 - 1; v->col = p1 - 1; }
+            else {
+                assert(s[j] == 'm');
+                if (p0 == 0) v->cur[0] = 0;
+                assert(strlen(v->cur) + (j + 1 - i) < sizeof(v->cur));
+                strncat(v->cur, (const char *)s + i, j + 1 - i);
+            }
+            i = j + 1;
+            continue;
+        }
+        assert(v->row >= 0 && v->row < 25 && v->col >= 0 && v->col < 40);
+        v->ch[v->row][v->col] = s[i];
+        strcpy(v->sgr[v->row][v->col], v->cur);
+        v->col++;
+        i++;
+    }
+}
+
+/* Printed cells land in the model with the colour and reverse they were
+ * printed in; DEL blanks the cell left of the cursor. */
+static void test_screen_model_records_cells(void) {
+    struct PetsciiDispatchState st;
+    const uint8_t in[] = { 18, 'A', 146, 0x1C, 'B', 'C', 20 };
+
+    petscii_dispatch_init(&st, 40, 25);
+    feed(&st, in, sizeof(in));
+    assert(st.cells[0][0].byte == 'A' && st.cells[0][0].reverse == 1 && st.cells[0][0].color == -1);
+    assert(st.cells[0][1].byte == 'B' && st.cells[0][1].reverse == 0 && st.cells[0][1].color == 2);
+    assert(st.cells[0][2].byte == 0x20);          /* 'C' deleted */
+    assert(st.cursor_col == 2);
+}
+
+/* A line feed on row 25 scrolls the screen, as the console does; cursor
+ * down and right stop at the edges, as CSI B / CSI C do. */
+static void test_screen_model_scrolls_and_clamps(void) {
+    struct PetsciiDispatchState st;
+    uint8_t in[64];
+    int i, n = 0;
+
+    petscii_dispatch_init(&st, 40, 25);
+    in[n++] = 'X';
+    for (i = 0; i < 24; i++) in[n++] = 13;        /* to row 25 */
+    in[n++] = 'Y';
+    in[n++] = 13;                                 /* scrolls */
+    feed(&st, in, (size_t)n);
+    assert(st.cursor_row == 24);
+    assert(st.cells[0][0].byte == 0x20);          /* X scrolled off */
+    assert(st.cells[23][0].byte == 'Y');
+    for (i = 0; i < 5; i++) { uint8_t d = 17; feed(&st, &d, 1); }
+    assert(st.cursor_row == 24);
+    for (i = 0; i < 50; i++) { uint8_t r = 29; feed(&st, &r, 1); }
+    assert(st.cursor_col == 39);
+    { uint8_t clr = 147; feed(&st, &clr, 1); }
+    assert(st.cells[23][0].byte == 0x20 && st.cursor_row == 0 && st.cursor_col == 0);
+}
+
+/* Dino's report: C*Base answers CTRL+L with $0E/$8E and on a C64 the whole
+ * screen changes case. The repaint redraws every cell with its own
+ * attributes and puts the cursor and the current attributes back. */
+static void test_repaint_redraws_every_cell(void) {
+    static struct VScreen v;
+    static uint8_t out[PETSCII_REPAINT_MAX];
+    struct PetsciiDispatchState st;
+    const uint8_t in[] = { 18, 'A', 146, 0x1C, 'B', 13, 0x05, 'h', 'i', 14 };
+    size_t n;
+    int r, c, r2, c2;
+
+    petscii_dispatch_init(&st, 40, 25);
+    feed(&st, in, sizeof(in));
+    n = petscii_repaint(&st, 1, out, sizeof(out));
+    vscreen_run(&v, out, n);
+
+    for (r = 0; r < 25; r++)
+        for (c = 0; c < 40; c++)
+            assert(v.ch[r][c] == st.cells[r][c].byte);
+    /* same attributes <=> same SGR text, across the whole screen */
+    for (r = 0; r < 25; r++) for (c = 0; c < 40; c++)
+        for (r2 = 0; r2 < 2; r2++) for (c2 = 0; c2 < 4; c2++) {
+            int same = st.cells[r][c].color == st.cells[r2][c2].color
+                    && st.cells[r][c].reverse == st.cells[r2][c2].reverse;
+            assert(same == (strcmp(v.sgr[r][c], v.sgr[r2][c2]) == 0));
+        }
+    assert(strcmp(v.sgr[0][0], "\x1b[0m\x1b[7m") == 0);
+    assert(strcmp(v.sgr[0][1], "\x1b[0m\x1b[31m") == 0);
+    assert(v.row == st.cursor_row && v.col == st.cursor_col);  /* cursor back */
+    assert(strcmp(v.cur, "\x1b[0m\x1b[1m\x1b[37m") == 0);        /* white again */
+}
+
+/* Worst case -- every cell a different attribute from its neighbour, the
+ * longest SGR text -- still fits PETSCII_REPAINT_MAX. */
+static void test_repaint_fits_its_bound(void) {
+    static uint8_t out[PETSCII_REPAINT_MAX + 64];
+    struct PetsciiDispatchState st;
+    int r, c;
+    size_t n;
+
+    petscii_dispatch_init(&st, 40, 25);
+    for (r = 0; r < 25; r++)
+        for (c = 0; c < 40; c++) {
+            st.cells[r][c].byte = 'x';
+            st.cells[r][c].color = (int8_t)((c & 1) ? 1 : 7);   /* bright white / bright yellow */
+            st.cells[r][c].reverse = 1;
+        }
+    st.cursor_row = 24; st.cursor_col = 39; st.color = 1; st.reverse = 1;
+    n = petscii_repaint(&st, 1, out, sizeof(out));
+    assert(n <= PETSCII_REPAINT_MAX);
+}
+
 int main(void) {
+    test_screen_model_records_cells();
+    test_screen_model_scrolls_and_clamps();
+    test_repaint_redraws_every_cell();
+    test_repaint_fits_its_bound();
     test_local_text_reads_in_the_upper_case_set();
     test_local_text_reads_in_the_lower_case_set();
     test_local_text_escape_spans_calls();

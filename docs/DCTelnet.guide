@@ -733,6 +733,10 @@ at the same time is DCTELNET.2, and so on). Commands:
                          (use OPTIONS RESULTS).
   QUIT                   Quits DCTelnet.
 
+  In a PETSCII session, SEND and SENDLN send letters as a C64 keyboard
+types them, the same as Send Password and the login macro, so text written
+in ordinary capitals and lower case arrives as typed.
+
   Text with spaces goes in double quotes. RC 10: an unknown command, a
 missing argument, or SEND without a connection.
 

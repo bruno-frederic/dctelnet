@@ -230,6 +230,7 @@ static void CaptureWrite(const UBYTE *data, long len);
 static void CaptureStop(void);
 static BOOL SelectionAvailable(void);
 static void SendMisc(char *str, long len);
+static void SendTyped(const char *str, long len);
 static void TerminalSize(UWORD *columns, UWORD *lines);
 static void ReopenTerminal(void);
 static void OpenAnsiFont(void);
@@ -1256,7 +1257,7 @@ static void SendLoginMacroStep(void)
     {
         n = SitePrefs_NextMacroSegment(&macroCursor, username, password, segment, sizeof(segment), &wait,
                                        waitText, sizeof(waitText));
-        if (n) SendMisc(segment, (long)n);
+        if (n) SendTyped(segment, (long)n);
         if (waitText[0])
         {
             WaitForStart(WAIT_MACRO, waitText, MACRO_WAIT_SECONDS);
@@ -2285,8 +2286,9 @@ static void Receive(void)
                         AddBuf((char *)petsciiOut, petsciiOutLen);
 
                     /* Charset-shift control code (14/142) toggles between the
-                     * upper/graphics and shifted/lowercase C64 charsets --
-                     * swap the active font to match, for what follows. */
+                     * upper/graphics and shifted/lowercase C64 charsets. On a
+                     * C64 the set belongs to the whole screen: swap the font,
+                     * then redraw every cell from the screen model in it. */
                     if (win && petsciiFont && petsciiFontLower) {
                         struct TextFont *wanted = g_petsciiState.shift_lowercase ? petsciiFontLower : petsciiFont;
                         if (win->RPort->Font != wanted)
@@ -2302,6 +2304,12 @@ static void Receive(void)
                                 if (STATE_IS(APP_RENDERER_CONSOLE_DEVICE) && isConDeviceOpened
                                     && writeConsoleReq->io_Unit)
                                     ((struct ConUnit *)writeConsoleReq->io_Unit)->cu_Font = wanted;
+                            }
+                            {
+                                static UBYTE repaint[PETSCII_REPAINT_MAX];
+
+                                ConWrite((char *)repaint,
+                                         (LONG)petscii_repaint(&g_petsciiState, 1, repaint, sizeof(repaint)));
                             }
                         }
                     }
@@ -2354,6 +2362,32 @@ static void SendMisc(char *str, long len)
         TCPSend(str, len);
     else
         ConWrite(str, len);
+}
+
+// Sends text DCTelnet types for the user (Send User Name, Send Password, the
+// login macro). In a PETSCII session it goes out as the C64 keyboard would
+// send it (petscii_translate_text): raw ASCII capitals are lower case there,
+// so a mixed-case password failed. The caller's text is not changed.
+static void SendTyped(const char *str, long len)
+{
+    char chunk[128];
+    long n;
+
+    if (len == -1) len = (long)strlen(str);
+    if (!PETSCII_SESSION())
+    {
+        SendMisc((char *)str, len);
+        return;
+    }
+    while (len > 0)
+    {
+        n = len < (long)sizeof(chunk) ? len : (long)sizeof(chunk);
+        memcpy(chunk, str, (size_t)n);
+        petscii_translate_text(chunk, (unsigned long)n);
+        SendMisc(chunk, n);
+        str += n;
+        len -= n;
+    }
 }
 
 static void SendMacro(char *str)
@@ -3633,7 +3667,7 @@ static void RexxCommand(struct RexxMsg *msg)
             text[n++] = '\r';
             if (STATE_IS(APP_RETURN_SENDING_CRLF)) text[n++] = '\n';
         }
-        SendMisc(text, (long)n);
+        SendTyped(text, (long)n);               // in PETSCII, letters as the C64 keyboard sends them
         RexxReply(msg, 0, NULL);
         return;
     case REXX_WAITFOR:
@@ -4107,8 +4141,18 @@ static void GetWindowMsg(struct Window *wwin)
                 if(!(code & IECODE_UP_PREFIX))
                 {
                     int id = Keys_FromRawCode(code);
+                    int c64 = -1;
 
-                    if (id != KEY_NONE)
+                    // PETSCII: CTRL or C= (Left Amiga) with the number row (raw
+                    // keys 1-10 are 1-9, 0) sends the C64's colour and RVS bytes.
+                    if (PETSCII_SESSION() && code >= 0x01 && code <= 0x0A
+                        && (qual & (IEQUALIFIER_CONTROL | IEQUALIFIER_LCOMMAND)))
+                        c64 = petscii_key_from_digit(code == 0x0A ? '0' : (char)('0' + code),
+                                                     (qual & IEQUALIFIER_CONTROL) != 0,
+                                                     (qual & IEQUALIFIER_LCOMMAND) != 0);
+                    if (c64 >= 0)
+                        OutKey((unsigned char)c64);
+                    else if (id != KEY_NONE)
                         SendKey(id);
                     else
                     {
@@ -4681,12 +4725,12 @@ static void GetWindowMsg(struct Window *wwin)
                         break;
 
                     case MENU_SEND_USERNAME:
-                        SendMisc(username, -1);
+                        SendTyped(username, -1);
                         SendMisc("\r", 1);
                         break;
 
                     case MENU_SEND_PASSWORD:
-                        SendMisc(password, -1);
+                        SendTyped(password, -1);
                         SendMisc("\r", 1);
                         break;
 
