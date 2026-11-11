@@ -1697,23 +1697,71 @@ static UWORD LegacyPen(UWORD ibmconIndex)
     return ibmconIndex;
 }
 
-// Load target's palette onto the screen: the ANSI pens (in ANSI order, 8 bits
-// a gun) on 32+ colours, pens 0-15 otherwise.
+// The Workbench's UI colours (background, shadow, shine, fill; 0x00RRGGBB):
+// on 16 colours the built-in renderer's ANSI colours share these pens with
+// the UI, and the owner wants the dialogs to look like the Workbench's.
+static ULONG wbUiColours[PALETTE_UI_SHARED];
+static BOOL  wbUiKnown;
+
+static void ReadWorkbenchUiColours(void)
+{
+    static const UWORD driPen[PALETTE_UI_SHARED] = { BACKGROUNDPEN, SHADOWPEN, SHINEPEN, FILLPEN };
+    struct Screen *wb = LockPubScreen((STRPTR)"Workbench");
+    struct DrawInfo *dri = wb ? GetScreenDrawInfo(wb) : NULL;
+    int i;
+
+    wbUiKnown = FALSE;
+    if (dri && dri->dri_NumPens > FILLPEN)
+    {
+        for (i = 0; i < PALETTE_UI_SHARED; i++)
+        {
+            UWORD pen = dri->dri_Pens[driPen[i]];
+
+            if (GfxBase->LibNode.lib_Version >= 39)
+            {
+                ULONG rgb[3];
+
+                GetRGB32(wb->ViewPort.ColorMap, pen, 1, rgb);
+                wbUiColours[i] = (rgb[0] >> 24) << 16 | (rgb[1] >> 24) << 8 | (rgb[2] >> 24);
+            }
+            else
+                wbUiColours[i] = Palette_RGB32((UWORD)GetRGB4(wb->ViewPort.ColorMap, pen));
+        }
+        wbUiKnown = TRUE;
+    }
+    if (dri) FreeScreenDrawInfo(wb, dri);
+    if (wb) UnlockPubScreen(NULL, wb);
+}
+
+// Load target's palette onto screen s's ANSI pens (Palette_ScreenColours):
+// 8 bits a gun from V39, 4 before.
+static void ShowAnsiColours(struct Screen *s, struct PrefsStruct *target)
+{
+    UWORD i, colours[16];
+    ULONG shown[16];
+
+    Palette_Get(target, colours);               // the renderer's palette, ANSI order
+    Palette_ScreenColours(colours, ansiColourPens, wbUiKnown ? wbUiColours : NULL, shown);
+    for (i = 0; i < 16; i++)
+    {
+        ULONG c = shown[i];
+
+        if (GfxBase->LibNode.lib_Version >= 39)
+            SetRGB32(&s->ViewPort, ansiColourPens[i], ((c >> 16) & 0xFF) * 0x01010101UL,
+                     ((c >> 8) & 0xFF) * 0x01010101UL, (c & 0xFF) * 0x01010101UL);
+        else
+            SetRGB4(&s->ViewPort, ansiColourPens[i], (c >> 20) & 0xF, (c >> 12) & 0xF, (c >> 4) & 0xF);
+    }
+}
+
+// Load target's palette onto the screen: the ANSI pens (in ANSI order) on 32+
+// colours and with the built-in renderer on 16, pens 0-15 otherwise.
 static void LoadAnsiPalette(struct PrefsStruct *target)
 {
     if (STATE_IS_NOT(APP_FULLSCREEN))
         return;                 // the Workbench's pens are shared: never recolour them
-    if (ansiOwnPens && GfxBase->LibNode.lib_Version >= 39)
-    {
-        UWORD i;
-
-        for (i = 0; i < 16; i++)
-        {
-            ULONG c = Palette_AnsiColour(target->DeviceColors, i);
-            SetRGB32(&scr->ViewPort, ansiColourPens[i], ((c >> 16) & 0xFF) * 0x01010101UL,
-                     ((c >> 8) & 0xFF) * 0x01010101UL, (c & 0xFF) * 0x01010101UL);
-        }
-    }
+    if (ansiOwnPens)
+        ShowAnsiColours(scr, target);
     else
         LoadRGB4(&scr->ViewPort, Prefs_Palette(target), 16);
 }
@@ -1777,6 +1825,8 @@ static void ShowEditedColour(int ansi, UWORD rgb4)
 {
     if (!editLive)
         return;
+    if (ansiOwnPens && wbUiKnown && editPens[ansi] < PALETTE_UI_SHARED)
+        return;                 // a UI pen: keeps the Workbench's colour (ShowAnsiColours)
     SetRGB4(&scr->ViewPort, editPens[ansi], (rgb4 >> 8) & 0xF, (rgb4 >> 4) & 0xF, rgb4 & 0xF);
 }
 
@@ -3964,7 +4014,9 @@ static void PasteClipboard(void)
  * @brief How the own screen lays out its pens for a renderer (OpenAppScreen):
  *        ANSI colours on pens 0-15 in ANSI order (built-in, XEM), in ibmcon's
  *        order (console.device, ibmcon), or on pens of their own with
- *        Intuition's UI pens (ibmcon with 32+ colours). Intuition applies it
+ *        Intuition's UI pens (ibmcon and the built-in renderer with 32+
+ *        colours; the built-in renderer with 16, where the colours change
+ *        places). Intuition applies it
  *        only when the screen opens: a renderer of another layout needs a new
  *        screen -- console.device after ibmcon on 256 colours drew on the
  *        UI's grey pen 0.
@@ -3973,10 +4025,10 @@ static int ScreenPenLayout(ULONG renderer)
 {
     UBYTE pens[16];
 
+    if (Palette_OwnPens(renderer, prefs.DisplayDepth, pens))
+        return 2;
     if (renderer & (APP_RENDERER_BUILTIN | APP_RENDERER_XEM_LIB))
         return 0;
-    if ((renderer & APP_RENDERER_IBMCON_DEVICE) && Palette_AnsiPens(prefs.DisplayDepth, pens))
-        return 2;
     return 1;
 }
 
@@ -5446,29 +5498,28 @@ struct Screen* OpenAppScreen(void)
         int i;
 
         UBYTE deepPens[16];
-        BOOL  deep = STATE_IS(APP_RENDERER_IBMCON_DEVICE)
-                  && Palette_AnsiPens(prefs.DisplayDepth, deepPens);
+        BOOL  deep = Palette_OwnPens(prefs.State, prefs.DisplayDepth, deepPens);
 
-        if (STATE_IS(APP_RENDERER_BUILTIN | APP_RENDERER_XEM_LIB))
-        {
-            colorsRGB4 = prefs.AnsiColors;
-            pens       = ansiPens;
-        }
-        else
-        {
-            colorsRGB4 = prefs.DeviceColors;
-            pens       = devicePens;
-        }
+        ReadWorkbenchUiColours();
+        UWORD ansiColours[16];
+        static UWORD uiPens[PALETTE_UI_PENS];
 
-        pens = (prefs.DisplayDepth < 3) ? defaultPens : pens;
-        // ibmcon with 32+ colours: the UI keeps Intuition's own pens and
+        // The terminal's colours on pens 0-15 (the built-in and XEM renderers
+        // in ANSI order, the console devices in ibmcon's order) and a UI pen
+        // table of the pens nearest to Intuition's own colours among them.
+        colorsRGB4 = STATE_IS(APP_RENDERER_BUILTIN | APP_RENDERER_XEM_LIB) ? prefs.AnsiColors
+                                                                           : prefs.DeviceColors;
+        Palette_UiPens(colorsRGB4, uiPens);
+        pens = (prefs.DisplayDepth < 3) ? defaultPens : uiPens;
+        // ibmcon and the built-in renderer with 32+ colours: the UI keeps Intuition's own pens and
         // colours, the ANSI colours get pens of their own (in ANSI order).
         if (deep)
             pens = intuitionPens;
 
         // Convert RGB4 colors array to ColorSpec array needed for SA_Colors during screen open:
+        Palette_Get(&prefs, ansiColours);       // ANSI order, whichever palette the renderer keeps
         for (i = 0; i < 16; i++) {
-            UWORD c = deep ? colorsRGB4[Palette_IbmconToAnsi(i)] : colorsRGB4[i];
+            UWORD c = deep ? ansiColours[i] : colorsRGB4[i];
 
             colors[i].ColorIndex = deep ? deepPens[i] : i;
             colors[i].Red   = (c >> 8) & 0xF;
@@ -5502,9 +5553,12 @@ struct Screen* OpenAppScreen(void)
             STATE_SET(APP_CUSTOM_SCREEN_OPENED);
     }
 
-    // Own screen with 32+ colours and ibmcon: the ANSI colours on pens of their own.
-    ansiOwnPens = scr && STATE_IS(APP_FULLSCREEN) && STATE_IS(APP_RENDERER_IBMCON_DEVICE)
-               && Palette_AnsiPens(AppScreenDepth(scr), ansiColourPens);
+    // Own screen with 32+ colours, ibmcon or the built-in renderer: the ANSI
+    // colours on pens of their own.
+    ansiOwnPens = scr && STATE_IS(APP_FULLSCREEN)
+               && Palette_OwnPens(prefs.State, AppScreenDepth(scr), ansiColourPens);
+    if (ansiOwnPens)
+        ShowAnsiColours(scr, &prefs);   // exact colours: SA_Colors has 4 bits a gun
 
     // Border blank (V39, ECS/AGA): the overscan border shows colour 0, which
     // on 32+ colours is the UI's grey pen 0 -- keep it black like the terminal.

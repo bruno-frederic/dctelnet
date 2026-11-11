@@ -98,8 +98,116 @@ static void test_menu_text_is_legible_on_os2_and_os3(void) {
     assert(Palette_MenuTextPen(2, pens) == 109);    /* OS 3.x: BARDETAILPEN (9) */
 }
 
+
+/* Own AGA screen, built-in renderer (the default): the UI must keep
+ * Intuition's grey and the ANSI colours go on pens of their own at 32+
+ * colours; ibmcon already did. XEM and console.device keep pens 0-15. */
+static void test_the_builtin_renderer_gets_its_own_ansi_pens_on_deep_screens(void) {
+    UBYTE pens[16];
+    struct PrefsStruct p;
+    UWORD pal[16];
+    int i;
+
+    assert(Palette_OwnPens(APP_RENDERER_BUILTIN, 5, pens));
+    for (i = 0; i < 8; i++)  assert(pens[i] == 8 + i);
+    for (i = 8; i < 16; i++) assert(pens[i] == 20 + (i - 8));
+    assert(Palette_OwnPens(APP_RENDERER_IBMCON_DEVICE, 5, pens));
+    assert(!Palette_OwnPens(APP_RENDERER_XEM_LIB, 4, pens));          /* 16 colours: pens 0-15 */
+    assert(!Palette_OwnPens(APP_RENDERER_CONSOLE_DEVICE, 4, pens));
+    assert(!Palette_OwnPens(APP_RENDERER_IBMCON_DEVICE, 4, pens));
+    assert(!Palette_OwnPens(APP_RENDERER_XEM_LIB, 5, pens));
+    assert(!Palette_OwnPens(APP_RENDERER_CONSOLE_DEVICE, 5, pens));
+
+    /* The built-in renderer's AnsiColors are already in ANSI order: not swapped. */
+    memset(&p, 0, sizeof(p));
+    p.State = APP_RENDERER_BUILTIN;
+    memcpy(p.AnsiColors, defaultAnsiColors, sizeof(p.AnsiColors));
+    Palette_Get(&p, pal);
+    for (i = 0; i < 16; i++) assert(pal[i] == defaultAnsiColors[i]);
+    assert(pal[1] == 0x0A00 && pal[4] == 0x000A);
+}
+
+/* 16 colours, built-in renderer: the same 16 colours in Intuition's 4-colour
+ * order, so that window interiors (pen 0) are grey and not ANSI black. */
+static void test_the_builtin_renderer_puts_the_ui_colours_on_pens_0_to_3_on_16_colours(void) {
+    static const UBYTE want[16] = { 1, 4, 5, 6, 7, 8, 9, 0, 10, 11, 12, 13, 3, 14, 15, 2 };
+    UBYTE pens[16], seen[16];
+    int i;
+
+    memset(pens, 0xEE, sizeof(pens));
+    assert(Palette_OwnPens(APP_RENDERER_BUILTIN, 4, pens));
+    for (i = 0; i < 16; i++) assert(pens[i] == want[i]);
+    assert(pens[7] == 0 && pens[0] == 1 && pens[15] == 2 && pens[12] == 3);
+    memset(seen, 0, sizeof(seen));
+    for (i = 0; i < 16; i++) seen[pens[i]]++;
+    for (i = 0; i < 16; i++) assert(seen[i] == 1);      /* no colour lost, none shared */
+    /* the twelve others ascend in ANSI order */
+    {
+        static const int others[12] = { 1, 2, 3, 4, 5, 6, 8, 9, 10, 11, 13, 14 };
+        for (i = 0; i < 12; i++) assert(pens[others[i]] == 4 + i);
+    }
+}
+
+/* 16 colours: the ANSI colours stay exact on pens 0-15 and the UI takes the
+ * nearest of them to Intuition's grey, black, white and blue. */
+static void test_the_ui_pens_are_the_nearest_ansi_colours_to_intuitions(void) {
+    UWORD pens[PALETTE_UI_PENS], dev[16];
+    int i;
+
+    Palette_UiPens(defaultAnsiColors, pens);
+    assert(pens[7] == 7);      /* BACKGROUNDPEN: light grey */
+    assert(pens[4] == 0);      /* SHADOWPEN: black */
+    assert(pens[3] == 15);     /* SHINEPEN: bright white */
+    assert(pens[5] == 4);      /* FILLPEN: blue */
+    assert(pens[2] == 0);      /* TEXTPEN */
+    assert(pens[8] == 15);     /* HIGHLIGHTTEXTPEN */
+    assert(pens[9] == 0);      /* BARDETAILPEN: the menu text, on... */
+    assert(pens[10] == 15);    /* ...BARBLOCKPEN, the menu fill */
+    assert(pens[12] == 0xFFFF);
+
+    /* The console devices' palette is in ibmcon's order: same colours, other pens. */
+    for (i = 0; i < 16; i++) dev[i] = defaultDeviceColors[i];
+    Palette_UiPens(dev, pens);
+    assert(dev[pens[7]] == 0x0DDD && dev[pens[4]] == 0x0000 && dev[pens[3]] == 0x0FFF);
+    assert(dev[pens[5]] == 0x000F);   /* the device palette has a pure blue */
+}
+
+/* 16 colours, built-in renderer, owner's report "dialogs not like Workbench":
+ * the dialogs drew in the ANSI colours nearest to Intuition's (grey #AAA,
+ * bright blue #55F). Pens 0-3 now take the Workbench's own UI colours, the
+ * other twelve stay the ANSI palette. */
+static void test_the_dialogs_take_the_workbench_colours_on_16_colours(void) {
+    static const ULONG wb[PALETTE_UI_SHARED] = { 0xBCBCBC, 0x0B0C16, 0xFFFFFF, 0x5577AA };
+    UBYTE pens[16];
+    ULONG out[16];
+    int i;
+
+    assert(Palette_OwnPens(APP_RENDERER_BUILTIN, 4, pens));
+    Palette_ScreenColours(defaultAnsiColors, pens, wb, out);
+    assert(out[7]  == 0xBCBCBC);        /* pen 0: background, was ANSI white #AAA */
+    assert(out[0]  == 0x0B0C16);        /* pen 1: shadow */
+    assert(out[15] == 0xFFFFFF);        /* pen 2: shine */
+    assert(out[12] == 0x5577AA);        /* pen 3: fill, was bright blue #55F */
+    for (i = 0; i < 16; i++)
+        if (pens[i] >= PALETTE_UI_SHARED)
+            assert(out[i] == Palette_RGB32(defaultAnsiColors[i]));
+
+    /* without the Workbench's colours: the ANSI palette as it is */
+    Palette_ScreenColours(defaultAnsiColors, pens, NULL, out);
+    for (i = 0; i < 16; i++) assert(out[i] == Palette_RGB32(defaultAnsiColors[i]));
+
+    /* 32+ colours: the ANSI colours have pens of their own, none is the UI's */
+    assert(Palette_OwnPens(APP_RENDERER_BUILTIN, 5, pens));
+    Palette_ScreenColours(defaultAnsiColors, pens, wb, out);
+    for (i = 0; i < 16; i++) assert(out[i] == Palette_RGB32(defaultAnsiColors[i]));
+}
+
 int main(void) {
     test_menu_text_is_legible_on_os2_and_os3();
+    test_the_builtin_renderer_gets_its_own_ansi_pens_on_deep_screens();
+    test_the_builtin_renderer_puts_the_ui_colours_on_pens_0_to_3_on_16_colours();
+    test_the_dialogs_take_the_workbench_colours_on_16_colours();
+    test_the_ui_pens_are_the_nearest_ansi_colours_to_intuitions();
     test_the_editor_sees_the_renderers_palette_in_ansi_order();
     test_channels_are_the_four_bits_the_prefs_keep();
     test_a_recolour_that_would_merge_colours_is_refused();
