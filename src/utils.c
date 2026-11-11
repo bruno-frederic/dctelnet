@@ -17,6 +17,7 @@
 #include <exec/memory.h>              // MEMF_ANY
 #include <proto/dos.h>                // DateToStr(), LEN_DATSTRING, TICKS_PER_SECOND
 #include <proto/intuition.h>          // CurrentTime()
+#include <proto/graphics.h>           // ObtainBestPen(), FindColor()
 #ifdef __VBCC__
     #pragma popwarn
 #endif
@@ -332,3 +333,4 @@ int stricmp(const char *a, const char *b)
     return (unsigned char)*a - (unsigned char)*b;
 }
 #endif
+
