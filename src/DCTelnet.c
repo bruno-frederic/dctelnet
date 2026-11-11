@@ -55,6 +55,7 @@ extern struct Library *CyberGfxBase;
 #include "petscii_dispatch.h"
 #include "petscii_keymap.h"
 #include "site_prefs.h"
+#include "menu_checks.h"
 #include "screenfont.h"
 #include "progdir.h"
 #include "dsr.h"
@@ -1042,6 +1043,51 @@ static void RequestDisplayReopen(const struct PrefsStruct *before)
 }
 
 /**
+ * @brief Bring the live menu's check marks up to date with `prefs`.
+ *
+ * `prefs` changes under an open menu when an Address Book entry's settings
+ * are applied or restored; CreateAppMenus() derives the marks only when the
+ * menu is built. Same rule, same function: MenuChecks_Checked().
+ */
+static void SyncMenuChecks(void)
+{
+    struct Window *wins[4];
+    BOOL had[4];
+    int i;
+    struct Menu *menu;
+    struct MenuItem *item, *sub;
+
+    if (mainMenuStrip == NULL) return;
+
+    wins[0] = win;  wins[1] = packetWin;  wins[2] = toolBarWin;  wins[3] = scrollbackWin;
+    for (i = 0; i < 4; i++)
+    {
+        had[i] = wins[i] != NULL && wins[i]->MenuStrip == mainMenuStrip;
+        if (had[i]) ClearMenuStrip(wins[i]);
+    }
+
+    for (menu = mainMenuStrip; menu != NULL; menu = menu->NextMenu)
+    {
+        for (item = menu->FirstItem; item != NULL; item = item->NextItem)
+        {
+            for (sub = item; sub != NULL; sub = (sub == item) ? item->SubItem : sub->NextItem)
+            {
+                BOOL checked;
+
+                if (MenuChecks_Checked(&prefs, (enum MenuItemID)(ULONG)GTMENUITEM_USERDATA(sub), &checked))
+                {
+                    if (checked) sub->Flags |= CHECKED;
+                    else         sub->Flags &= ~CHECKED;
+                }
+            }
+        }
+    }
+
+    for (i = 0; i < 4; i++)
+        if (had[i]) ResetMenuStrip(wins[i], mainMenuStrip);
+}
+
+/**
  * @brief Prepare the settings for the next connect; call before every
  *        user-initiated connect.
  *
@@ -1078,6 +1124,7 @@ BOOL BeginEntrySession(ULONG settingsId, const struct SiteSettings *entry)
     }
     SyncPetsciiDisplay();
     handBaseline = prefs;
+    SyncMenuChecks();
     return shouldRestart || shouldReopenConsole;
 }
 
@@ -1161,6 +1208,7 @@ void EndEntrySession(void)
     }
     SyncPetsciiDisplay();
     handBaseline = prefs;
+    SyncMenuChecks();
 }
 
 void DeferConnect(const char *name, const char *host, UWORD port, ULONG settingsId,
@@ -3393,33 +3441,6 @@ static void Information(void)
 
 
 /**
- * @brief Updates a NewMenu item's checked state based on a preference flag.
- *
- * If the specified flag is set in prefs.State, the menu item is checked.
- * Otherwise, the menu item is unchecked.
- *
- * @param id Identifier of the NewMenu item whose CHECKED state is to be set.
- * @param flag The flag in prefs.State controlling the menu item's checked state.
- */
-static void SetNewMenuCheckFromPref(enum MenuItemID id, ULONG flag)
-{
-    struct NewMenu *newMenuItem = GetNewMenuItemFromID(id);
-    if (newMenuItem == NULL)
-    {
-        #ifdef _DEBUG
-            SimpleReq("SetNewMenuCheckFromPref() failed!");
-        #endif
-        return;
-    }
-
-    if (STATE_IS(flag))
-        newMenuItem->nm_Flags |= CHECKED;
-    else
-        newMenuItem->nm_Flags &= ~CHECKED;
-}
-
-
-/**
  * @brief Updates prefs.State based on a menu item's checked state.
  *
  * If the menu item is checked, the prefs.State bit is set.
@@ -3437,44 +3458,17 @@ static void UpdatePrefsFromMenu(struct MenuItem *item, ULONG flag)
 }
 
 /*
- Uncheck a menu item and clear the corresponding flag in prefs.State,
- or check the menu item and set the flag, depending on the "wantedState" parameter.
- https://amigadev.elowar.com/read/ADCD_2.1/Includes_and_Autodocs_2._guide/node024A.html
- https://www.amiga-news.de/en/news/AN-2023-10-00017-EN.html
+ Set or clear APP_LOCAL_ECHO and bring the menu check marks of every window
+ that shares the menu strip up to date (SyncMenuChecks).
 */
 static void SetLocalEchoBack(BOOL wantedState)
 {
-    struct MenuItem *item = NULL;
+    if (STATE_IS(APP_LOCAL_ECHO) == (wantedState != FALSE))
+        return;
 
-    BOOL currentState = STATE_IS(APP_LOCAL_ECHO);
-
-    #ifdef _DEBUG
-        PutStr("›34m--> SetLocalEchoBack()›m\n");
-    #endif
-
-    if (currentState != wantedState)
-    {
-        #ifdef _DEBUG
-            PutStr("›34mcurrentState != wantedState›m\n");
-        #endif
-        ClearMenuStrip(win);
-
-        item = GetMenuItemFromID(MENU_LOCAL_ECHO);
-        if (item != NULL)
-        {
-            if (wantedState)
-            {
-                item->Flags |= CHECKED;
-                STATE_SET(APP_LOCAL_ECHO);
-            }
-            else
-            {
-                item->Flags &= ~CHECKED;
-                STATE_UNSET(APP_LOCAL_ECHO);
-            }
-        }
-        ResetMenuStrip(win, mainMenuStrip);
-    }
+    if (wantedState) STATE_SET(APP_LOCAL_ECHO);
+    else             STATE_UNSET(APP_LOCAL_ECHO);
+    SyncMenuChecks();
 }
 
 static void OutKey(unsigned char key)
@@ -5722,11 +5716,6 @@ void CreateAppMenus(void)
     }
 
 
-    GetNewMenuItemFromID(MENU_BUILTIN_RENDERER)->nm_Flags &= ~CHECKED;
-    GetNewMenuItemFromID(MENU_CONSOLE_DEVICE  )->nm_Flags &= ~CHECKED;
-    GetNewMenuItemFromID(MENU_XEM_LIBRARY     )->nm_Flags &= ~CHECKED;
-    GetNewMenuItemFromID(MENU_IBMCON_DEVICE   )->nm_Flags &= ~CHECKED;
-
     // Disable menu items that are only relevant for specific renderers.
     GetNewMenuItemFromID(MENU_FAST_SCROLL     )->nm_Flags = NM_ITEMDISABLED;
     // The screen's text is read back from ibmcon's screen buffer: without
@@ -5741,55 +5730,43 @@ void CreateAppMenus(void)
 
     if (STATE_IS(APP_RENDERER_BUILTIN))
     {
-        GetNewMenuItemFromID(MENU_BUILTIN_RENDERER)->nm_Flags |= CHECKED;
+        // Only the renderer's own items differ; the check marks come below.
     }
     else if (STATE_IS(APP_RENDERER_CONSOLE_DEVICE))
     {
-        GetNewMenuItemFromID(MENU_CONSOLE_DEVICE)->nm_Flags |= CHECKED;
     }
     else if (STATE_IS(APP_RENDERER_XEM_LIB))
     {
-        GetNewMenuItemFromID(MENU_XEM_LIBRARY)->nm_Flags |= CHECKED;
-
         // Enable "XEM Lib Options": setting nm_Flags to 0 restores GadTools' default flags.
         GetNewMenuItemFromID(MENU_XEM_LIB_OPTIONS)->nm_Flags = 0;
     }
     else  // APP_RENDERER_IBMCON_DEVICE
     {
-        GetNewMenuItemFromID(MENU_IBMCON_DEVICE)->nm_Flags |= CHECKED;
-
         GetNewMenuItemFromID(MENU_FAST_SCROLL)->nm_Flags = HIGHCOMP|CHECKIT|MENUTOGGLE;
         GetNewMenuItemFromID(MENU_COPY)->nm_Flags = 0;
         GetNewMenuItemFromID(MENU_COPY_SCREEN)->nm_Flags = 0;
         GetNewMenuItemFromID(MENU_SAVE_SCREEN)->nm_Flags = 0;
-        GetNewMenuItemFromID(MENU_132_COLUMNS)->nm_Flags = HIGHCOMP|CHECKIT|MENUTOGGLE
-                                                         | (STATE_IS(APP_132_COLUMNS) ? CHECKED : 0);
+        GetNewMenuItemFromID(MENU_132_COLUMNS)->nm_Flags = HIGHCOMP|CHECKIT|MENUTOGGLE;
     }
 
-    // The NewMenu item CHECKED flag will be set according to saved Prefs flags. Note: these flags
-    // are already set: HIGHCOMP|CHECKIT|MENUTOGGLE for every item in Options menu in mainMenuDesc[]
-    SetNewMenuCheckFromPref(MENU_FULLSCREEN,              APP_FULLSCREEN);
-    SetNewMenuCheckFromPref(MENU_LEDS,                    APP_LEDS_ENABLED);
-    SetNewMenuCheckFromPref(MENU_TITLE_BAR,               APP_TITLE_BAR_ENABLED);
-    SetNewMenuCheckFromPref(MENU_BACKSPACE_DEL_SWAP,      APP_BACKSPACE_DEL_SWAPPED);
-    SetNewMenuCheckFromPref(MENU_SCROLLBACK,              APP_SCROLLBACK_ENABLED);
-    SetNewMenuCheckFromPref(MENU_PACKET_WINDOW,           APP_PACKET_WINDOW_ENABLED);
-    SetNewMenuCheckFromPref(MENU_TOOL_BAR,                APP_TOOL_BAR_ENABLED);
-    SetNewMenuCheckFromPref(MENU_RETURN_SENDING_CRLF,     APP_RETURN_SENDING_CRLF);
-    SetNewMenuCheckFromPref(MENU_VT_KEYS,                 APP_VT_KEYS);
-    SetNewMenuCheckFromPref(MENU_LOCAL_ECHO,              APP_LOCAL_ECHO);
-    SetNewMenuCheckFromPref(MENU_RAW_CONNECTION,          APP_RAW_CONNECTION);
-    SetNewMenuCheckFromPref(MENU_RLOGIN,                  APP_RLOGIN);
-    SetNewMenuCheckFromPref(MENU_SSH,                     APP_SSH);
-    SetNewMenuCheckFromPref(MENU_FAST_SCROLL,             APP_FAST_SCROLL_ENABLED);
-    SetNewMenuCheckFromPref(MENU_PETSCII_MODE,            APP_PETSCII_MODE);
-    GetNewMenuItemFromID(MENU_CHARSET_CP437)->nm_Flags  = CHECKIT | (prefs.Charset == CHARSET_CP437 ? CHECKED : 0);
-    GetNewMenuItemFromID(MENU_CHARSET_LATIN1)->nm_Flags = CHECKIT | (prefs.Charset == CHARSET_LATIN1 ? CHECKED : 0);
-    GetNewMenuItemFromID(MENU_CHARSET_UTF8)->nm_Flags   = CHECKIT | (prefs.Charset == CHARSET_UTF8 ? CHECKED : 0);
-    GetNewMenuItemFromID(MENU_BELL_FLASH)->nm_Flags = CHECKIT | (prefs.Bell == BELL_FLASH ? CHECKED : 0);
-    GetNewMenuItemFromID(MENU_BELL_SOUND)->nm_Flags = CHECKIT | (prefs.Bell == BELL_SOUND ? CHECKED : 0);
-    GetNewMenuItemFromID(MENU_BELL_OFF)->nm_Flags   = CHECKIT | (prefs.Bell == BELL_OFF ? CHECKED : 0);
-    GetNewMenuItemFromID(MENU_ANSI_MUSIC)->nm_Flags = HIGHCOMP | CHECKIT | MENUTOGGLE | (prefs.AnsiMusic ? CHECKED : 0);
+    // Every check mark that follows prefs comes from MenuChecks_Checked(), the
+    // same function SyncMenuChecks() uses on the live menu.
+    {
+        int id;
+        BOOL checked;
+
+        for (id = 0; id < MENU_END; id++)
+        {
+            if (MenuChecks_Checked(&prefs, (enum MenuItemID)id, &checked))
+            {
+                struct NewMenu *nm = GetNewMenuItemFromID((enum MenuItemID)id);
+
+                if (nm == NULL) continue;
+                if (checked) nm->nm_Flags |= CHECKED;
+                else         nm->nm_Flags &= ~CHECKED;
+            }
+        }
+    }
 
     // A capture runs on over a display reopen: its item keeps the check mark.
     if (captureFile)
