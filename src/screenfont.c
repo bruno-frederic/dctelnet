@@ -55,3 +55,36 @@ UWORD ScreenFont_MaxWindowWidth(UWORD columns, UWORD cellX, UWORD borders)
 {
     return (UWORD)(columns * cellX + borders);
 }
+
+BOOL ScreenFont_TallPixels(UWORD resolutionX, UWORD resolutionY)
+{
+    return resolutionX != 0 && resolutionY > resolutionX;
+}
+
+UWORD ScreenFont_ToolSlotWidth(UWORD imageWidth, UWORD labelWidth)
+{
+    return labelWidth > imageWidth ? labelWidth : imageWidth;
+}
+
+WORD ScreenFont_LabelLeft(WORD iconLeft, UWORD iconWidth, UWORD labelWidth)
+{
+    return (WORD)(iconLeft + ((WORD)iconWidth - (WORD)labelWidth) / 2);
+}
+
+WORD ScreenFont_ToolAt(const struct ScreenFontToolRect *rects, UWORD count, WORD x, WORD y)
+{
+    UWORD i;
+
+    for (i = 0; i < count; i++)
+        if (x >= rects[i].left && x < rects[i].left + (WORD)rects[i].width &&
+            y >= rects[i].top  && y < rects[i].top  + (WORD)rects[i].height)
+            return (WORD)i;
+    return -1;
+}
+
+const char *ScreenFont_ToolIconDir(BOOL modern, BOOL tallPixels)
+{
+    if (!modern)
+        return "PROGDIR:SCIcons/";
+    return tallPixels ? "PROGDIR:ToolBar/Wide/" : "PROGDIR:ToolBar/Square/";
+}

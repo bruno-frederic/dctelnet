@@ -38,6 +38,39 @@ void ScreenFont_Grid(UWORD width, UWORD height, UWORD gzzWidth, UWORD gzzHeight,
 #define SCREENFONT_BBS_ROWS        25   /* the Workbench window opens 80x25 (40x25) */
 UWORD ScreenFont_MaxWindowWidth(UWORD columns, UWORD cellX, UWORD borders);
 
+/* TRUE on a mode whose pixels are taller than wide (hires or super-hires
+ * without interlace: resolution ticks y > x). Art drawn for square pixels
+ * looks squeezed there; the tool bar takes its wide icons. */
+BOOL ScreenFont_TallPixels(UWORD resolutionX, UWORD resolutionY);
+
+/* Width of one tool bar button slot: the icon, or its label when that is
+ * wider, so neighbouring labels never overlap. The icon is centred in it.
+ * labelWidth is in pixels as the font draws it (TextLength): the Workbench
+ * font may be proportional, so characters times tf_XSize is not its width. */
+UWORD ScreenFont_ToolSlotWidth(UWORD imageWidth, UWORD labelWidth);
+
+/* Left edge of a label centred under an icon at iconLeft; left of the icon
+ * when the label is the wider of the two. */
+WORD ScreenFont_LabelLeft(WORD iconLeft, UWORD iconWidth, UWORD labelWidth);
+
+/* A tool bar button's rectangle in window coordinates. */
+struct ScreenFontToolRect
+{
+    WORD  left, top;
+    UWORD width, height;
+};
+
+/* Index of the first of count rects holding the point (x, y), or -1 when it
+ * is over none (the gaps between buttons, the bar around them). Edges are
+ * inclusive on the left and top, exclusive on the right and bottom. */
+WORD ScreenFont_ToolAt(const struct ScreenFontToolRect *rects, UWORD count, WORD x, WORD y);
+
+/* The drawer (with its trailing slash) of the tool bar icons. modern: the
+ * Lucide set, in the shape of its pixels (wide for tall pixels, else square);
+ * otherwise DCTelnet 1.6's SCIcons, whatever the pixels. One choice for the
+ * own screen and the Workbench (Display > Modern Icons). */
+const char *ScreenFont_ToolIconDir(BOOL modern, BOOL tallPixels);
+
 #define TOPAZ_PRO_NAME "TopazPro.font"
 #define TOPAZ_PRO_SIZE 16
 

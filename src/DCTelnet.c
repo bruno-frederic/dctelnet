@@ -86,6 +86,7 @@ extern struct Library *CyberGfxBase;
 #include "Xem_wrapper.h"
 #include "requesters.h"
 #include "utils.h"
+#include "nearest_pen.h"
 #include "prefs.h"
 #include "prefs_file.h"
 #include "palette.h"
@@ -199,6 +200,7 @@ static struct NewMenu mainMenuDesc[] =
     {    NM_ITEM, "Full-screen",                    "W", HIGHCOMP|CHECKIT|MENUTOGGLE, 0, (APTR)MENU_FULLSCREEN},
     {    NM_ITEM, "Title Bar",                      "R", HIGHCOMP|CHECKIT|MENUTOGGLE, 0, (APTR)MENU_TITLE_BAR},
     {    NM_ITEM, "Tool Bar",                       "4", HIGHCOMP|CHECKIT|MENUTOGGLE, 0, (APTR)MENU_TOOL_BAR},
+    {    NM_ITEM, "Modern Icons",                    0 , HIGHCOMP|CHECKIT|MENUTOGGLE, 0, (APTR)MENU_MODERN_ICONS},
     {    NM_ITEM, "132 Columns",                     0 , HIGHCOMP|CHECKIT|MENUTOGGLE, 0, (APTR)MENU_132_COLUMNS},
     {    NM_ITEM, "LEDs",                           "I", HIGHCOMP|CHECKIT|MENUTOGGLE, 0, (APTR)MENU_LEDS},
     {    NM_ITEM, "Snapshot Windows",               "$",             0,               0, (APTR)MENU_SNAPSHOT_WINDOWS},
@@ -998,7 +1000,7 @@ static void SyncPetsciiDisplay(void)
 
 // The screen mode's pixel shape (DisplayInfo.Resolution), from OpenAppScreen:
 // which of topaz and Topaz Pro a font setting opens as (ScreenFont_ForMode).
-static UWORD modeResX, modeResY;
+UWORD modeResX, modeResY;      // the display mode's resolution ticks (0: unknown)
 
 // The font a setting actually opens on the current mode.
 static void EffectiveFont(struct PrefsStruct *p)
@@ -1688,13 +1690,10 @@ static struct Hook terminalBackFill = { { NULL, NULL }, (HOOKFUNC)TerminalBackFi
 // A pen DCTelnet draws with itself (LEDs, the Quit item), given as an ANSI
 // colour in ibmcon's order: on 32+ colours it lives on the ANSI pens, with the
 // built-in and XEM renderers pens 0-15 hold the ANSI palette in ANSI order.
-static UWORD LegacyPen(UWORD ibmconIndex)
+UWORD LegacyPen(UWORD ibmconIndex)
 {
-    if (ansiOwnPens)
-        return ansiColourPens[Palette_IbmconToAnsi(ibmconIndex)];
-    if (STATE_IS(APP_RENDERER_BUILTIN | APP_RENDERER_XEM_LIB))
-        return (UWORD)Palette_IbmconToAnsi(ibmconIndex);
-    return ibmconIndex;
+    return Palette_TerminalPen(ibmconIndex, ansiOwnPens ? ansiColourPens : NULL,
+                               STATE_IS(APP_RENDERER_BUILTIN | APP_RENDERER_XEM_LIB));
 }
 
 // Load target's palette onto the screen: the ANSI pens (in ANSI order, 8 bits
@@ -3862,6 +3861,15 @@ static void CopyRange(const struct ClipRange *r)
     if (iff) FreeVec(iff);
 }
 
+// The terminal window reports pointer moves while a selection is dragged, and
+// always while the Modern tool bar is open: the terminal keeps the focus, so
+// the bar's own window never sees the pointer cross its buttons.
+static void TerminalMouseReport(void)
+{
+    if (win)
+        ReportMouse((BOOL)(selDragging || ToolBarWantsHover()), win);
+}
+
 static void SelectionDown(WORD mx, WORD my)
 {
     if (!SelectionAvailable())
@@ -3898,7 +3906,7 @@ static void SelectionUp(void)
     if (!selDragging)
         return;
     selDragging = FALSE;
-    ReportMouse(FALSE, win);                    // the selection waits for Amiga-C
+    TerminalMouseReport();                      // the selection waits for Amiga-C
 }
 
 static void CopyScreen(void)
@@ -4018,6 +4026,12 @@ static void GetWindowMsg(struct Window *wwin)
         case IDCMP_MOUSEMOVE:
             if (wwin == win)
                 SelectionMove(mouseX, mouseY);
+            ToolBarHover();
+            break;
+
+        case IDCMP_INACTIVEWINDOW:
+            if (wwin == toolBarWin)
+                ToolBarHoverEnd(TRUE);
             break;
 
         case IDCMP_GADGETUP:
@@ -4046,6 +4060,7 @@ static void GetWindowMsg(struct Window *wwin)
 
             if(wwin == toolBarWin)
             {
+                ToolBarHoverEnd(FALSE);     // the click redrew the button
                 switch(gad->GadgetID)
                 {
                     case BUTTON_CONNECT:
@@ -4393,6 +4408,18 @@ static void GetWindowMsg(struct Window *wwin)
                                 OpenToolBarWindow(TRUE);
                             else
                                 CloseToolBarWindow();
+                            TerminalMouseReport();
+                        }
+                        break;
+
+                    case MENU_MODERN_ICONS:
+                        UpdatePrefsFromMenu(item, APP_MODERN_ICONS);
+                        if (STATE_IS(APP_FULLSCREEN))
+                            shouldRestart = STATE_IS(APP_TOOL_BAR_ENABLED);
+                        else
+                        {
+                            ReopenToolBarWindow();
+                            TerminalMouseReport();
                         }
                         break;
 
@@ -5071,20 +5098,8 @@ static void ObtainWorkbenchPens(void)
         return;
     Palette_Get(&prefs, colours);
     for (i = 0; i < 16; i++)
-    {
-        ULONG c = Palette_RGB32(colours[i]);
-        ULONG r = ((c >> 16) & 0xFF) * 0x01010101UL, g = ((c >> 8) & 0xFF) * 0x01010101UL,
-              bl = (c & 0xFF) * 0x01010101UL;
-        LONG pen = ObtainBestPen(scr->ViewPort.ColorMap, r, g, bl,
-                                 OBP_Precision, PRECISION_EXACT, TAG_DONE);
-
-        // No pen to share (-1): the nearest colour already there, which
-        // is not ours to release. -1 cast to UBYTE was pen 255.
-        wbPenOwned[i] = pen >= 0;
-        if (pen < 0)
-            pen = FindColor(scr->ViewPort.ColorMap, r, g, bl, -1);
-        ansiColourPens[i] = (UBYTE)pen;
-    }
+        ansiColourPens[i] = ObtainNearestPen(scr->ViewPort.ColorMap, Palette_RGB32(colours[i]),
+                                             PRECISION_EXACT, &wbPenOwned[i]);
     wbPensObtained = TRUE;
     ansiOwnPens = TRUE;
 }
@@ -5506,6 +5521,28 @@ struct Screen* OpenAppScreen(void)
     ansiOwnPens = scr && STATE_IS(APP_FULLSCREEN) && STATE_IS(APP_RENDERER_IBMCON_DEVICE)
                && Palette_AnsiPens(AppScreenDepth(scr), ansiColourPens);
 
+    // The screen shares its free pens (SA_SharePens): the terminal's ANSI
+    // pens and the AGA pointer pens 16-19 are ours, so that no ObtainBestPen()
+    // (the tool bar's icons) takes one and recolours it. They go with the
+    // screen. Without ANSI pens of their own (16 colours, the builtin renderer)
+    // the terminal's colours sit on pens 0-15 itself: every pen of a screen up
+    // to 16 colours, pens 0-19 above. The tool bar then finds its colours among
+    // the pens the screen holds (FindColor) instead of recolouring one.
+    if (scr && STATE_IS(APP_FULLSCREEN) && GfxBase->LibNode.lib_Version >= 39)
+    {
+        UWORD i, depth = AppScreenDepth(scr);
+        UWORD last = depth >= 5 ? 20 : (UWORD)(1 << depth);
+
+        if (ansiOwnPens)
+            for (i = 0; i < 16; i++)
+                ObtainPen(scr->ViewPort.ColorMap, ansiColourPens[i], 0, 0, 0, PEN_EXCLUSIVE | PEN_NO_SETCOLOR);
+        else
+            for (i = 0; i < 16 && i < last; i++)
+                ObtainPen(scr->ViewPort.ColorMap, i, 0, 0, 0, PEN_EXCLUSIVE | PEN_NO_SETCOLOR);
+        for (i = 16; i < last; i++)
+            ObtainPen(scr->ViewPort.ColorMap, i, 0, 0, 0, PEN_EXCLUSIVE | PEN_NO_SETCOLOR);
+    }
+
     // Border blank (V39, ECS/AGA): the overscan border shows colour 0, which
     // on 32+ colours is the UI's grey pen 0 -- keep it black like the terminal.
     if (scr && STATE_IS(APP_FULLSCREEN) && GfxBase->LibNode.lib_Version >= 39)
@@ -5627,7 +5664,9 @@ void OpenAppWindow(void)
 
         if (toolBarWin)    // Tool Window
         {
-            top = toolBarWin->TopEdge + toolBarWin->Height + 1;
+            // Straight under the bar: a row of screen between them showed
+            // pen 0 as a grey stripe over the black terminal.
+            top = toolBarWin->TopEdge + toolBarWin->Height;
             height = scr->Height - top;
             if(backgad)
             {
@@ -5691,6 +5730,7 @@ void OpenAppWindow(void)
         win = OpenWindowTags(&newWin, WA_BackFill, (ULONG)&terminalBackFill, TAG_END);
     }
 
+    TerminalMouseReport();
     SetFont(win->RPort, petsciiFont ? petsciiFont : ansiFont);
 }
 
@@ -5775,6 +5815,7 @@ void CreateAppMenus(void)
     SetNewMenuCheckFromPref(MENU_SCROLLBACK,              APP_SCROLLBACK_ENABLED);
     SetNewMenuCheckFromPref(MENU_PACKET_WINDOW,           APP_PACKET_WINDOW_ENABLED);
     SetNewMenuCheckFromPref(MENU_TOOL_BAR,                APP_TOOL_BAR_ENABLED);
+    SetNewMenuCheckFromPref(MENU_MODERN_ICONS,            APP_MODERN_ICONS);
     SetNewMenuCheckFromPref(MENU_RETURN_SENDING_CRLF,     APP_RETURN_SENDING_CRLF);
     SetNewMenuCheckFromPref(MENU_VT_KEYS,                 APP_VT_KEYS);
     SetNewMenuCheckFromPref(MENU_LOCAL_ECHO,              APP_LOCAL_ECHO);
