@@ -295,6 +295,57 @@ static void VtDrawImages(int x0, int y0, int x1, int y1)
     }
 }
 
+/* Cell columns of a row that an opaque kitty picture drawn over the text (z >= 0) covers whole: VtDrawImages
+ * paints every pixel of them, so the text pass need not blank them first. That blank (black background), then the
+ * blit, showed on screen for as long as the blit took: black bands moving down a picture the door scrolls (it
+ * repaints the log and places the picture again for every step, so every picture row is damaged). */
+#define VT_COVER_MAX 4
+typedef struct {
+    int n;
+    int a[VT_COVER_MAX], b[VT_COVER_MAX];       /* cells [a, b) */
+} VtCover;
+
+static BOOL VtCellCovered(const vt_image_view *v, int x)
+{
+    int cw = 1 << term_xs, k, j;
+    LONG sx = (LONG)(x - v->col0) * v->cw - v->px0;
+    const vt_u8 *p;
+
+    if (sx < 0 || sx + cw > v->w || v->py < 0 || v->py + 8 > v->h)
+        return FALSE;                   /* an edge cell: part of it is not the picture's */
+    p = v->pix + (LONG)v->py * v->w + sx;
+    for (k = 0; k < 8; k++, p += v->w)
+        for (j = 0; j < cw; j++)
+            if (!p[j])
+                return FALSE;           /* a transparent pixel: the text under it shows */
+    return TRUE;
+}
+
+static void VtRowCover(int gy, const vt_cell *c, int n, VtCover *cv)
+{
+    vt_image_view v;
+    int i, x, xe;
+
+    cv->n = 0;
+    for (i = 0; vt_row_image(vtTerm, gy, i, &v); i++) {
+        if (!v.kitty || v.fmt != 0 || v.z < 0)
+            continue;
+        xe = v.col0 + (v.px0 + v.w + v.cw - 1) / v.cw;
+        if (xe > n)
+            xe = n;
+        for (x = v.col0 > 0 ? v.col0 : 0; x < xe && cv->n < VT_COVER_MAX; x++) {
+            int a = x;
+
+            while (x < xe && (c[x].pad & VT_CELL_IMAGE) && VtCellCovered(&v, x))
+                x++;
+            if (x > a) {
+                cv->a[cv->n] = a;
+                cv->b[cv->n++] = x;
+            }
+        }
+    }
+}
+
 /* Draw cells x0 <= x < x1 of rows y0 <= y < y1 from the grid. */
 static void VtDraw(void *user, int x0, int y0, int x1, int y1)
 {
@@ -305,8 +356,15 @@ static void VtDraw(void *user, int x0, int y0, int x1, int y1)
         return;
     for (y = y0; y < y1; y++) {
         const vt_cell *c = vt_row(vtTerm, y - vtScrollOff, &n);
+        VtCover cover;
+        int ci = 0;
+
         if (!c)
             continue;
+
+        cover.n = 0;
+        if (vt_images(vtTerm) && VtImgRp() && (vtScrollOff || !vt_row_size(vtTerm, y)))
+            VtRowCover(y - vtScrollOff, c, n, &cover);
         cur_y = (WORD)y;
         term_sync_row_base();
         for (x = x0; x < x1 && x < n; x++) {
@@ -314,6 +372,12 @@ static void VtDraw(void *user, int x0, int y0, int x1, int y1)
             vt_u32 ch = c[x].ch;
             vt_cell cell = c[x];
             UBYTE code;
+
+            for (ci = 0; ci < cover.n; ci++)
+                if (x >= cover.a[ci] && x < cover.b[ci])
+                    break;
+            if (ci < cover.n)
+                continue;               /* an opaque picture is blitted over this cell (VtDrawImages) */
             /* Blink is never animated (no timer; the owner's decision, MA1-7
              * exemption). With iCE colours on (BLINK_ICE) the engine turns
              * blink on a dark background into the bright background; with
