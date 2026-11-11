@@ -47,7 +47,8 @@ static void call(const char *fmt, long a, long b, long c, long d, long e)
 {
     char line[160];
     snprintf(line, sizeof(line), fmt, a, b, c, d, e);
-    strcat(calls, line);
+    if (strlen(calls) + strlen(line) < sizeof(calls))   /* a full log drops the rest */
+        strcat(calls, line);
 }
 
 /* The screen's LayerInfo, as Intuition sees it: the drawing that went into
@@ -95,22 +96,44 @@ static void Text(struct RastPort *rp, STRPTR s, ULONG n)
 {
     char line[160];
     snprintf(line, sizeof(line), "Text(%d,%d fg%d bg%d \"%.*s\")\n", rp->cx, rp->cy, rp->FgPen, rp->BgPen, (int)n, s);
-    strcat(calls, line);
+    if (strlen(calls) + strlen(line) < sizeof(calls))
+        strcat(calls, line);
 }
+#define FB_W 700
+#define FB_H 420
+static UBYTE chunkyFb[FB_W * FB_H];     /* the last pen written at each pixel, 0xFF where none */
+static unsigned long chunkyOff;         /* KG-REDRAW: pixels written with a pen other than the one there before */
 static void RectFill(struct RastPort *rp, LONG x0, LONG y0, LONG x1, LONG y1)
 {
     if (rp->DrawMode == COMPLEMENT)
         call("Complement(%ld,%ld,%ld,%ld mask%ld)\n", (long)x0, (long)y0, (long)x1, (long)y1, (long)rp->Mask);
     else
         call("RectFill(%ld,%ld,%ld,%ld pen%ld)\n", (long)x0, (long)y0, (long)x1, (long)y1, (long)rp->FgPen);
+    if (rp->DrawMode != COMPLEMENT) {
+        LONG x, y;
+        for (y = y0; y <= y1; y++)
+            for (x = x0; x <= x1; x++)
+                if (x >= 0 && x < FB_W && y >= 0 && y < FB_H) {
+                    chunkyOff += chunkyFb[y * FB_W + x] != rp->FgPen;
+                    chunkyFb[y * FB_W + x] = rp->FgPen;
+                }
+    }
 }
 /* Pictures (kitty graphics): the chunky writes, one line each with the
  * first pixel's pen. */
 static int chunkyCalls;
 static void WriteChunkyPixels(struct RastPort *rp, LONG x0, LONG y0, LONG x1, LONG y1, UBYTE *a, LONG mod)
 {
-    (void)rp; (void)mod;
+    LONG x, y, stride = mod ? mod : x1 - x0 + 1;
+
+    (void)rp;
     chunkyCalls++;
+    for (y = y0; y <= y1; y++)
+        for (x = x0; x <= x1; x++)
+            if (x >= 0 && x < FB_W && y >= 0 && y < FB_H) {
+                chunkyOff += chunkyFb[y * FB_W + x] != a[(y - y0) * stride + (x - x0)];
+                chunkyFb[y * FB_W + x] = a[(y - y0) * stride + (x - x0)];
+            }
     call("Chunky(%ld,%ld,%ld,%ld pen%ld)\n", (long)x0, (long)y0, (long)x1, (long)y1, (long)a[0]);
 }
 static LONG WritePixelArray8(struct RastPort *rp, ULONG x0, ULONG y0, ULONG x1, ULONG y1, UBYTE *a, struct RastPort *tmp)
@@ -1535,7 +1558,6 @@ static void test_kgs_a_scrolling_opaque_picture_is_not_painted_over_its_text_cel
             snprintf(buf + strlen(buf), sizeof(buf) - strlen(buf), "\033[%d;1Hlog line %d of the chat", row, step * 10 + row);
         strcat(buf, "\033_Ga=d,d=i,i=7,q=2\033\\");
         snprintf(buf + strlen(buf), sizeof(buf) - strlen(buf), "\033[%d;1H\033_Ga=p,i=7,c=10,r=10,C=1,q=2\033\\", 3);
-        vtImgFills = 0;
         vt_put(buf);
         /* none of the 100 cells the picture covers whole is painted; the text beside it still is */
         assert(kgs_text_on_picture() == 0);
@@ -1547,7 +1569,7 @@ static void test_kgs_a_scrolling_opaque_picture_is_not_painted_over_its_text_cel
                     beside++;
             assert(beside > 0);
         }
-        assert(chunkyCalls + (int)vtImgFills >= 80);       /* and the picture is drawn whole */
+        assert(chunkyCalls >= 80);       /* and the picture is drawn whole */
     }
     {   /* the final frame: every pixel of the picture is its red */
         int x, y;
@@ -1557,6 +1579,98 @@ static void test_kgs_a_scrolling_opaque_picture_is_not_painted_over_its_text_cel
         for (y = 0; y < 80; y++)
             for (x = 0; x < 80; x++)
                 assert(chunkyFb[(TERM_PY(2) + y) * FB_W + TERM_PX(0) + x] == pen);
+    }
+    VtClose();
+}
+
+/* base64 of n bytes (the kitty payload) */
+static void kg32_b64(char *out, const unsigned char *in, int n)
+{
+    static const char t[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    int i;
+
+    for (i = 0; i < n; i += 3) {
+        unsigned long v = (unsigned long)in[i] << 16 | (i + 1 < n ? (unsigned long)in[i + 1] << 8 : 0) |
+                          (i + 2 < n ? in[i + 2] : 0);
+        *out++ = t[(v >> 18) & 63];
+        *out++ = t[(v >> 12) & 63];
+        *out++ = i + 1 < n ? t[(v >> 6) & 63] : '=';
+        *out++ = i + 2 < n ? t[v & 63] : '=';
+    }
+    *out = 0;
+}
+
+/* KG-REDRAW: the LiveChat door's picture (kitty-graphics.util.ts: a=t,f=100,i=N,c=,r= stored, then
+ * a=p,i=N,c=20,r=10,p=1,C=1,q=2 at a cell; a picture of any pixel size, scaled to the cells), here as opaque
+ * 32-bit RGBA of 100 x 75 (PNG decodes to the same). Redraws that do not move it: the menu bar on row 1, the input
+ * box border on rows 22-24, and the door's place again of the same placement at the same cell. Counted per redraw:
+ * text cells painted on the picture's cells, picture runs blitted, and picture pixels changed in the frame. */
+static int kgr_fb_changed(const UBYTE *snap, int col0, int row0, int wpx, int hpx)
+{
+    int x, y, n = 0;
+
+    for (y = 0; y < hpx; y++)
+        for (x = 0; x < wpx; x++) {
+            long o = (long)(TERM_PY(row0) + y) * FB_W + TERM_PX(col0) + x;
+
+            n += chunkyFb[o] != snap[o];
+        }
+    return n;
+}
+
+static void test_kgr_a_redraw_beside_a_door_picture_does_not_repaint_it(void)
+{
+    static unsigned char raw[100 * 75 * 4];
+    static char b64[sizeof(raw) / 3 * 4 + 8], msg[4200];
+    static UBYTE snap[sizeof(chunkyFb)];
+    int i, n, off, step;
+    const char *redraw[3];
+
+    xterm_begin();
+    memset(chunkyFb, 0xFF, sizeof(chunkyFb));
+    for (i = 0; i < 100 * 75; i++) {       /* an opaque photo-like ramp */
+        raw[i * 4] = (unsigned char)(i % 100 * 2);
+        raw[i * 4 + 1] = (unsigned char)(i / 100 * 3);
+        raw[i * 4 + 2] = (unsigned char)(255 - i % 100 * 2);
+        raw[i * 4 + 3] = 255;
+    }
+    kg32_b64(b64, raw, (int)sizeof(raw));
+    n = (int)strlen(b64);
+    for (off = 0; off < n; off += 4000) {
+        int take = n - off > 4000 ? 4000 : n - off;
+
+        if (!off)
+            snprintf(msg, sizeof(msg), "\033_Ga=t,f=32,s=100,v=75,i=1,c=20,r=10,q=2,m=%d;", off + take < n);
+        else
+            snprintf(msg, sizeof(msg), "\033_Gm=%d;", off + take < n);
+        strncat(msg, b64 + off, (size_t)take);
+        strcat(msg, "\033\\");
+        calls[0] = 0;                           /* Text() logs every run unchecked */
+        vt_put(msg);
+    }
+    calls[0] = 0;
+    vt_put("\033[8;25H\033_Ga=p,i=1,c=20,r=10,p=1,C=1,q=2\033\\");
+    assert(vtImgRuns > 0);
+    redraw[0] = "\033[1;1H\033[1;37;44m File  Rooms  Users  Help \033[0m\033[1;60H\033[33m*\033[0m";
+    redraw[1] = "\033[22;1H\033[36m+----------\033[22;12H----------+\033[23;1H|\033[23;74H|\033[24;1H+--------+\033[0m";
+    redraw[2] = "\033[8;25H\033_Ga=p,i=1,c=20,r=10,p=1,C=1,q=2\033\\";
+    for (step = 0; step < 3; step++) {
+        int text, runs, changed;
+
+        memcpy(snap, chunkyFb, sizeof(chunkyFb));
+        probes = 0;
+        vtImgRuns = 0;
+        chunkyOff = 0;
+        calls[0] = 0;
+        vt_put(redraw[step]);
+        text = kgs_text_on_picture();
+        runs = (int)vtImgRuns;
+        changed = kgr_fb_changed(snap, 24, 7, 20 * 8, 10 * 8);
+        printf("KG-REDRAW step %d: text cells on picture %d, picture runs %d, picture pixels changed %d, pixels written off-picture %lu\n", step,
+               text, runs, changed, chunkyOff);
+        assert(chunkyOff == 0);
+        assert(text == 0);
+        assert(changed == 0);
     }
     VtClose();
 }
@@ -1628,6 +1742,7 @@ int main(void)
     test_ma4_4_the_alt_screen_leaves_the_scrollback_alone();
     test_kg8_a_kitty_picture_through_vtwrite_is_drawn_and_a_query_answered();
     test_kgs_a_scrolling_opaque_picture_is_not_painted_over_its_text_cells();
+    test_kgr_a_redraw_beside_a_door_picture_does_not_repaint_it();
     test_kg10_the_screens_pixel_aspect_reaches_the_engine();
     printf("term_engine: all assertions passed\n");
     return 0;
