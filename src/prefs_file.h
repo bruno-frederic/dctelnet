@@ -64,4 +64,12 @@ BOOL Prefs_ScreenFits(const struct PrefsStruct *p);
  */
 UWORD *Prefs_Palette(struct PrefsStruct *p);
 
+/*
+ * The State of a first run (no prefs file, or an invalid State in it):
+ * full screen, scrollback history on (as DCTelnet 1.x had it, so
+ * Shift+Page Up scrolls back from the start), and rendererBits, the
+ * renderer for this CPU (Renderer_DefaultForCpu()).
+ */
+ULONG Prefs_FirstRunState(ULONG rendererBits);
+
 #endif /* PREFS_FILE_H */

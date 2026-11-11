@@ -34,6 +34,7 @@ static char MainWindowTitle[] =
 #include <proto/exec.h>               // OpenLibrary(), GetMsg(), ReplyMsg(), AllocMem()...
 #include <proto/dos.h>                // Open(), Close(), Read(), Write(), PutStr()...
 #include <proto/intuition.h>          // OpenWindow(),CloseWindow(), OnMenu(), OffMenu()...
+#include <graphics/displayinfo.h>      // DisplayInfo: the screen mode's pixel aspect (vtbuiltin.c)
 #include <graphics/videocontrol.h>    // VTAG_BORDERBLANK_SET
 #include <proto/graphics.h>           // Move(), SetAPen(), Text(), SetFont(), Draw()
 #include <proto/layers.h>             // InstallLayerInfoHook()
@@ -87,6 +88,7 @@ extern struct Library *CyberGfxBase;
 #include "requesters.h"
 #include "utils.h"
 #include "prefs.h"
+#include "renderer.h"
 #include "prefs_file.h"
 #include "palette.h"
 
@@ -165,11 +167,16 @@ static struct NewMenu mainMenuDesc[] =
     {       NM_SUB, "IBM PC (CP437)",                0 ,       CHECKIT,       ~1L & 7, (APTR)MENU_CHARSET_CP437},
     {       NM_SUB, "Amiga (ISO-8859-1)",            0 ,       CHECKIT,       ~2L & 7, (APTR)MENU_CHARSET_LATIN1},
     {       NM_SUB, "UTF-8",                         0 ,       CHECKIT,       ~4L & 7, (APTR)MENU_CHARSET_UTF8},
+    {    NM_ITEM, "Terminal Type",                   0 ,             0,               0, (APTR)MENU_TERMTYPE},
+    {       NM_SUB, "Automatic",                     0 ,       CHECKIT,       ~1L & 7, (APTR)MENU_TERMTYPE_AUTO},
+    {       NM_SUB, "BBS",                           0 ,       CHECKIT,       ~2L & 7, (APTR)MENU_TERMTYPE_BBS},
+    {       NM_SUB, "Unix",                          0 ,       CHECKIT,       ~4L & 7, (APTR)MENU_TERMTYPE_UNIX},
     {    NM_ITEM, "Bell",                            0 ,             0,               0, (APTR)MENU_BELL},
     {       NM_SUB, "Flash",                         0 ,       CHECKIT,       ~1L & 7, (APTR)MENU_BELL_FLASH},
     {       NM_SUB, "Sound",                         0 ,       CHECKIT,       ~2L & 7, (APTR)MENU_BELL_SOUND},
     {       NM_SUB, "Off",                           0 ,       CHECKIT,       ~4L & 7, (APTR)MENU_BELL_OFF},
     {    NM_ITEM, "ANSI Music",                      0 , HIGHCOMP|CHECKIT|MENUTOGGLE, 0, (APTR)MENU_ANSI_MUSIC},
+    {    NM_ITEM, "iCE Colours",                     0 , HIGHCOMP|CHECKIT|MENUTOGGLE, 0, (APTR)MENU_ICE_COLOURS},
     {    NM_ITEM, NM_BARLABEL,                       0 ,             0,               0, (APTR)MENU_BAR},
     {    NM_ITEM, "Local Echo",                     "6", HIGHCOMP|CHECKIT|MENUTOGGLE, 0, (APTR)MENU_LOCAL_ECHO},
     {    NM_ITEM, "Swap BackSpace & Del keys",      "/", HIGHCOMP|CHECKIT|MENUTOGGLE, 0, (APTR)MENU_BACKSPACE_DEL_SWAP},
@@ -220,10 +227,12 @@ static ULONG RexxSig(void);
 static void RexxMessages(void);
 static void CancelConnectionJobs(void);
 static UBYTE *DisplayBytes(struct Utf8Decoder *d, UBYTE *data, long *len);
+static UBYTE *ScrollbackBytes(UBYTE *data, long *len);
 static UBYTE *SoundFilter(UBYTE *text, long *len);
 static struct AnsiMusic ansiMusic;      // Terminal > ANSI Music: a tune split between reads
 static struct Utf8Decoder utf8In;       // Character Set UTF-8: a character split between reads
 static struct Utf8Decoder utf8Echo;     // the same for the local echo of what is sent
+static struct Utf8Decoder utf8Sb;       // the same for the scrollback, when the engine decodes the UTF-8 itself
 static BOOL rloginAckPending;         // rlogin: the server's NUL answer is still to come
 static void ScheduleKeepAlive(void);
 static void CaptureWrite(const UBYTE *data, long len);
@@ -251,7 +260,7 @@ struct IntuitionBase *IntuitionBase;
 struct GfxBase *GfxBase;
 struct Library *KeymapBase, *GadToolsBase, *AslBase, *SocketBase;
 struct Library *DiskfontBase, *IconBase, *WorkbenchBase, *UtilityBase;
-struct Library *LayersBase;     // V39, optional: the own screen's black background
+struct Library *LayersBase;     // the terminal's draws (vtbuiltin.c); V39: the own screen's black background
 struct Library *CyberGfxBase;   // optional: recolours a true-colour terminal live
 
 struct Window *win, *scrollbackWin, *toolBarWin;
@@ -384,6 +393,7 @@ BYTE dontUseSig31 = -1; // don't use it, ibmcon.device will destroy it.
 #include "DCTelnet-debug.h"
 #define send_data(data, len) TCPSend((data), (len))
 #include "term-engine.c"
+#include "vtbuiltin.c"
 
 static void ObtainWorkbenchPens(void);
 
@@ -406,37 +416,10 @@ static int BuiltinInit(void)
                          win->Height - win->BorderTop - win->BorderBottom,
                          petsciiFont ? petsciiFont : ansiFont);
     term_set_pens(ansiOwnPens ? ansiColourPens : NULL);
+    if (res == 0)
+        res = VtOpen();
     return res;
 }
-
-/**
- * @brief Tell retro32-term whether anything lies over the terminal: a layer in
- *        front of the terminal window that overlaps it (a requester, another
- *        DCTelnet window, an open menu). It draws straight into the screen
- *        bitmap only while nothing does; otherwise through the window's
- *        RastPort, whose layer keeps what is covered. Before it did, it drew
- *        over such windows, scrolled them along, and left them behind.
- */
-static void BuiltinCovered(void)
-{
-    struct Layer *l;
-    WORD x0, y0, x1, y1;
-    BOOL covered = FALSE;
-
-    if (!scr || !win)
-        return;
-    x0 = win->LeftEdge + win->BorderLeft;
-    y0 = win->TopEdge + win->BorderTop;
-    x1 = win->LeftEdge + win->Width - win->BorderRight - 1;
-    y1 = win->TopEdge + win->Height - win->BorderBottom - 1;
-    if (LayersBase) LockLayerInfo(&scr->LayerInfo); else Forbid();
-    for (l = scr->LayerInfo.top_layer; l && l != win->WLayer && !covered; l = l->back)
-        covered = l->bounds.MinX <= x1 && l->bounds.MaxX >= x0
-               && l->bounds.MinY <= y1 && l->bounds.MaxY >= y0;
-    if (LayersBase) UnlockLayerInfo(&scr->LayerInfo); else Permit();
-    term_covered(covered);
-}
-
 
 static void SelectionHide(void);
 
@@ -445,22 +428,19 @@ static struct AnsiSwap17 consoleSwap;
 
 static void ConWrite(char *data, long len)
 {
+    enum RendererRoute route = Renderer_Route(prefs.State);
+
     SelectionHide();                // the text may land on it
-    if(STATE_IS_NOT(APP_ICONIFIED))
+    if (route != ROUTE_NONE)
     {
-        if (STATE_IS(APP_RENDERER_BUILTIN))
+        if (route == ROUTE_BUILTIN)
         {
-            // With retro32-term, drawing only ever happens with the cursor hidden, so glyphs never
-            // land on an inverted cell.
-            BuiltinCovered();
-            cursor_hide();
-            while (len-- > 0)
-                term_feed((UBYTE)*data++);
-            term_flush();
-            cursor_show();
+            // vtcon parses, retro32-term draws (vtbuiltin.c); drawing only ever happens with
+            // the cursor hidden, so glyphs never land on an inverted cell.
+            VtWrite((const UBYTE *)data, len);
             return; // direct return because maximal optimization is needed for this frequently called function
         }
-        else if (STATE_IS(APP_RENDERER_CONSOLE_DEVICE | APP_RENDERER_IBMCON_DEVICE))
+        else if (route == ROUTE_CONSOLE || route == ROUTE_IBMCON)
         {
             #ifdef _DEBUG
                 if (!writeConsoleReq) RecoveryAlert(
@@ -472,7 +452,7 @@ static void ConWrite(char *data, long len)
 
             // console.device: SGR colours swap 1 and 7 (Ansi_Swap17): it draws plain
             // text in pen 1, white in ibmcon's order, and SGR 31 (red) in pen 1 too.
-            if (STATE_IS(APP_RENDERER_CONSOLE_DEVICE))
+            if (route == ROUTE_CONSOLE)
             {
                 static UBYTE swapped[1024 + ANSI_SWAP17_HELD];
 
@@ -843,6 +823,7 @@ static void DisConnect(char remote, char quiet)
         CloseSocket(tcpSocket);
 
         isConnected = FALSE;
+        VtTitleRestore();               // MA3-3: the program's window title ends with the session
         ResetTelnetContext();
         ResetZmodemContext();
         nBytesReceived = 0;
@@ -1075,6 +1056,7 @@ BOOL BeginEntrySession(ULONG settingsId, const struct SiteSettings *entry)
         sessionGroups = entry->groups;
         ReloadXemOptions();
         RequestDisplayReopen(&before);
+        VtApplyPersonality();            // the Terminal Type of the site or the settings
     }
     SyncPetsciiDisplay();
     handBaseline = prefs;
@@ -1158,6 +1140,7 @@ void EndEntrySession(void)
         if (endedGroups & SITE_GROUP_TERMINAL)
             ReloadXemOptions();
         RequestDisplayReopen(&before);
+        VtApplyPersonality();            // the Terminal Type of the site or the settings
     }
     SyncPetsciiDisplay();
     handBaseline = prefs;
@@ -1301,6 +1284,8 @@ static void RunPendingConnect(void)
     {
         Charset_Utf8Init(&utf8In);
         Charset_Utf8Init(&utf8Echo);
+        Charset_Utf8Init(&utf8Sb);
+        VtSniffReset();                         // MA2-14: this connection has seen no UTF-8 yet
         AnsiMusic_Init(&ansiMusic);
         if (STATE_IS(APP_SSH))                  // SSH: the encrypted login first
         {
@@ -2201,7 +2186,12 @@ static void Receive(void)
 
             BbsWrite((char *)text, shown);
             if (STATE_IS(APP_SCROLLBACK_ENABLED))
-                AddBuf(text, shown);
+            {
+                long kept = shown;
+                UBYTE *sb = ScrollbackBytes(text, &kept);
+
+                AddBuf(sb, kept);
+            }
         }
 
         for (i = 0; i < len; i++)
@@ -2294,7 +2284,10 @@ static void Receive(void)
                         if (win->RPort->Font != wanted)
                         {
                             if (STATE_IS(APP_RENDERER_BUILTIN))
+                            {
                                 term_set_font(wanted);      // (sets the RastPort's too)
+                                VtProbeFont();
+                            }
                             else
                             {
                                 SetFont(win->RPort, wanted);
@@ -2324,7 +2317,12 @@ static void Receive(void)
 
                 BbsWrite((char *)text, shown);
                 if (STATE_IS(APP_SCROLLBACK_ENABLED))
-                    AddBuf(text, shown);
+                {
+                    long kept = shown;
+                    UBYTE *sb = ScrollbackBytes(text, &kept);
+
+                    AddBuf(sb, kept);
+                }
             }
         }
 
@@ -2775,7 +2773,7 @@ int main(int argc, char *argv[])
         goto clean_exit;
     }
 
-    LayersBase = OpenLibrary("layers.library", 39);
+    LayersBase = OpenLibrary("layers.library", 33);
     CyberGfxBase = OpenLibrary("cybergraphics.library", 40);   // Picasso96 / CyberGraphX
 
     UtilityBase = OpenLibrary("utility.library", 0);
@@ -2949,10 +2947,6 @@ int main(int argc, char *argv[])
 
         } else { // app is not iconified
 
-            // Windows opened or closed over the built-in renderer's terminal since the last time
-            if (STATE_IS(APP_RENDERER_BUILTIN))
-                BuiltinCovered();
-
             winsig = 1L << win->UserPort->mp_SigBit;
             if(isConnected)
             {
@@ -2967,7 +2961,7 @@ int main(int argc, char *argv[])
                 sigmask |= TimerSig() | RexxSig();
 
                 // SSH bytes already decrypted: the socket will not wake us for them
-                timeout.tv_sec = SshConn_Buffered() ? 0 : 30; timeout.tv_usec = 0;
+                timeout.tv_sec = (SshConn_Buffered() || (STATE_IS(APP_RENDERER_BUILTIN) && VtHeldPending())) ? 0 : 30; timeout.tv_usec = 0;  // held UTF-8 prefix (MA2-14): poll, do not sleep 30 s
                 i = WaitSelect(tcpSocket + 1, &rd, 0, 0, &timeout, &sigmask);
 
                 #ifdef _DEBUG_WAITSELECT
@@ -3011,6 +3005,8 @@ int main(int argc, char *argv[])
                     if (STATE_ARE_ALL(APP_TITLE_BAR_ENABLED | APP_LEDS_ENABLED))
                         EraseRect(&scr->RastPort, scr->Width-72, 2, scr->Width-60, BAR_TEXT_HEIGHT-1);
                 }
+                else if (STATE_IS(APP_RENDERER_BUILTIN))
+                    VtFlushHeld();      // MA2-14: socket and SSH drained: draw a held UTF-8 prefix now
 
             } else {  // not connected
                 ULONG sig;
@@ -3094,6 +3090,7 @@ clean_exit:
     Sound_Close();
     CaptureStop();                  // the capture file is complete
     CloseDisplay(TRUE);
+    VtClose();                      // the built-in terminal outlives display reopens, not the program
 
     ClearScrollBack();
     FreeMem(scrollbackList, sizeof(struct List));
@@ -3164,9 +3161,23 @@ static UBYTE *DisplayBytes(struct Utf8Decoder *d, UBYTE *data, long *len)
 {
     static UBYTE decoded[DISPLAY_BYTES_MAX + 1];    // + 1: Charset_Utf8ToCp437
 
-    if (prefs.Charset != CHARSET_UTF8 || PETSCII_SESSION() || *len > DISPLAY_BYTES_MAX)
+    if (prefs.Charset != CHARSET_UTF8 || PETSCII_SESSION() || *len > DISPLAY_BYTES_MAX
+     || Vt_EngineDecodesUtf8(&prefs))       // the engine reads the UTF-8 itself
         return data;
     *len = (long)Charset_Utf8ToCp437(d, data, (size_t)*len, decoded);
+    return decoded;
+}
+
+// The scrollback keeps the IBM set: when the engine took the UTF-8 itself
+// (Terminal Type Unix, or Automatic with Character Set UTF-8) the scrollback
+// gets its own conversion of the same bytes.
+static UBYTE *ScrollbackBytes(UBYTE *data, long *len)
+{
+    static UBYTE decoded[DISPLAY_BYTES_MAX + 1];
+
+    if (!Vt_EngineDecodesUtf8(&prefs) || PETSCII_SESSION() || *len > DISPLAY_BYTES_MAX)
+        return data;
+    *len = (long)Charset_Utf8ToCp437(&utf8Sb, data, (size_t)*len, decoded);
     return decoded;
 }
 
@@ -3916,12 +3927,31 @@ static void CopyScreen(void)
 static void OutKey(unsigned char key);
 static void SendTypedChar(UBYTE c);
 
+// MA3-4: the mouse button of an IDCMP_MOUSEBUTTONS code as the terminal numbers it
+// (0 left, 1 middle); -1 for the right button, which belongs to the menus.
+static int MouseButtonOf(UWORD code)
+{
+    switch (code & ~IECODE_UP_PREFIX)
+    {
+    case IECODE_LBUTTON: return 0;
+    case IECODE_MBUTTON: return 1;
+    default:             return -1;
+    }
+}
+
+static int QualifierToVtMods(UWORD qual)
+{
+    return ((qual & (IEQUALIFIER_LSHIFT | IEQUALIFIER_RSHIFT)) ? VT_MOD_SHIFT : 0)
+         | ((qual & (IEQUALIFIER_LALT | IEQUALIFIER_RALT)) ? VT_MOD_ALT : 0)
+         | ((qual & IEQUALIFIER_CONTROL) ? VT_MOD_CTRL : 0);
+}
+
 // Edit > Paste: the clipboard's text, typed.
 static void PasteClipboard(void)
 {
     UBYTE *iff = AllocVec(CLIP_READ_MAX, MEMF_ANY);
     char *text = AllocVec(CLIP_READ_MAX, MEMF_ANY);
-    char *out = AllocVec(2 * CLIP_READ_MAX, MEMF_ANY);
+    char *out = AllocVec(2 * CLIP_READ_MAX + 16, MEMF_ANY);   // + the bracketed-paste markers
     ULONG len;
     size_t n, i;
 
@@ -3947,9 +3977,11 @@ static void PasteClipboard(void)
                                        isConnected && TELNET_DATA(), out);
             if (isConnected)
             {
-                TCPSend(out, (long)m);
                 if (STATE_IS(APP_LOCAL_ECHO))
                     EchoWrite((UBYTE *)out, (long)m);
+                if (vtTerm && STATE_IS(APP_RENDERER_BUILTIN))
+                    m = Vt_PasteBracket(vtTerm, out, m, prefs.Charset == CHARSET_UTF8);    // MA3-7/8: ?2004
+                TCPSend(out, (long)m);
             }
             else
                 EchoWrite((UBYTE *)out, (long)m);
@@ -4008,7 +4040,17 @@ static void GetWindowMsg(struct Window *wwin)
         case IDCMP_MOUSEBUTTONS:
             if (wwin == win)
             {
-                if (code == SELECTDOWN)
+                int mbutton = MouseButtonOf(code);
+
+                // MA3-4/5: a program that asked for the mouse gets it (Shift keeps selecting)
+                if (mbutton >= 0 && VtMouseOwned((qual & (IEQUALIFIER_LSHIFT | IEQUALIFIER_RSHIFT)) != 0))
+                {
+                    UWORD row, col;
+
+                    SelectionCell(mouseX, mouseY, &row, &col);
+                    VtMouseButton(mbutton, (code & IECODE_UP_PREFIX) == 0, col - 1, row - 1, QualifierToVtMods(qual));
+                }
+                else if (code == SELECTDOWN)
                     SelectionDown(mouseX, mouseY);
                 else if (code == SELECTUP)
                     SelectionUp();
@@ -4017,7 +4059,17 @@ static void GetWindowMsg(struct Window *wwin)
 
         case IDCMP_MOUSEMOVE:
             if (wwin == win)
-                SelectionMove(mouseX, mouseY);
+            {
+                if (VtMouseOwned(FALSE))
+                {
+                    UWORD row, col;
+
+                    SelectionCell(mouseX, mouseY, &row, &col);
+                    VtMouseMove(col - 1, row - 1, QualifierToVtMods(qual));
+                }
+                else
+                    SelectionMove(mouseX, mouseY);
+            }
             break;
 
         case IDCMP_GADGETUP:
@@ -4133,7 +4185,23 @@ static void GetWindowMsg(struct Window *wwin)
                     break;
                 }
             }
-            if(wwin == win  ||  wwin == toolBarWin)
+            if (wwin == win && Renderer_Route(prefs.State) == ROUTE_BUILTIN
+                && !(code & IECODE_UP_PREFIX)
+                && (Vt_WheelButton(code) >= 0 || (qual & (IEQUALIFIER_LSHIFT | IEQUALIFIER_RSHIFT)))
+                && VtScrollKey(code, (qual & (IEQUALIFIER_LSHIFT | IEQUALIFIER_RSHIFT)) != 0))
+            {
+                // MA4: Shift+Page Up/Down and the wheel scroll the engine's scrollback; the key is not sent.
+            }
+            else if (wwin == win && Vt_WheelButton(code) >= 0
+                && VtMouseOwned((qual & (IEQUALIFIER_LSHIFT | IEQUALIFIER_RSHIFT)) != 0))
+            {
+                // NewMouse wheel to a program that asked for the mouse: press only, no release.
+                UWORD row, col;
+
+                SelectionCell(mouseX, mouseY, &row, &col);
+                VtMouseButton(Vt_WheelButton(code), TRUE, col - 1, row - 1, QualifierToVtMods(qual));
+            }
+            else if(wwin == win  ||  wwin == toolBarWin)
             {
                 struct InputEvent ie;
                 register ULONG i, length;
@@ -4373,6 +4441,8 @@ static void GetWindowMsg(struct Window *wwin)
 
                     case MENU_SCROLLBACK:
                         UpdatePrefsFromMenu(item, APP_SCROLLBACK_ENABLED);
+                        // the built-in terminal sizes its scrollback at vt_new(): full reopen
+                        if (Renderer_Route(prefs.State) == ROUTE_BUILTIN) shouldRestart = TRUE;
                         break;
 
                     case MENU_PACKET_WINDOW:
@@ -4421,12 +4491,29 @@ static void GetWindowMsg(struct Window *wwin)
                         AnsiMusic_Init(&ansiMusic);
                         break;
 
+                    case MENU_ICE_COLOURS:
+                        prefs.Blink = (item->Flags & CHECKED) ? BLINK_ICE : BLINK_STEADY;
+                        VtRedraw();
+                        break;
+
                     case MENU_CHARSET_CP437:
                     case MENU_CHARSET_LATIN1:
                     case MENU_CHARSET_UTF8:
                         prefs.Charset = (UBYTE)((ULONG)GTMENUITEM_USERDATA(item) - MENU_CHARSET_CP437);
                         Charset_Utf8Init(&utf8In);
                         Charset_Utf8Init(&utf8Echo);
+                        Charset_Utf8Init(&utf8Sb);
+                        VtApplyPersonality();
+                        break;
+
+                    case MENU_TERMTYPE_AUTO:
+                    case MENU_TERMTYPE_BBS:
+                    case MENU_TERMTYPE_UNIX:
+                        prefs.TermType = (UBYTE)((ULONG)GTMENUITEM_USERDATA(item) - MENU_TERMTYPE_AUTO);
+                        Charset_Utf8Init(&utf8In);
+                        Charset_Utf8Init(&utf8Echo);
+                        Charset_Utf8Init(&utf8Sb);
+                        VtApplyPersonality();
                         break;
 
                     case MENU_COPY:
@@ -4611,6 +4698,7 @@ static void GetWindowMsg(struct Window *wwin)
                                           prefs.FontName, sizeof(prefs.FontName),
                                           &prefs.FontSize))
                             RequestDisplayReopen(&before);
+                            VtApplyPersonality();            // the Terminal Type of the site or the settings
                         break;
                     }
 
@@ -4678,6 +4766,7 @@ static void GetWindowMsg(struct Window *wwin)
                     case MENU_SCROLLBACK_LINES:
                         InitializeReqToolsLib(reqtoolsTags);
                         rtGetLongA(&prefs.nScrollbackLines, "ScrollBack Lines..", NULL, (struct TagItem *)&reqtoolsTags);
+                        if (Renderer_Route(prefs.State) == ROUTE_BUILTIN && STATE_IS(APP_SCROLLBACK_ENABLED)) shouldRestart = TRUE;
                         break;
 
                     case MENU_SNAPSHOT_WINDOWS:
@@ -5232,6 +5321,9 @@ static BOOL OpenConsoleDevice(void)
 static void CloseConsoleDevice(void)
 {
     ReleaseWorkbenchPens();
+    // The built-in terminal's engine stays: a display reopen draws its cells
+    // again (VtOpen); only the pens go with the screen.
+    VtReleasePens();
 
     // https://amigadev.elowar.com/read/ADCD_2.1/Devices_Manual_guide/node0190.html
     if (isConDeviceOpened)
@@ -5643,7 +5735,7 @@ void OpenAppWindow(void)
         // The terminal window is 80 columns wide and centred
         // (LimitTerminalWidth): the screen around it is terminal background,
         // ANSI black, not the UI's pen 0 (grey on 32+ colours).
-        if (LayersBase)
+        if (LayersBase && LayersBase->lib_Version >= 39)
             InstallLayerInfoHook(&scr->LayerInfo, &terminalBackFill);
 
         if(STATE_IS(APP_PACKET_WINDOW_ENABLED))
@@ -5786,10 +5878,14 @@ void CreateAppMenus(void)
     GetNewMenuItemFromID(MENU_CHARSET_CP437)->nm_Flags  = CHECKIT | (prefs.Charset == CHARSET_CP437 ? CHECKED : 0);
     GetNewMenuItemFromID(MENU_CHARSET_LATIN1)->nm_Flags = CHECKIT | (prefs.Charset == CHARSET_LATIN1 ? CHECKED : 0);
     GetNewMenuItemFromID(MENU_CHARSET_UTF8)->nm_Flags   = CHECKIT | (prefs.Charset == CHARSET_UTF8 ? CHECKED : 0);
+    GetNewMenuItemFromID(MENU_TERMTYPE_AUTO)->nm_Flags = CHECKIT | (prefs.TermType == TERMTYPE_AUTO ? CHECKED : 0);
+    GetNewMenuItemFromID(MENU_TERMTYPE_BBS)->nm_Flags  = CHECKIT | (prefs.TermType == TERMTYPE_BBS ? CHECKED : 0);
+    GetNewMenuItemFromID(MENU_TERMTYPE_UNIX)->nm_Flags = CHECKIT | (prefs.TermType == TERMTYPE_UNIX ? CHECKED : 0);
     GetNewMenuItemFromID(MENU_BELL_FLASH)->nm_Flags = CHECKIT | (prefs.Bell == BELL_FLASH ? CHECKED : 0);
     GetNewMenuItemFromID(MENU_BELL_SOUND)->nm_Flags = CHECKIT | (prefs.Bell == BELL_SOUND ? CHECKED : 0);
     GetNewMenuItemFromID(MENU_BELL_OFF)->nm_Flags   = CHECKIT | (prefs.Bell == BELL_OFF ? CHECKED : 0);
     GetNewMenuItemFromID(MENU_ANSI_MUSIC)->nm_Flags = HIGHCOMP | CHECKIT | MENUTOGGLE | (prefs.AnsiMusic ? CHECKED : 0);
+    GetNewMenuItemFromID(MENU_ICE_COLOURS)->nm_Flags = HIGHCOMP | CHECKIT | MENUTOGGLE | (prefs.Blink == BLINK_ICE ? CHECKED : 0);
 
     // A capture runs on over a display reopen: its item keeps the check mark.
     if (captureFile)
@@ -5919,6 +6015,11 @@ BOOL OpenDisplay(void)
             ResetMenuStrip(win, mainMenuStrip);
         }
 
+
+    // Another renderer: the built-in terminal's engine, kept over the
+    // reopen (CloseConsoleDevice), and its text go.
+    if (!STATE_IS(APP_RENDERER_BUILTIN))
+        VtClose();
 
     if (STATE_IS(APP_RENDERER_BUILTIN))
     {
