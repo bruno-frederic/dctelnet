@@ -95,6 +95,7 @@ ifeq ($(OS),Windows_NT)
 	SHELL       := powershell.exe
 	.SHELLFLAGS := -NoProfile -NoLogo -NonInteractive -ExecutionPolicy bypass -Command
 	RM    := function rmps{ foreach ($$f in $$args){rm -Literal $$f -EA Silent} } ; rmps
+	CP:=cp
 	TOUCH := $$null = New-Item -ItemType File -Force -Path
 	MKDIR := function mdps{ foreach ($$f in $$args){$$null = mkdir -Force -Path  $$f} } ; mdps
 #   PODMAN_USERNS=keep-id needed when podman is used instead of docker:
@@ -104,6 +105,7 @@ ifeq ($(OS),Windows_NT)
 	AMIGADATE = $(shell Get-Date -Format 'd.M.yyyy')
 else
 	RM:=rm -f
+	CP:=cp -p
 	TOUCH:=touch
 	MKDIR := mkdir -p
 	DOCKER := env PODMAN_USERNS=keep-id  docker
@@ -317,9 +319,9 @@ $(INSTALLDIR):
 # Slow; for regular development on DCTelnet, "make DEBUG=yes docker-debug ibmcon install" is much faster.
 install: $(TARGET_EXE) ibmcon sshlib | $(INSTALLDIR)
 	@echo "------------- $@ $^ --------------------"
-	cp $(TARGET_EXE) $(INSTALLDIR)
-	cp sshlib/build/68000/ssh.library  $(INSTALLDIR)/Libs/ssh.library
-	cp ../ibmcon/ibmcon.device $(INSTALLDIR)/Devs
+	$(CP) $(TARGET_EXE) $(INSTALLDIR)
+	$(CP) sshlib/build/68000/ssh.library  $(INSTALLDIR)/Libs/ssh.library
+	$(CP) ../ibmcon/ibmcon.device $(INSTALLDIR)/Devs
 
 clean: 68000_clean 68020_clean
 
