@@ -58,6 +58,8 @@ CPU       ?= 68000
 ifeq ($(OS),Windows_NT)
 	NDK32_INC ?= $(VBCC)/NDK3.2R4/Include_H
 	NET_INC   ?= third_party/netinclude
+else
+	OS = $(shell uname -s)
 endif
 
 ifeq ($(TOOLCHAIN),gcc)
@@ -158,7 +160,7 @@ endif
 
 BUILD_HASH := $(shell git rev-parse --short HEAD 2>$(NULL))
 
-CFLAGS += -D"COMPILER_STRING=$(COMPILER_STRING)" -DBUILD_HASH=$(BUILD_HASH) -D"AMIGADATE=$(AMIGADATE)"  $(INCLUDES)
+CFLAGS += -D"COMPILER_STRING=$(COMPILER_STRING)-$(OS)" -DBUILD_HASH=$(BUILD_HASH) -D"AMIGADATE=$(AMIGADATE)"  $(INCLUDES)
 
 
 TARGET     := DCTelnet
