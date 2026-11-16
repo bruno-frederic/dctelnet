@@ -1,63 +1,46 @@
-/**
- * @file test-speed.c
- * @brief Measure the total duration of DCTelnet --test-speed
+/* test-speed.rexx -- Run on the Amiga to benchmark DCTelnet startup, rendering, and receiving speed
  *
- * First build and install a DCTelnet release binary:
- *  make clean ci install
- *  - Built with VBCC
- * vc +aos68k -O3 -speed -o ../build/vbcc-68000-release/test-speed test-speed.c
- * cp ../build/vbcc-68000-release/test-speed ../build/installed/DCTelnet
- * cp test-speed.ans ../build/installed/DCTelnet/speedtest.ans
+ * The renderer duration measures successive ConWrite() calls processing 4096-byte buffers from
+ * tests\test-speed.ans, which represents navigation in the message reader of Mystic BBS.
  *
- * On Amiga:
- * CD COD:DCTelnet/build/installed/DCTelnet
- * test-speed
+ * Call test-speed-receive.rexx to benchmark Receive() throughput.
  *
- * @author Bruno FREDERIC
- * @date 2026
+ * This script also reports the end-to-end duration, including renderer execution, application
+ * startup and shutdown, and library, device, and component initialization. The receiving test
+ * duration is measured separately.
  */
 
-#include <proto/exec.h>
-#include <proto/dos.h>
-#include <proto/intuition.h>
+parse arg Renderer Iteration .
+if Iteration = '' then do
+    say 'Usage: rx test-speed.rexx <Renderer> <Iteration>'
+    exit 20
+end
 
-struct IntuitionBase *IntuitionBase;
+ADDRESS COMMAND
 
-int main(void)
-{
-    CONST_STRPTR cmd = "DCTelnet.68000 --test-speed";
-    ULONG before_s, before_micros;
-    ULONG after_s, after_micros;
-    ULONG elapsed_tenths;
+/* Keep this path in sync with INSTALLDIR in src/Makefile; make install places the binaries used by
+ * this script here.
+ */
+INSTALLDIR  = "/build/installed/DCTelnet"
 
-    IntuitionBase = (struct IntuitionBase *) OpenLibrary("intuition.library", 36);
-    if (IntuitionBase == NULL)  return RETURN_FAIL;
+DO i = 1 TO Iteration
+    /* DCTelnet --test-speed will output: "renderer_duration_seconds":x.x */
+    CALL WRITECH('STDOUT', ' { ')
+    dummy = TIME('R')
+    INSTALLDIR'/DCTelnet.68000 --test-speed' Renderer
+    elapsed = TIME('E')
+    SAY ','
 
-    CurrentTime(&before_s, &before_micros);
+    CALL WRITECH('STDOUT', '   "total_duration_seconds":'elapsed', ')
 
-    Execute(cmd, (BPTR) 0, (BPTR) 0);
+    /* Launch DCTelnet in the background, detached from the Shell window */
+    'RUN >NIL: "'INSTALLDIR'/DCTelnet.68000"'
+    'SYS:Rexxc/WaitForPort "DCTELNET.1"'
+    ADDRESS 'REXX' 'test-speed-receive.rexx localhost 23 user ***'
 
-    CurrentTime(&after_s, &after_micros);
+    ADDRESS 'DCTELNET.1' QUIT
 
-    // Convert the elapsed time to tenths of a second, rounding to the nearest tenth using integer
-    // arithmetic.
-    // CurrentTime() updates the time at most 60 times per second, so the sub-second value has a
-    // maximum resolution of about 0.01667 s, which is sufficient for a tenth-of-a-second
-    // measurement.
-    if (after_micros >= before_micros)
-    {
-        elapsed_tenths = (after_s - before_s) * 10
-                       + (after_micros - before_micros + 50000) / 100000;
-    }
-    else
-    {
-        elapsed_tenths = (after_s - before_s - 1) * 10
-                       + (1000000 - before_micros + after_micros + 50000) / 100000;
-    }
+    IF i == Iteration THEN CALL WRITECH('STDOUT', ' }')
+    ELSE                   SAY ' },'
+END
 
-    Printf("{\"total_duration_seconds\":%ld.%ld}\r\n", elapsed_tenths / 10, elapsed_tenths % 10);
-
-    if (IntuitionBase)  CloseLibrary((struct Library *) IntuitionBase);
-
-    return RETURN_OK;
-}
