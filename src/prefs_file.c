@@ -163,6 +163,11 @@ UWORD *Prefs_Palette(struct PrefsStruct *p)
     return (p->State & (APP_RENDERER_BUILTIN | APP_RENDERER_XEM_LIB)) ? p->AnsiColors : p->DeviceColors;
 }
 
+ULONG Prefs_FirstRunState(ULONG rendererBits)
+{
+    return APP_FULLSCREEN | APP_SCROLLBACK_ENABLED | rendererBits;
+}
+
 BOOL Prefs_ScreenFits(const struct PrefsStruct *p)
 {
     if (p->State & APP_RENDERER_BUILTIN)
