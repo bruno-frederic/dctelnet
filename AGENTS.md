@@ -7,3 +7,4 @@
 - If a required check cannot be run, explain why and report it as unverified.
 - Create local commits only for changes made for the current task, after required checks pass. Do not include pre-existing or unrelated changes. Do not amend existing commits or push unless explicitly asked.
 - Follow any more-specific `AGENTS.md` instructions in directories being changed.
+- Plans: docs/plans/2026-10-30_modern-ansi-engine.md (modern ANSI through the embedded vtcon engine; start there).

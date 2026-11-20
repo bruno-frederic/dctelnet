@@ -61,6 +61,8 @@ void SitePrefs_ApplyEntry(struct PrefsStruct *live, const struct PrefsStruct *gl
         memcpy(result.XemLibrary, e->XemLibrary, sizeof(result.XemLibrary));
         memcpy(result.TelnetTermType, e->TelnetTermType, sizeof(result.TelnetTermType));
         result.Charset = e->Charset;
+        result.Blink = e->Blink;
+        result.TermType = e->TermType;
         copy_flags(&result, e, TERMINAL_GROUP_FLAGS);
     }
     if (entry->groups & SITE_GROUP_KEYBOARD)
@@ -128,7 +130,7 @@ static const struct { size_t offset, size; } prefsFields[] =
     F(nScrollbackLines), F(TelnetTermType), F(XemLibrary),
     F(XferLibrary), F(DownloadPath), F(UploadPath), F(XferOptions),
     F(RedialTries), F(RedialDelay), F(AntiIdleMinutes), F(ConnectTimeout), F(Charset),
-    F(Bell), F(AnsiMusic), F(Reserved)
+    F(Bell), F(AnsiMusic), F(Blink), F(TermType), F(Reserved)
 #undef F
 };
 
@@ -422,6 +424,9 @@ void SitePrefs_GroupSummary(ULONG group, const struct PrefsStruct *p, char *out,
         if (p->State & APP_RLOGIN)         put(out, &len, max, ", Rlogin");
         if (p->State & APP_SSH)            put(out, &len, max, ", SSH");
         if (p->State & APP_LOCAL_ECHO)     put(out, &len, max, ", Local Echo");
+        if (p->TermType == TERMTYPE_BBS)   put(out, &len, max, ", BBS");
+        if (p->TermType == TERMTYPE_UNIX)  put(out, &len, max, ", Unix");
+        if (p->Blink == BLINK_STEADY)      put(out, &len, max, ", No iCE Colours");
     }
     else if (group == SITE_GROUP_KEYBOARD)
     {
