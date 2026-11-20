@@ -38,6 +38,23 @@ static void test_an_older_v2_file_loads_with_the_new_fields_zero(void)
     assert(got.XferOptions[0] == 0 && got.XferOptions[51] == 0);
 }
 
+/* MA2-2: Terminal Type is saved, and a file from before it (the struct ended
+ * at Blink) loads as Automatic. */
+static void test_terminal_type_is_saved_and_an_older_file_loads_automatic(void)
+{
+    struct PrefsStruct p, got;
+    UWORD older = (UWORD)offsetof(struct PrefsStruct, TermType);
+
+    memset(&p, 0, sizeof(p));
+    p.TermType = TERMTYPE_UNIX;
+    assert(Prefs_Decode(file, v2_file(&p, sizeof(p)), &got) == PREFS_FILE_V2);
+    assert(got.TermType == TERMTYPE_UNIX);
+    memset(&p, 0x11, sizeof(p));
+    assert(Prefs_Decode(file, v2_file(&p, older), &got) == PREFS_FILE_V2);
+    assert(got.TermType == TERMTYPE_AUTO && got.Reserved[0] == 0);
+    assert(memcmp(&p, &got, older) == 0);
+}
+
 /* A file from a newer 2.x: the fields this build knows, the rest ignored. */
 static void test_a_newer_v2_file_loads_the_fields_it_knows(void)
 {
@@ -103,9 +120,10 @@ static void test_an_old_prefs_file_keeps_all_its_settings(void)
     assert(got.nScrollbackLines == 1000);
     /* Use Workbench, BS/DEL swap, tool bar, local echo, PETSCII; title bar,
      * LEDs and scrollback were not hidden; the console was ibmcon.device. */
-    assert(got.State == (APP_BACKSPACE_DEL_SWAPPED | APP_TOOL_BAR_ENABLED | APP_LOCAL_ECHO | APP_PETSCII_MODE
+    assert(got.State == (APP_BACKSPACE_DEL_SWAPPED | APP_TOOL_BAR_ENABLED | APP_LOCAL_ECHO
                          | APP_TITLE_BAR_ENABLED | APP_LEDS_ENABLED | APP_SCROLLBACK_ENABLED
                          | APP_RENDERER_IBMCON_DEVICE));
+    assert(got.TermType == TERMTYPE_PETSCII);    /* the 1.x PETSCII flag became the terminal type */
 }
 
 /* The builds before v2.0 appended settings at 444 (a 508-byte struct). */
@@ -193,10 +211,44 @@ static void test_a_1x_file_gives_the_built_in_renderer_its_colours(void)
     assert(got.AnsiColors[7] == 0xFFF && got.AnsiColors[1] == 0xF00);   /* white, red: ANSI order */
 }
 
+/* Shift+Page Up scrolls back out of the box: a first run (no prefs file)
+ * has Scrollback History on, full screen, and the renderer it is given. */
+static void test_a_first_run_has_scrollback_history_on(void)
+{
+    ULONG s = Prefs_FirstRunState(APP_RENDERER_BUILTIN);
+
+    assert(s & APP_SCROLLBACK_ENABLED);
+    assert(s & APP_FULLSCREEN);
+    assert((s & (APP_RENDERER_BUILTIN | APP_RENDERER_XEM_LIB | APP_RENDERER_IBMCON_DEVICE)) == APP_RENDERER_BUILTIN);
+}
+
+/* PETSCII Mode used to be State bit 15; it is now Terminal Type PETSCII.
+ * A file that still has the bit loads as that type with the bit clear, and
+ * Terminal Type 3 itself loads unchanged. */
+static void test_the_old_petscii_flag_becomes_the_petscii_terminal_type(void)
+{
+    struct PrefsStruct p, got;
+
+    memset(&p, 0, sizeof(p));
+    p.State = APP_LOCAL_ECHO | APP_OLD_PETSCII_MODE;
+    p.TermType = TERMTYPE_UNIX;
+    assert(Prefs_Decode(file, v2_file(&p, sizeof(p)), &got) == PREFS_FILE_V2);
+    assert(got.TermType == TERMTYPE_PETSCII && Prefs_IsPetscii(&got));
+    assert(got.State == APP_LOCAL_ECHO);
+    memset(&p, 0, sizeof(p));
+    p.TermType = TERMTYPE_PETSCII;
+    assert(Prefs_Decode(file, v2_file(&p, sizeof(p)), &got) == PREFS_FILE_V2);
+    assert(got.TermType == TERMTYPE_PETSCII && got.State == 0);
+    p.TermType = TERMTYPE_BBS;
+    assert(Prefs_Decode(file, v2_file(&p, sizeof(p)), &got) == PREFS_FILE_V2);
+    assert(!Prefs_IsPetscii(&got));
+}
+
 int main(void)
 {
     test_a_v2_file_round_trips();
     test_an_older_v2_file_loads_with_the_new_fields_zero();
+    test_terminal_type_is_saved_and_an_older_file_loads_automatic();
     test_a_newer_v2_file_loads_the_fields_it_knows();
     test_damaged_files_are_refused();
     test_an_old_prefs_file_keeps_all_its_settings();
@@ -206,6 +258,8 @@ int main(void)
     test_a_short_old_file_keeps_the_essentials();
     test_the_built_in_renderer_fits_any_screen_of_80x25_cells();
     test_a_1x_file_gives_the_built_in_renderer_its_colours();
+    test_a_first_run_has_scrollback_history_on();
+    test_the_old_petscii_flag_becomes_the_petscii_terminal_type();
     printf("prefs_file: all assertions passed\n");
     return 0;
 }

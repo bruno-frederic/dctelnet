@@ -26,12 +26,14 @@
 #include "prefs.h"
 #include "site_prefs.h"
 #include "charset.h"               // CHARSET_*
+#include "vtpersonality.h"          // Vt_CharsetAfterTermType()
 #include "prefs_file.h"             // Prefs_Palette()
 #include "Xem_wrapper.h"                 // SaveXemOptions()
 #include "listsel.h"
 #include "textedit.h"
 #include "ansiscan.h"
 #include "booklist.h"
+#include "renderer.h"
 #include <intuition/sghooks.h>
 
 struct BookStruct
@@ -1111,8 +1113,8 @@ static ULONG NextSettingsId(struct List *list)
 enum
 {
     SG_SCREEN_OVR, SG_SCREEN_SUM, SG_SCREEN_CUR, SG_SCREEN_FONT, SG_SCREEN_PALETTE,
-    SG_TERM_OVR, SG_TERM_SUM, SG_TERM_CUR, SG_TERM_PETSCII, SG_TERM_XEMLIB, SG_TERM_DISPID,
-    SG_TERM_RAW, SG_TERM_ECHO, SG_TERM_RENDERER, SG_TERM_RLOGIN, SG_TERM_CHARSET, SG_TERM_SSH,
+    SG_TERM_OVR, SG_TERM_SUM, SG_TERM_CUR, SG_TERM_XEMLIB, SG_TERM_DISPID,
+    SG_TERM_RAW, SG_TERM_ECHO, SG_TERM_RENDERER, SG_TERM_RLOGIN, SG_TERM_CHARSET, SG_TERM_SSH, SG_TERM_TERMTYPE,
     SG_KEY_OVR, SG_KEY_SUM, SG_KEY_CUR, SG_KEY_BSDEL, SG_KEY_CRLF, SG_KEY_FKEYS, SG_KEY_VT,
     SG_XFER_OVR, SG_XFER_SUM, SG_XFER_CUR, SG_XFER_PROTO, SG_XFER_OPTS,
     SG_OK, SG_CANCEL,
@@ -1143,15 +1145,15 @@ static const struct SettingsGadgetDef settingsDefs[SG_COUNT] =
     {  80,  42, 112, 13, "Terminal",             PLACETEXT_LEFT,  CYCLE_KIND    },
     { 196,  42, 300, 13, NULL,                   0,               TEXT_KIND     },
     { 500,  42, 112, 13, "Use Current",          PLACETEXT_IN,    BUTTON_KIND   },
-    {  80,  59,  26, 11, "PETSCII Mode",         PLACETEXT_RIGHT, CHECKBOX_KIND },
     { 316,  58, 136, 13, "XEM Library...",       PLACETEXT_IN,    BUTTON_KIND   },
     { 456,  58, 120, 13, "Display ID...",        PLACETEXT_IN,    BUTTON_KIND   },
     {  80,  75,  26, 11, "Raw Connection",       PLACETEXT_RIGHT, CHECKBOX_KIND },
     { 256,  75,  26, 11, "Local Echoback",       PLACETEXT_RIGHT, CHECKBOX_KIND },
-    {  80,  91, 176, 13, "Renderer",             PLACETEXT_LEFT,  CYCLE_KIND    },
+    {  80,  91, 136, 13, "Renderer",             PLACETEXT_LEFT,  CYCLE_KIND    },
     { 432,  75,  26, 11, "Rlogin",               PLACETEXT_RIGHT, CHECKBOX_KIND },
-    { 344,  91, 176, 13, "Characters",           PLACETEXT_LEFT,  CYCLE_KIND    },
+    { 312,  91,  96, 13, "Characters",           PLACETEXT_LEFT,  CYCLE_KIND    },
     { 536,  75,  26, 11, "SSH",                  PLACETEXT_RIGHT, CHECKBOX_KIND },
+    { 516,  91,  96, 13, "Terminal Type",        PLACETEXT_LEFT,  CYCLE_KIND    },
 
     {  80, 113, 112, 13, "Keyboard",             PLACETEXT_LEFT,  CYCLE_KIND    },
     { 196, 113, 300, 13, NULL,                   0,               TEXT_KIND     },
@@ -1175,21 +1177,12 @@ static const struct SettingsGadgetDef settingsDefs[SG_COUNT] =
 static STRPTR overrideLabels[] = { (STRPTR)"Global", (STRPTR)"This Entry", NULL };
 // The Character Set (charset.h: CHARSET_CP437, _LATIN1, _UTF8).
 static STRPTR charsetLabels[] = { (STRPTR)"IBM PC", (STRPTR)"Amiga", (STRPTR)"UTF-8", NULL };
+// The Terminal Type (prefs.h: TERMTYPE_AUTO, _BBS, _UNIX, _PETSCII).
+static STRPTR termTypeLabels[] = { (STRPTR)"Automatic", (STRPTR)"BBS", (STRPTR)"Unix", (STRPTR)"PETSCII", NULL };
 // The Renderer cycle: APP_RENDERER_BUILTIN .. APP_RENDERER_IBMCON_DEVICE, in bit order.
 static STRPTR rendererLabels[] = { (STRPTR)"Built-in", (STRPTR)"console.device", (STRPTR)"XEM Library",
                                    (STRPTR)"ibmcon.device", NULL };
-#define RENDERER_FIRST_BIT 9    // APP_RENDERER_BUILTIN (prefs.h)
-typedef char RendererBitsInOrder[(APP_RENDERER_BUILTIN == 1UL << RENDERER_FIRST_BIT
-                                  && APP_RENDERER_IBMCON_DEVICE == 1UL << (RENDERER_FIRST_BIT + 3)) ? 1 : -1];
-
-// The Renderer cycle position for a State (its renderer bit).
-static UWORD RendererIndex(ULONG state)
-{
-    UWORD i;
-    for (i = 0; i < 4; i++)
-        if (state & (1UL << (RENDERER_FIRST_BIT + i))) return i;
-    return 0;
-}
+typedef char RendererLabelsMatch[sizeof rendererLabels / sizeof rendererLabels[0] == RENDERER_COUNT + 1 ? 1 : -1];
 
 static const ULONG groupOfOverride[4]  = { SITE_GROUP_SCREEN, SITE_GROUP_TERMINAL, SITE_GROUP_KEYBOARD, SITE_GROUP_TRANSFER };
 static const UWORD overrideGadget[4]   = { SG_SCREEN_OVR, SG_TERM_OVR, SG_KEY_OVR, SG_XFER_OVR };
@@ -1227,18 +1220,19 @@ static void RefreshSettingsWindow(const struct SiteSettings *work)
         GT_SetGadgetAttrs(settingsGadgets[summaryGadget[g]], settingsWnd, NULL,
                           GTTX_Text, summary[g], TAG_DONE);
     }
-    SetChecked(SG_TERM_PETSCII, (shown.State & APP_PETSCII_MODE) != 0);
     SetChecked(SG_TERM_RAW,     (shown.State & APP_RAW_CONNECTION) != 0);
     SetChecked(SG_TERM_ECHO,    (shown.State & APP_LOCAL_ECHO) != 0);
     SetChecked(SG_TERM_RLOGIN,  (shown.State & APP_RLOGIN) != 0);
     SetChecked(SG_TERM_SSH,     (shown.State & APP_SSH) != 0);
     GT_SetGadgetAttrs(settingsGadgets[SG_TERM_CHARSET], settingsWnd, NULL,
                       GTCY_Active, (ULONG)shown.Charset, TAG_DONE);
+    GT_SetGadgetAttrs(settingsGadgets[SG_TERM_TERMTYPE], settingsWnd, NULL,
+                      GTCY_Active, (ULONG)shown.TermType, TAG_DONE);
     SetChecked(SG_KEY_BSDEL,    (shown.State & APP_BACKSPACE_DEL_SWAPPED) != 0);
     SetChecked(SG_KEY_CRLF,     (shown.State & APP_RETURN_SENDING_CRLF) != 0);
     SetChecked(SG_KEY_VT,       (shown.State & APP_VT_KEYS) != 0);
     GT_SetGadgetAttrs(settingsGadgets[SG_TERM_RENDERER], settingsWnd, NULL,
-                      GTCY_Active, (ULONG)RendererIndex(shown.State), TAG_DONE);
+                      GTCY_Active, (ULONG)Renderer_Index(shown.State), TAG_DONE);
 }
 
 // A field of a group is about to change: the group becomes overridden, with
@@ -1446,7 +1440,8 @@ static BOOL EditEntrySettings(const char *entryName, struct SiteSettings *entry,
         if (d->kind == TEXT_KIND)  { tags[0] = GTTX_Border; tags[1] = TRUE; tags[2] = TAG_DONE; }
         if (d->kind == CYCLE_KIND) { tags[0] = GTCY_Labels;
                                      tags[1] = (ULONG)(i == SG_TERM_RENDERER ? rendererLabels
-                                                     : i == SG_TERM_CHARSET ? charsetLabels : overrideLabels);
+                                                     : i == SG_TERM_CHARSET ? charsetLabels
+                                                     : i == SG_TERM_TERMTYPE ? termTypeLabels : overrideLabels);
                                      tags[2] = TAG_DONE; }
         settingsGadgets[i] = g = CreateGadgetA(d->kind, g, &ng, (struct TagItem *)tags);
         if (!g) break;
@@ -1519,13 +1514,9 @@ static BOOL EditEntrySettings(const char *entryName, struct SiteSettings *entry,
                     if (!EditPalette(&work.prefs)) work = undo;
                     break;
 
-                case SG_TERM_PETSCII:
-                    SetFlagFromGadget(&work, SITE_GROUP_TERMINAL, SG_TERM_PETSCII, APP_PETSCII_MODE, FALSE);
-                    break;
                 case SG_TERM_RENDERER:
                     OverrideGroup(&work, SITE_GROUP_TERMINAL);
-                    work.prefs.State = (work.prefs.State & ~APP_RENDERER_ALL)
-                                     | (1UL << (RENDERER_FIRST_BIT + (code & 3)));
+                    work.prefs.State = Renderer_Select(work.prefs.State, (UWORD)code);
                     break;
                 case SG_TERM_RAW:
                     SetFlagFromGadget(&work, SITE_GROUP_TERMINAL, SG_TERM_RAW, APP_RAW_CONNECTION, FALSE);
@@ -1539,6 +1530,11 @@ static BOOL EditEntrySettings(const char *entryName, struct SiteSettings *entry,
                 case SG_TERM_CHARSET:
                     OverrideGroup(&work, SITE_GROUP_TERMINAL);
                     work.prefs.Charset = (UBYTE)code;
+                    break;
+                case SG_TERM_TERMTYPE:
+                    OverrideGroup(&work, SITE_GROUP_TERMINAL);
+                    work.prefs.TermType = (UBYTE)code;
+                    work.prefs.Charset = Vt_CharsetAfterTermType(work.prefs.TermType, work.prefs.Charset);   // MA2-13
                     break;
                 case SG_TERM_ECHO:
                     SetFlagFromGadget(&work, SITE_GROUP_TERMINAL, SG_TERM_ECHO, APP_LOCAL_ECHO, FALSE);

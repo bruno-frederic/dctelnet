@@ -10,7 +10,7 @@ CFLAGS := -std=c99 -Wall -Wextra -Werror -I../src
 STACK_MAX := 400
 STACKCHK := $(shell $(CC) -Werror -Wstack-usage=$(STACK_MAX) -c -x c /dev/null -o /dev/null 2>/dev/null && echo -Wstack-usage=$(STACK_MAX))
 
-TESTS := test_petscii_modules test_petscii_dispatch test_prefs_file test_site_prefs test_palette test_screenfont test_progdir test_listsel test_textedit test_dsr test_keys test_clip test_ansiscan test_ticks test_rexx test_rlogin test_ansimusic test_booklist test_crypto test_ssh test_knownhosts test_term_engine test_connectaddr
+TESTS := test_petscii_modules test_petscii_dispatch test_prefs_file test_site_prefs test_palette test_screenfont test_progdir test_listsel test_textedit test_dsr test_keys test_clip test_ansiscan test_ticks test_renderer test_rexx test_rlogin test_ansimusic test_booklist test_crypto test_ssh test_knownhosts test_term_engine test_connectaddr test_vtpersonality test_petscii_font
 
 # The test programs are host executables, but make only compares
 # timestamps. Docker "make ci" (Linux) and "make host-ci" (macOS) share this
@@ -21,8 +21,8 @@ ifneq ($(HOST_ID),$(shell cat .host-id 2>/dev/null))
 $(shell rm -f $(TESTS) ansimusic_dump; echo '$(HOST_ID)' > .host-id)
 endif
 
-.PHONY: all clean check-encoding check-fonts check-currenttime-null check-stack check-statics check-petscii-reopen
-all: $(TESTS) check-encoding check-fonts check-currenttime-null check-stack check-statics check-petscii-reopen
+.PHONY: all clean check-encoding check-fonts check-currenttime-null check-stack check-statics check-petscii-reopen check-debug-stack check-ssh-terminal check-petscii-termtype check-petscii-font-builtin
+all: $(TESTS) check-encoding check-fonts check-currenttime-null check-stack check-statics check-petscii-reopen check-debug-stack check-ssh-terminal check-petscii-termtype
 	@for t in $(TESTS); do echo "--- $$t ---"; ./$$t || exit 1; done
 
 # Check the file are standard printable ASCII or ISO-8859
@@ -62,6 +62,46 @@ check-currenttime-null:
 		exit 1; \
 	fi
 
+# The debug Amiga build must not use vbcc's -stack-check. Its check compares
+# the stack pointer with ONE global limit, the main task's stack bottom, but
+# DCTelnet runs C code on other processes too (CreateNewProc: the Connecting
+# window task). When that process's stack lies below the main one, every
+# checked call "overflows": the check moves SP onto the main task's stack and
+# calls exit() from the wrong process, and the machine resets (debug build,
+# `DCTelnet <host> <port>`, rig 3, 2026-10-30).
+check-debug-stack:
+	@cd ../src && if LC_ALL=C grep --quiet --text 'CreateNewProc' *.c \
+		&& LC_ALL=C grep --text 'DEBUG_CFLAGS' Makefile | LC_ALL=C grep --quiet -- '[[:space:]]-stack-check'; then \
+		echo "ERROR: src/Makefile debug flags use vbcc -stack-check, which breaks code run by a second process (CreateNewProc)."; \
+		exit 1; \
+	fi
+
+# SSH terminal wiring (host tests cannot link DCTelnet.c): the pty TERM comes from
+# Vt_SshTermName (terminfo is case-sensitive, the telnet "VT102" is unknown), the
+# pty echoes so local echo goes off right after SshConn_Start, and Backspace is
+# decided by Vt_BackspaceByte.
+check-ssh-terminal:
+	@cd ../src && if ! LC_ALL=C grep --text --quiet 'Vt_SshTermName(&prefs)' DCTelnet.c \
+		|| LC_ALL=C grep --text --after-context=12 'SshConn_Start(' DCTelnet.c | LC_ALL=C grep --text --quiet 'TelnetTermType' \
+		|| ! LC_ALL=C grep --text --after-context=12 'SshConn_Start(' DCTelnet.c | LC_ALL=C grep --text --quiet 'SetLocalEchoBack(FALSE)' \
+		|| ! LC_ALL=C grep --text --after-context=6 'static void OutKey' DCTelnet.c | LC_ALL=C grep --text --quiet 'Vt_BackspaceByte'; then \
+		echo "ERROR: DCTelnet.c must pass Vt_SshTermName to SshConn_Start, call SetLocalEchoBack(FALSE) after it, and use Vt_BackspaceByte in OutKey."; \
+		exit 1; \
+	fi
+
+# PETSCII is a Terminal Type. The old State bit (APP_OLD_PETSCII_MODE) is read
+# only by the migration in prefs_file.c; every other test of "is this PETSCII"
+# goes through Prefs_IsPetscii, the View menu checks the PETSCII item from it,
+# and the old menu item and settings checkbox are gone.
+check-petscii-termtype:
+	@cd ../src && if LC_ALL=C grep -aqE 'APP_PETSCII_MODE|MENU_PETSCII_MODE|SG_TERM_PETSCII' *.c *.h \
+		|| LC_ALL=C grep -alE 'APP_OLD_PETSCII_MODE' *.c *.h | LC_ALL=C grep -qvxE 'prefs\.h|prefs_file\.[ch]' \
+		|| ! LC_ALL=C grep -a 'MENU_TERMTYPE_PETSCII' DCTelnet.c | LC_ALL=C grep -aq 'Prefs_IsPetscii(&prefs)' \
+		|| ! LC_ALL=C grep -a 'define PETSCII_SESSION' DCTelnet.c | LC_ALL=C grep -aq 'Prefs_IsPetscii'; then \
+		echo "ERROR: PETSCII must be read through Prefs_IsPetscii; APP_OLD_PETSCII_MODE only in prefs.h, prefs_file.c and prefs_file.h; the old menu item and checkbox must stay gone."; \
+		exit 1; \
+	fi
+
 # Parse the shipped PETSCII fonts the way diskfont.library loads them. The
 # first build put the DiskFontHeader 4 bytes late and every OpenDiskFont()
 # failed silently.
@@ -95,6 +135,10 @@ MODULE_HDR := ../src/petscii_screencode.h ../src/petscii_fallback.h ../src/petsc
 
 test_petscii_modules: test_petscii_modules.c $(MODULE_SRC) $(MODULE_HDR)
 	$(CC) $(CFLAGS) -o $@ $(filter %.c,$^)
+
+test_petscii_font: test_petscii_font.c ../src/petscii_font.c ../src/petscii_glyphs.c ../src/petscii_font.h \
+                   ../build/package/DCTelnet/Fonts/Petscii/8 ../build/package/DCTelnet/Fonts/PetsciiLower/8
+	$(CC) $(CFLAGS) -Ishim -I../src -o $@ $(filter %.c,$^)
 
 test_petscii_dispatch: test_petscii_dispatch.c ../src/petscii_dispatch.c ../src/petscii_dispatch.h \
                        ../src/petscii_screencode.c ../src/petscii_fallback.c $(MODULE_HDR)
@@ -133,6 +177,9 @@ test_clip: test_clip.c ../src/clip.c ../src/clip.h ../src/charset.c ../src/chars
 test_ansiscan: test_ansiscan.c ../src/ansiscan.c ../src/ansiscan.h
 	$(CC) $(CFLAGS) -Ishim -o $@ $(filter %.c,$^)
 
+test_renderer: test_renderer.c ../src/renderer.c ../src/renderer.h ../src/prefs.h
+	$(CC) $(CFLAGS) -Ishim -o $@ $(filter %.c,$^)
+
 test_ticks: test_ticks.c ../src/ticks.c ../src/ticks.h
 	$(CC) $(CFLAGS) -Ishim -o $@ $(filter %.c,$^)
 
@@ -165,8 +212,24 @@ test_knownhosts: test_knownhosts.c ../src/knownhosts.c ../src/knownhosts.h
 	$(CC) $(CFLAGS) -Ishim -o $@ $(filter %.c,$^)
 
 # The engine is written for the Amiga: its static helpers are not all used here.
-test_term_engine: test_term_engine.c ../src/third_party/retro32-term/term-engine.c
-	$(CC) $(CFLAGS) -Wno-unused-function -Ishim -o $@ test_term_engine.c
+VTCON := ../src/third_party/vtcon
+VTCONI := -I$(VTCON)/engine
+test_vtpersonality: test_vtpersonality.c ../src/vtpersonality.c ../src/vtpersonality.h
+	$(CC) $(CFLAGS) -Wno-unused-parameter -Ishim $(VTCONI) -I$(VTCON)/render -o $@ $(filter %.c,$^)
+
+test_vtinput: test_vtinput.c ../src/vtinput.c ../src/vtinput.h $(VTCON)/engine/vtengine.c
+	$(CC) $(CFLAGS) -Wno-unused-function -Wno-unused-parameter -Ishim $(VTCONI) -o $@ test_vtinput.c ../src/vtinput.c $(VTCON)/engine/vtengine.c
+
+test_vtpens: test_vtpens.c ../src/vtpens.c ../src/vtpens.h $(VTCON)/engine/vtengine.c
+	$(CC) $(CFLAGS) -Wno-unused-function -Wno-unused-parameter -Ishim $(VTCONI) -o $@ test_vtpens.c ../src/vtpens.c $(VTCON)/engine/vtengine.c
+
+test_glyphraster: test_glyphraster.c ../src/glyphraster.c ../src/glyphraster.h $(VTCON)/render/glyphmap.c
+	$(CC) $(CFLAGS) -Wno-unused-function -Wno-unused-parameter -Ishim -I$(VTCON)/engine -I$(VTCON)/render -o $@ test_glyphraster.c ../src/glyphraster.c $(VTCON)/render/glyphmap.c
+
+test_term_engine: test_term_engine.c ../src/third_party/retro32-term/term-engine.c ../src/vtbuiltin.c ../src/vtpersonality.c ../src/glyphraster.c ../src/glyphraster.h ../src/screenfont.c ../src/vtpens.c ../src/vtinput.c ../src/vtinput.h \
+                  $(VTCON)/engine/vtengine.c $(VTCON)/render/glyphmap.c
+	$(CC) $(CFLAGS) -Wno-unused-function -Wno-unused-parameter -Ishim -I$(VTCON)/engine -I$(VTCON)/render \
+	      -o $@ test_term_engine.c ../src/glyphraster.c ../src/screenfont.c ../src/vtpersonality.c ../src/vtpens.c ../src/vtinput.c $(VTCON)/engine/vtengine.c $(VTCON)/render/glyphmap.c
 
 # A PETSCII mode change (an Address Book entry starts or ends) must take the
 # full reopen on every renderer: OpenDisplay() drops the old mode's kept text
@@ -180,3 +243,15 @@ check-petscii-reopen:
 		echo "ERROR: DCTelnet.c ReopenTerminal() must send a PETSCII mode change to the full reopen (shouldRestart), not replay the old mode's text in place."; \
 		exit 1; \
 	fi
+
+# C64 font is drawn from the program, without Petscii.font on disk: a PETSCII
+# session on ibmcon, console.device or the built-in renderer showed CP437
+# lookalikes when the font files were not installed. OpenPetsciiFonts() builds
+# both fonts from the compiled-in glyphs (test_petscii_font holds that build
+# to the shipped fonts) and must not go back to a disk lookup.
+check-petscii-font-builtin:
+	@cd ../src && body=$$(LC_ALL=C sed -n '/^static void OpenPetsciiFonts(void)/,/^}/p' DCTelnet.c); \
+	if ! printf '%s\n' "$$body" | LC_ALL=C grep --text --quiet 'BuildPetsciiFont(&petsciiFontUpperStore'; then \
+		echo "ERROR: DCTelnet.c OpenPetsciiFonts() must build the C64 fonts from the compiled-in glyphs (BuildPetsciiFont)."; exit 1; fi; \
+	if printf '%s\n' "$$body" | LC_ALL=C grep --text --quiet 'OpenBundledFont\|OpenDiskFont\|OpenFont'; then \
+		echo "ERROR: DCTelnet.c OpenPetsciiFonts() opens a font from disk: without Petscii.font installed the session shows CP437 lookalikes."; exit 1; fi

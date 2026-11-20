@@ -5,7 +5,7 @@
 #include "charset.h"
 
 /* Flags whose change needs the screen reopened (OpenAppScreen reads them).
- * APP_PETSCII_MODE is not one: the C64 display is up only during a
+ * Terminal Type PETSCII is not one: the C64 display is up only during a
  * connection, and DCTelnet.c switches it with the connection itself. */
 #define SCREEN_FLAGS  (APP_FULLSCREEN | APP_TITLE_BAR_ENABLED)
 
@@ -34,7 +34,7 @@ static void replace_keeping_geometry(struct PrefsStruct *live, const struct Pref
     copy_geometry(live, &geometry);
 }
 
-#define TERMINAL_GROUP_FLAGS  (APP_PETSCII_MODE | APP_RENDERER_ALL | APP_RAW_CONNECTION | APP_LOCAL_ECHO \
+#define TERMINAL_GROUP_FLAGS  (APP_RENDERER_ALL | APP_RAW_CONNECTION | APP_LOCAL_ECHO \
                                | APP_RLOGIN | APP_SSH)
 #define KEYBOARD_GROUP_FLAGS  (APP_BACKSPACE_DEL_SWAPPED | APP_RETURN_SENDING_CRLF | APP_VT_KEYS)
 
@@ -61,6 +61,8 @@ void SitePrefs_ApplyEntry(struct PrefsStruct *live, const struct PrefsStruct *gl
         memcpy(result.XemLibrary, e->XemLibrary, sizeof(result.XemLibrary));
         memcpy(result.TelnetTermType, e->TelnetTermType, sizeof(result.TelnetTermType));
         result.Charset = e->Charset;
+        result.Blink = e->Blink;
+        result.TermType = e->TermType;
         copy_flags(&result, e, TERMINAL_GROUP_FLAGS);
     }
     if (entry->groups & SITE_GROUP_KEYBOARD)
@@ -128,7 +130,7 @@ static const struct { size_t offset, size; } prefsFields[] =
     F(nScrollbackLines), F(TelnetTermType), F(XemLibrary),
     F(XferLibrary), F(DownloadPath), F(UploadPath), F(XferOptions),
     F(RedialTries), F(RedialDelay), F(AntiIdleMinutes), F(ConnectTimeout), F(Charset),
-    F(Bell), F(AnsiMusic), F(Reserved)
+    F(Bell), F(AnsiMusic), F(Blink), F(TermType), F(Reserved)
 #undef F
 };
 
@@ -222,6 +224,7 @@ static BOOL decode_body(struct SiteSettings *out, const UBYTE *p, size_t left, s
     {
         memset(&out->prefs, 0, sizeof(out->prefs));
         memcpy(&out->prefs, p, prefsLen < sizeof(out->prefs) ? prefsLen : sizeof(out->prefs));
+        Prefs_MigratePetscii(&out->prefs);
     }
     p += prefsLen;
     memcpy(out->fKeys, p, sizeof(out->fKeys));       p += sizeof(out->fKeys);
@@ -403,8 +406,8 @@ void SitePrefs_GroupSummary(ULONG group, const struct PrefsStruct *p, char *out,
     }
     else if (group == SITE_GROUP_TERMINAL)
     {
-        if (p->State & APP_PETSCII_MODE)
-            put(out, &len, max, "PETSCII Mode");
+        if (Prefs_IsPetscii(p))
+            put(out, &len, max, "PETSCII");
         else if (p->State & APP_RENDERER_XEM_LIB)
         {
             put(out, &len, max, "XEM ");
@@ -412,16 +415,19 @@ void SitePrefs_GroupSummary(ULONG group, const struct PrefsStruct *p, char *out,
         }
         else
             put(out, &len, max, "ANSI");
-        // The terminal type the board is told (TelnetSendTType): PETSCII Mode
-        // always says "PETSCII", whatever Display ID holds.
+        // The terminal type the board is told (TelnetSendTType): Terminal Type
+        // PETSCII always says "PETSCII", whatever Display ID holds.
         put(out, &len, max, ", type ");
-        put(out, &len, max, (p->State & APP_PETSCII_MODE) ? "PETSCII" : (const char *)p->TelnetTermType);
+        put(out, &len, max, Prefs_TelnetTermName(p));
         if (p->Charset == CHARSET_UTF8)        put(out, &len, max, ", UTF-8");
         else if (p->Charset == CHARSET_LATIN1) put(out, &len, max, ", Amiga characters");
         if (p->State & APP_RAW_CONNECTION) put(out, &len, max, ", Raw Connection");
         if (p->State & APP_RLOGIN)         put(out, &len, max, ", Rlogin");
         if (p->State & APP_SSH)            put(out, &len, max, ", SSH");
         if (p->State & APP_LOCAL_ECHO)     put(out, &len, max, ", Local Echo");
+        if (p->TermType == TERMTYPE_BBS)   put(out, &len, max, ", BBS");
+        if (p->TermType == TERMTYPE_UNIX)  put(out, &len, max, ", Unix");
+        if (p->Blink == BLINK_STEADY)      put(out, &len, max, ", No iCE Colours");
     }
     else if (group == SITE_GROUP_KEYBOARD)
     {

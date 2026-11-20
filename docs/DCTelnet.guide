@@ -64,7 +64,7 @@ Workbench@{ub}.
 - @{b}256-colour AGA and RTG@{ub} (Picasso96/CyberGraphX) screens, with the
   16 ANSI colours on pens of their own
 
-- @{b}PETSCII Mode@{ub} for Commodore 64 BBSes, with C64 fonts
+- @{b}Terminal Type PETSCII@{ub} for Commodore 64 BBSes, with C64 fonts
 
 - @{b}Per-BBS settings@{ub}: each Address Book entry can have its own font,
   palette, terminal, keyboard and transfer settings, a comment and a
@@ -131,7 +131,7 @@ screen tells which ibmcon.device it uses and where it came from.
 DCTelnet needs @{b}ibmcon.device 1.11@{ub} or later (included) for all of its
 features. Fonts in the package:
 - Petscii and PetsciiLower: the Commodore 64 upper-case and lower-case
-  character sets, used by PETSCII Mode
+  character sets, used by Terminal Type PETSCII
 - TopazPro: topaz redrawn for square pixels, used on RTG and other
   square-pixel screen modes
 
@@ -327,8 +327,8 @@ Opens a window with a list of the address that you have saved.
 
                 Settings...  - The settings for this site. There are
                                four groups: Screen (font and palette),
-                               Terminal (PETSCII Mode, renderer, XEM library,
-                               terminal type, raw connection, local echo),
+                               Terminal (renderer, XEM library, terminal
+                               type, raw connection, local echo),
                                Keyboard (BS/DEL swap, Return = CR+LF,
                                function keys) and Transfer (XPR library
                                and its options). Set a group to
@@ -383,7 +383,7 @@ NOTE:  The packet window and LEDs can not be used if this feature is
 
                               @{b}@{u} PETSCII MODE @{ub}@{uu}
                                ~~~~~~~~~~~~
-  (In DCTelnet 2.0: Terminal > PETSCII Mode.)
+  (In DCTelnet 2.0: Terminal > Terminal Type > PETSCII.)
 
   For Commodore 64 BBSes. DCTelnet tells the BBS it is a PETSCII terminal
 and shows the BBS with the C64 character set, colours and reverse video
@@ -393,11 +393,12 @@ the keys you type are sent as C64 codes.
   The C64 display is used only while connected; DCTelnet's own messages
 use the normal font.
 
-  PETSCII Mode needs the Petscii and PetsciiLower fonts (included). Without
-them, lookalike characters of the IBM character set are used and a notice
-is shown on connect.
+  The C64 characters are built into DCTelnet: no font has to be
+installed. The XEM renderer has no C64 characters; there lookalike
+characters of the IBM character set are used and a notice is shown on
+connect.
 
-TIP:   Turn it on in the Terminal group of an Address Book entry's
+TIP:   Set it in the Terminal group of an Address Book entry's
        Settings..., so it is only used for C64 BBSes.
 
                               @{b}@{u} DISABLE LEDs @{ub}@{uu}
@@ -848,8 +849,9 @@ Starting with v1.8, a compatible version of the library is included in the
 TODO
 
 New Features:
-- PETSCII Mode for Commodore 64 BBSes, with the Petscii and PetsciiLower
-  fonts (Terminal menu)
+- PETSCII Mode for Commodore 64 BBSes (Terminal menu), with the C64
+  characters built in: no font has to be installed. The Petscii and
+  PetsciiLower fonts are included for other programs.
 - Per-BBS settings: each Address Book entry can override four groups of
   settings (Screen, Terminal, Keyboard, Transfer), and has a comment and
   a login macro. Connection > Save Settings to Address Book Entry saves what
