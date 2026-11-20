@@ -38,6 +38,23 @@ static void test_an_older_v2_file_loads_with_the_new_fields_zero(void)
     assert(got.XferOptions[0] == 0 && got.XferOptions[51] == 0);
 }
 
+/* MA2-2: Terminal Type is saved, and a file from before it (the struct ended
+ * at Blink) loads as Automatic. */
+static void test_terminal_type_is_saved_and_an_older_file_loads_automatic(void)
+{
+    struct PrefsStruct p, got;
+    UWORD older = (UWORD)offsetof(struct PrefsStruct, TermType);
+
+    memset(&p, 0, sizeof(p));
+    p.TermType = TERMTYPE_UNIX;
+    assert(Prefs_Decode(file, v2_file(&p, sizeof(p)), &got) == PREFS_FILE_V2);
+    assert(got.TermType == TERMTYPE_UNIX);
+    memset(&p, 0x11, sizeof(p));
+    assert(Prefs_Decode(file, v2_file(&p, older), &got) == PREFS_FILE_V2);
+    assert(got.TermType == TERMTYPE_AUTO && got.Reserved[0] == 0);
+    assert(memcmp(&p, &got, older) == 0);
+}
+
 /* A file from a newer 2.x: the fields this build knows, the rest ignored. */
 static void test_a_newer_v2_file_loads_the_fields_it_knows(void)
 {
@@ -193,10 +210,22 @@ static void test_a_1x_file_gives_the_built_in_renderer_its_colours(void)
     assert(got.AnsiColors[7] == 0xFFF && got.AnsiColors[1] == 0xF00);   /* white, red: ANSI order */
 }
 
+/* Shift+Page Up scrolls back out of the box: a first run (no prefs file)
+ * has Scrollback History on, full screen, and the renderer it is given. */
+static void test_a_first_run_has_scrollback_history_on(void)
+{
+    ULONG s = Prefs_FirstRunState(APP_RENDERER_BUILTIN);
+
+    assert(s & APP_SCROLLBACK_ENABLED);
+    assert(s & APP_FULLSCREEN);
+    assert((s & (APP_RENDERER_BUILTIN | APP_RENDERER_XEM_LIB | APP_RENDERER_IBMCON_DEVICE)) == APP_RENDERER_BUILTIN);
+}
+
 int main(void)
 {
     test_a_v2_file_round_trips();
     test_an_older_v2_file_loads_with_the_new_fields_zero();
+    test_terminal_type_is_saved_and_an_older_file_loads_automatic();
     test_a_newer_v2_file_loads_the_fields_it_knows();
     test_damaged_files_are_refused();
     test_an_old_prefs_file_keeps_all_its_settings();
@@ -206,6 +235,7 @@ int main(void)
     test_a_short_old_file_keeps_the_essentials();
     test_the_built_in_renderer_fits_any_screen_of_80x25_cells();
     test_a_1x_file_gives_the_built_in_renderer_its_colours();
+    test_a_first_run_has_scrollback_history_on();
     printf("prefs_file: all assertions passed\n");
     return 0;
 }

@@ -38,6 +38,13 @@ void ScreenFont_Grid(UWORD width, UWORD height, UWORD gzzWidth, UWORD gzzHeight,
 #define SCREENFONT_BBS_ROWS        25   /* the Workbench window opens 80x25 (40x25) */
 UWORD ScreenFont_MaxWindowWidth(UWORD columns, UWORD cellX, UWORD borders);
 
+/* Which encoding a font has: its glyph 0xC4 is a horizontal line in an IBM
+ * (CP437) font and a letter (Latin-1 A diaeresis) in an Amiga one. TRUE when
+ * the nrows glyph rows (left-aligned, bit 15 the leftmost pixel) of a glyph
+ * width pixels wide are a line: every row empty or full, at least one full,
+ * and at most half of them (a full block is not a line). */
+BOOL ScreenFont_GlyphIsHLine(const UWORD *rows, int nrows, int width);
+
 #define TOPAZ_PRO_NAME "TopazPro.font"
 #define TOPAZ_PRO_SIZE 16
 
