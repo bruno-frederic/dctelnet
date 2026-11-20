@@ -1,7 +1,7 @@
 /* src/charset.h -- character set conversions. Pure, unit-tested on the host.
  *
  * The terminal draws BBS text in the IBM PC character set (CP437, through
- * an IBM font) or, in PETSCII Mode, in the C64's. Text leaving the terminal
+ * an IBM font) or, with Terminal Type PETSCII, in the C64's. Text leaving the terminal
  * -- copied to the clipboard, saved -- is ISO-8859-1, as Amiga text is:
  * a character Latin-1 also has keeps its meaning, a line-drawing or other
  * graphic becomes the closest ASCII ('+', '-', '|', '#'). */
@@ -21,7 +21,7 @@ UBYTE Charset_PetsciiToLatin1(UBYTE c, BOOL lowerCase);
 /* The Character Set setting: what the BBS sends (prefs.Charset). */
 #define CHARSET_CP437   0       /* IBM PC: shown as it comes (the default) */
 #define CHARSET_LATIN1  1       /* Amiga BBSes: ISO-8859-1, copied as it is */
-#define CHARSET_UTF8    2       /* modern BBSes, Unix: shown in the IBM set */
+#define CHARSET_UTF8    2       /* modern BBSes, Unix: converted to the IBM set, except in the built-in renderer (the font's own encoding, box and blocks drawn) */
 
 /* UTF-8 from the BBS as CP437 for the IBM font: box drawing exact, what
  * CP437 lacks '?'. The decoder keeps a character split between two

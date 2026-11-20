@@ -54,6 +54,14 @@ BOOL Prefs_FromLegacy(const UBYTE *old, size_t len, struct PrefsStruct *out);
  * 1920x1080; the others any size. Checked on load and whenever the
  * renderer changes.
  */
+/*
+ * PETSCII Mode used to be State bit 15 (APP_OLD_PETSCII_MODE); it is the Terminal
+ * Type PETSCII now. A p with the old flag gets TermType PETSCII and the flag
+ * cleared; the one place that reads the flag. Prefs_Decode and the Address Book
+ * entry decoder call it, so what they hand out never carries the flag.
+ */
+void Prefs_MigratePetscii(struct PrefsStruct *p);
+
 BOOL Prefs_ScreenFits(const struct PrefsStruct *p);
 
 
@@ -63,5 +71,13 @@ BOOL Prefs_ScreenFits(const struct PrefsStruct *p);
  * console.device and ibmcon.device.
  */
 UWORD *Prefs_Palette(struct PrefsStruct *p);
+
+/*
+ * The State of a first run (no prefs file, or an invalid State in it):
+ * full screen, scrollback history on (as DCTelnet 1.x had it, so
+ * Shift+Page Up scrolls back from the start), and rendererBits, the
+ * renderer for this CPU (Renderer_DefaultForCpu()).
+ */
+ULONG Prefs_FirstRunState(ULONG rendererBits);
 
 #endif /* PREFS_FILE_H */
