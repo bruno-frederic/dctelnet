@@ -17,6 +17,33 @@
  * with the UI, as before. */
 BOOL Palette_AnsiPens(UWORD depth, UBYTE pens[16]);
 
+/* Palette_AnsiPens for the renderers that draw on the ANSI colours' own pens
+ * (state = a prefs State word): ibmcon and the built-in renderer. XEM and the
+ * console.device keep the ANSI colours on pens 0-15. The built-in renderer
+ * also takes this on 16 colours (depth 4), where the same 16 colours change
+ * places: pens 0-3 are Intuition's grey, black, white and blue, pens 4-15 the
+ * other twelve in ANSI order. pens[ansi] is the ANSI colour's pen. */
+BOOL Palette_OwnPens(ULONG state, UWORD depth, UBYTE pens[16]);
+
+/* The colour each ANSI colour shows in on the screen (0x00RRGGBB, ANSI
+ * order): palette[ansi] (RGB4) on pen pens[ansi] (Palette_OwnPens). On 16
+ * colours the built-in renderer shares pens 0 to PALETTE_UI_SHARED-1 with the
+ * UI; with ui (not NULL) those pens take the Workbench's own UI colours,
+ * ui[pen] (0x00RRGGBB: background, shadow, shine, fill), so the dialogs look
+ * like the Workbench's -- and ANSI white, black, bright white and bright blue
+ * show in them. Pens of 32+ colours are never shared: ui changes nothing. */
+#define PALETTE_UI_SHARED 4
+void Palette_ScreenColours(const UWORD palette[16], const UBYTE pens[16], const ULONG ui[PALETTE_UI_SHARED],
+                           ULONG out[16]);
+
+/* The UI pen table (SA_Pens, terminated by 0xFFFF; 13 entries) of a screen
+ * whose pens 0-15 hold the terminal's colours, penColours[pen] in RGB4:
+ * every DrawInfo pen is the pen nearest to Intuition's default colour for it
+ * (grey background, black shadow, white shine, blue fill, black menu text on
+ * a white menu bar). */
+#define PALETTE_UI_PENS 13
+void Palette_UiPens(const UWORD penColours[16], UWORD out[PALETTE_UI_PENS]);
+
 /* ibmcon's unit-1 order <-> ANSI order (the swap is its own inverse). */
 int Palette_IbmconToAnsi(int index);
 

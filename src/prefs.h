@@ -242,8 +242,6 @@ extern TEXT fKeys[F_KEY_COUNT * F_KEY_SIZE];
 extern const char prefsFilename[];
 extern const char keysFilename[];
 extern const char bookFilename[];
-extern const UWORD ansiPens[];
-extern const UWORD devicePens[];
 extern const UWORD defaultPens[];
 
 

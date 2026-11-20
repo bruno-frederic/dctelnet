@@ -2435,7 +2435,8 @@ void OpenToolBarWindow(char setmenus)
                 SetAPen(toolBarWin->RPort, drawInfo->dri_Pens[SHINEPEN]);
                 Move(toolBarWin->RPort, 0, toolBarWin->Height-2);
                 Draw(toolBarWin->RPort, toolBarWin->Width, toolBarWin->Height-2);
-                SetAPen(toolBarWin->RPort, drawInfo->dri_Pens[FILLPEN]);
+                // the grey UI's bevel: FILLPEN is the title bar blue
+                SetAPen(toolBarWin->RPort, drawInfo->dri_Pens[SHADOWPEN]);
                 Move(toolBarWin->RPort, 0, toolBarWin->Height-1);
                 Draw(toolBarWin->RPort, toolBarWin->Width, toolBarWin->Height-1);
             }
