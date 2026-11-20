@@ -65,7 +65,11 @@ BOOL FindInScrollBack(ULONG *top);
 BOOL EditConnectionOptions(struct PrefsStruct *p);
 void ImportBookList(const char *path);
 void OpenToolBarWindow(char setmenus);
+BOOL ToolBarWantsHover(void);
+void ToolBarHover(void);
+void ToolBarHoverEnd(BOOL redraw);
 void CloseToolBarWindow(void);
+void ReopenToolBarWindow(void);   /* an open bar closes and opens again with the current prefs */
 char MakeGadgets(struct MyNewGadget ProjectNGad[], struct Gadget *ProjectGadgets[], ULONG ProjectGTags[], struct Gadget *g, UBYTE ProjectGTypes[], UWORD Count);
 
 #endif /* GUIS_H */

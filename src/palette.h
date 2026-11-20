@@ -29,6 +29,12 @@ BOOL Palette_Valid(const UWORD palette[16]);
  * text on black with an Address Book entry converted from 1.x. */
 void Palette_Repair(struct PrefsStruct *p);
 
+/* The screen pen of terminal colour `ibmconIndex` (ibmcon's order): the ANSI
+ * pens when the screen has them (ansiPens, else NULL), pens 0-15 in ANSI order
+ * for the built-in and XEM renderers (ansiOrder), pens 0-15 as they are for
+ * the console devices. */
+UBYTE Palette_TerminalPen(int ibmconIndex, const UBYTE *ansiPens, BOOL ansiOrder);
+
 /* ANSI colour `ansi` of a device palette, as 0x00RRGGBB. */
 ULONG Palette_AnsiColour(const UWORD deviceColors[16], int ansi);
 

@@ -101,6 +101,7 @@ enum MenuItemID
         MENU_TITLE_BAR,
         MENU_PACKET_WINDOW,
         MENU_TOOL_BAR,
+        MENU_MODERN_ICONS,
         MENU_132_COLUMNS,
 
         MENU_SCREEN_MODE,
@@ -122,6 +123,7 @@ extern char server[64];
 extern long nScrollbackLines;
 extern long tcpSocket, nBytesReceived;
 extern struct DrawInfo *drawInfo;
+extern UWORD modeResX, modeResY;
 extern struct Menu *mainMenuStrip;
 // The connection carries telnet codes (IAC ...): not a Raw Connection, not rlogin.
 #define TELNET_DATA() STATE_IS_NOT(APP_RAW_CONNECTION | APP_RLOGIN | APP_SSH)
@@ -137,6 +139,7 @@ void DeferConnect(const char *name, const char *host, UWORD port, ULONG settings
                   const char *user, const char *pass, const char *loginMacro);
 void SendLoginMacro(const char *macro);
 BOOL SessionOverridesKeyboard(void);
+UWORD LegacyPen(UWORD ibmconIndex);
 void AdoptEntrySession(ULONG settingsId, ULONG groups);
 BOOL ScreenModeInto(struct PrefsStruct *target);
 const struct PrefsStruct *GlobalSettings(void);
