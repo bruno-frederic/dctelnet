@@ -6,6 +6,7 @@ typedef uint32_t ULONG;
 typedef int32_t  LONG;
 typedef uint16_t UWORD;
 typedef int16_t  WORD;
+typedef int8_t   BYTE;
 typedef uint8_t  UBYTE;
 typedef int16_t  BOOL;
 typedef unsigned char TEXT;
