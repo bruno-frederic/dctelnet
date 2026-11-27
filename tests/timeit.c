@@ -1,63 +1,144 @@
 /**
- * @file test-speed.c
- * @brief Measure the total duration of DCTelnet --test-speed
+ * @file timeit.c
+ * @brief Execute a command line and print its duration in milliseconds.
  *
- * First build and install a DCTelnet release binary:
- *  make clean ci install
- *  - Built with VBCC
- * vc +aos68k -O3 -speed -o ../build/vbcc-68000-release/test-speed test-speed.c
- * cp ../build/vbcc-68000-release/test-speed ../build/installed/DCTelnet
- * cp test-speed.ans ../build/installed/DCTelnet/speedtest.ans
+ * Use ReadEClock() as "This is the most precise time measure available through the timer device."
+ * see Amiga ROM Kernal Reference Manual - Devices, 3rd edition
+ * https://amigadev.elowar.com/read/ADCD_2.1/Devices_Manual_guide/node00C0.html
  *
- * On Amiga:
- * CD COD:DCTelnet/build/installed/DCTelnet
- * test-speed
+ *
+ * To measure DCTelnet's startup, rendering and shutdown duration:
+ *
+ * First build and install a DCTelnet release binary.
+ *
+ * Build TimeIt from tests/ folder:
+    docker run --rm --volume ".:/opt/code" --workdir /opt/code "walkero/docker4amigavbcc:m68k-amigaos-2.0.0" \
+        vc +aos68k -O3 -speed -I'$VBCC/targets/m68k-amigaos/include' -I'$NDK32_INC' -o TimeIt  timeit.c
+ *
+ * Install :
+    cp -p TimeIt          ../build/installed/DCTelnet
+    cp -p test-speed.ans  ../build/installed/DCTelnet/
+ *
+ * On Amiga, from DCTelnet installed folder:
+    TimeIt DCTelnet --test-speed
+ *
  *
  * @author Bruno FREDERIC
  * @date 2026
  */
 
-#include <proto/exec.h>
-#include <proto/dos.h>
-#include <proto/intuition.h>
 
-struct IntuitionBase *IntuitionBase;
+#include <proto/exec.h>         // OpenDevice(), CloseDevice()
+#include <proto/dos.h>          // Delay(), TICKS_PER_SECOND, Printf(), PutStr()
+#include <proto/timer.h>        // ReadEClock(), struct EClockVal, TIMERNAME
+#include <assert.h>
+#include <string.h>             // strlen(), memcpy()
 
-int main(void)
+#define CMD_MAX_LEN 512
+
+// For timer.device:
+struct Device *TimerBase = NULL;
+LONG GetElapsedEClockMillis(struct EClockVal* startTime, struct EClockVal* endTime, ULONG freq);
+
+int main(int argc, char *argv[])
 {
-    CONST_STRPTR cmd = "DCTelnet.68000 --test-speed";
-    ULONG before_s, before_micros;
-    ULONG after_s, after_micros;
-    ULONG elapsed_tenths;
+    char cmd[CMD_MAX_LEN];
+    size_t cmdLen = 0;
 
-    IntuitionBase = (struct IntuitionBase *) OpenLibrary("intuition.library", 36);
-    if (IntuitionBase == NULL)  return RETURN_FAIL;
-
-    CurrentTime(&before_s, &before_micros);
-
-    Execute(cmd, (BPTR) 0, (BPTR) 0);
-
-    CurrentTime(&after_s, &after_micros);
-
-    // Convert the elapsed time to tenths of a second, rounding to the nearest tenth using integer
-    // arithmetic.
-    // CurrentTime() updates the time at most 60 times per second, so the sub-second value has a
-    // maximum resolution of about 0.01667 s, which is sufficient for a tenth-of-a-second
-    // measurement.
-    if (after_micros >= before_micros)
+    // argc is 0 when started from Workbench
+    if (argc < 2)
     {
-        elapsed_tenths = (after_s - before_s) * 10
-                       + (after_micros - before_micros + 50000) / 100000;
+        PutStr("Usage: TimeIt <command> [arguments]\n");
+        return RETURN_ERROR;
+    }
+
+    // Join all arguments with spaces to rebuild the command line
+    for (int i = 1; i < argc; i++)
+    {
+        size_t argLen = strlen(argv[i]);
+        if (cmdLen + argLen + 2 > CMD_MAX_LEN)
+        {
+            PutStr("Command line too long!\n");
+            return RETURN_ERROR;
+        }
+        if (i > 1)
+            cmd[cmdLen++] = ' ';
+        memcpy(cmd + cmdLen, argv[i], argLen);
+        cmdLen += argLen;
+    }
+    cmd[cmdLen] = '\0';
+
+    /* No Message Port is needed when only calling timer.device functions,
+       A zero-initialized struct timerequest is sufficient.
+       See Amiga ROM Kernal Reference Manual - Devices, 3rd edition
+       https://amigadev.elowar.com/read/ADCD_2.1/Devices_Manual_guide/node00C1.html
+     */
+    struct timerequest timerIO = {0};
+
+    /* The Amiga ROM Kernal Reference Manual - Devices, 3rd edition states:
+       "These functions still require the device to be opened with the proper timer device unit"
+       https://amigadev.elowar.com/read/ADCD_2.1/Devices_Manual_guide/node00BF.html
+     */
+    if (OpenDevice(TIMERNAME, UNIT_ECLOCK, (struct IORequest *)&timerIO, 0) == RETURN_OK)
+    {
+        // Set up base pointer required for timer functions:
+        TimerBase = timerIO.tr_node.io_Device;
     }
     else
     {
-        elapsed_tenths = (after_s - before_s - 1) * 10
-                       + (1000000 - before_micros + after_micros + 50000) / 100000;
+        PutStr("Can not open device!\n");
+        return RETURN_FAIL;
     }
 
-    Printf("{\"total_duration_seconds\":%ld.%ld}\r\n", elapsed_tenths / 10, elapsed_tenths % 10);
+    struct EClockVal startTime, endTime;
 
-    if (IntuitionBase)  CloseLibrary((struct Library *) IntuitionBase);
+    ReadEClock(&startTime);
+    Execute(cmd, (BPTR) 0, (BPTR) 0);
+    ULONG freq = ReadEClock(&endTime);
+
+    LONG elapsedMs = GetElapsedEClockMillis(&startTime, &endTime, freq);
+
+    Printf(", \"cmd_duration_ms\":%ld", elapsedMs);
+
+
+    if (TimerBase != NULL)  CloseDevice((struct IORequest *) &timerIO);
 
     return RETURN_OK;
+}
+
+/**
+ * @brief Calculate the elapsed time between two E-clock readings.
+ *
+ * The readings and frequency are obtained from ReadEClock().
+ * The end reading must not precede the start reading.
+ *
+ * @param startTime Non-NULL starting E-clock reading.
+ * @param endTime   Non-NULL   ending E-clock reading.
+ * @param freq      E-Clock frequency in ticks per second.
+ *
+ * @return Elapsed milliseconds,
+ *         or -1 if freq is zero or the calculated result exceeds 2,147,483,647 ms (~25 days).
+ */
+LONG GetElapsedEClockMillis(struct EClockVal* startTime, struct EClockVal* endTime, ULONG freq)
+{
+    if (freq == 0)
+    {
+        #ifdef _DEBUG
+            assert(FALSE);
+        #endif
+        return -1;
+    }
+
+    unsigned long long start = ((unsigned long long)startTime->ev_hi << 32) | startTime->ev_lo;
+    unsigned long long end   = ((unsigned long long)  endTime->ev_hi << 32) | endTime->ev_lo;
+
+    assert(start < end);
+
+    unsigned long long elapsedTicks = end - start;
+    ULONG elapsedMs = (ULONG)((elapsedTicks * 1000) / freq);
+
+    if (elapsedMs > LONG_MAX)
+        return -1;
+
+    return (LONG)elapsedMs;
 }
