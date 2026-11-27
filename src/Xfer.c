@@ -12,7 +12,7 @@
 #include <proto/gadtools.h>           // GT_GetIMsg(), GT_ReplyIMsg()
 #include <proto/asl.h>                // FileRequester
 #include <workbench/workbench.h>      // struct AppMessage
-#include <proto/Xpr.h>                // XProtocolSetup(), XProtocolSend(), XProtocolReceive(), ...
+#include <proto/xpr.h>                // XProtocolSetup(), XProtocolSend(), XProtocolReceive(), ...
 #include <proto/bsdsocket.h>          // WaitSelect(), recv(), IoctlSocket(), Errno()
 #include <sys/ioctl.h>                // FIONBIO
 #ifdef __VBCC__
