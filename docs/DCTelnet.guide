@@ -161,7 +161,7 @@ you.
                             ~~~~~~~~~~~~~~~~~~
    This function measures the speed of the renderer.
 
-   If a speedtest.ans file is present in the program drawer, it is rendered,
+   If a test-speed.ans file is present in the program drawer, it is rendered,
    providing test conditions that more closely match real-world display
    behaviour.
    Otherwise, a set of lines is displayed.

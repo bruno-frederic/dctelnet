@@ -1,0 +1,70 @@
+.KEY NoArexx/S
+;
+; @file  bench-auto.script
+; @brief run on the Amiga from tests/ folder to automate DCTelnet benchmarks
+;
+; Start the Telnet test-server Docker container first (see tests/Dockerfile), then:
+;
+;   EXECUTE bench-auto.script [NoArexx]
+;
+; @param NoArexx skip the ARexx-driven benchmarks (passed to bench-renderer.rexx).
+;                Useful for DCTelnet builds prior to the implementation of the ARexx port.
+;
+; @author Bruno FREDERIC
+; @date 2026
+
+; Keep this path in sync with INSTALLDIR in src/Makefile; make install places the binaries used by
+; this script here.
+SET INSTALLDIR   /build/installed/DCTelnet
+
+SET Iteration   3
+
+; Allow this script to be executed directly for subsequent runs:
+PROTECT #?.rexx   +SRE  QUIET
+PROTECT #?.script +SRE  QUIET
+
+ECHO "Install device and libraries in AmigaOS. *E[35mYou MUST reboot if these files have changed:*E[0m"
+LIST "${INSTALLDIR}/Devs/ibmcon.device" DEVS:ibmcon.devic? NOHEAD
+ECHO ""
+LIST "${INSTALLDIR}/Libs/ssh.library"   LIBS:ssh.librar?   NOHEAD
+ECHO ""
+COPY "${INSTALLDIR}/Devs/ibmcon.device"  TO DEVS:  DATES
+COPY "${INSTALLDIR}/Libs/ssh.library"    TO LIBS:  DATES
+
+
+ECHO "Copy ANSI test file..."
+COPY  FROM test-speed.ans    TO "${INSTALLDIR}"    DATES
+; for older DCTelnet build compatibility:
+COPY  FROM test-speed.ans    TO "${INSTALLDIR}/speedtest.ans"    DATES
+
+
+DELETE "${INSTALLDIR}/DCTelnet.Prefs"
+ECHO "*E[32mChoose 'PAL:High Res' to generate a new Prefs file.*E[0m"
+"${INSTALLDIR}/DCTelnet" --test-speed  >NIL:
+
+; Log test context: binary sizes and version information
+; AmigaShell's LFORMAT is a flexible way to format output as JSON:
+echo "{*"binaries*": ["
+LIST "${INSTALLDIR}/DCTelnet" LFORMAT=" { *"filename*":*"%P%N*", *"size*":%L,"
+ECHO "   *"version*": *"`VERSION "${INSTALLDIR}/DCTelnet" FULL`*","
+ECHO "   `"${INSTALLDIR}/DCTelnet" --build-info`},"
+
+LIST "DEVS:ibmcon.device" LFORMAT=" { *"filename*":*"%P%N*", *"size*":%L,"
+; TODO: once issue #91 is fixed (VERSION ibmcon.device fails with KS 2.04: Error 8000 0003),
+; ECHO the ibmcon.device version instead of null
+ECHO "   *"version*": null},"
+
+LIST "LIBS:ssh.library" LFORMAT=" { *"filename*":*"%P%N*", *"size*":%L,"
+ECHO "   *"version*": *"`VERSION LIBS:ssh.library FULL`*"}],"
+
+; Run the performance benchmarks:
+echo  "*"benchmarks*": ["
+bench-renderer.rexx builtin ${Iteration} <NoArexx>
+echo ","
+bench-renderer.rexx console ${Iteration} <NoArexx>
+echo ","
+bench-renderer.rexx xem     ${Iteration} <NoArexx>
+echo ","
+bench-renderer.rexx ibmcon  ${Iteration} <NoArexx>
+
+echo "]}"

@@ -966,17 +966,16 @@ void LEDs(void)
 /**
  * @brief Run a terminal output speed test and display the elapsed time.
  *
- * The test outputs either the contents of PROGDIR:speedtest.ans or, if the file cannot be opened,
- * 200 colored ASCII lines. The elapsed time is measured with CurrentTime().
+ * The test outputs either the contents of PROGDIR:test-speed.ans or, if the file cannot be opened,
+ * 200 colored ASCII lines. The elapsed time is measured with ReadEClock().
  *
  * The terminal cursor is temporarily hidden during the test.
  *
  */
-static ULONG SpeedTest(void)
+static LONG SpeedTest(void)
 {
-    ULONG before_s, before_micros;
-    ULONG after_s, after_micros;
-    ULONG elapsed_tenths;
+    ULONG freq;
+    LONG elapsedMs;
     BPTR fh;
 
     // "›0 p" = 9B 30 20 70 : Set Cursor Rendition -> make cursor invisible
@@ -991,12 +990,11 @@ static ULONG SpeedTest(void)
     {
         LocalPrint("WARNING: The Xem library may hang the terminal window during this test!\r\n"
                    "If this happens, use \"Reset Screen\" from the DCTelnet menu.\r\n");
-        Delay(3 * TICKS_PER_SECOND);
     }
 
-    fh = Open("PROGDIR:speedtest.ans", MODE_OLDFILE);
+    fh = Open("PROGDIR:test-speed.ans", MODE_OLDFILE);
 
-    CurrentTime(&before_s, &before_micros);
+    ReadEClock(&responseStartTime);
 
     if (fh == 0) // File open error, so simply print ASCII lines
     {
@@ -1019,38 +1017,24 @@ static ULONG SpeedTest(void)
         Close(fh);
     }
 
-    CurrentTime(&after_s, &after_micros);
+    freq = ReadEClock(&responseEndTime);
 
-    // Convert the elapsed time to tenths of a second, rounding to the nearest tenth using integer
-    // arithmetic.
-    // CurrentTime() updates the time at most 60 times per second, so the sub-second value has a
-    // maximum resolution of about 0.01667 s, which is sufficient for a tenth-of-a-second
-    // measurement.
-    if (after_micros >= before_micros)
-    {
-        elapsed_tenths = (after_s - before_s) * 10
-                       + (after_micros - before_micros + 50000) / 100000;
-    }
-    else
-    {
-        elapsed_tenths = (after_s - before_s - 1) * 10
-                       + (1000000 - before_micros + after_micros + 50000) / 100000;
-    }
+    elapsedMs = GetElapsedEClockMillis(&responseStartTime, &responseEndTime, freq);
+    LocalFmt("›0m›255B\r\nDuration: %ld milliseconds", elapsedMs);
 
-    LocalFmt("›0m›255B\r\nDuration: %ld.%ld seconds\r\n",
-             elapsed_tenths / 10,
-             elapsed_tenths % 10);
+    // Reset response time measurement:
+    responseStartTime.ev_lo = 0; responseStartTime.ev_hi = 0;
 
     if (fh == 0)
     {
-        if (elapsed_tenths == 0)
+        if (elapsedMs == 0)
         {
             LocalPrint("Rating: Incredible\r\n");
         }
         else
         {
             // Round to the nearest integer using integer arithmetic.
-            LONG lines_per_second = (2000 + elapsed_tenths / 2) / elapsed_tenths;
+            LONG lines_per_second = (2000000 + (elapsedMs >> 1)) / elapsedMs;
 
             STRPTR rating;
 
@@ -1070,7 +1054,7 @@ static ULONG SpeedTest(void)
     // Restore cursor visibility after the test.
     ConWrite("›1 p", 4);
 
-    return elapsed_tenths;
+    return elapsedMs;
 }
 
 static void ClearScrollBack(void)
@@ -1136,6 +1120,7 @@ static void Finger(void)
     }
 }
 
+#define TEST_RENDERER_FROM_PREFS  0xFFFFFFFF
 
 int main(int argc, char *argv[])
 {
@@ -1143,6 +1128,7 @@ int main(int argc, char *argv[])
     LONG i;
     struct timeval timeout;
     fd_set rd;
+    ULONG testRenderer = 0;
     int returnCode = RETURN_FAIL;
     #ifdef _DEBUG
         ULONG beforeSigAlloc;
@@ -1165,8 +1151,44 @@ int main(int argc, char *argv[])
 
     if(argc >= 2)
     {
-        if(strcmp(argv[1], "?") == 0 || strcmp(argv[1], "/?") == 0 || strcmp(argv[1], "-?") == 0 ||
-           strcmp(argv[1], "-h")  == 0 || strcmp(argv[1], "--help")  == 0)
+        if (stricmp(argv[1], "--test-speed") == 0)
+        {
+            if (argc > 3) // too many parameters
+            {
+                PutStr("Invalid renderer: use [builtin|console|xem|ibmcon].\n");
+                goto clean_exit;
+            }
+            else if (argc == 3)  // a parameter is specified:
+            {
+                if      (stricmp(argv[2], "builtin") == 0)
+                    testRenderer = APP_RENDERER_BUILTIN;
+                else if (stricmp(argv[2], "console") == 0)
+                    testRenderer = APP_RENDERER_CONSOLE_DEVICE;
+                else if (stricmp(argv[2], "xem")     == 0)
+                    testRenderer = APP_RENDERER_XEM_LIB;
+                else if (stricmp(argv[2], "ibmcon")  == 0)
+                    testRenderer = APP_RENDERER_IBMCON_DEVICE;
+                else
+                {
+                    PutStr("Invalid renderer: use [builtin|console|xem|ibmcon].\n");
+                    goto clean_exit;
+                }
+            }
+            else  // argc == 2, no parameter, use the renderer saved in Prefs
+            {
+                testRenderer = TEST_RENDERER_FROM_PREFS;
+            }
+        }
+        else if(stricmp(argv[1], "--build-info") == 0)
+        {
+            PutStr ("\"build_hash\":\""        STR(BUILD_HASH)       "\", "
+                    "\"compiled_with\":\""     STR(COMPILER_STRING)  "\"\n");
+
+            returnCode = RETURN_OK;
+            goto clean_exit;
+        }
+        else if(strcmp(argv[1], "?") == 0 || strcmp(argv[1], "/?") == 0 || strcmp(argv[1], "-?") == 0 ||
+                strcmp(argv[1], "-h")  == 0 || strcmp(argv[1], "--help")  == 0)
         {
             PutStr(
                 "DCTelnet "DCTELNET_VERSION " (build " STR(BUILD_HASH) ") ("__DATE__
@@ -1174,9 +1196,16 @@ int main(int argc, char *argv[])
                 "compiled with: " STR(COMPILER_STRING) "\n"
                 "\n"
                 "Usage: DCTelnet <host> [<port>]\n"
+                "       DCTelnet --test-speed [builtin|console|xem|ibmcon]\n"
+                "       DCTelnet --build-info\n"
             );
 
             returnCode = RETURN_OK;
+            goto clean_exit;
+        }
+        else if (argv[1][0] == '-' || argv[1][0] == '/')
+        {
+            PutStr("Unknown option.\n");
             goto clean_exit;
         }
 
@@ -1253,6 +1282,19 @@ int main(int argc, char *argv[])
 
 
     if (! LoadPrefs()) goto clean_exit;
+    // Override the renderer IMMEDIATELY AFTER LoadPrefs() and BEFORE TimerOpen(), RexxOpen()...
+    if (testRenderer)
+    {
+        if (testRenderer == TEST_RENDERER_FROM_PREFS)
+        {
+            testRenderer = prefs.State & APP_RENDERER_ALL;
+        }
+        else    // The command-line argument overrides the saved renderer preference.
+        {
+            STATE_UNSET(APP_RENDERER_ALL);
+            STATE_SET(testRenderer);
+        }
+    }
 
     scrollbackList = AllocMem(sizeof(struct List), MEMF_CLEAR|MEMF_PUBLIC);
     if(!scrollbackList) goto clean_exit;
@@ -1290,31 +1332,43 @@ int main(int argc, char *argv[])
     if (! OpenDisplay())
         goto clean_exit;
 
+    // OpenDisplay() may succeed by falling back to another renderer if the selected one fails
+    if (testRenderer && !STATE_IS(testRenderer))
+    {
+        PutStr("Failed to initialize the requested renderer.\n");
+        goto clean_exit;
+    }
+
     #ifdef _DEBUG
         PutStr("<-- OpenDisplay()\n");
         PutStr("SigAlloc:"); PrintBitsULONG(mainTask->tc_SigAlloc);
         LogWindowsSigBit();
     #endif
 
-    // Connect to server if it was specified in the command line. It needs an opened display.
+    shouldRestart = FALSE;
+    shouldReopenScreen = FALSE;
+
+    // Connect to server if it was specified in the command line. It needs an opened display,
     if (server[0] != '\0')
     {
         if (stricmp(server, "--test-speed") == 0)
         {
-            ULONG elapsed_tenths = SpeedTest();
+            LONG elapsedMs = SpeedTest();
 
-            Printf("{\"renderer_duration_seconds\":%ld.%ld}\r\n", elapsed_tenths / 10, elapsed_tenths % 10);
+            STRPTR s = (argc == 3) ? argv[2] : "from Prefs";
+            Printf("\"renderer\":\"%s\", \"render_duration_ms\":%ld", s, elapsedMs);
+
+            SavePrefs();
 
             returnCode = RETURN_OK;
 
             goto clean_exit;
         }
         else
+        {
             BeginServerConnection(server, tcpPort);
+        }
     }
-
-    shouldRestart = FALSE;
-    shouldReopenScreen = FALSE;
 
 /* ------ main loop ------ */
     shouldQuitApp = FALSE;
