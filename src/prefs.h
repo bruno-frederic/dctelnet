@@ -147,10 +147,11 @@ struct PrefsStruct
 
 #define APP_ICONIFIED                (1UL << 27)  // Tested 1x in ConWrite(), 1x in main loop (and 1x in LEDs(), LEDs() is not used in hot-path)
 
+#define APP_RESPONSE_TIME_VISIBLE    (1UL << 28)  // 1x for each Receive() (and 1x on key press)
+
 // Tested once per received character in the high-frequency Receive() loop.
 // Additional detailed states are implemented in DCTelnet-protocol.h.
 // Keeping these bits here provides easy access alongside the other application status flags.
-#define APP_TELNET_STATE_DATA        (1UL << 28)  // Reserved for future use
 #define APP_ZMODEM_IDLE              (1UL << 29)  // Reserved for future use
 
 // Tested once for each character received in term_feed(). Four parser states require two bits.

@@ -74,6 +74,7 @@ enum MenuItemID
 
         MENU_FULLSCREEN,
         MENU_LEDS,
+        MENU_RESPONSE_TIME,
         MENU_TITLE_BAR,
         MENU_PACKET_WINDOW,
         MENU_TOOL_BAR,

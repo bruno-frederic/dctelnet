@@ -50,6 +50,7 @@ static char MainWindowTitle[] =
 #ifdef __VBCC__
     #pragma popwarn
 #endif
+#include <assert.h>
 #include "DCTelnet.h"
 #include "guis.h"
 #include "connect.h"
@@ -146,6 +147,7 @@ static struct NewMenu mainMenuDesc[] =
     {    NM_ITEM, "Title Bar",                      "R", HIGHCOMP|CHECKIT|MENUTOGGLE, 0, (APTR)MENU_TITLE_BAR},
     {    NM_ITEM, "Tool Bar",                       "4", HIGHCOMP|CHECKIT|MENUTOGGLE, 0, (APTR)MENU_TOOL_BAR},
     {    NM_ITEM, "LEDs",                           "I", HIGHCOMP|CHECKIT|MENUTOGGLE, 0, (APTR)MENU_LEDS},
+    {    NM_ITEM, "Response Time",                   0 , HIGHCOMP|CHECKIT|MENUTOGGLE, 0, (APTR)MENU_RESPONSE_TIME},
     {    NM_ITEM, "Snapshot Windows",               "$",             0,               0, (APTR)MENU_SNAPSHOT_WINDOWS},
 
     { NM_TITLE, "Login",  0, 0, 0, (APTR)MENU_LOGIN},
@@ -209,6 +211,7 @@ static long indexInScrollBuffer;
 long tcpSocket, nBytesReceived;
 static ULONG conectionTime;
 static long nBytesSent;
+static struct EClockVal responseStartTime, responseEndTime;
 void *visualInfos;
 char username[42], password[42];
 // TCP Receive buffer, used in Receive(), xpr_sflush(). Cauntion: these functs destroy the content
@@ -770,6 +773,58 @@ add:
 
 #include "DCTelnet-protocol.h"
 
+/**
+ * @brief Calculate the elapsed time between two E-clock readings.
+ *
+ * The readings and frequency are obtained from ReadEClock(). The end reading must not precede the
+ * start reading, and the interval must be shorter than 2^32 E-Clock ticks (~100 minutes).
+ *
+ * @param startTime Non-NULL starting E-clock reading.
+ * @param endTime Non-NULL ending E-clock reading.
+ * @param freq E-clock frequency in ticks per second.
+ * @return Elapsed milliseconds,
+ *         or -1 if freq is zero or the calculated result exceeds LONG_MAX.
+ *         If the high-word difference indicates an unsupported interval, debug builds assert;
+ *         otherwise -1 is returned.
+ */
+LONG GetElapsedEClockMillis(struct EClockVal* startTime, struct EClockVal* endTime, ULONG freq)
+{
+    // Convert elapsed E-Clock ticks to milliseconds using 32-bit arithmetic:
+    ULONG highDiff = endTime->ev_hi - startTime->ev_hi;
+    ULONG elapsedTicks;
+    ULONG elapsedMs;
+
+    if (freq == 0)
+    {
+        #ifdef _DEBUG
+            assert(FALSE);
+        #endif
+        return -1;
+    }
+
+    // This simple arithmetic supports intervals shorter than 2^32 E-Clock ticks (~100 minutes)
+    // Longer intervals would require proper 64-bit arithmetic.
+    if (highDiff == 0)
+        elapsedTicks = endTime->ev_lo - startTime->ev_lo;
+    else if (highDiff == 1 && endTime->ev_lo < startTime->ev_lo)
+        elapsedTicks = (0xFFFFFFFFUL - startTime->ev_lo) + 1UL + endTime->ev_lo;
+    else
+    {
+        // The interval exceeds the supported range and requires 64-bit arithmetic.
+        #ifdef _DEBUG
+            assert(FALSE);
+        #endif
+        return -1;
+    }
+
+    elapsedMs = (elapsedTicks / freq) * 1000UL + ((elapsedTicks % freq) * 1000UL) / freq;
+
+    if (elapsedMs > LONG_MAX)
+        return -1;
+
+    return (LONG)elapsedMs;
+}
+
 static void Receive(void)
 {
     static UBYTE outBuffer[sizeof(recvBuffer)];
@@ -878,6 +933,19 @@ static void Receive(void)
 
         ResetZmodemContext();
     }
+
+    // Must be put at the very end of Receive() to benchmark latencies:
+    if (responseStartTime.ev_lo == 0 && responseStartTime.ev_hi == 0)
+        return;
+
+    ULONG freq = ReadEClock(&responseEndTime);
+
+    LONG elapsedMs = GetElapsedEClockMillis(&responseStartTime, &responseEndTime, freq);
+    Move(&(scr->RastPort), 510, 7);
+    TextFmt(&(scr->RastPort), "%5ldms %4ldb", elapsedMs, len);
+
+    // Reset response time measurement:
+    responseStartTime.ev_lo = 0; responseStartTime.ev_hi = 0;
 }
 
 
@@ -1296,6 +1364,8 @@ int main(int argc, char *argv[])
         }
     }
 
+    TimerOpen();                        // timed jobs (none pending: no request)
+
     scrollbackList = AllocMem(sizeof(struct List), MEMF_CLEAR|MEMF_PUBLIC);
     if(!scrollbackList) goto clean_exit;
 
@@ -1559,6 +1629,7 @@ int main(int argc, char *argv[])
 
 clean_exit:
     DisConnect(FALSE, TRUE);
+    TimerClose();
     CloseDisplay(TRUE);
 
     ClearScrollBack();
@@ -1965,6 +2036,10 @@ static void GetWindowMsg(struct Window *wwin)
                     static char key_csi;
                     static char key_macro;
 
+                    // Must be put as soon as a key is pressed to benchmark response times:
+                    if (STATE_IS(APP_RESPONSE_TIME_VISIBLE))
+                        ReadEClock(&responseStartTime);
+
                     ie.ie_Class        = IECLASS_RAWKEY;
                     ie.ie_SubClass        = 0;
                     ie.ie_Code        = code;
@@ -2188,6 +2263,12 @@ static void GetWindowMsg(struct Window *wwin)
                                 RectFill(&scr->RastPort, scr->Width-86, 2, scr->Width-60, prefs.FontSize-1);
                             }
                         }
+                        break;
+
+                    case MENU_RESPONSE_TIME:
+                        UpdatePrefsFromMenu(item, APP_RESPONSE_TIME_VISIBLE);
+                        // Reset response time measurement:
+                        responseStartTime.ev_lo = 0; responseStartTime.ev_hi = 0;
                         break;
 
                     case MENU_TITLE_BAR:

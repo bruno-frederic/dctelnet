@@ -1,3 +1,36 @@
+// TimerOpen(), TimerClose() functions and associated variables comes with pull request #33 "Redial,
+// keep alive, connect timeout...".
+// Added here for pre-PR33 benchmarks. MUST be removed when merging PR#33 otherwise errors :
+//    redefinition of function <TimerOpen>, <TimerClose>
+#include <proto/timer.h>              // ReadEClock()
+struct Device *TimerBase;               // ReadEClock()
+static struct MsgPort *tickPort;
+static struct timerequest *tickReq;
+static BOOL tickOpen;
+
+static void TimerOpen(void)
+{
+    if ((tickPort = CreateMsgPort())
+        && (tickReq = (struct timerequest *)CreateIORequest(tickPort, sizeof(struct timerequest))))
+        tickOpen = !OpenDevice(TIMERNAME, UNIT_VBLANK, (struct IORequest *)tickReq, 0);
+    if (tickOpen)
+    {
+        TimerBase = tickReq->tr_node.io_Device;
+    }
+}
+
+static void TimerClose(void)
+{
+    if (tickOpen)
+    {
+        CloseDevice((struct IORequest *)tickReq);
+    }
+    if (tickReq) DeleteIORequest((struct IORequest *)tickReq);
+    if (tickPort) DeleteMsgPort(tickPort);
+    tickReq = NULL; tickPort = NULL; tickOpen = FALSE;
+    TimerBase = NULL;
+}
+// End of code required for benchmarks before PR#33 merge
 #ifdef _DEBUG
 // Helpers for debugging purpose:
 
